@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<nav class="navbar navbar-expand-sm bg-dark navbar-dark">
+    <a class="navbar-brand" href="index.html">Docker Handler</a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#collapsibleNavbar">
+        <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="collapsibleNavbar">
+        <ul class="navbar-nav">
+            <li class="nav-item">
+                <a class="nav-link" href="index.html">Home</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="index.html">Containers</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="docker-images.html">Images</a>
+            </li>
+        </ul>
+    </div>
+</nav>
+
+<head>
+    <meta charset="utf-8"/>
+    <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1, shrink-to-fit=no"
+    />
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+    <title>ContainerHandler</title>
+</head>
+
+<!--HEADER TITLE -->
+<div class="jumbotron text-center">
+    <h1>Docker Handler</h1>
+    <p>A simple docker web handler!</p>
+</div>
+
+<div class="container mt-3">
+    <div class="dropdown float-right">
+        <button id="btn-dropdown" type="button" class="btn btn-dark dropdown-toggle" data-toggle="dropdown">
+            Options
+        </button>
+        <div class="dropdown-menu">
+            <a class="dropdown-item" href="index.html">Containers</a>
+            <a class="dropdown-item" href="#">Images</a>
+        </div>
+    </div>
+    <h2>Filterable docker images</h2>
+    <p>Type something in the input to search:</p>
+    <input class="form-control" id="userInput" type="text" placeholder="Search..">
+    <br/>
+</div>
+
+<link rel="stylesheet" href="assets/css/loader.css">
+
+<div class="table-responsive text-nowrap">
+
+    <table class="table table-striped">
+        <thead class="thead-dark">
+        <tr>
+            <th scope="col">REPOSITORY</th>
+            <th scope="col">TAG</th>
+            <th scope="col">IMAGE ID</th>
+            <th scope="col">CREATED</th>
+            <th scope="col">SIZE</th>
+            <th scope="col">Action</th>
+        </tr>
+        </thead>
+        <tbody id="dockerImagesTable">
+        </tbody>
+    </table>
+    <!--search script-->
+    <script>
+        $(document).ready(function () {
+            $("#userInput").on("keyup", function () {
+                let value = $(this).val().toLowerCase();
+                $("#dockerImagesTable tr").filter(function () {
+                    $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1)
+                });
+            });
+        });
+    </script>
+</div>
+
+<script type="module" src="public/app/views/DockerImagesView.js"></script>
+</html>
