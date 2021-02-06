@@ -46,7 +46,6 @@ if [ -z "$MAVEN_SKIP_RC" ] ; then
 
 fi
 
-export JAVA_HOME=$HOME/Documentos/Spk-Uteis/devops_spark/graalvm/graalvm-ce-java11-20.3.0  
 
  #OS specific support.  $var _must_ be set to either true or false.
 cygwin=false;
