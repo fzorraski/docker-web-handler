@@ -1,6 +1,6 @@
-import {removeDockerImage} from "../services/docker-image-service.js";
+import {removeDockerImage} from "../services/DockerImageService.js";
 import {showLoader} from "../views/DockerImagesView.js";
-import {responseWrapper} from "../utils/promise-helpers.js";
+import {responseWrapper} from "../utils/PromiseHelpers.js";
 
 
 export function actionRemoveDockerImage(id) {
