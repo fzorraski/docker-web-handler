@@ -44,6 +44,7 @@ public class ContainerController extends CommandHandler {
         if (result.size() > 0) {
             return result.get(0).equals(container.getContainerId());
         }
+        
         return false;
     }
 

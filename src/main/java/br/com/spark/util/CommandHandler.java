@@ -31,7 +31,7 @@ public class CommandHandler {
         System.out.println(CommandHandler.class.getSimpleName() + " "
                 + resultCommandList.size());
 
-        return resultCommandList;
+        return  resultCommandList;
     }
 
 
@@ -42,7 +42,7 @@ public class CommandHandler {
         try {
             //read the output from the command
             while ((str = stdOut.readLine()) != null) {
-                outputList.add(str);
+                outputList.add(SanitizeHtml.html2text(str));
             }
 
         } catch (Exception e) {
