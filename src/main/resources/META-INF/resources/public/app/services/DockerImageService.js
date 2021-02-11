@@ -1,6 +1,6 @@
-import {handleStatus, requestInitPost} from "../utils/promise-helpers.js";
+import {handleStatus, requestInitPost} from "../utils/PromiseHelpers.js";
 
-const API = 'http://localhost:8080/images/'
+const API = '/images/'
 
 
 export function getDockerImages() {
@@ -9,7 +9,7 @@ export function getDockerImages() {
         .then(res => handleStatus(res))
         .catch(err => {
             console.log(err);
-            return Promise.reject('Could not get the list of containers');
+            return Promise.reject('Could not get the list of docker images');
         })
 }
 
@@ -22,4 +22,3 @@ export function removeDockerImage(imageId) {
         .then(res => handleStatus(res))
         .finally(() => location.reload())
 }
-

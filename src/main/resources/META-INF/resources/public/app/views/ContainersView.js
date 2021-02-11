@@ -1,4 +1,4 @@
-import {containerService} from "../services/container-service.js";
+import {getContainersService} from "../services/ContainerService.js";
 import {stopContainer, removeContainer, startContainer, isUpContainer} from "../controller/ContainerController.js";
 
 const bodyDataTable = document.querySelector("[data-table]");
@@ -27,7 +27,6 @@ function showContainer(containerId, image, command, created, status, ports, name
 
 
     return line;
-
 }
 
 function createButton(label, id) {
@@ -62,7 +61,7 @@ function createButton(label, id) {
     return htmlButtonElement;
 }
 
-containerService.listAll()
+getContainersService()
     .then(show => {
         show.forEach(index => {
             bodyDataTable.appendChild(showContainer(index.containerId,
@@ -79,6 +78,8 @@ containerService.listAll()
 export function showLoader() {
     // let s = '<div class="spinner-border"></div>';
     $('.table-responsive').append('<div class="loader">' + '</div>');
+
+    document.getElementById('containerTable').style.pointerEvents = "none";
 }
 
 // export function showLoader(){
@@ -86,7 +87,7 @@ export function showLoader() {
 //     document.getElementById('containerTable').style.display = "none";
 //
 // }
-//
+
 // export function stopLoader(){
 //     document.getElementById('dc-loader').style.display = "none";
 //     document.getElementById('containerTable').style.display = "block";

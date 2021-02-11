@@ -1,4 +1,4 @@
-import {getDockerImages} from "../services/docker-image-service.js";
+import {getDockerImages} from "../services/DockerImageService.js";
 
 import {actionRemoveDockerImage} from "../controller/DockerImageController.js";
 
@@ -63,6 +63,7 @@ getDockerImages().then(showImages => {
 export function showLoader() {
     // let s = '<div class="spinner-border"></div>';
     $('.table-responsive').append('<div class="loader">' + '</div>');
+    document.getElementById('dockerImagesTable').style.pointerEvents = "none";
 }
 
 
