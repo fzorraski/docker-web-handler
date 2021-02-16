@@ -1,6 +1,4 @@
-import {getDockerImages} from "../services/DockerImageService.js";
-
-import {actionRemoveDockerImage} from "../controller/DockerImageController.js";
+import {actionGetDockerImages, actionRemoveDockerImage} from "../controller/DockerImageController.js";
 
 function showDockerImages(repository, tag, imageId, created, size) {
 
@@ -39,31 +37,28 @@ function createButton(label, id) {
 
 let bodyTable = document.querySelector('#dockerImagesTable');
 
-getDockerImages().then(showImages => {
-    showImages.forEach(index => {
-        bodyTable.appendChild(showDockerImages(index.repository,
-            index.tag,
-            index.imageId,
-            index.created,
-            index.size
-        ))
+actionGetDockerImages()
+    .then(showImages => {
+        showImages.forEach(index => {
+            bodyTable.appendChild(showDockerImages(index.repository,
+                index.tag,
+                index.imageId,
+                index.created,
+                index.size
+            ))
+        })
     })
-})
 
-// export function showLoader() {
-//     document.getElementById('di-loader').style.display = "block";
-//     document.getElementById('dockerImagesTable').style.display = "none";
-// }
-
-// export function stopLoader() {
-//     document.getElementById('di-loader').style.display = "none";
-//     document.getElementById('dockerImagesTable').style.display = "block";
-// }
 
 export function showLoader() {
     // let s = '<div class="spinner-border"></div>';
-    $('.table-responsive').append('<div class="loader">' + '</div>');
+    $('.table-responsive').append('<div class="loader" id="di-loader">' + '</div>');
     document.getElementById('dockerImagesTable').style.pointerEvents = "none";
+}
+
+export function stopLoader() {
+    document.getElementById('di-loader').style.display = "none";
+    document.getElementById('dockerImagesTable').style.pointerEvents = "initial";
 }
 
 

@@ -1,5 +1,11 @@
 import {getContainersService} from "../services/ContainerService.js";
-import {stopContainer, removeContainer, startContainer, isUpContainer} from "../controller/ContainerController.js";
+import {
+    stopContainer,
+    removeContainer,
+    startContainer,
+    isUpContainer,
+    getContainers
+} from "../controller/ContainerController.js";
 
 const bodyDataTable = document.querySelector("[data-table]");
 const actionStop = "stop";
@@ -61,7 +67,7 @@ function createButton(label, id) {
     return htmlButtonElement;
 }
 
-getContainersService()
+getContainers()
     .then(show => {
         show.forEach(index => {
             bodyDataTable.appendChild(showContainer(index.containerId,
@@ -77,18 +83,13 @@ getContainersService()
 
 export function showLoader() {
     // let s = '<div class="spinner-border"></div>';
-    $('.table-responsive').append('<div class="loader">' + '</div>');
-
+    $('.table-responsive').append('<div class="loader" id="dc-loader">' + '</div>');
     document.getElementById('containerTable').style.pointerEvents = "none";
 }
 
-// export function showLoader(){
-//     document.getElementById('dc-loader').style.display = "block";
-//     document.getElementById('containerTable').style.display = "none";
-//
-// }
+export function stopLoader() {
 
-// export function stopLoader(){
-//     document.getElementById('dc-loader').style.display = "none";
-//     document.getElementById('containerTable').style.display = "block";
-// }
+    document.getElementById('dc-loader').style.display = "none";
+    document.getElementById('containerTable').style.pointerEvents = "initial";
+}
+

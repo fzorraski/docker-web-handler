@@ -1,4 +1,5 @@
 import {
+    getContainersService,
     removeContainerService,
     startContainerService,
     stopContainerService
@@ -6,6 +7,9 @@ import {
 
 import {showLoader} from "../views/ContainersView.js";
 
+export function getContainers(){
+    return getContainersService();
+}
 
 export function stopContainer(id) {
     if (confirm('stop  ' + id + ' ?')) {

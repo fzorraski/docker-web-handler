@@ -1,14 +1,16 @@
 import {handleStatus, requestInitPost} from "../utils/PromiseHelpers.js";
+import {showLoader, stopLoader} from "../views/ContainersView.js";
 
 const API = '/containers/'
 
 export function getContainersService() {
+    showLoader();
     return fetch(API + 'list')
         .then(res => handleStatus(res))
         .catch(err => {
             console.log(err);
             return Promise.reject('Could not get the list of containers');
-        })
+        }).finally(stopLoader);
 }
 
 export function startContainerService(id){
