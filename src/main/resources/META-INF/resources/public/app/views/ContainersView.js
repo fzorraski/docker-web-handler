@@ -11,26 +11,38 @@ const bodyDataTable = document.querySelector("[data-table]");
 const actionStop = "stop";
 const actionRemove = "remove";
 const actionStart = "start"
+const machineIp = window.location.hostname;
+
 
 function showContainer(containerId, image, command, created, status, ports, names) {
 
-    const line = document.createElement('tr')
+    const line = document.createElement('tr');
+
+
+    let portsHtml = '';
+    const portsArray = ports.split(',').map(port => port.trim());
+
+    portsArray.forEach((port, index) => {
+        const url = `http://${machineIp}:${port}`;
+        portsHtml += `<a href="${url}" target="_blank">${port}</a>`;
+        if (index < portsArray.length - 1) {
+            portsHtml += ', ';
+        }
+    });
 
     line.innerHTML = `
-
         <td>${containerId}</td>
         <td>${image}</td>
         <td>${command}</td>
         <td>${created}</td>
         <td>${status}</td>
-        <td>${ports}</td>
-        <td>${names}</td>
+        <td><b>${portsHtml}</b></td>
+        <td><b>${names}</b></td>
     `;
 
     if (isUpContainer(status)) line.appendChild(createButton(actionStop, containerId));
     if (!isUpContainer(status)) line.appendChild(createButton(actionStart, containerId));
     line.appendChild(createButton(actionRemove, containerId));
-
 
     return line;
 }
@@ -77,6 +89,7 @@ getContainers()
                 index.status,
                 index.ports,
                 index.names,
+                "srvti-ci-001.local"
             ))
         })
     })

@@ -13,16 +13,13 @@ export function getContainers(){
 
 export function stopContainer(id) {
     if (confirm('stop  ' + id + ' ?')) {
-        console.log(id)
         showLoader();
         stopContainerService(id);
     }
-    console.log(id)
 }
 
 export function removeContainer(id) {
     if (confirm('Remove ' + id + ' ?')) {
-        console.log(id)
         showLoader();
         removeContainerService(id);
     }
@@ -35,7 +32,6 @@ export function startContainer(id) {
 }
 
 export function isUpContainer(status) {
-    console.log(status)
     return !!status.includes("Up");
 }
 
