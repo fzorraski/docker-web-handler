@@ -8,15 +8,11 @@ This project uses Quarkus, the Supersonic Subatomic Java Framework.
 
 1. Pull image:
 ```shell script
-docker pull fabriciozrk/quarkus-docker-web-handler:latest
+docker pull fabriciozrk/docker-web-handler:latest
 ```
 2. Run with:
 ```shell script
-docker run -d --rm -p 8080:8080 --user <uid>:<gid_docker> -v /var/run/docker.sock:/var/run/docker.sock -v /usr/bin/docker:/usr/bin/docker fabriciozrk/quarkus-docker-web-handler
-
-OR 
-
-docker run -d --rm -p 8080:8080 --user $(id -u):$(cat /etc/group | grep docker | cut -d ':' -f 3) -v /var/run/docker.sock:/var/run/docker.sock -v /usr/bin/docker:/usr/bin/docker fabriciozrk/quarkus-docker-web-handler
+docker run -d -p 8080:8080 --restart=always -v /var/run/docker.sock:/var/run/docker.sock fabriciozrk/docker-web-handler
 ```
 ---
 
@@ -64,9 +60,9 @@ java -jar target/docker-web-handler-1.0.0-SNAPSHOT-runner.jar
 ./mvnw package -Pnative
 ```
 
-3. Or, if you don't have GraalVM installed, you can run the native executable build in a container using: 
+3. Or, if you don't have GraalVM installed, you can run the native executable build in a dockerContainer using: 
 ```shell script
-./mvnw package -Pnative -Dquarkus.native.container-build=true
+./mvnw package -Pnative -Dquarkus.native.dockerContainer-build=true
 ```
 4. Run the native executable:
 
