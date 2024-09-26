@@ -6,7 +6,7 @@ function showDockerImages(repository, tag, imageId, created, size) {
 
     line.innerHTML = `
 
-        <td>${repository}</td>
+        <td><b>${repository}</b></td>
         <td>${tag}</td>
         <td>${imageId}</td>
         <td>${created}</td>
@@ -60,12 +60,3 @@ export function stopLoader() {
     document.getElementById('di-loader').style.display = "none";
     document.getElementById('dockerImagesTable').style.pointerEvents = "initial";
 }
-
-
-// export function  newAlert(){
-//     let s = '<div class="spinner-grow text-primary spinner-grow-sm mt-2"><span class="sr-only">Loading...</span></div>';
-//
-//     $('.table-responsive').append('<div class="loader text-center">' + s + '</div>');
-// }
-
-
