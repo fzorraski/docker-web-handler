@@ -1,6 +1,11 @@
 package br.com.spark.model;
 
-public class Container {
+import java.util.HashSet;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public class DockerContainer {
 
     private String containerId;
 
@@ -61,16 +66,32 @@ public class Container {
     }
 
     public void setPorts(String ports) {
-        if (isPort(ports)) {
+        if (ports.equals("-")) {
             this.ports = ports;
         } else {
-            this.ports = "--";
+            this.ports = extractUniquePublicPorts(ports)
+                    .toString()
+                    .replaceAll("[\\[\\]]", "");
         }
     }
 
-    public boolean isPort(String ports) {
-        return ports.contains(":") && ports.contains("->");
+    private Set<Integer> extractUniquePublicPorts(String inputString) {
+        Set<Integer> uniquePublicPorts = new HashSet<>();
+        Pattern pattern = Pattern.compile("publicPort=(\\d+)");
+        Matcher matcher = pattern.matcher(inputString);
+        while (matcher.find()) {
+            String portStr = matcher.group(1);
+            try {
+                if (portStr != null && !portStr.isEmpty()) {
+                    uniquePublicPorts.add(Integer.parseInt(portStr));
+                }
+            } catch (NumberFormatException e) {
+                System.err.println("Erro ao converter porta para inteiro: " + portStr);
+            }
+        }
+        return uniquePublicPorts;
     }
+
 
     public String getNames() {
         return names;

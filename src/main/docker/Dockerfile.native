@@ -1,7 +1,7 @@
 ####
-# This Dockerfile is used in order to build a container that runs the Quarkus application in native (no JVM) mode
+# This Dockerfile is used in order to build a dockerContainer that runs the Quarkus application in native (no JVM) mode
 #
-# Before building the container image run:
+# Before building the dockerContainer image run:
 #
 # ./mvnw package -Pnative
 #
@@ -9,7 +9,7 @@
 #
 # docker build -f src/main/docker/Dockerfile.native -t quarkus/docker-web-handler .
 #
-# Then run the container using:
+# Then run the dockerContainer using:
 #
 # docker run -i --rm -p 8080:8080 quarkus/docker-web-handler
 
