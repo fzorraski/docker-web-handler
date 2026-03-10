@@ -1,0 +1,243 @@
+body {
+    background-color: #f4f6f9;
+    font-family: 'Poppins', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.container {
+    max-width: 70%;
+}
+
+/* Navbar */
+.navbar {
+    background-color: #1e3d59;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.navbar-brand, .navbar-nav .nav-link {
+    color: #f5f5f5 !important;
+    font-weight: 600;
+    transition: color 0.3s;
+}
+
+.navbar-nav .nav-link:hover,
+.navbar-nav .nav-item.active .nav-link {
+    color: #ff6f61 !important;
+}
+
+.navbar-toggler {
+    border-color: #f5f5f5;
+}
+
+/* Jumbotron */
+.jumbotron {
+    background: linear-gradient(to right, #ff6f61, #de6b48);
+    color: white;
+    padding: 6rem 1rem;
+    margin-bottom: 0;
+    text-align: center;
+}
+
+.jumbotron h1 {
+    font-size: 3.5rem;
+    font-weight: bold;
+}
+
+.jumbotron p {
+    font-size: 1.25rem;
+}
+
+.btn-custom {
+    background-color: #ff6f61;
+    color: white;
+    border: none;
+    border-radius: 50px;
+    padding: 0.5rem 1.5rem;
+    transition: background-color 0.3s;
+}
+
+.btn-custom:hover {
+    background-color: #de6b48;
+    color: white;
+}
+
+/* Input Group */
+.input-group {
+    border-radius: 50px;
+    overflow: hidden;
+    background-color: #ffffff;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 2rem;
+}
+
+.input-group-text {
+    background-color: #ffffff;
+    border: none;
+    padding-left: 20px;
+    padding-right: 10px;
+}
+
+.input-group-text i {
+    color: #6c757d;
+    font-size: 1.2rem;
+}
+
+.input-group .form-control {
+    border: none;
+    padding-left: 10px;
+    border-radius: 0;
+    font-size: 1rem;
+    color: #495057;
+    background-color: transparent;
+}
+
+.input-group .form-control::placeholder {
+    color: #adb5bd;
+}
+
+.input-group .form-control:focus {
+    outline: none;
+    box-shadow: none;
+    background-color: #fff;
+}
+
+/* Table */
+.table-responsive {
+    overflow-x: auto;
+}
+
+.table {
+    width: 100%;
+    margin-bottom: 1rem;
+    background-color: transparent;
+    border-radius: 10px;
+    overflow: hidden;
+    border-collapse: separate;
+    border-spacing: 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.table th, .table td {
+    vertical-align: middle;
+    padding: 0.75rem;
+    border-top: 1px solid #dee2e6;
+    word-wrap: break-word;
+}
+
+.table thead th {
+    background-color: #1e3d59;
+    color: #f5f5f5;
+    border-bottom: none;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(30, 61, 89, 0.1);
+}
+
+.table-bordered th, .table-bordered td {
+    border: 1px solid #dee2e6;
+}
+
+/* Footer */
+footer {
+    background-color: #1e3d59;
+    color: #f5f5f5;
+    padding: 20px 0;
+    margin-top: auto;
+}
+
+footer a {
+    color: #ff6f61;
+    text-decoration: none;
+}
+
+footer a:hover {
+    color: #de6b48;
+}
+
+/* Transitions */
+a, button {
+    transition: all 0.3s;
+}
+
+/* Modal backdrop */
+.modal-backdrop-custom {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1050;
+}
+
+/* Run Container Card / Modal */
+.run-container-card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.run-container-card .card-header,
+.run-container-card .modal-header {
+    background-color: #1e3d59;
+    color: #f5f5f5;
+    padding: 1rem 1.25rem;
+    border-bottom: none;
+}
+
+.run-container-card .modal-body {
+    padding: 1.5rem;
+    background-color: #fff;
+}
+
+.run-container-card .modal-footer {
+    background-color: #fff;
+    border-top: 1px solid #dee2e6;
+}
+
+.run-container-card .form-control {
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    background-color: #fff;
+}
+
+.run-container-card .form-control:focus {
+    border-color: #1e3d59;
+    box-shadow: 0 0 0 0.15rem rgba(30, 61, 89, 0.25);
+}
+
+.run-container-card label {
+    font-size: 0.9rem;
+    color: #495057;
+    margin-bottom: 0.3rem;
+}
+
+.env-var-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.env-var-row input {
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    background-color: #fff;
+}
+
+.env-var-row .btn-remove-env {
+    color: #dc3545;
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    padding: 0.25rem 0.5rem;
+    cursor: pointer;
+}
+
+.env-var-row .btn-remove-env:hover {
+    color: #a71d2a;
+}

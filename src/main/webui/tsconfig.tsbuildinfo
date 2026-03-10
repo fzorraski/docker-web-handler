@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/main.tsx","./src/types.ts","./src/components/Footer.tsx","./src/components/Navbar.tsx","./src/components/NewContainerModal.tsx","./src/pages/ContainersPage.tsx","./src/pages/ImagesPage.tsx","./src/services/containerService.ts","./src/services/imageService.ts"],"version":"5.8.3"}

@@ -7,6 +7,8 @@ public class Response {
 
     private String message;
 
+    private java.util.List<String> tags;
+
     public String getMessage() {
         return message;
     }
@@ -21,6 +23,14 @@ public class Response {
 
     public void setState(int state) {
         this.state = state;
+    }
+
+    public java.util.List<String> getTags() {
+        return tags;
+    }
+
+    public void setTags(java.util.List<String> tags) {
+        this.tags = tags;
     }
 
 }
