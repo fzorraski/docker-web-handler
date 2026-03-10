@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link } from 'react-router-dom'
 import type { DockerContainer } from '../types'
 import {
   getContainers,
@@ -9,6 +8,25 @@ import {
   getAllowedRepositories,
 } from '../services/containerService'
 import NewContainerModal from '../components/NewContainerModal'
+import HeroBanner from '../components/HeroBanner'
+import {
+  Box,
+  Typography,
+  Button,
+  TextField,
+  InputAdornment,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Chip,
+  CircularProgress,
+  Link as MuiLink,
+} from '@mui/material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete } from '@mui/icons-material'
 
 export default function ContainersPage() {
   const [containers, setContainers] = useState<DockerContainer[]>([])
@@ -58,100 +76,138 @@ export default function ContainersPage() {
 
   return (
     <>
-      <div className="jumbotron text-center">
-        <h1>Docker Handler</h1>
-        <p>A simple docker web handler!</p>
-        <Link to="/images" className="btn btn-custom btn-lg mt-4">Explore Images</Link>
-      </div>
+      <HeroBanner linkTo="/images" linkLabel="Explore Images" />
 
-      <div className="container mt-5">
-        <div className="d-flex justify-content-between align-items-center mb-4">
-          <h2 className="mb-0">Containers</h2>
+      <Box sx={{ maxWidth: '85%', mx: 'auto', mt: 5, mb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h4" fontWeight="bold">Containers</Typography>
           {hasRepos && (
-            <button className="btn btn-success" onClick={() => setModalOpen(true)}>
-              <i className="fa fa-plus-circle"></i> New Container
-            </button>
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<AddCircleOutline />}
+              onClick={() => setModalOpen(true)}
+            >
+              New Container
+            </Button>
           )}
-        </div>
+        </Box>
 
-        <div className="input-group mb-4">
-          <span className="input-group-text"><i className="fa fa-search text-muted"></i></span>
-          <input
-            className="form-control"
-            type="text"
-            placeholder="Search containers..."
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          />
-        </div>
+        <TextField
+          fullWidth
+          placeholder="Search containers..."
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          size="small"
+          sx={{ mb: 3 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search color="action" />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
 
-        <div className="table-responsive">
-          <table className="table table-hover table-bordered align-middle">
-            <thead className="table-dark">
-              <tr>
-                <th>Container ID</th>
-                <th>Image</th>
-                <th>Command</th>
-                <th>Created</th>
-                <th>Status</th>
-                <th>Ports</th>
-                <th>Name</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2 }}>
+          <Table>
+            <TableHead>
+              <TableRow sx={{ bgcolor: 'primary.main' }}>
+                {['Container ID', 'Image', 'Command', 'Created', 'Status', 'Ports', 'Name', 'Actions'].map((h) => (
+                  <TableCell key={h} sx={{ color: 'white', fontWeight: 600 }}>{h}</TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
               {loading && (
-                <tr><td colSpan={8} className="text-center">Loading...</td></tr>
+                <TableRow>
+                  <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                    <CircularProgress size={28} />
+                  </TableCell>
+                </TableRow>
               )}
               {!loading && filtered.length === 0 && (
-                <tr><td colSpan={8} className="text-center text-muted">No containers found</td></tr>
+                <TableRow>
+                  <TableCell colSpan={8} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                    No containers found
+                  </TableCell>
+                </TableRow>
               )}
               {filtered.map((c) => (
-                <tr key={c.containerId}>
-                  <td>{c.containerId}</td>
-                  <td>{c.image}</td>
-                  <td>{c.command}</td>
-                  <td>{c.created}</td>
-                  <td>{c.status}</td>
-                  <td>
-                    <b>
-                      {c.ports !== '-'
-                        ? c.ports.split(',').map((port, i) => (
-                            <span key={i}>
-                              {i > 0 && ', '}
-                              <a href={`http://${machineIp}:${port.trim()}`} target="_blank" rel="noreferrer">
-                                {port.trim()}
-                              </a>
-                            </span>
-                          ))
-                        : '-'}
-                    </b>
-                  </td>
-                  <td><b>{c.names}</b></td>
-                  <td>
-                    {isUp(c.status) && (
-                      <button className="btn btn-warning btn-sm m-1" onClick={() => handleStop(c.containerId)}>
-                        stop
-                      </button>
-                    )}
-                    {!isUp(c.status) && (
-                      <button className="btn btn-primary btn-sm m-1" onClick={() => handleStart(c.containerId)}>
-                        start
-                      </button>
-                    )}
-                    <button className="btn btn-danger btn-sm m-1" onClick={() => handleRemove(c.containerId)}>
-                      remove
-                    </button>
-                  </td>
-                </tr>
+                <TableRow key={c.containerId} hover>
+                  <TableCell>{c.containerId}</TableCell>
+                  <TableCell>{c.image}</TableCell>
+                  <TableCell>{c.command}</TableCell>
+                  <TableCell>{c.created}</TableCell>
+                  <TableCell>
+                    <Chip
+                      label={c.status}
+                      size="small"
+                      color={isUp(c.status) ? 'success' : 'default'}
+                      variant={isUp(c.status) ? 'filled' : 'outlined'}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    {c.ports !== '-'
+                      ? c.ports.split(',').map((port, i) => (
+                          <MuiLink
+                            key={i}
+                            href={`http://${machineIp}:${port.trim()}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            sx={{ mr: 1, fontWeight: 600 }}
+                          >
+                            {port.trim()}
+                          </MuiLink>
+                        ))
+                      : '-'}
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>{c.names}</TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      {isUp(c.status) ? (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          color="warning"
+                          startIcon={<Stop />}
+                          onClick={() => handleStop(c.containerId)}
+                        >
+                          Stop
+                        </Button>
+                      ) : (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          color="primary"
+                          startIcon={<PlayArrow />}
+                          onClick={() => handleStart(c.containerId)}
+                        >
+                          Start
+                        </Button>
+                      )}
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color="error"
+                        startIcon={<Delete />}
+                        onClick={() => handleRemove(c.containerId)}
+                      >
+                        Remove
+                      </Button>
+                    </Box>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Box>
 
       <NewContainerModal
-        visible={modalOpen}
+        open={modalOpen}
         onClose={() => setModalOpen(false)}
         onCreated={loadContainers}
       />

@@ -1,9 +1,18 @@
+import { Box, Typography } from '@mui/material'
+
 export default function Footer() {
   return (
-    <footer className="text-center mt-5">
-      <div className="container">
-        <p>2024 Docker Handler.</p>
-      </div>
-    </footer>
+    <Box
+      component="footer"
+      sx={{
+        bgcolor: 'primary.main',
+        color: '#f5f5f5',
+        py: 2.5,
+        mt: 'auto',
+        textAlign: 'center',
+      }}
+    >
+      <Typography variant="body2">2024 Docker Handler.</Typography>
+    </Box>
   )
 }

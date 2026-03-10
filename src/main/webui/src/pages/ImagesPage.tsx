@@ -1,7 +1,23 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link } from 'react-router-dom'
 import type { DockerImage } from '../types'
 import { getImages, removeImage } from '../services/imageService'
+import HeroBanner from '../components/HeroBanner'
+import {
+  Box,
+  Typography,
+  TextField,
+  InputAdornment,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Button,
+  CircularProgress,
+} from '@mui/material'
+import { Search, Delete } from '@mui/icons-material'
 
 const ERROR_IMAGE_IN_USE = 100
 const ERROR_IMAGE_WITH_CHILD = 101
@@ -44,65 +60,79 @@ export default function ImagesPage() {
 
   return (
     <>
-      <div className="jumbotron text-center">
-        <h1>Docker Handler</h1>
-        <p>A simple docker web handler!</p>
-        <Link to="/" className="btn btn-custom btn-lg mt-4">Explore Containers</Link>
-      </div>
+      <HeroBanner linkTo="/" linkLabel="Explore Containers" />
 
-      <div className="container mt-5">
-        <div className="d-flex justify-content-between align-items-center mb-4">
-          <h2 className="mb-0">Images</h2>
-        </div>
+      <Box sx={{ maxWidth: '85%', mx: 'auto', mt: 5, mb: 4 }}>
+        <Typography variant="h4" fontWeight="bold" sx={{ mb: 3 }}>
+          Images
+        </Typography>
 
-        <div className="input-group mb-4">
-          <span className="input-group-text"><i className="fa fa-search text-muted"></i></span>
-          <input
-            className="form-control"
-            type="text"
-            placeholder="Search images..."
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          />
-        </div>
+        <TextField
+          fullWidth
+          placeholder="Search images..."
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          size="small"
+          sx={{ mb: 3 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search color="action" />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
 
-        <div className="table-responsive">
-          <table className="table table-hover table-bordered align-middle">
-            <thead className="table-dark">
-              <tr>
-                <th>Repository</th>
-                <th>Tag</th>
-                <th>Image ID</th>
-                <th>Created</th>
-                <th>Size</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
+        <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2 }}>
+          <Table>
+            <TableHead>
+              <TableRow sx={{ bgcolor: 'primary.main' }}>
+                {['Repository', 'Tag', 'Image ID', 'Created', 'Size', 'Action'].map((h) => (
+                  <TableCell key={h} sx={{ color: 'white', fontWeight: 600 }}>{h}</TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
               {loading && (
-                <tr><td colSpan={6} className="text-center">Loading...</td></tr>
+                <TableRow>
+                  <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                    <CircularProgress size={28} />
+                  </TableCell>
+                </TableRow>
               )}
               {!loading && filtered.length === 0 && (
-                <tr><td colSpan={6} className="text-center text-muted">No images found</td></tr>
+                <TableRow>
+                  <TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                    No images found
+                  </TableCell>
+                </TableRow>
               )}
               {filtered.map((img) => (
-                <tr key={img.imageId}>
-                  <td><b>{img.repository}</b></td>
-                  <td>{img.tag}</td>
-                  <td>{img.imageId}</td>
-                  <td>{img.created}</td>
-                  <td>{img.size}</td>
-                  <td>
-                    <button className="btn btn-danger btn-sm" onClick={() => handleRemove(img.imageId)}>
-                      remove
-                    </button>
-                  </td>
-                </tr>
+                <TableRow key={img.imageId} hover>
+                  <TableCell sx={{ fontWeight: 600 }}>{img.repository}</TableCell>
+                  <TableCell>{img.tag}</TableCell>
+                  <TableCell>{img.imageId}</TableCell>
+                  <TableCell>{img.created}</TableCell>
+                  <TableCell>{img.size}</TableCell>
+                  <TableCell>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      color="error"
+                      startIcon={<Delete />}
+                      onClick={() => handleRemove(img.imageId)}
+                    >
+                      Remove
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Box>
     </>
   )
 }
