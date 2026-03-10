@@ -6,6 +6,7 @@ export interface DockerContainer {
   status: string
   ports: string
   names: string
+  expiresAt?: string
 }
 
 export interface DockerImage {

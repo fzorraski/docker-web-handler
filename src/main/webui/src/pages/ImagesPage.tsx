@@ -1,6 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { DockerImage } from '../types'
-import { getImages, removeImage } from '../services/imageService'
+import { getImages } from '../services/imageService'
+import { streamRemoveImage, type ContainerEvent } from '../services/sseService'
+import OperationProgress, { REMOVE_IMAGE_STEPS } from '../components/OperationProgress'
+import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
 import {
   Box,
@@ -16,16 +19,23 @@ import {
   Paper,
   Button,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material'
 import { Search, Delete } from '@mui/icons-material'
 
-const ERROR_IMAGE_IN_USE = 100
-const ERROR_IMAGE_WITH_CHILD = 101
-
 export default function ImagesPage() {
+  const { notify, confirm } = useNotification()
   const [images, setImages] = useState<DockerImage[]>([])
   const [filter, setFilter] = useState('')
   const [loading, setLoading] = useState(true)
+  const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
+  const [removeEvents, setRemoveEvents] = useState<ContainerEvent[]>([])
+  const [removeError, setRemoveError] = useState(false)
+  const [removeDone, setRemoveDone] = useState(false)
+  const cleanupSse = useRef<(() => void) | null>(null)
 
   const loadImages = useCallback(() => {
     setLoading(true)
@@ -40,18 +50,43 @@ export default function ImagesPage() {
   }, [loadImages])
 
   async function handleRemove(imageId: string) {
-    if (!confirm(`Remove image ${imageId} ?`)) return
-    try {
-      const res = await removeImage(imageId)
-      if (res.state === ERROR_IMAGE_IN_USE) {
-        alert('** Image in use **\n' + res.message)
-      } else if (res.state === ERROR_IMAGE_WITH_CHILD) {
-        alert('** Image has dependent child images **\n' + res.message)
-      }
-      loadImages()
-    } catch (err) {
-      alert('Error: ' + err)
+    if (!(await confirm(`Remove image ${imageId}? This action cannot be undone.`))) return
+
+    setRemoveDialogOpen(true)
+    setRemoveEvents([])
+    setRemoveError(false)
+    setRemoveDone(false)
+
+    cleanupSse.current = streamRemoveImage(
+      imageId,
+      (event) => setRemoveEvents((prev) => [...prev, event]),
+      () => {
+        setRemoveDone(true)
+        setTimeout(() => {
+          setRemoveDialogOpen(false)
+          setRemoveEvents([])
+          setRemoveDone(false)
+          notify('Image removed successfully.', 'success')
+          loadImages()
+        }, 1500)
+      },
+      () => {
+        setRemoveError(true)
+        loadImages()
+      },
+    )
+  }
+
+  function handleRemoveDialogClose() {
+    if (cleanupSse.current) {
+      cleanupSse.current()
+      cleanupSse.current = null
     }
+    setRemoveDialogOpen(false)
+    setRemoveEvents([])
+    setRemoveError(false)
+    setRemoveDone(false)
+    loadImages()
   }
 
   const filtered = images.filter((img) =>
@@ -133,6 +168,20 @@ export default function ImagesPage() {
           </Table>
         </TableContainer>
       </Box>
+
+      <Dialog open={removeDialogOpen} onClose={handleRemoveDialogClose} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
+          <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> Removing Image
+        </DialogTitle>
+        <DialogContent dividers sx={{ pt: 3 }}>
+          <OperationProgress events={removeEvents} steps={REMOVE_IMAGE_STEPS} />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          {(removeError || removeDone) && (
+            <Button onClick={handleRemoveDialogClose} color="inherit">Close</Button>
+          )}
+        </DialogActions>
+      </Dialog>
     </>
   )
 }
