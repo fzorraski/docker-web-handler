@@ -21,6 +21,8 @@ public class DockerContainer {
 
     private String names;
 
+    private String expiresAt;
+
     public String getContainerId() {
         return containerId;
     }
@@ -99,6 +101,14 @@ public class DockerContainer {
 
     public void setNames(String names) {
         this.names = names;
+    }
+
+    public String getExpiresAt() {
+        return expiresAt;
+    }
+
+    public void setExpiresAt(String expiresAt) {
+        this.expiresAt = expiresAt;
     }
 
     @Override

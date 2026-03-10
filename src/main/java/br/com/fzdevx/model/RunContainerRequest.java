@@ -12,6 +12,8 @@ public class RunContainerRequest {
 
     private List<String> envVars;
 
+    private String expiresAt;
+
     public String getRepository() {
         return repository;
     }
@@ -42,5 +44,13 @@ public class RunContainerRequest {
 
     public void setEnvVars(List<String> envVars) {
         this.envVars = envVars;
+    }
+
+    public String getExpiresAt() {
+        return expiresAt;
+    }
+
+    public void setExpiresAt(String expiresAt) {
+        this.expiresAt = expiresAt;
     }
 }
