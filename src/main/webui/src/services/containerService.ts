@@ -45,12 +45,29 @@ export async function getRepositoryTags(repository: string): Promise<ApiResponse
   return handleResponse(res)
 }
 
+export async function getRepositoryEnvKeys(repository: string): Promise<{ key: string; value: string }[]> {
+  const res = await fetch(API + 'repository-env-keys?repository=' + encodeURIComponent(repository))
+  return handleResponse(res)
+}
+
+export async function getDefaultExpirationMinutes(): Promise<number> {
+  const res = await fetch(API + 'default-expiration-minutes')
+  return handleResponse(res)
+}
+
 export async function runContainer(
   repository: string,
   tag: string,
   containerName: string,
   envVars: string[],
+  expiresAt?: string,
 ): Promise<ApiResponse> {
-  const res = await postJson(API + 'run', { repository, tag, containerName, envVars })
+  const res = await postJson(API + 'run', {
+    repository,
+    tag,
+    containerName,
+    envVars,
+    expiresAt: expiresAt || null,
+  })
   return handleResponse(res)
 }
