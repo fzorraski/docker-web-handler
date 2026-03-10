@@ -5,6 +5,7 @@ import br.com.fzdevx.model.Response;
 import br.com.fzdevx.util.BytesConverter;
 import br.com.fzdevx.util.Constants;
 import br.com.fzdevx.util.DateFormatter;
+import br.com.fzdevx.util.InputValidator;
 import br.com.fzdevx.util.ResponseWrapper;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.model.Image;
@@ -14,6 +15,7 @@ import jakarta.ws.rs.core.MediaType;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 
 @Path("/images")
@@ -51,6 +53,14 @@ public class ImagesController {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response removeDockerImage(DockerImage image) {
+        Optional<String> idError = InputValidator.validateImageId(image.getImageId());
+        if (idError.isPresent()) {
+            Response response = new Response();
+            response.setState(0);
+            response.setMessage(idError.get());
+            return response;
+        }
+
         List<String> commandResponse = new ArrayList<>();
         try {
             dockerClient.removeImageCmd(image.getImageId()).exec();

@@ -2,10 +2,12 @@ package br.com.fzdevx.usecase;
 
 import br.com.fzdevx.model.ContainerEvent;
 import br.com.fzdevx.service.ContainerExpirationService;
+import br.com.fzdevx.util.InputValidator;
 import com.github.dockerjava.api.DockerClient;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
+import java.util.Optional;
 import java.util.function.Consumer;
 
 @ApplicationScoped
@@ -18,6 +20,12 @@ public class RemoveContainerUseCase {
     ContainerExpirationService expirationService;
 
     public void execute(String containerId, Consumer<ContainerEvent> eventSink) {
+        Optional<String> idError = InputValidator.validateContainerId(containerId);
+        if (idError.isPresent()) {
+            eventSink.accept(ContainerEvent.error("Cancelling", idError.get()));
+            return;
+        }
+
         // Step 1: Cancel expiration
         eventSink.accept(ContainerEvent.info("Cancelling", "Cancelling scheduled expiration..."));
         expirationService.cancel(containerId);
