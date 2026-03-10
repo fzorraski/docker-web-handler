@@ -1,12 +1,28 @@
 import { useState, useEffect } from 'react'
 import {
+  Autocomplete,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
+  MenuItem,
+  Grid,
+  IconButton,
+  Typography,
+  Box,
+  CircularProgress,
+} from '@mui/material'
+import { Add, Close, Delete, PlayArrow } from '@mui/icons-material'
+import {
   getAllowedRepositories,
   getRepositoryTags,
   runContainer,
 } from '../services/containerService'
 
 interface Props {
-  visible: boolean
+  open: boolean
   onClose: () => void
   onCreated: () => void
 }
@@ -16,44 +32,44 @@ interface EnvVar {
   value: string
 }
 
-export default function NewContainerModal({ visible, onClose, onCreated }: Props) {
+export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const [repositories, setRepositories] = useState<string[]>([])
   const [selectedRepo, setSelectedRepo] = useState('')
   const [allTags, setAllTags] = useState<string[]>([])
-  const [tagFilter, setTagFilter] = useState('')
-  const [selectedTag, setSelectedTag] = useState('')
+  const [selectedTag, setSelectedTag] = useState<string | null>(null)
   const [tagsLoading, setTagsLoading] = useState(false)
   const [containerName, setContainerName] = useState('')
   const [envVars, setEnvVars] = useState<EnvVar[]>([])
   const [running, setRunning] = useState(false)
 
   useEffect(() => {
-    getAllowedRepositories().then(setRepositories).catch(() => {})
+    getAllowedRepositories()
+      .then((repos) => {
+        setRepositories(repos)
+        if (repos.length > 0) setSelectedRepo(repos[0])
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
     if (!selectedRepo) {
       setAllTags([])
-      setSelectedTag('')
+      setSelectedTag(null)
       return
     }
     setTagsLoading(true)
-    setSelectedTag('')
-    setTagFilter('')
-    getRepositoryTags(selectedRepo).then((res) => {
-      if (res.state === 1 && res.tags) {
-        setAllTags(res.tags)
-      } else {
-        setAllTags([])
-        if (res.message) alert('Error: ' + res.message)
-      }
-    }).catch(() => setAllTags([]))
+    setSelectedTag(null)
+    getRepositoryTags(selectedRepo)
+      .then((res) => {
+        if (res.state === 1 && res.tags) setAllTags(res.tags)
+        else {
+          setAllTags([])
+          if (res.message) alert('Error: ' + res.message)
+        }
+      })
+      .catch(() => setAllTags([]))
       .finally(() => setTagsLoading(false))
   }, [selectedRepo])
-
-  const filteredTags = tagFilter
-    ? allTags.filter((t) => t.toLowerCase().includes(tagFilter.toLowerCase()))
-    : allTags
 
   function addEnvVar() {
     setEnvVars([...envVars, { key: '', value: '' }])
@@ -71,8 +87,7 @@ export default function NewContainerModal({ visible, onClose, onCreated }: Props
 
   function resetForm() {
     setSelectedRepo('')
-    setSelectedTag('')
-    setTagFilter('')
+    setSelectedTag(null)
     setAllTags([])
     setContainerName('')
     setEnvVars([])
@@ -91,7 +106,7 @@ export default function NewContainerModal({ visible, onClose, onCreated }: Props
         .filter((e) => e.key.trim())
         .map((e) => `${e.key.trim()}=${e.value.trim()}`)
 
-      const res = await runContainer(selectedRepo, selectedTag, containerName, envList)
+      const res = await runContainer(selectedRepo, selectedTag!, containerName, envList)
       if (res.state === 1) {
         alert(res.message)
         resetForm()
@@ -112,131 +127,120 @@ export default function NewContainerModal({ visible, onClose, onCreated }: Props
     onClose()
   }
 
-  if (!visible) return null
-
   return (
-    <div className="modal-backdrop-custom" onClick={handleClose}>
-      <div className="modal-dialog modal-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-content run-container-card">
-          <div className="modal-header card-header">
-            <h5 className="modal-title">
-              <i className="fa fa-plus-circle"></i> New Container
-            </h5>
-            <button type="button" className="close text-white" onClick={handleClose}>
-              <span>&times;</span>
-            </button>
-          </div>
-          <div className="modal-body">
-            {/* Repository + Tag */}
-            <div className="row mb-3">
-              <div className="col-md-4">
-                <label><b>Repository</b></label>
-                <select
-                  className="form-control"
-                  value={selectedRepo}
-                  onChange={(e) => setSelectedRepo(e.target.value)}
-                >
-                  <option value="">Select a repository...</option>
-                  {repositories.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-md-4">
-                <label><b>Filter tags</b></label>
-                <input
-                  type="text"
-                  className="form-control"
-                  placeholder="Type to filter..."
-                  value={tagFilter}
-                  onChange={(e) => setTagFilter(e.target.value)}
-                />
-              </div>
-              <div className="col-md-4">
-                <label><b>Tag</b></label>
-                <select
-                  className="form-control"
-                  value={selectedTag}
-                  onChange={(e) => setSelectedTag(e.target.value)}
-                  disabled={!selectedRepo || tagsLoading}
-                >
-                  <option value="">
-                    {tagsLoading ? 'Loading tags...' : !selectedRepo ? 'Select a repository first...' : 'Select a tag...'}
-                  </option>
-                  {filteredTags.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            {/* Container name */}
-            <div className="row mb-3">
-              <div className="col-md-6">
-                <label><b>Container Name</b></label>
-                <input
-                  type="text"
-                  className="form-control"
-                  placeholder="e.g. my-app-container (optional)"
-                  value={containerName}
-                  onChange={(e) => setContainerName(e.target.value)}
-                />
-              </div>
-            </div>
-            {/* Environment Variables */}
-            <div className="row mb-3">
-              <div className="col-md-12">
-                <label><b>Environment Variables</b></label>
-                {envVars.map((env, i) => (
-                  <div className="env-var-row" key={i}>
-                    <input
-                      type="text"
-                      className="form-control env-key"
-                      placeholder="KEY"
-                      value={env.key}
-                      onChange={(e) => updateEnvVar(i, 'key', e.target.value)}
-                    />
-                    <span>=</span>
-                    <input
-                      type="text"
-                      className="form-control env-value"
-                      placeholder="VALUE"
-                      value={env.value}
-                      onChange={(e) => updateEnvVar(i, 'value', e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="btn-remove-env"
-                      title="Remove"
-                      onClick={() => removeEnvVar(i)}
-                    >
-                      <i className="fa fa-times"></i>
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary btn-sm mt-2"
-                  onClick={addEnvVar}
-                >
-                  <i className="fa fa-plus"></i> Add Variable
-                </button>
-              </div>
-            </div>
-          </div>
-          <div className="modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={handleClose}>Cancel</button>
-            <button
-              type="button"
-              className="btn btn-success"
-              onClick={handleRun}
-              disabled={running}
+    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center' }}>
+        <Add sx={{ mr: 1 }} /> New Container
+        <IconButton onClick={handleClose} sx={{ ml: 'auto', color: 'white' }}>
+          <Close />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent dividers sx={{ pt: 3 }}>
+        {/* Repository + Tag */}
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid size={{ xs: 12, md: 4 }}>
+            <TextField
+              select
+              fullWidth
+              label="Repository"
+              value={selectedRepo}
+              onChange={(e) => setSelectedRepo(e.target.value)}
+              size="small"
             >
-              <i className={`fa ${running ? 'fa-spinner fa-spin' : 'fa-play'}`}></i>
-              {running ? ' Running...' : ' Run Container'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+              <MenuItem value="">Select a repository...</MenuItem>
+              {repositories.map((r) => (
+                <MenuItem key={r} value={r}>{r}</MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+          <Grid size={{ xs: 12, md: 8 }}>
+            <Autocomplete
+              options={allTags}
+              value={selectedTag}
+              onChange={(_e, value) => setSelectedTag(value)}
+              disabled={!selectedRepo}
+              loading={tagsLoading}
+              noOptionsText={!selectedRepo ? 'Select a repository first...' : 'No tags found'}
+              slotProps={{ listbox: { style: { maxHeight: 7 * 36 } } }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Tag"
+                  placeholder="Type to filter tags..."
+                  size="small"
+                  slotProps={{
+                    input: {
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {tagsLoading ? <CircularProgress size={20} /> : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    },
+                  }}
+                />
+              )}
+            />
+          </Grid>
+        </Grid>
+
+        {/* Container name */}
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <TextField
+              fullWidth
+              label="Container Name"
+              placeholder="e.g. my-app-container (optional)"
+              value={containerName}
+              onChange={(e) => setContainerName(e.target.value)}
+              size="small"
+            />
+          </Grid>
+        </Grid>
+
+        {/* Environment Variables */}
+        <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+          Environment Variables
+        </Typography>
+        {envVars.map((env, i) => (
+          <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <TextField
+              size="small"
+              placeholder="KEY"
+              value={env.key}
+              onChange={(e) => updateEnvVar(i, 'key', e.target.value)}
+              sx={{ flex: 1 }}
+            />
+            <Typography variant="body1">=</Typography>
+            <TextField
+              size="small"
+              placeholder="VALUE"
+              value={env.value}
+              onChange={(e) => updateEnvVar(i, 'value', e.target.value)}
+              sx={{ flex: 1 }}
+            />
+            <IconButton size="small" color="error" onClick={() => removeEnvVar(i)}>
+              <Delete fontSize="small" />
+            </IconButton>
+          </Box>
+        ))}
+        <Button size="small" startIcon={<Add />} onClick={addEnvVar}>
+          Add Variable
+        </Button>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 2 }}>
+        <Button onClick={handleClose} color="inherit">Cancel</Button>
+        <Button
+          variant="contained"
+          color="success"
+          onClick={handleRun}
+          disabled={running}
+          startIcon={running ? <CircularProgress size={18} color="inherit" /> : <PlayArrow />}
+        >
+          {running ? 'Running...' : 'Run Container'}
+        </Button>
+      </DialogActions>
+    </Dialog>
   )
 }

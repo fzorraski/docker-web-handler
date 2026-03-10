@@ -1,24 +1,42 @@
+import { AppBar, Toolbar, Typography, Button, Box } from '@mui/material'
 import { Link, useLocation } from 'react-router-dom'
 
 export default function Navbar() {
   const location = useLocation()
 
+  const navItems = [
+    { label: 'Containers', path: '/' },
+    { label: 'Images', path: '/images' },
+  ]
+
   return (
-    <nav className="navbar navbar-expand-sm">
-      <Link className="navbar-brand" to="/">Docker Handler</Link>
-      <button className="navbar-toggler" type="button" data-toggle="collapse" data-target="#collapsibleNavbar">
-        <span className="navbar-toggler-icon"></span>
-      </button>
-      <div className="collapse navbar-collapse" id="collapsibleNavbar">
-        <ul className="navbar-nav ml-auto">
-          <li className={`nav-item ${location.pathname === '/' ? 'active' : ''}`}>
-            <Link className="nav-link" to="/">Containers</Link>
-          </li>
-          <li className={`nav-item ${location.pathname === '/images' ? 'active' : ''}`}>
-            <Link className="nav-link" to="/images">Images</Link>
-          </li>
-        </ul>
-      </div>
-    </nav>
+    <AppBar position="static" sx={{ bgcolor: 'primary.main' }}>
+      <Toolbar>
+        <Typography
+          variant="h6"
+          component={Link}
+          to="/"
+          sx={{ flexGrow: 1, textDecoration: 'none', color: 'white', fontWeight: 700 }}
+        >
+          Docker Handler
+        </Typography>
+        <Box>
+          {navItems.map((item) => (
+            <Button
+              key={item.path}
+              component={Link}
+              to={item.path}
+              sx={{
+                color: location.pathname === item.path ? 'secondary.main' : 'white',
+                fontWeight: 600,
+                '&:hover': { color: 'secondary.main' },
+              }}
+            >
+              {item.label}
+            </Button>
+          ))}
+        </Box>
+      </Toolbar>
+    </AppBar>
   )
 }
