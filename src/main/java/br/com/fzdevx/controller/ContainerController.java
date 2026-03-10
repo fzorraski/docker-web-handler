@@ -7,6 +7,7 @@ import br.com.fzdevx.service.ContainerExpirationService;
 import br.com.fzdevx.service.RegistryService;
 import br.com.fzdevx.util.Constants;
 import br.com.fzdevx.util.DateFormatter;
+import br.com.fzdevx.util.InputValidator;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
@@ -92,6 +93,9 @@ public class ContainerController {
     @Produces(MediaType.TEXT_PLAIN)
     @Path("/stop")
     public boolean stopContainer(DockerContainer dockerContainer) {
+        if (InputValidator.validateContainerId(dockerContainer.getContainerId()).isPresent()) {
+            return false;
+        }
         try {
             dockerClient.stopContainerCmd(dockerContainer.getContainerId()).exec();
             return true;
@@ -106,6 +110,9 @@ public class ContainerController {
     @Produces(MediaType.TEXT_PLAIN)
     @Path("/remove")
     public boolean removeContainer(DockerContainer dockerContainer) {
+        if (InputValidator.validateContainerId(dockerContainer.getContainerId()).isPresent()) {
+            return false;
+        }
         try {
             expirationService.cancel(dockerContainer.getContainerId());
             try {
@@ -126,6 +133,9 @@ public class ContainerController {
     @Produces(MediaType.TEXT_PLAIN)
     @Path("/start")
     public boolean startContainer(DockerContainer dockerContainer) {
+        if (InputValidator.validateContainerId(dockerContainer.getContainerId()).isPresent()) {
+            return false;
+        }
         try {
             dockerClient.startContainerCmd(dockerContainer.getContainerId()).exec();
             return true;
@@ -154,6 +164,13 @@ public class ContainerController {
     public Response getRepositoryTags(@QueryParam("repository") String repository) {
         Response response = new Response();
 
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            response.setState(0);
+            response.setMessage(repoError.get());
+            return response;
+        }
+
         List<String> allowed = getAllowedRepositories();
         if (!allowed.contains(repository)) {
             response.setState(0);
@@ -177,6 +194,10 @@ public class ContainerController {
     @Path("/repository-env-keys")
     @Produces(MediaType.APPLICATION_JSON)
     public List<Map<String, String>> getRepositoryEnvKeys(@QueryParam("repository") String repository) {
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Collections.emptyList();
+        }
         String configKey = "repository.env-keys." + repository;
         Optional<String> value = config.getOptionalValue(configKey, String.class);
         if (value.isEmpty() || value.get().isBlank()) {
@@ -212,6 +233,34 @@ public class ContainerController {
     @Path("/run")
     public Response runContainer(RunContainerRequest request) {
         Response response = new Response();
+
+        Optional<String> repoError = InputValidator.validateRepository(request.getRepository());
+        if (repoError.isPresent()) {
+            response.setState(0);
+            response.setMessage(repoError.get());
+            return response;
+        }
+
+        Optional<String> tagError = InputValidator.validateTag(request.getTag());
+        if (tagError.isPresent()) {
+            response.setState(0);
+            response.setMessage(tagError.get());
+            return response;
+        }
+
+        Optional<String> nameError = InputValidator.validateContainerName(request.getContainerName());
+        if (nameError.isPresent()) {
+            response.setState(0);
+            response.setMessage(nameError.get());
+            return response;
+        }
+
+        Optional<String> envError = InputValidator.validateEnvVars(request.getEnvVars());
+        if (envError.isPresent()) {
+            response.setState(0);
+            response.setMessage(envError.get());
+            return response;
+        }
 
         List<String> allowed = getAllowedRepositories();
         if (allowed.isEmpty()) {

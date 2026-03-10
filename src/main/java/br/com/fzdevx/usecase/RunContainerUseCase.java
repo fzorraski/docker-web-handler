@@ -4,6 +4,7 @@ import br.com.fzdevx.model.ContainerEvent;
 import br.com.fzdevx.model.RunContainerRequest;
 import br.com.fzdevx.service.ContainerExpirationService;
 import br.com.fzdevx.service.RegistryService;
+import br.com.fzdevx.util.InputValidator;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
@@ -43,7 +44,34 @@ public class RunContainerUseCase {
     Optional<String> allowedRunRepositories;
 
     public void execute(RunContainerRequest request, Consumer<ContainerEvent> eventSink) {
-        // Step 1: Validate
+        // Step 1: Validate inputs
+        eventSink.accept(ContainerEvent.info("Validating", "Validating input parameters..."));
+
+        Optional<String> repoError = InputValidator.validateRepository(request.getRepository());
+        if (repoError.isPresent()) {
+            eventSink.accept(ContainerEvent.error("Validating", repoError.get()));
+            return;
+        }
+
+        Optional<String> tagError = InputValidator.validateTag(request.getTag());
+        if (tagError.isPresent()) {
+            eventSink.accept(ContainerEvent.error("Validating", tagError.get()));
+            return;
+        }
+
+        Optional<String> nameError = InputValidator.validateContainerName(request.getContainerName());
+        if (nameError.isPresent()) {
+            eventSink.accept(ContainerEvent.error("Validating", nameError.get()));
+            return;
+        }
+
+        Optional<String> envError = InputValidator.validateEnvVars(request.getEnvVars());
+        if (envError.isPresent()) {
+            eventSink.accept(ContainerEvent.error("Validating", envError.get()));
+            return;
+        }
+
+        // Step 2: Check whitelist
         eventSink.accept(ContainerEvent.info("Validating", "Checking repository permissions..."));
 
         List<String> allowed = allowedRunRepositories
@@ -64,7 +92,7 @@ public class RunContainerUseCase {
         }
 
         String imageRef = registryService.buildFullImageRef(request.getRepository(), request.getTag());
-        eventSink.accept(ContainerEvent.info("Validating", "Repository validated."));
+        eventSink.accept(ContainerEvent.info("Validating", "All validations passed."));
 
         // Step 2: Pull image
         eventSink.accept(ContainerEvent.info("Pulling", "Pulling image " + imageRef + "..."));
