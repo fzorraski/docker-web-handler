@@ -3,6 +3,7 @@ package br.com.fzdevx.controller;
 import br.com.fzdevx.model.DockerContainer;
 import br.com.fzdevx.model.RunContainerRequest;
 import br.com.fzdevx.model.Response;
+import br.com.fzdevx.service.ContainerExpirationService;
 import br.com.fzdevx.service.RegistryService;
 import br.com.fzdevx.util.Constants;
 import br.com.fzdevx.util.DateFormatter;
@@ -17,11 +18,19 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+
+import org.eclipse.microprofile.config.Config;
 
 
 @Path("/containers")
@@ -35,8 +44,18 @@ public class ContainerController {
     RegistryService registryService;
 
     @Inject
+    ContainerExpirationService expirationService;
+
+    @Inject
     @ConfigProperty(name = "allowed.run.repositories")
     Optional<String> allowedRunRepositories;
+
+    @Inject
+    @ConfigProperty(name = "container.default-expiration-minutes", defaultValue = "480")
+    int defaultExpirationMinutes;
+
+    @Inject
+    Config config;
 
     @GET
     @Path("/list")
@@ -56,6 +75,12 @@ public class ContainerController {
             dockerContainer.setNames(dc.getNames()[0].replaceFirst("/", ""));
             dockerContainer.setStatus(dc.getStatus());
             dockerContainer.setPorts(dc.getPorts().length > 0 ? Arrays.toString(dc.getPorts()) : "-");
+
+            Instant expiresAt = expirationService.getExpiresAt(dockerContainer.getContainerId());
+            if (expiresAt != null) {
+                dockerContainer.setExpiresAt(expiresAt.toString());
+            }
+
             containers.add(dockerContainer);
         }
 
@@ -82,6 +107,7 @@ public class ContainerController {
     @Path("/remove")
     public boolean removeContainer(DockerContainer dockerContainer) {
         try {
+            expirationService.cancel(dockerContainer.getContainerId());
             try {
                 dockerClient.stopContainerCmd(dockerContainer.getContainerId()).exec();
             } catch (Exception ignored) {
@@ -147,6 +173,39 @@ public class ContainerController {
         return response;
     }
 
+    @GET
+    @Path("/repository-env-keys")
+    @Produces(MediaType.APPLICATION_JSON)
+    public List<Map<String, String>> getRepositoryEnvKeys(@QueryParam("repository") String repository) {
+        String configKey = "repository.env-keys." + repository;
+        Optional<String> value = config.getOptionalValue(configKey, String.class);
+        if (value.isEmpty() || value.get().isBlank()) {
+            return Collections.emptyList();
+        }
+        List<Map<String, String>> result = new ArrayList<>();
+        for (String entry : value.get().split(",")) {
+            String trimmed = entry.trim();
+            int eq = trimmed.indexOf('=');
+            Map<String, String> pair = new LinkedHashMap<>();
+            if (eq >= 0) {
+                pair.put("key", trimmed.substring(0, eq));
+                pair.put("value", trimmed.substring(eq + 1));
+            } else {
+                pair.put("key", trimmed);
+                pair.put("value", "");
+            }
+            result.add(pair);
+        }
+        return result;
+    }
+
+    @GET
+    @Path("/default-expiration-minutes")
+    @Produces(MediaType.APPLICATION_JSON)
+    public int getDefaultExpirationMinutes() {
+        return defaultExpirationMinutes;
+    }
+
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
@@ -189,7 +248,17 @@ public class ContainerController {
             dockerClient.startContainerCmd(container.getId()).exec();
 
             response.setState(1);
-            response.setMessage("Container started successfully from " + imageRef);
+
+            if (request.getExpiresAt() != null && !request.getExpiresAt().isBlank()) {
+                LocalDateTime ldt = LocalDateTime.parse(request.getExpiresAt(), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+                Instant expiresInstant = ldt.atZone(ZoneId.systemDefault()).toInstant();
+                String shortId = container.getId().substring(0, 10);
+                expirationService.schedule(shortId, container.getId(), expiresInstant);
+                response.setMessage("Container started successfully from " + imageRef
+                        + " (expires at " + ldt.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) + ")");
+            } else {
+                response.setMessage("Container started successfully from " + imageRef);
+            }
         } catch (Exception e) {
             response.setState(0);
             response.setMessage(e.getMessage());
