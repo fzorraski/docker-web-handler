@@ -1,11 +1,11 @@
-package br.com.spark.controller;
+package br.com.fzdevx.controller;
 
-import br.com.spark.model.DockerImage;
-import br.com.spark.model.Response;
-import br.com.spark.util.BytesConverter;
-import br.com.spark.util.Constants;
-import br.com.spark.util.DateFormatter;
-import br.com.spark.util.ResponseWrapper;
+import br.com.fzdevx.model.DockerImage;
+import br.com.fzdevx.model.Response;
+import br.com.fzdevx.util.BytesConverter;
+import br.com.fzdevx.util.Constants;
+import br.com.fzdevx.util.DateFormatter;
+import br.com.fzdevx.util.ResponseWrapper;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.model.Image;
 import jakarta.inject.Inject;

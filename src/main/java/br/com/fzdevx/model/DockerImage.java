@@ -1,6 +1,6 @@
-package br.com.spark.model;
+package br.com.fzdevx.model;
 
-import br.com.spark.util.SanitizeHtml;
+import br.com.fzdevx.util.SanitizeHtml;
 
 public class DockerImage {
 

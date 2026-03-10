@@ -1,6 +1,6 @@
-package br.com.spark.util;
+package br.com.fzdevx.util;
 
-import br.com.spark.model.Response;
+import br.com.fzdevx.model.Response;
 
 import java.util.List;
 
