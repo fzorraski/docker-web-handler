@@ -1,4 +1,4 @@
-package br.com.spark.util;
+package br.com.fzdevx.util;
 
 public class Constants {
 

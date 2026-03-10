@@ -1,8 +1,8 @@
-package br.com.spark.controller;
+package br.com.fzdevx.controller;
 
-import br.com.spark.model.DockerContainer;
-import br.com.spark.util.Constants;
-import br.com.spark.util.DateFormatter;
+import br.com.fzdevx.model.DockerContainer;
+import br.com.fzdevx.util.Constants;
+import br.com.fzdevx.util.DateFormatter;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.model.Container;
 import jakarta.inject.Inject;

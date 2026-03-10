@@ -1,4 +1,4 @@
-package br.com.spark.util;
+package br.com.fzdevx.util;
 
 import java.time.Instant;
 import java.time.LocalDateTime;

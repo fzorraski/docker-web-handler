@@ -1,4 +1,4 @@
-package br.com.spark.model;
+package br.com.fzdevx.model;
 
 
 public class Response {

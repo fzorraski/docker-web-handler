@@ -1,4 +1,4 @@
-package br.com.spark.service;
+package br.com.fzdevx.service;
 
 
 import jakarta.ws.rs.Consumes;

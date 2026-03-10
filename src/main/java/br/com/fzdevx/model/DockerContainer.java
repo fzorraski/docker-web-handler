@@ -1,4 +1,4 @@
-package br.com.spark.model;
+package br.com.fzdevx.model;
 
 import java.util.HashSet;
 import java.util.Set;
