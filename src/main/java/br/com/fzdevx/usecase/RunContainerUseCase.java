@@ -10,6 +10,7 @@ import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.PullImageCmd;
 import com.github.dockerjava.api.model.AuthConfig;
+import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.api.model.PullResponseItem;
 import com.github.dockerjava.core.command.PullImageResultCallback;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -75,6 +76,12 @@ public class RunContainerUseCase {
         Optional<String> envError = InputValidator.validateEnvVars(request.getEnvVars());
         if (envError.isPresent()) {
             eventSink.accept(ContainerEvent.error("Validating", envError.get()));
+            return;
+        }
+
+        Optional<String> memError = InputValidator.validateMemoryMb(request.getMemoryMb());
+        if (memError.isPresent()) {
+            eventSink.accept(ContainerEvent.error("Validating", memError.get()));
             return;
         }
 
@@ -181,7 +188,12 @@ public class RunContainerUseCase {
             createCmd.withName(request.getContainerName().trim());
         }
 
-        List<String> mergedEnvVars = mergeHiddenEnvVars(request.getRepository(), request.getEnvVars());
+        if (request.getMemoryMb() != null) {
+            createCmd.withHostConfig(HostConfig.newHostConfig()
+                    .withMemory(request.getMemoryMb() * 1024 * 1024));
+        }
+
+        List<String> mergedEnvVars = mergeHiddenEnvVars(request.getRepository(), request.getEnvVars(), request.getMemoryMb());
         if (!mergedEnvVars.isEmpty()) {
             createCmd.withEnv(mergedEnvVars);
         }
@@ -189,7 +201,7 @@ public class RunContainerUseCase {
         return createCmd.exec();
     }
 
-    private List<String> mergeHiddenEnvVars(String repository, List<String> userEnvVars) {
+    private List<String> mergeHiddenEnvVars(String repository, List<String> userEnvVars, Long memoryMb) {
         Map<String, String> envMap = new LinkedHashMap<>();
 
         if (userEnvVars != null) {
@@ -210,6 +222,16 @@ public class RunContainerUseCase {
                 if (eq > 0) {
                     envMap.put(trimmed.substring(0, eq), trimmed.substring(eq + 1));
                 }
+            }
+        }
+
+        if (memoryMb != null) {
+            String javaOptsVar = config.getOptionalValue("repository.java-opts-var." + repository, String.class)
+                    .orElse(null);
+            if (javaOptsVar != null) {
+                long xmx = (long) (memoryMb * 0.75);
+                long xms = (long) (memoryMb * 0.25);
+                envMap.put(javaOptsVar, "-Xmx" + xmx + "m -Xms" + xms + "m");
             }
         }
 

@@ -55,6 +55,11 @@ export async function getDefaultExpirationMinutes(): Promise<number> {
   return handleResponse(res)
 }
 
+export async function isMemoryLimitEnabled(): Promise<boolean> {
+  const res = await fetch(API + 'memory-limit-enabled')
+  return handleResponse(res)
+}
+
 export async function runContainer(
   repository: string,
   tag: string,

@@ -86,6 +86,19 @@ public final class InputValidator {
         return Optional.empty();
     }
 
+    public static Optional<String> validateMemoryMb(Long memoryMb) {
+        if (memoryMb == null) {
+            return Optional.empty();
+        }
+        if (memoryMb < 4) {
+            return Optional.of("Memory must be at least 4 MB.");
+        }
+        if (memoryMb > 65536) {
+            return Optional.of("Memory must not exceed 65536 MB (64 GB).");
+        }
+        return Optional.empty();
+    }
+
     public static Optional<String> validateContainerId(String containerId) {
         if (containerId == null || containerId.isBlank()) {
             return Optional.of("Container ID is required.");

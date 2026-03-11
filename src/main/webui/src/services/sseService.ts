@@ -44,6 +44,7 @@ export async function prepareRunContainer(body: {
   containerName: string
   envVars: string[]
   expiresAt?: string | null
+  memoryMb?: number | null
 }): Promise<string> {
   const res = await fetch('/containers/sse/run/prepare', {
     method: 'POST',

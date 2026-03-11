@@ -19,12 +19,13 @@ import {
 } from '@mui/material'
 import { MobileDateTimePicker } from '@mui/x-date-pickers/MobileDateTimePicker'
 import dayjs, { type Dayjs } from 'dayjs'
-import { Add, Close, Delete, PlayArrow, Timer } from '@mui/icons-material'
+import { Add, Close, Delete, Memory, PlayArrow, Timer } from '@mui/icons-material'
 import {
   getAllowedRepositories,
   getDefaultExpirationMinutes,
   getRepositoryEnvKeys,
   getRepositoryTags,
+  isMemoryLimitEnabled,
 } from '../services/containerService'
 import { prepareRunContainer, streamRunContainer, type ContainerEvent } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
@@ -41,6 +42,23 @@ interface EnvVar {
   value: string
 }
 
+function compareTagsDesc(a: string, b: string): number {
+  const partsA = a.split(/[.\-]/)
+  const partsB = b.split(/[.\-]/)
+  const len = Math.max(partsA.length, partsB.length)
+  for (let i = 0; i < len; i++) {
+    const na = Number(partsA[i] ?? '')
+    const nb = Number(partsB[i] ?? '')
+    if (!isNaN(na) && !isNaN(nb)) {
+      if (nb !== na) return nb - na
+    } else {
+      const cmp = (partsA[i] ?? '').localeCompare(partsB[i] ?? '')
+      if (cmp !== 0) return cmp
+    }
+  }
+  return 0
+}
+
 export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const { notify, confirm } = useNotification()
   const [repositories, setRepositories] = useState<string[]>([])
@@ -50,6 +68,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const [tagsLoading, setTagsLoading] = useState(false)
   const [containerName, setContainerName] = useState('')
   const [envVars, setEnvVars] = useState<EnvVar[]>([])
+  const [memoryMb, setMemoryMb] = useState<string>('')
+  const [memoryEnabled, setMemoryEnabled] = useState(false)
   const [defaultExpMinutes, setDefaultExpMinutes] = useState(480)
   const [expirationEnabled, setExpirationEnabled] = useState(true)
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(dayjs().add(480, 'minute'))
@@ -71,6 +91,9 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         setExpiresAt(dayjs().add(m, 'minute'))
       })
       .catch(() => {})
+    isMemoryLimitEnabled()
+      .then(setMemoryEnabled)
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -84,7 +107,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setSelectedTag(null)
     getRepositoryTags(selectedRepo)
       .then((res) => {
-        if (res.state === 1 && res.tags) setAllTags(res.tags)
+        if (res.state === 1 && res.tags) setAllTags([...res.tags].sort(compareTagsDesc))
         else {
           setAllTags([])
           if (res.message) notify(res.message, 'error')
@@ -117,6 +140,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setAllTags([])
     setContainerName('')
     setEnvVars([])
+    setMemoryMb('')
     setExpirationEnabled(true)
     setExpiresAt(dayjs().add(defaultExpMinutes, 'minute'))
     setSseEvents([])
@@ -140,12 +164,15 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         .filter((e) => e.key.trim())
         .map((e) => `${e.key.trim()}=${e.value.trim()}`)
 
+      const parsedMemory = memoryMb ? parseInt(memoryMb, 10) : null
+
       const ticket = await prepareRunContainer({
         repository: selectedRepo,
         tag: selectedTag,
         containerName,
         envVars: envList,
         expiresAt: expirationEnabled && expiresAt ? expiresAt.format('YYYY-MM-DDTHH:mm:ss') : null,
+        memoryMb: parsedMemory && !isNaN(parsedMemory) ? parsedMemory : null,
       })
 
       cleanupSse.current = streamRunContainer(
@@ -243,7 +270,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
               </Grid>
             </Grid>
 
-            {/* Container name */}
+            {/* Container name + Memory */}
             <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
@@ -255,6 +282,25 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                   size="small"
                 />
               </Grid>
+              {memoryEnabled && (
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <TextField
+                    fullWidth
+                    label="Memory Limit (MB)"
+                    placeholder="e.g. 512 (optional)"
+                    value={memoryMb}
+                    onChange={(e) => setMemoryMb(e.target.value.replace(/\D/g, ''))}
+                    size="small"
+                    type="text"
+                    helperText="Leave empty for no limit"
+                    slotProps={{
+                      input: {
+                        startAdornment: <Memory fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />,
+                      },
+                    }}
+                  />
+                </Grid>
+              )}
             </Grid>
 
             {/* Expiration */}
