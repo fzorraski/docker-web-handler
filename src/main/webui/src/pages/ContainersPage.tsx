@@ -31,8 +31,42 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  IconButton,
+  Tooltip,
+  Menu,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material'
-import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer } from '@mui/icons-material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn } from '@mui/icons-material'
+
+interface ColumnDef {
+  key: string
+  label: string
+  defaultVisible: boolean
+}
+
+const COLUMNS: ColumnDef[] = [
+  { key: 'containerId', label: 'Container ID', defaultVisible: false },
+  { key: 'image', label: 'Image', defaultVisible: true },
+  { key: 'tag', label: 'Tag', defaultVisible: true },
+  { key: 'command', label: 'Command', defaultVisible: false },
+  { key: 'created', label: 'Created', defaultVisible: true },
+  { key: 'status', label: 'Status', defaultVisible: true },
+  { key: 'ports', label: 'Ports', defaultVisible: true },
+  { key: 'names', label: 'Name', defaultVisible: true },
+  { key: 'expires', label: 'Expires', defaultVisible: true },
+  { key: 'actions', label: 'Actions', defaultVisible: true },
+]
+
+const STORAGE_KEY = 'containerColumnsVisibility'
+
+function loadVisibility(): Record<string, boolean> {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored) return JSON.parse(stored)
+  } catch { /* ignore */ }
+  return Object.fromEntries(COLUMNS.map((c) => [c.key, c.defaultVisible]))
+}
 
 export default function ContainersPage() {
   const { notify, confirm } = useNotification()
@@ -46,8 +80,21 @@ export default function ContainersPage() {
   const [removeError, setRemoveError] = useState(false)
   const [removeDone, setRemoveDone] = useState(false)
   const cleanupRemoveSse = useRef<(() => void) | null>(null)
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(loadVisibility)
+  const [columnMenuAnchor, setColumnMenuAnchor] = useState<null | HTMLElement>(null)
 
   const machineIp = window.location.hostname
+
+  const visibleColumns = COLUMNS.filter((c) => columnVisibility[c.key])
+  const colSpan = visibleColumns.length
+
+  function toggleColumn(key: string) {
+    setColumnVisibility((prev) => {
+      const updated = { ...prev, [key]: !prev[key] }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+      return updated
+    })
+  }
 
   const loadContainers = useCallback(() => {
     setLoading(true)
@@ -149,119 +196,156 @@ export default function ContainersPage() {
           )}
         </Box>
 
-        <TextField
-          fullWidth
-          placeholder="Search containers..."
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          size="small"
-          sx={{ mb: 3 }}
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Search color="action" />
-                </InputAdornment>
-              ),
-            },
-          }}
-        />
+        <Box sx={{ display: 'flex', gap: 1, mb: 3, alignItems: 'center' }}>
+          <TextField
+            fullWidth
+            placeholder="Search containers..."
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            size="small"
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search color="action" />
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+          <Tooltip title="Toggle columns">
+            <IconButton onClick={(e) => setColumnMenuAnchor(e.currentTarget)}>
+              <ViewColumn />
+            </IconButton>
+          </Tooltip>
+          <Menu
+            anchorEl={columnMenuAnchor}
+            open={Boolean(columnMenuAnchor)}
+            onClose={() => setColumnMenuAnchor(null)}
+          >
+            <Box sx={{ px: 2, py: 1 }}>
+              {COLUMNS.map((col) => (
+                <FormControlLabel
+                  key={col.key}
+                  control={
+                    <Checkbox
+                      checked={columnVisibility[col.key] ?? col.defaultVisible}
+                      onChange={() => toggleColumn(col.key)}
+                      size="small"
+                    />
+                  }
+                  label={col.label}
+                  sx={{ display: 'block' }}
+                />
+              ))}
+            </Box>
+          </Menu>
+        </Box>
 
         <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2 }}>
           <Table>
             <TableHead>
               <TableRow sx={{ bgcolor: 'primary.main' }}>
-                {['Container ID', 'Image', 'Command', 'Created', 'Status', 'Ports', 'Name', 'Expires', 'Actions'].map((h) => (
-                  <TableCell key={h} sx={{ color: 'white', fontWeight: 600 }}>{h}</TableCell>
+                {visibleColumns.map((col) => (
+                  <TableCell key={col.key} sx={{ color: 'white', fontWeight: 600 }}>{col.label}</TableCell>
                 ))}
               </TableRow>
             </TableHead>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={colSpan} align="center" sx={{ py: 4 }}>
                     <CircularProgress size={28} />
                   </TableCell>
                 </TableRow>
               )}
               {!loading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                  <TableCell colSpan={colSpan} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                     No containers found
                   </TableCell>
                 </TableRow>
               )}
               {filtered.map((c) => (
                 <TableRow key={c.containerId} hover>
-                  <TableCell>{c.containerId}</TableCell>
-                  <TableCell>{c.image}</TableCell>
-                  <TableCell>{c.command}</TableCell>
-                  <TableCell>{c.created}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={c.status}
-                      size="small"
-                      color={isUp(c.status) ? 'success' : 'default'}
-                      variant={isUp(c.status) ? 'filled' : 'outlined'}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {c.ports !== '-'
-                      ? c.ports.split(',').map((port, i) => (
-                          <MuiLink
-                            key={i}
-                            href={`http://${machineIp}:${port.trim()}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            sx={{ mr: 1, fontWeight: 600 }}
-                          >
-                            {port.trim()}
-                          </MuiLink>
-                        ))
-                      : '-'}
-                  </TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>{c.names}</TableCell>
-                  <TableCell>
-                    {c.expiresAt ? (
-                      <ExpirationChip expiresAt={c.expiresAt} />
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">-</Typography>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', gap: 0.5 }}>
-                      {isUp(c.status) ? (
-                        <Button
-                          size="small"
-                          variant="contained"
-                          color="warning"
-                          startIcon={<Stop />}
-                          onClick={() => handleStop(c.containerId)}
-                        >
-                          Stop
-                        </Button>
-                      ) : (
-                        <Button
-                          size="small"
-                          variant="contained"
-                          color="primary"
-                          startIcon={<PlayArrow />}
-                          onClick={() => handleStart(c.containerId)}
-                        >
-                          Start
-                        </Button>
-                      )}
-                      <Button
+                  {columnVisibility.containerId && <TableCell>{c.containerId}</TableCell>}
+                  {columnVisibility.image && <TableCell>{c.image}</TableCell>}
+                  {columnVisibility.tag && <TableCell>{c.image.split(':')[1] ?? '-'}</TableCell>}
+                  {columnVisibility.command && <TableCell>{c.command}</TableCell>}
+                  {columnVisibility.created && <TableCell>{c.created}</TableCell>}
+                  {columnVisibility.status && (
+                    <TableCell>
+                      <Chip
+                        label={c.status}
                         size="small"
-                        variant="contained"
-                        color="error"
-                        startIcon={<Delete />}
-                        onClick={() => handleRemove(c.containerId)}
-                      >
-                        Remove
-                      </Button>
-                    </Box>
-                  </TableCell>
+                        color={isUp(c.status) ? 'success' : 'default'}
+                        variant={isUp(c.status) ? 'filled' : 'outlined'}
+                      />
+                    </TableCell>
+                  )}
+                  {columnVisibility.ports && (
+                    <TableCell>
+                      {c.ports !== '-'
+                        ? c.ports.split(',').map((port, i) => (
+                            <MuiLink
+                              key={i}
+                              href={`http://${machineIp}:${port.trim()}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              sx={{ mr: 1, fontWeight: 600 }}
+                            >
+                              {port.trim()}
+                            </MuiLink>
+                          ))
+                        : '-'}
+                    </TableCell>
+                  )}
+                  {columnVisibility.names && <TableCell sx={{ fontWeight: 600 }}>{c.names}</TableCell>}
+                  {columnVisibility.expires && (
+                    <TableCell>
+                      {c.expiresAt ? (
+                        <ExpirationChip expiresAt={c.expiresAt} />
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">-</Typography>
+                      )}
+                    </TableCell>
+                  )}
+                  {columnVisibility.actions && (
+                    <TableCell>
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        {isUp(c.status) ? (
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="warning"
+                            startIcon={<Stop />}
+                            onClick={() => handleStop(c.containerId)}
+                          >
+                            Stop
+                          </Button>
+                        ) : (
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="primary"
+                            startIcon={<PlayArrow />}
+                            onClick={() => handleStart(c.containerId)}
+                          >
+                            Start
+                          </Button>
+                        )}
+                        <Button
+                          size="small"
+                          variant="contained"
+                          color="error"
+                          startIcon={<Delete />}
+                          onClick={() => handleRemove(c.containerId)}
+                        >
+                          Remove
+                        </Button>
+                      </Box>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

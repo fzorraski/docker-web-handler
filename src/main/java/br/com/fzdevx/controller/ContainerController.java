@@ -77,7 +77,7 @@ public class ContainerController {
             dockerContainer.setContainerId(dc.getId().substring(0, 10));
             dockerContainer.setCommand(dc.getCommand().length() > 15 ? dc.getCommand().substring(0, 15) : dc.getCommand());
             dockerContainer.setCreated(DateFormatter.convertSecondsToDate(dc.getCreated()));
-            dockerContainer.setImage(dc.getImage().length() > 25 ? dc.getImage().substring(0, 25) : dc.getImage());
+            dockerContainer.setImage(dc.getImage());
             dockerContainer.setNames(dc.getNames()[0].replaceFirst("/", ""));
             dockerContainer.setStatus(dc.getStatus());
             dockerContainer.setPorts(dc.getPorts().length > 0 ? Arrays.toString(dc.getPorts()) : "-");
