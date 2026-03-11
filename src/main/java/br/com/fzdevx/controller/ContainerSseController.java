@@ -44,14 +44,14 @@ public class ContainerSseController {
         RunContainerRequest request = requestStash.retrieve(ticket);
         if (request == null) {
             sendEvent(sink, sse, ContainerEvent.error("Error", "Invalid or expired ticket."));
-            sink.close();
+            closeSink(sink);
             return;
         }
 
         try {
             runContainerUseCase.execute(request, event -> sendEvent(sink, sse, event));
         } finally {
-            sink.close();
+            closeSink(sink);
         }
     }
 
@@ -64,7 +64,7 @@ public class ContainerSseController {
         try {
             removeContainerUseCase.execute(containerId, event -> sendEvent(sink, sse, event));
         } finally {
-            sink.close();
+            closeSink(sink);
         }
     }
 
@@ -75,7 +75,17 @@ public class ContainerSseController {
                     .data(ContainerEvent.class, event)
                     .mediaType(MediaType.APPLICATION_JSON_TYPE)
                     .build());
-        } catch (Exception ignored) {
+        } catch (IllegalStateException ignored) {
+            // Response already written — client disconnected
+        }
+    }
+
+    private void closeSink(SseEventSink sink) {
+        if (sink.isClosed()) return;
+        try {
+            sink.close();
+        } catch (IllegalStateException ignored) {
+            // Response already written — client disconnected
         }
     }
 }

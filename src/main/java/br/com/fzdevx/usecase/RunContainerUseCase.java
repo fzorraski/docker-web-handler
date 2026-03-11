@@ -14,15 +14,19 @@ import com.github.dockerjava.api.model.PullResponseItem;
 import com.github.dockerjava.core.command.PullImageResultCallback;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.Config;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -42,6 +46,9 @@ public class RunContainerUseCase {
     @Inject
     @ConfigProperty(name = "allowed.run.repositories")
     Optional<String> allowedRunRepositories;
+
+    @Inject
+    Config config;
 
     public void execute(RunContainerRequest request, Consumer<ContainerEvent> eventSink) {
         // Step 1: Validate inputs
@@ -173,11 +180,44 @@ public class RunContainerUseCase {
         if (request.getContainerName() != null && !request.getContainerName().isBlank()) {
             createCmd.withName(request.getContainerName().trim());
         }
-        if (request.getEnvVars() != null && !request.getEnvVars().isEmpty()) {
-            createCmd.withEnv(request.getEnvVars());
+
+        List<String> mergedEnvVars = mergeHiddenEnvVars(request.getRepository(), request.getEnvVars());
+        if (!mergedEnvVars.isEmpty()) {
+            createCmd.withEnv(mergedEnvVars);
         }
 
         return createCmd.exec();
+    }
+
+    private List<String> mergeHiddenEnvVars(String repository, List<String> userEnvVars) {
+        Map<String, String> envMap = new LinkedHashMap<>();
+
+        if (userEnvVars != null) {
+            for (String envVar : userEnvVars) {
+                int eq = envVar.indexOf('=');
+                if (eq > 0) {
+                    envMap.put(envVar.substring(0, eq), envVar.substring(eq + 1));
+                }
+            }
+        }
+
+        String configKey = "repository.hidden-env." + repository;
+        Optional<String> hiddenValue = config.getOptionalValue(configKey, String.class);
+        if (hiddenValue.isPresent() && !hiddenValue.get().isBlank()) {
+            for (String entry : hiddenValue.get().split(",")) {
+                String trimmed = entry.trim();
+                int eq = trimmed.indexOf('=');
+                if (eq > 0) {
+                    envMap.put(trimmed.substring(0, eq), trimmed.substring(eq + 1));
+                }
+            }
+        }
+
+        List<String> result = new ArrayList<>();
+        for (Map.Entry<String, String> e : envMap.entrySet()) {
+            result.add(e.getKey() + "=" + e.getValue());
+        }
+        return result;
     }
 
     private String scheduleExpiration(RunContainerRequest request, String fullContainerId) {
