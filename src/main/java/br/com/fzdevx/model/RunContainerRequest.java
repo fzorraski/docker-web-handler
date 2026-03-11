@@ -14,6 +14,8 @@ public class RunContainerRequest {
 
     private String expiresAt;
 
+    private Long memoryMb;
+
     public String getRepository() {
         return repository;
     }
@@ -52,5 +54,13 @@ public class RunContainerRequest {
 
     public void setExpiresAt(String expiresAt) {
         this.expiresAt = expiresAt;
+    }
+
+    public Long getMemoryMb() {
+        return memoryMb;
+    }
+
+    public void setMemoryMb(Long memoryMb) {
+        this.memoryMb = memoryMb;
     }
 }

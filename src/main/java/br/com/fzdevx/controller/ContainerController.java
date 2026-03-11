@@ -14,6 +14,7 @@ import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.PullImageCmd;
 import com.github.dockerjava.api.model.AuthConfig;
 import com.github.dockerjava.api.model.Container;
+import com.github.dockerjava.api.model.HostConfig;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -54,6 +55,10 @@ public class ContainerController {
     @Inject
     @ConfigProperty(name = "container.default-expiration-minutes", defaultValue = "480")
     int defaultExpirationMinutes;
+
+    @Inject
+    @ConfigProperty(name = "container.memory-limit.enabled", defaultValue = "false")
+    boolean memoryLimitEnabled;
 
     @Inject
     Config config;
@@ -220,7 +225,7 @@ public class ContainerController {
         return result;
     }
 
-    private List<String> mergeHiddenEnvVars(String repository, List<String> userEnvVars) {
+    private List<String> mergeHiddenEnvVars(String repository, List<String> userEnvVars, Long memoryMb) {
         Map<String, String> envMap = new LinkedHashMap<>();
 
         if (userEnvVars != null) {
@@ -244,6 +249,16 @@ public class ContainerController {
             }
         }
 
+        if (memoryMb != null) {
+            String javaOptsVar = config.getOptionalValue("repository.java-opts-var." + repository, String.class)
+                    .orElse(null);
+            if (javaOptsVar != null) {
+                long xmx = (long) (memoryMb * 0.75);
+                long xms = (long) (memoryMb * 0.25);
+                envMap.put(javaOptsVar, "-Xmx" + xmx + "m -Xms" + xms + "m");
+            }
+        }
+
         List<String> result = new ArrayList<>();
         for (Map.Entry<String, String> e : envMap.entrySet()) {
             result.add(e.getKey() + "=" + e.getValue());
@@ -256,6 +271,13 @@ public class ContainerController {
     @Produces(MediaType.APPLICATION_JSON)
     public int getDefaultExpirationMinutes() {
         return defaultExpirationMinutes;
+    }
+
+    @GET
+    @Path("/memory-limit-enabled")
+    @Produces(MediaType.APPLICATION_JSON)
+    public boolean isMemoryLimitEnabled() {
+        return memoryLimitEnabled;
     }
 
     @POST
@@ -293,6 +315,13 @@ public class ContainerController {
             return response;
         }
 
+        Optional<String> memError = InputValidator.validateMemoryMb(request.getMemoryMb());
+        if (memError.isPresent()) {
+            response.setState(0);
+            response.setMessage(memError.get());
+            return response;
+        }
+
         List<String> allowed = getAllowedRepositories();
         if (allowed.isEmpty()) {
             response.setState(0);
@@ -320,7 +349,11 @@ public class ContainerController {
             if (request.getContainerName() != null && !request.getContainerName().isBlank()) {
                 createCmd.withName(request.getContainerName().trim());
             }
-            List<String> mergedEnvVars = mergeHiddenEnvVars(request.getRepository(), request.getEnvVars());
+            if (request.getMemoryMb() != null) {
+                createCmd.withHostConfig(HostConfig.newHostConfig()
+                        .withMemory(request.getMemoryMb() * 1024 * 1024));
+            }
+            List<String> mergedEnvVars = mergeHiddenEnvVars(request.getRepository(), request.getEnvVars(), request.getMemoryMb());
             if (!mergedEnvVars.isEmpty()) {
                 createCmd.withEnv(mergedEnvVars);
             }
