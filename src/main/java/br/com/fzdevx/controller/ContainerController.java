@@ -220,6 +220,37 @@ public class ContainerController {
         return result;
     }
 
+    private List<String> mergeHiddenEnvVars(String repository, List<String> userEnvVars) {
+        Map<String, String> envMap = new LinkedHashMap<>();
+
+        if (userEnvVars != null) {
+            for (String envVar : userEnvVars) {
+                int eq = envVar.indexOf('=');
+                if (eq > 0) {
+                    envMap.put(envVar.substring(0, eq), envVar.substring(eq + 1));
+                }
+            }
+        }
+
+        String configKey = "repository.hidden-env." + repository;
+        Optional<String> hiddenValue = config.getOptionalValue(configKey, String.class);
+        if (hiddenValue.isPresent() && !hiddenValue.get().isBlank()) {
+            for (String entry : hiddenValue.get().split(",")) {
+                String trimmed = entry.trim();
+                int eq = trimmed.indexOf('=');
+                if (eq > 0) {
+                    envMap.put(trimmed.substring(0, eq), trimmed.substring(eq + 1));
+                }
+            }
+        }
+
+        List<String> result = new ArrayList<>();
+        for (Map.Entry<String, String> e : envMap.entrySet()) {
+            result.add(e.getKey() + "=" + e.getValue());
+        }
+        return result;
+    }
+
     @GET
     @Path("/default-expiration-minutes")
     @Produces(MediaType.APPLICATION_JSON)
@@ -289,8 +320,9 @@ public class ContainerController {
             if (request.getContainerName() != null && !request.getContainerName().isBlank()) {
                 createCmd.withName(request.getContainerName().trim());
             }
-            if (request.getEnvVars() != null && !request.getEnvVars().isEmpty()) {
-                createCmd.withEnv(request.getEnvVars());
+            List<String> mergedEnvVars = mergeHiddenEnvVars(request.getRepository(), request.getEnvVars());
+            if (!mergedEnvVars.isEmpty()) {
+                createCmd.withEnv(mergedEnvVars);
             }
 
             CreateContainerResponse container = createCmd.exec();
