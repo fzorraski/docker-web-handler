@@ -339,7 +339,7 @@ public class ContainerController {
 
         try {
             PullImageCmd pullCmd = dockerClient.pullImageCmd(imageRef);
-            AuthConfig authConfig = registryService.buildAuthConfig();
+            AuthConfig authConfig = registryService.buildAuthConfig(request.getRepository(), request.getTag());
             if (authConfig != null) {
                 pullCmd.withAuthConfig(authConfig);
             }

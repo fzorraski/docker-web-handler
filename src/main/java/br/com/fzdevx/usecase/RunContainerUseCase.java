@@ -112,7 +112,7 @@ public class RunContainerUseCase {
         eventSink.accept(ContainerEvent.info("Pulling", "Pulling image " + imageRef + "..."));
 
         try {
-            pullImage(imageRef, eventSink);
+            pullImage(imageRef, request.getRepository(), request.getTag(), eventSink);
         } catch (Exception e) {
             eventSink.accept(ContainerEvent.error("Pulling", "Failed to pull image: " + e.getMessage()));
             return;
@@ -150,9 +150,9 @@ public class RunContainerUseCase {
                 "Container started successfully from " + imageRef + expirationMessage));
     }
 
-    private void pullImage(String imageRef, Consumer<ContainerEvent> eventSink) throws InterruptedException {
+    private void pullImage(String imageRef, String repository, String tag, Consumer<ContainerEvent> eventSink) throws InterruptedException {
         PullImageCmd pullCmd = dockerClient.pullImageCmd(imageRef);
-        AuthConfig authConfig = registryService.buildAuthConfig();
+        AuthConfig authConfig = registryService.buildAuthConfig(repository, tag);
         if (authConfig != null) {
             pullCmd.withAuthConfig(authConfig);
         }
