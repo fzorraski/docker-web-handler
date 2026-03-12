@@ -4,6 +4,7 @@ import br.com.fzdevx.model.DockerContainer;
 import br.com.fzdevx.model.RunContainerRequest;
 import br.com.fzdevx.model.Response;
 import br.com.fzdevx.service.ContainerExpirationService;
+import br.com.fzdevx.service.DatabaseService;
 import br.com.fzdevx.service.RegistryService;
 import br.com.fzdevx.util.Constants;
 import br.com.fzdevx.util.DateFormatter;
@@ -54,6 +55,9 @@ public class ContainerController {
     ContainerExpirationService expirationService;
 
     @Inject
+    DatabaseService databaseService;
+
+    @Inject
     PortFinder portFinder;
 
     @Inject
@@ -67,6 +71,10 @@ public class ContainerController {
     @Inject
     @ConfigProperty(name = "container.memory-limit.enabled", defaultValue = "false")
     boolean memoryLimitEnabled;
+
+    @Inject
+    @ConfigProperty(name = "ui.locale")
+    Optional<String> uiLocale;
 
     @Inject
     Config config;
@@ -365,6 +373,67 @@ public class ContainerController {
     @Produces(MediaType.APPLICATION_JSON)
     public boolean isMemoryLimitEnabled() {
         return memoryLimitEnabled;
+    }
+
+    @GET
+    @Path("/locale")
+    @Produces(MediaType.TEXT_PLAIN)
+    public String getLocale() {
+        return uiLocale.orElse("");
+    }
+
+    @GET
+    @Path("/repository-has-databases")
+    @Produces(MediaType.APPLICATION_JSON)
+    public boolean repositoryHasDatabases(@QueryParam("repository") String repository) {
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return false;
+        }
+        List<String> allowed = getAllowedRepositories();
+        if (!allowed.contains(repository)) {
+            return false;
+        }
+        return databaseService.hasDatabaseConfig(repository);
+    }
+
+    @GET
+    @Path("/repository-databases")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getRepositoryDatabases(@QueryParam("repository") String repository) {
+        Response response = new Response();
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            response.setState(0);
+            response.setMessage(repoError.get());
+            return response;
+        }
+
+        List<String> allowed = getAllowedRepositories();
+        if (!allowed.contains(repository)) {
+            response.setState(0);
+            response.setMessage("Repository '" + repository + "' is not in the allowed list.");
+            return response;
+        }
+
+        if (!databaseService.hasDatabaseConfig(repository)) {
+            response.setState(0);
+            response.setMessage("Database listing is not configured for this repository.");
+            return response;
+        }
+
+        try {
+            List<String> databases = databaseService.listDatabases(repository);
+            response.setState(1);
+            response.setDatabases(databases);
+            databaseService.getDbEnvVar(repository).ifPresent(response::setDbEnvVar);
+        } catch (Exception e) {
+            response.setState(0);
+            response.setMessage("Failed to list databases: " + e.getMessage());
+        }
+
+        return response;
     }
 
     @POST

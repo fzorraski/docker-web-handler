@@ -23,9 +23,11 @@ import { Add, Close, Delete, Memory, PlayArrow, Timer } from '@mui/icons-materia
 import {
   getAllowedRepositories,
   getDefaultExpirationMinutes,
+  getRepositoryDatabases,
   getRepositoryEnvKeys,
   getRepositoryTags,
   isMemoryLimitEnabled,
+  repositoryHasDatabases,
 } from '../services/containerService'
 import { prepareRunContainer, streamRunContainer, type ContainerEvent } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
@@ -71,6 +73,11 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const [envVars, setEnvVars] = useState<EnvVar[]>([])
   const [memoryMb, setMemoryMb] = useState<string>('')
   const [memoryEnabled, setMemoryEnabled] = useState(false)
+  const [dbEnabled, setDbEnabled] = useState(false)
+  const [databases, setDatabases] = useState<string[]>([])
+  const [selectedDb, setSelectedDb] = useState<string | null>(null)
+  const [dbEnvVar, setDbEnvVar] = useState<string | null>(null)
+  const [dbLoading, setDbLoading] = useState(false)
   const [defaultExpMinutes, setDefaultExpMinutes] = useState(480)
   const [expirationEnabled, setExpirationEnabled] = useState(true)
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(dayjs().add(480, 'minute'))
@@ -102,6 +109,10 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       setAllTags([])
       setSelectedTag(null)
       setEnvVars([])
+      setDbEnabled(false)
+      setDatabases([])
+      setSelectedDb(null)
+      setDbEnvVar(null)
       return
     }
     setTagsLoading(true)
@@ -119,6 +130,28 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     getRepositoryEnvKeys(selectedRepo)
       .then((keys) => setEnvVars(keys.map((k) => ({ key: k.key, value: k.value }))))
       .catch(() => setEnvVars([]))
+    repositoryHasDatabases(selectedRepo)
+      .then((has) => {
+        setDbEnabled(has)
+        setDatabases([])
+        setSelectedDb(null)
+        setDbEnvVar(null)
+        if (has) {
+          setDbLoading(true)
+          getRepositoryDatabases(selectedRepo)
+            .then((res) => {
+              if (res.state === 1 && res.databases) {
+                setDatabases(res.databases)
+                setDbEnvVar(res.dbEnvVar ?? null)
+              } else if (res.message) {
+                notify(res.message, 'error')
+              }
+            })
+            .catch(() => setDatabases([]))
+            .finally(() => setDbLoading(false))
+        }
+      })
+      .catch(() => setDbEnabled(false))
   }, [selectedRepo])
 
   function addEnvVar() {
@@ -135,6 +168,18 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setEnvVars(envVars.filter((_, i) => i !== index))
   }
 
+  function handleDatabaseSelect(dbName: string | null) {
+    setSelectedDb(dbName)
+    if (dbEnvVar && dbName) {
+      const idx = envVars.findIndex((e) => e.key === dbEnvVar)
+      if (idx >= 0) {
+        updateEnvVar(idx, 'value', dbName)
+      } else {
+        setEnvVars((prev) => [...prev, { key: dbEnvVar, value: dbName }])
+      }
+    }
+  }
+
   function resetForm() {
     setSelectedRepo('')
     setSelectedTag(null)
@@ -146,6 +191,10 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setExpiresAt(dayjs().add(defaultExpMinutes, 'minute'))
     setSseEvents([])
     setSseError(false)
+    setDbEnabled(false)
+    setDatabases([])
+    setSelectedDb(null)
+    setDbEnvVar(null)
   }
 
   async function handleRun() {
@@ -305,6 +354,41 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                 </Grid>
               )}
             </Grid>
+
+            {/* Database */}
+            {dbEnabled && (
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Autocomplete
+                    options={databases}
+                    value={selectedDb}
+                    onChange={(_e, value) => handleDatabaseSelect(value)}
+                    loading={dbLoading}
+                    noOptionsText={dbLoading ? 'Loading databases...' : 'No databases found'}
+                    slotProps={{ listbox: { style: { maxHeight: 7 * 36 } } }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Database"
+                        placeholder="Select a database..."
+                        size="small"
+                        slotProps={{
+                          input: {
+                            ...params.InputProps,
+                            endAdornment: (
+                              <>
+                                {dbLoading ? <CircularProgress size={20} /> : null}
+                                {params.InputProps.endAdornment}
+                              </>
+                            ),
+                          },
+                        }}
+                      />
+                    )}
+                  />
+                </Grid>
+              </Grid>
+            )}
 
             {/* Expiration */}
             <Grid container spacing={2} sx={{ mb: 3, alignItems: 'center' }}>
