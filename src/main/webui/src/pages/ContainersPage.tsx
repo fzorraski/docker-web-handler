@@ -289,7 +289,7 @@ export default function ContainersPage() {
                         ? c.ports.split(',').map((port, i) => (
                             <MuiLink
                               key={i}
-                              href={`http://${machineIp}:${port.trim()}`}
+                              href={`http://${machineIp}:${port.trim()}${c.portPaths?.[port.trim()] ?? ''}`}
                               target="_blank"
                               rel="noreferrer"
                               sx={{ mr: 1, fontWeight: 600 }}

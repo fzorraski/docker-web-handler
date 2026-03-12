@@ -3,6 +3,7 @@ package br.com.fzdevx.usecase;
 import br.com.fzdevx.model.ContainerEvent;
 import br.com.fzdevx.model.RunContainerRequest;
 import br.com.fzdevx.service.ContainerExpirationService;
+import br.com.fzdevx.service.PortFinder;
 import br.com.fzdevx.service.RegistryService;
 import br.com.fzdevx.util.InputValidator;
 import com.github.dockerjava.api.DockerClient;
@@ -10,7 +11,9 @@ import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.PullImageCmd;
 import com.github.dockerjava.api.model.AuthConfig;
+import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.HostConfig;
+import com.github.dockerjava.api.model.Ports;
 import com.github.dockerjava.api.model.PullResponseItem;
 import com.github.dockerjava.core.command.PullImageResultCallback;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -43,6 +46,9 @@ public class RunContainerUseCase {
 
     @Inject
     ContainerExpirationService expirationService;
+
+    @Inject
+    PortFinder portFinder;
 
     @Inject
     @ConfigProperty(name = "allowed.run.repositories")
@@ -125,7 +131,7 @@ public class RunContainerUseCase {
 
         CreateContainerResponse container;
         try {
-            container = createContainer(imageRef, request);
+            container = createContainer(imageRef, request, eventSink);
         } catch (Exception e) {
             eventSink.accept(ContainerEvent.error("Creating", "Failed to create container: " + e.getMessage()));
             return;
@@ -181,16 +187,23 @@ public class RunContainerUseCase {
         }).awaitCompletion();
     }
 
-    private CreateContainerResponse createContainer(String imageRef, RunContainerRequest request) {
+    private CreateContainerResponse createContainer(String imageRef, RunContainerRequest request,
+                                                     Consumer<ContainerEvent> eventSink) {
         CreateContainerCmd createCmd = dockerClient.createContainerCmd(imageRef);
 
         if (request.getContainerName() != null && !request.getContainerName().isBlank()) {
             createCmd.withName(request.getContainerName().trim());
         }
 
-        if (request.getMemoryMb() != null) {
-            createCmd.withHostConfig(HostConfig.newHostConfig()
-                    .withMemory(request.getMemoryMb() * 1024 * 1024));
+        HostConfig hostConfig = buildHostConfig(request, eventSink);
+        if (hostConfig != null) {
+            createCmd.withHostConfig(hostConfig);
+        }
+
+        List<Integer> containerPorts = portFinder.getContainerPorts(request.getRepository());
+        if (!containerPorts.isEmpty()) {
+            createCmd.withExposedPorts(
+                    containerPorts.stream().map(ExposedPort::tcp).toList());
         }
 
         List<String> mergedEnvVars = mergeHiddenEnvVars(request.getRepository(), request.getEnvVars(), request.getMemoryMb());
@@ -199,6 +212,39 @@ public class RunContainerUseCase {
         }
 
         return createCmd.exec();
+    }
+
+    private HostConfig buildHostConfig(RunContainerRequest request, Consumer<ContainerEvent> eventSink) {
+        List<Integer> containerPorts = portFinder.getContainerPorts(request.getRepository());
+        boolean hasMemory = request.getMemoryMb() != null;
+        boolean hasPorts = !containerPorts.isEmpty();
+
+        if (!hasMemory && !hasPorts) {
+            return null;
+        }
+
+        HostConfig hostConfig = HostConfig.newHostConfig();
+
+        if (hasMemory) {
+            hostConfig.withMemory(request.getMemoryMb() * 1024 * 1024);
+        }
+
+        if (hasPorts) {
+            List<Integer> hostPorts = portFinder.findAvailablePorts(containerPorts.size());
+            Ports portBindings = new Ports();
+            for (int i = 0; i < containerPorts.size(); i++) {
+                int containerPort = containerPorts.get(i);
+                int hostPort = hostPorts.get(i);
+                portBindings.bind(
+                        ExposedPort.tcp(containerPort),
+                        Ports.Binding.bindPort(hostPort));
+                eventSink.accept(ContainerEvent.info("Creating",
+                        "Port mapped: " + hostPort + " \u2192 " + containerPort));
+            }
+            hostConfig.withPortBindings(portBindings);
+        }
+
+        return hostConfig;
     }
 
     private List<String> mergeHiddenEnvVars(String repository, List<String> userEnvVars, Long memoryMb) {

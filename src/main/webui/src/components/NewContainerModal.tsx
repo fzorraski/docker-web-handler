@@ -67,6 +67,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
   const [tagsLoading, setTagsLoading] = useState(false)
   const [containerName, setContainerName] = useState('')
+  const containerNameValid = containerName === '' || /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(containerName)
   const [envVars, setEnvVars] = useState<EnvVar[]>([])
   const [memoryMb, setMemoryMb] = useState<string>('')
   const [memoryEnabled, setMemoryEnabled] = useState(false)
@@ -280,6 +281,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                   value={containerName}
                   onChange={(e) => setContainerName(e.target.value)}
                   size="small"
+                  error={!containerNameValid}
+                  helperText={!containerNameValid ? 'Only letters, digits, underscores, periods, and hyphens; must start with a letter or digit' : ''}
                 />
               </Grid>
               {memoryEnabled && (
@@ -416,7 +419,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
               variant="contained"
               color="success"
               onClick={handleRun}
-              disabled={running}
+              disabled={running || !containerNameValid}
               startIcon={<PlayArrow />}
             >
               Run Container

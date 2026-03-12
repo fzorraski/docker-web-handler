@@ -7,6 +7,7 @@ export interface DockerContainer {
   ports: string
   names: string
   expiresAt?: string
+  portPaths?: Record<string, string>
 }
 
 export interface DockerImage {

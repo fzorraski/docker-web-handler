@@ -1,6 +1,7 @@
 package br.com.fzdevx.model;
 
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -22,6 +23,8 @@ public class DockerContainer {
     private String names;
 
     private String expiresAt;
+
+    private Map<String, String> portPaths;
 
     public String getContainerId() {
         return containerId;
@@ -109,6 +112,14 @@ public class DockerContainer {
 
     public void setExpiresAt(String expiresAt) {
         this.expiresAt = expiresAt;
+    }
+
+    public Map<String, String> getPortPaths() {
+        return portPaths;
+    }
+
+    public void setPortPaths(Map<String, String> portPaths) {
+        this.portPaths = portPaths;
     }
 
     @Override
