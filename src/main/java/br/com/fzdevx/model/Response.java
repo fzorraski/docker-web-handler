@@ -33,4 +33,24 @@ public class Response {
         this.tags = tags;
     }
 
+    private java.util.List<String> databases;
+
+    private String dbEnvVar;
+
+    public java.util.List<String> getDatabases() {
+        return databases;
+    }
+
+    public void setDatabases(java.util.List<String> databases) {
+        this.databases = databases;
+    }
+
+    public String getDbEnvVar() {
+        return dbEnvVar;
+    }
+
+    public void setDbEnvVar(String dbEnvVar) {
+        this.dbEnvVar = dbEnvVar;
+    }
+
 }

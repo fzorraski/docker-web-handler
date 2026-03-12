@@ -22,4 +22,6 @@ export interface ApiResponse {
   state: number
   message?: string
   tags?: string[]
+  databases?: string[]
+  dbEnvVar?: string
 }

@@ -60,6 +60,21 @@ export async function isMemoryLimitEnabled(): Promise<boolean> {
   return handleResponse(res)
 }
 
+export async function getLocale(): Promise<string> {
+  const res = await fetch(API + 'locale')
+  return res.text()
+}
+
+export async function repositoryHasDatabases(repository: string): Promise<boolean> {
+  const res = await fetch(API + 'repository-has-databases?repository=' + encodeURIComponent(repository))
+  return handleResponse(res)
+}
+
+export async function getRepositoryDatabases(repository: string): Promise<ApiResponse> {
+  const res = await fetch(API + 'repository-databases?repository=' + encodeURIComponent(repository))
+  return handleResponse(res)
+}
+
 export async function runContainer(
   repository: string,
   tag: string,

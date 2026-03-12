@@ -24,6 +24,9 @@ public final class InputValidator {
     private static final Pattern IMAGE_ID_PATTERN =
             Pattern.compile("^(sha256:)?[a-fA-F0-9]{7,64}$");
 
+    private static final Pattern DATABASE_NAME_PATTERN =
+            Pattern.compile("^[a-zA-Z_][a-zA-Z0-9_-]{0,62}$");
+
     private InputValidator() {}
 
     public static Optional<String> validateRepository(String repository) {
@@ -105,6 +108,17 @@ public final class InputValidator {
         }
         if (!CONTAINER_ID_PATTERN.matcher(containerId).matches()) {
             return Optional.of("Invalid container ID format.");
+        }
+        return Optional.empty();
+    }
+
+    public static Optional<String> validateDatabaseName(String name) {
+        if (name == null || name.isBlank()) {
+            return Optional.of("Database name is required.");
+        }
+        if (!DATABASE_NAME_PATTERN.matcher(name).matches()) {
+            return Optional.of("Invalid database name. "
+                    + "Must start with a letter or underscore, followed by up to 62 letters, digits, underscores, or hyphens.");
         }
         return Optional.empty();
     }
