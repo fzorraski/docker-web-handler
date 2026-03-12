@@ -12,9 +12,13 @@ import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.PullImageCmd;
+import br.com.fzdevx.service.PortFinder;
 import com.github.dockerjava.api.model.AuthConfig;
 import com.github.dockerjava.api.model.Container;
+import com.github.dockerjava.api.model.ContainerPort;
+import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.HostConfig;
+import com.github.dockerjava.api.model.Ports;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -27,6 +31,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +52,9 @@ public class ContainerController {
 
     @Inject
     ContainerExpirationService expirationService;
+
+    @Inject
+    PortFinder portFinder;
 
     @Inject
     @ConfigProperty(name = "allowed.run.repositories")
@@ -80,7 +88,14 @@ public class ContainerController {
             dockerContainer.setImage(dc.getImage());
             dockerContainer.setNames(dc.getNames()[0].replaceFirst("/", ""));
             dockerContainer.setStatus(dc.getStatus());
-            dockerContainer.setPorts(dc.getPorts().length > 0 ? Arrays.toString(dc.getPorts()) : "-");
+            ContainerPort[] ports = dc.getPorts();
+            dockerContainer.setPorts(ports.length > 0 ? Arrays.toString(ports) : "-");
+            if (ports.length > 0) {
+                Map<String, String> portPaths = buildPortPaths(dc.getImage(), ports);
+                if (!portPaths.isEmpty()) {
+                    dockerContainer.setPortPaths(portPaths);
+                }
+            }
 
             Instant expiresAt = expirationService.getExpiresAt(dockerContainer.getContainerId());
             if (expiresAt != null) {
@@ -266,6 +281,78 @@ public class ContainerController {
         return result;
     }
 
+    private Map<String, String> buildPortPaths(String image, ContainerPort[] ports) {
+        String imageBase = image.contains(":") ? image.substring(0, image.lastIndexOf(':')) : image;
+
+        Optional<String> pathsValue = config.getOptionalValue("repository.port-paths." + imageBase, String.class);
+        if ((pathsValue.isEmpty() || pathsValue.get().isBlank()) && imageBase.contains("/")) {
+            String shortName = imageBase.substring(imageBase.lastIndexOf('/') + 1);
+            pathsValue = config.getOptionalValue("repository.port-paths." + shortName, String.class);
+        }
+
+        if (pathsValue.isEmpty() || pathsValue.get().isBlank()) {
+            return Collections.emptyMap();
+        }
+
+        Map<Integer, String> containerPortPaths = new HashMap<>();
+        for (String entry : pathsValue.get().split(",")) {
+            String trimmed = entry.trim();
+            int sep = trimmed.indexOf(':');
+            if (sep > 0) {
+                try {
+                    int port = Integer.parseInt(trimmed.substring(0, sep));
+                    String path = trimmed.substring(sep + 1);
+                    containerPortPaths.put(port, path);
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
+
+        if (containerPortPaths.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Map<String, String> result = new LinkedHashMap<>();
+        for (ContainerPort cp : ports) {
+            if (cp.getPublicPort() != null && cp.getPrivatePort() != null) {
+                String path = containerPortPaths.get(cp.getPrivatePort());
+                if (path != null) {
+                    result.put(String.valueOf(cp.getPublicPort()), path);
+                }
+            }
+        }
+        return result;
+    }
+
+    private HostConfig buildHostConfig(RunContainerRequest request) {
+        List<Integer> containerPorts = portFinder.getContainerPorts(request.getRepository());
+        boolean hasMemory = request.getMemoryMb() != null;
+        boolean hasPorts = !containerPorts.isEmpty();
+
+        if (!hasMemory && !hasPorts) {
+            return null;
+        }
+
+        HostConfig hostConfig = HostConfig.newHostConfig();
+
+        if (hasMemory) {
+            hostConfig.withMemory(request.getMemoryMb() * 1024 * 1024);
+        }
+
+        if (hasPorts) {
+            List<Integer> hostPorts = portFinder.findAvailablePorts(containerPorts.size());
+            Ports portBindings = new Ports();
+            for (int i = 0; i < containerPorts.size(); i++) {
+                portBindings.bind(
+                        ExposedPort.tcp(containerPorts.get(i)),
+                        Ports.Binding.bindPort(hostPorts.get(i)));
+            }
+            hostConfig.withPortBindings(portBindings);
+        }
+
+        return hostConfig;
+    }
+
     @GET
     @Path("/default-expiration-minutes")
     @Produces(MediaType.APPLICATION_JSON)
@@ -349,10 +436,18 @@ public class ContainerController {
             if (request.getContainerName() != null && !request.getContainerName().isBlank()) {
                 createCmd.withName(request.getContainerName().trim());
             }
-            if (request.getMemoryMb() != null) {
-                createCmd.withHostConfig(HostConfig.newHostConfig()
-                        .withMemory(request.getMemoryMb() * 1024 * 1024));
+
+            HostConfig hostConfig = buildHostConfig(request);
+            if (hostConfig != null) {
+                createCmd.withHostConfig(hostConfig);
             }
+
+            List<Integer> containerPorts = portFinder.getContainerPorts(request.getRepository());
+            if (!containerPorts.isEmpty()) {
+                createCmd.withExposedPorts(
+                        containerPorts.stream().map(ExposedPort::tcp).toList());
+            }
+
             List<String> mergedEnvVars = mergeHiddenEnvVars(request.getRepository(), request.getEnvVars(), request.getMemoryMb());
             if (!mergedEnvVars.isEmpty()) {
                 createCmd.withEnv(mergedEnvVars);
