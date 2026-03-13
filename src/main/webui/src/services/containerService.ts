@@ -1,6 +1,6 @@
-import type { DockerContainer, ApiResponse } from '../types'
+import type { DockerContainer, ApiResponse, DatabaseConflict } from '../types'
 
-const API = '/containers/'
+const API = '/api/containers/'
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(res.statusText)
@@ -65,6 +65,21 @@ export async function getLocale(): Promise<string> {
   return res.text()
 }
 
+export async function getDatabaseConflicts(databaseName: string): Promise<DatabaseConflict> {
+  const res = await fetch(API + 'database-conflicts?databaseName=' + encodeURIComponent(databaseName))
+  return handleResponse(res)
+}
+
+export async function isDatabaseListingEnabled(): Promise<boolean> {
+  const res = await fetch(API + 'database-listing-enabled')
+  return handleResponse(res)
+}
+
+export async function isDeletionOnExpirationEnabled(): Promise<boolean> {
+  const res = await fetch(API + 'deletion-on-expiration-enabled')
+  return handleResponse(res)
+}
+
 export async function repositoryHasDatabases(repository: string): Promise<boolean> {
   const res = await fetch(API + 'repository-has-databases?repository=' + encodeURIComponent(repository))
   return handleResponse(res)
@@ -72,6 +87,21 @@ export async function repositoryHasDatabases(repository: string): Promise<boolea
 
 export async function getRepositoryDatabases(repository: string): Promise<ApiResponse> {
   const res = await fetch(API + 'repository-databases?repository=' + encodeURIComponent(repository))
+  return handleResponse(res)
+}
+
+export async function extendExpiration(id: string, minutes: number = 10): Promise<boolean> {
+  const res = await postJson(API + 'extend-expiration?minutes=' + minutes, { containerId: id })
+  return handleResponse(res)
+}
+
+export async function cancelDatabaseDeletion(id: string): Promise<boolean> {
+  const res = await postJson(API + 'cancel-db-deletion', { containerId: id })
+  return handleResponse(res)
+}
+
+export async function cancelExpiration(id: string): Promise<boolean> {
+  const res = await postJson(API + 'cancel-expiration', { containerId: id })
   return handleResponse(res)
 }
 
