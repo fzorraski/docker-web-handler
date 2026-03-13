@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import dayjs from 'dayjs'
 import type { DatabaseDump } from '../types'
 import { listDumps, deleteDump, deleteDumpsBulk, getStorageInfo, getActiveRestores, type ActiveRestore } from '../services/dumpService'
 import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
 import UploadDumpModal from '../components/UploadDumpModal'
 import RestoreDumpModal from '../components/RestoreDumpModal'
+import { formatBytes, formatDate } from '../utils/format'
 import {
   Box,
   Typography,
@@ -33,17 +33,6 @@ import {
   AlertTitle,
 } from '@mui/material'
 import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile } from '@mui/icons-material'
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  return (bytes / (1024 * 1024)).toFixed(2) + ' MB'
-}
-
-function formatDate(iso: string): string {
-  const d = dayjs(iso)
-  return d.isValid() ? d.format('L LT') : iso
-}
 
 export default function DatabasePage() {
   const { notify } = useNotification()

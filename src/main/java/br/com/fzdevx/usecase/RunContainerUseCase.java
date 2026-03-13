@@ -103,6 +103,14 @@ public class RunContainerUseCase {
             }
         }
 
+        if (request.getDumpId() != null && !request.getDumpId().isBlank()) {
+            Optional<String> dumpIdError = InputValidator.validateUuid(request.getDumpId());
+            if (dumpIdError.isPresent()) {
+                eventSink.accept(ContainerEvent.error("Validating", dumpIdError.get()));
+                return;
+            }
+        }
+
         // Step 2: Check whitelist
         eventSink.accept(ContainerEvent.info("Validating", "Checking repository permissions..."));
 
@@ -151,7 +159,21 @@ public class RunContainerUseCase {
 
         eventSink.accept(ContainerEvent.info("Creating", "Container created."));
 
-        // Step 4: Start container
+        // Step 4: Restore dump if specified (before starting the container so the DB is ready)
+        if (request.getDumpId() != null && !request.getDumpId().isBlank()) {
+            eventSink.accept(ContainerEvent.info("Restoring", "Starting dump restore..."));
+            RestoreDumpRequest restoreReq = new RestoreDumpRequest();
+            restoreReq.setDumpId(request.getDumpId());
+            restoreReq.setRepository(request.getRepository());
+            restoreReq.setTargetDatabase(request.getDatabaseName());
+            restoreReq.setCreateDatabase(request.isCreateDatabase());
+            boolean restoreSuccess = restoreDumpUseCase.execute(restoreReq, eventSink);
+            if (!restoreSuccess) {
+                return;
+            }
+        }
+
+        // Step 5: Start container
         eventSink.accept(ContainerEvent.info("Starting", "Starting container..."));
 
         try {
@@ -159,19 +181,6 @@ public class RunContainerUseCase {
         } catch (Exception e) {
             eventSink.accept(ContainerEvent.error("Starting", "Failed to start container: " + e.getMessage()));
             return;
-        }
-
-        // Step 5: Restore dump if specified
-        if (request.getDumpId() != null && !request.getDumpId().isBlank()) {
-            eventSink.accept(ContainerEvent.info("Restoring", "Starting dump restore..."));
-            RestoreDumpRequest restoreReq = new RestoreDumpRequest();
-            restoreReq.setDumpId(request.getDumpId());
-            restoreReq.setRepository(request.getRepository());
-            restoreReq.setTargetDatabase(request.getDatabaseName());
-            restoreReq.setCreateDatabase(false);
-            restoreDumpUseCase.execute(restoreReq, eventSink);
-            // Check if restore ended in error
-            // (the use case will have already emitted error events)
         }
 
         // Step 6: Schedule expiration if configured

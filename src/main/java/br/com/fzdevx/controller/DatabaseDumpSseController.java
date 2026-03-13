@@ -63,7 +63,11 @@ public class DatabaseDumpSseController {
         }
 
         try {
-            restoreDumpUseCase.execute(request, event -> sendEvent(sink, sse, event));
+            boolean success = restoreDumpUseCase.execute(request, event -> sendEvent(sink, sse, event));
+            if (success) {
+                sendEvent(sink, sse, ContainerEvent.success("Complete",
+                        "Dump restored successfully into '" + request.getTargetDatabase() + "'."));
+            }
         } finally {
             closeSink(sink);
         }

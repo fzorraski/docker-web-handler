@@ -31,6 +31,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.function.Consumer;
 
 @ApplicationScoped
@@ -46,6 +49,11 @@ public class RestoreDumpUseCase {
     DockerClient dockerClient;
 
     public static final String EPHEMERAL_LABEL = "docker-web-handler.ephemeral";
+
+    private static final Pattern WARNINGS_IGNORED_PATTERN =
+            Pattern.compile("errors ignored on restore:\\s*(\\d+)");
+
+    private record RestoreResult(int exitCode, int warningsIgnored) {}
 
     public record ActiveRestoreInfo(String repository, String targetDatabase, String dumpFilename) {}
 
@@ -87,38 +95,38 @@ public class RestoreDumpUseCase {
         return true;
     }
 
-    public void execute(RestoreDumpRequest request, Consumer<ContainerEvent> eventSink) {
+    public boolean execute(RestoreDumpRequest request, Consumer<ContainerEvent> eventSink) {
         // Step 1: Validate
         eventSink.accept(ContainerEvent.info("Validating", "Validating restore request..."));
 
         Optional<String> uuidError = InputValidator.validateUuid(request.getDumpId());
         if (uuidError.isPresent()) {
             eventSink.accept(ContainerEvent.error("Validating", uuidError.get()));
-            return;
+            return false;
         }
 
         Optional<String> repoError = InputValidator.validateRepository(request.getRepository());
         if (repoError.isPresent()) {
             eventSink.accept(ContainerEvent.error("Validating", repoError.get()));
-            return;
+            return false;
         }
 
         Optional<String> dbError = InputValidator.validateDatabaseName(request.getTargetDatabase());
         if (dbError.isPresent()) {
             eventSink.accept(ContainerEvent.error("Validating", dbError.get()));
-            return;
+            return false;
         }
 
         if (!databaseService.hasDatabaseConfig(request.getRepository())) {
             eventSink.accept(ContainerEvent.error("Validating",
                     "No database configuration found for repository: " + request.getRepository()));
-            return;
+            return false;
         }
 
         Optional<DatabaseDump> dumpOpt = dumpStorageService.findById(request.getDumpId());
         if (dumpOpt.isEmpty()) {
             eventSink.accept(ContainerEvent.error("Validating", "Dump not found: " + request.getDumpId()));
-            return;
+            return false;
         }
 
         DatabaseDump dump = dumpOpt.get();
@@ -131,7 +139,7 @@ public class RestoreDumpUseCase {
             eventSink.accept(ContainerEvent.error("Validating",
                     "A restore is already in progress for " + request.getTargetDatabase()
                             + " on repository " + request.getRepository() + ". Please wait."));
-            return;
+            return false;
         }
 
         Path tempFile = null;
@@ -142,7 +150,7 @@ public class RestoreDumpUseCase {
             // Step 2: Prepare
             if (ctx.cancelled.get()) {
                 eventSink.accept(ContainerEvent.error("Preparing", "Restore cancelled by user."));
-                return;
+                return false;
             }
             eventSink.accept(ContainerEvent.info("Preparing", "Decompressing dump file..."));
             tempFile = dumpStorageService.prepareForRestore(dump);
@@ -151,7 +159,7 @@ public class RestoreDumpUseCase {
             // Step 3: Create database if needed
             if (ctx.cancelled.get()) {
                 eventSink.accept(ContainerEvent.error("Creating Database", "Restore cancelled by user."));
-                return;
+                return false;
             }
             if (request.isCreateDatabase()) {
                 eventSink.accept(ContainerEvent.info("Creating Database",
@@ -171,7 +179,7 @@ public class RestoreDumpUseCase {
             // Step 4: Restore
             if (ctx.cancelled.get()) {
                 eventSink.accept(ContainerEvent.error("Restoring", "Restore cancelled by user."));
-                return;
+                return false;
             }
             eventSink.accept(ContainerEvent.info("Restoring",
                     "Restoring dump '" + dump.getOriginalFilename() + "' into '" + request.getTargetDatabase() + "'..."));
@@ -179,27 +187,38 @@ public class RestoreDumpUseCase {
             String pgImage = databaseService.getContainerImage(request.getRepository());
             DatabaseService.PgConnectionInfo pgInfo = databaseService.getConnectionInfo(request.getRepository());
 
-            int exitCode;
+            RestoreResult result;
             if (!"none".equalsIgnoreCase(pgImage)) {
-                exitCode = executeDockerRestore(dump, tempFile, pgInfo, request.getTargetDatabase(),
+                result = executeDockerRestore(dump, tempFile, pgInfo, request.getTargetDatabase(),
                         pgImage, eventSink, ctx);
             } else {
-                exitCode = executeLocalRestore(dump, tempFile, pgInfo, request.getTargetDatabase(), eventSink, ctx);
+                result = executeLocalRestore(dump, tempFile, pgInfo, request.getTargetDatabase(), eventSink, ctx);
             }
 
             if (ctx.cancelled.get()) {
                 eventSink.accept(ContainerEvent.error("Restoring", "Restore cancelled by user."));
-                return;
+                return false;
             }
 
-            if (exitCode != 0) {
-                eventSink.accept(ContainerEvent.error("Restoring",
-                        "Restore process exited with code " + exitCode + ". Check logs above for details."));
-                return;
+            if (result.exitCode() != 0) {
+                boolean isNonFatalWarning = dump.getFormat() != DatabaseDump.Format.SQL
+                        && result.exitCode() == 1 && result.warningsIgnored() > 0;
+                if (isNonFatalWarning) {
+                    eventSink.accept(ContainerEvent.info("Restoring",
+                            "Restore completed with " + result.warningsIgnored()
+                                    + " non-fatal warning(s) ignored."));
+                } else {
+                    eventSink.accept(ContainerEvent.error("Restoring",
+                            "Restore process exited with code " + result.exitCode()
+                                    + ". Check logs above for details."));
+                    return false;
+                }
             }
 
-            eventSink.accept(ContainerEvent.success("Complete",
-                    "Dump '" + dump.getOriginalFilename() + "' restored successfully into '" + request.getTargetDatabase() + "'."));
+            eventSink.accept(ContainerEvent.info("Restoring",
+                    "Dump '" + dump.getOriginalFilename() + "' restored into '"
+                            + request.getTargetDatabase() + "'."));
+            return true;
 
         } catch (Exception e) {
             if (ctx.cancelled.get()) {
@@ -208,6 +227,7 @@ public class RestoreDumpUseCase {
                 Log.errorf("Restore failed: %s", e.getMessage());
                 eventSink.accept(ContainerEvent.error("Restoring", "Restore failed: " + e.getMessage()));
             }
+            return false;
         } finally {
             if (ctx.cancelled.get() && databaseCreated) {
                 try {
@@ -224,7 +244,7 @@ public class RestoreDumpUseCase {
         }
     }
 
-    private int executeDockerRestore(DatabaseDump dump, Path dumpFile,
+    private RestoreResult executeDockerRestore(DatabaseDump dump, Path dumpFile,
                                      DatabaseService.PgConnectionInfo pgInfo,
                                      String targetDatabase, String image,
                                      Consumer<ContainerEvent> eventSink,
@@ -246,7 +266,7 @@ public class RestoreDumpUseCase {
                 })
                 .awaitCompletion();
 
-        if (ctx.cancelled.get()) return -1;
+        if (ctx.cancelled.get()) return new RestoreResult(-1, 0);
 
         // Create ephemeral container with host network (to reach PG server)
         eventSink.accept(ContainerEvent.info("Restoring", "Creating ephemeral restore container..."));
@@ -261,7 +281,7 @@ public class RestoreDumpUseCase {
         try {
             dockerClient.startContainerCmd(containerId).exec();
 
-            if (ctx.cancelled.get()) return -1;
+            if (ctx.cancelled.get()) return new RestoreResult(-1, 0);
 
             // Build restore command
             List<String> cmd = new ArrayList<>();
@@ -298,11 +318,17 @@ public class RestoreDumpUseCase {
                     .withStdIn(dumpInput)
                     .exec(new ExecStartResultCallback(stdoutSink, stdoutSink));
 
+            AtomicInteger warningsIgnored = new AtomicInteger(0);
+
             Thread outputReader = Thread.ofVirtual().start(() -> {
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(stdoutPipe))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
                         eventSink.accept(ContainerEvent.progress("Restoring", line, -1));
+                        Matcher m = WARNINGS_IGNORED_PATTERN.matcher(line);
+                        if (m.find()) {
+                            warningsIgnored.set(Integer.parseInt(m.group(1)));
+                        }
                     }
                 } catch (Exception e) {
                     Log.warnf("Error reading restore output: %s", e.getMessage());
@@ -314,11 +340,12 @@ public class RestoreDumpUseCase {
             stdoutSink.close();
             outputReader.join();
 
-            if (ctx.cancelled.get()) return -1;
+            if (ctx.cancelled.get()) return new RestoreResult(-1, 0);
 
             InspectExecResponse inspectResponse = dockerClient.inspectExecCmd(exec.getId()).exec();
             Long exitCodeLong = inspectResponse.getExitCodeLong();
-            return exitCodeLong != null ? exitCodeLong.intValue() : -1;
+            int exitCode = exitCodeLong != null ? exitCodeLong.intValue() : -1;
+            return new RestoreResult(exitCode, warningsIgnored.get());
 
         } finally {
             ctx.ephemeralContainerId = null;
@@ -336,7 +363,7 @@ public class RestoreDumpUseCase {
         }
     }
 
-    private int executeLocalRestore(DatabaseDump dump, Path dumpFile,
+    private RestoreResult executeLocalRestore(DatabaseDump dump, Path dumpFile,
                                     DatabaseService.PgConnectionInfo pgInfo,
                                     String targetDatabase,
                                     Consumer<ContainerEvent> eventSink,
@@ -365,17 +392,22 @@ public class RestoreDumpUseCase {
         pb.environment().put("PGPASSWORD", pgInfo.password());
         pb.redirectErrorStream(true);
 
+        int warningsIgnored = 0;
         Process process = pb.start();
         ctx.localProcess = process;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 eventSink.accept(ContainerEvent.progress("Restoring", line, -1));
+                Matcher m = WARNINGS_IGNORED_PATTERN.matcher(line);
+                if (m.find()) {
+                    warningsIgnored = Integer.parseInt(m.group(1));
+                }
             }
         } finally {
             ctx.localProcess = null;
         }
 
-        return process.waitFor();
+        return new RestoreResult(process.waitFor(), warningsIgnored);
     }
 }

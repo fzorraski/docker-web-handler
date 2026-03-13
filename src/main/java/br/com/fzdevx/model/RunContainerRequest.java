@@ -22,6 +22,8 @@ public class RunContainerRequest {
 
     private String dumpId;
 
+    private boolean createDatabase;
+
     public String getRepository() {
         return repository;
     }
@@ -92,5 +94,13 @@ public class RunContainerRequest {
 
     public void setDumpId(String dumpId) {
         this.dumpId = dumpId;
+    }
+
+    public boolean isCreateDatabase() {
+        return createDatabase;
+    }
+
+    public void setCreateDatabase(boolean createDatabase) {
+        this.createDatabase = createDatabase;
     }
 }
