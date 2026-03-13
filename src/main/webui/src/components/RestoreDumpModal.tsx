@@ -16,6 +16,7 @@ import {
 } from '@mui/material'
 import { Close, Restore } from '@mui/icons-material'
 import type { DatabaseDump } from '../types'
+import { buildTargetDbName } from '../utils/format'
 import { getDumpRepositories, cancelRestore } from '../services/dumpService'
 import { getRepositoryDatabases } from '../services/containerService'
 import { prepareRestoreDump, streamRestoreDump, type ContainerEvent } from '../services/sseService'
@@ -67,16 +68,7 @@ export default function RestoreDumpModal({ open, dump, onClose, onRestored }: Pr
 
   useEffect(() => {
     if (open && dump) {
-      const parts: string[] = []
-      if (dump.databaseName) parts.push(dump.databaseName)
-      if (dump.version) parts.push(dump.version)
-      if (dump.uploadedAt) {
-        const d = new Date(dump.uploadedAt)
-        if (!isNaN(d.getTime())) {
-          parts.push(d.toISOString().slice(0, 10))
-        }
-      }
-      setTargetDb(parts.length > 0 ? parts.join('_') : '')
+      setTargetDb(buildTargetDbName(dump))
     }
   }, [open, dump])
 

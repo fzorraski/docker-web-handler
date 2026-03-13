@@ -14,7 +14,7 @@ const RUN_STEPS = ['Validating', 'Pulling', 'Creating', 'Starting']
 const REMOVE_STEPS = ['Cancelling', 'Stopping', 'Removing']
 const REMOVE_IMAGE_STEPS = ['Removing']
 const RESTORE_STEPS = ['Validating', 'Preparing', 'Creating Database', 'Restoring']
-const RUN_WITH_RESTORE_STEPS = ['Validating', 'Pulling', 'Creating', 'Starting', 'Restoring']
+const RUN_WITH_RESTORE_STEPS = ['Validating', 'Pulling', 'Creating', 'Preparing', 'Creating Database', 'Restoring', 'Starting']
 
 interface Props {
   events: ContainerEvent[]

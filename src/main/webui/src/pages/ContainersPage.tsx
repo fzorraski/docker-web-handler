@@ -10,6 +10,7 @@ import {
   extendExpiration,
   isDatabaseListingEnabled,
 } from '../services/containerService'
+import { getActiveRestores, type ActiveRestore } from '../services/dumpService'
 import { streamRemoveContainer, type ContainerEvent } from '../services/sseService'
 import NewContainerModal from '../components/NewContainerModal'
 import OperationProgress, { REMOVE_STEPS } from '../components/OperationProgress'
@@ -41,6 +42,8 @@ import {
   Menu,
   FormControlLabel,
   Checkbox,
+  Alert,
+  AlertTitle,
 } from '@mui/material'
 import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime } from '@mui/icons-material'
 
@@ -95,6 +98,8 @@ export default function ContainersPage() {
   const [columnMenuAnchor, setColumnMenuAnchor] = useState<null | HTMLElement>(null)
   const [sortKey, setSortKey] = useState<string>('')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [activeRestores, setActiveRestores] = useState<ActiveRestore[]>([])
+  const [stoppingId, setStoppingId] = useState<string | null>(null)
 
   const machineIp = window.location.hostname
 
@@ -124,6 +129,13 @@ export default function ContainersPage() {
     isDatabaseListingEnabled().then(setDbListingEnabled).catch(() => {})
   }, [loadContainers])
 
+  useEffect(() => {
+    const check = () => getActiveRestores().then(setActiveRestores).catch(() => setActiveRestores([]))
+    check()
+    const interval = setInterval(check, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
   // Auto-refresh after the nearest container expires
   useEffect(() => {
     const now = Date.now()
@@ -147,12 +159,15 @@ export default function ContainersPage() {
   }, [containers])
 
   async function handleStop(id: string) {
-    if (!(await confirm(`Stop container ${id}?`))) return
+    if (!(await confirm(`Stop Container ${id}?`))) return
+    setStoppingId(id)
     try {
       const ok = await stopContainer(id)
       notify(ok ? 'Container stopped.' : 'Failed to stop container.', ok ? 'success' : 'error')
     } catch {
       notify('An unexpected error occurred while stopping the container.', 'error')
+    } finally {
+      setStoppingId(null)
     }
     loadContainers()
   }
@@ -305,6 +320,17 @@ export default function ContainersPage() {
             </Button>
           )}
         </Box>
+
+        {activeRestores.length > 0 && (
+          <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
+            <AlertTitle>Restore in progress</AlertTitle>
+            {activeRestores.map((r, i) => (
+              <Typography key={i} variant="body2">
+                Restoring <strong>{r.dumpFilename}</strong> into <strong>{r.targetDatabase}</strong> ({r.repository})
+              </Typography>
+            ))}
+          </Alert>
+        )}
 
         <Box sx={{ display: 'flex', gap: 1, mb: 3, alignItems: 'center' }}>
           <TextField
@@ -480,10 +506,11 @@ export default function ContainersPage() {
                             size="small"
                             variant="contained"
                             color="warning"
-                            startIcon={<Stop />}
+                            startIcon={stoppingId === c.containerId ? <CircularProgress size={18} color="inherit" /> : <Stop />}
                             onClick={() => handleStop(c.containerId)}
+                            disabled={stoppingId === c.containerId}
                           >
-                            Stop
+                            {stoppingId === c.containerId ? 'Stopping...' : 'Stop'}
                           </Button>
                         ) : (
                           <Button

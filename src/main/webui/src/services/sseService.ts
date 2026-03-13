@@ -48,6 +48,7 @@ export async function prepareRunContainer(body: {
   databaseName?: string | null
   deleteDatabaseOnExpiration?: boolean
   dumpId?: string | null
+  createDatabase?: boolean
 }): Promise<string> {
   const res = await fetch('/api/containers/sse/run/prepare', {
     method: 'POST',
