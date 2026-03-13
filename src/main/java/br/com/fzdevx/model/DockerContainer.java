@@ -26,6 +26,10 @@ public class DockerContainer {
 
     private Map<String, String> portPaths;
 
+    private String databaseName;
+
+    private boolean deleteDatabaseOnExpiration;
+
     public String getContainerId() {
         return containerId;
     }
@@ -120,6 +124,22 @@ public class DockerContainer {
 
     public void setPortPaths(Map<String, String> portPaths) {
         this.portPaths = portPaths;
+    }
+
+    public String getDatabaseName() {
+        return databaseName;
+    }
+
+    public void setDatabaseName(String databaseName) {
+        this.databaseName = databaseName;
+    }
+
+    public boolean isDeleteDatabaseOnExpiration() {
+        return deleteDatabaseOnExpiration;
+    }
+
+    public void setDeleteDatabaseOnExpiration(boolean deleteDatabaseOnExpiration) {
+        this.deleteDatabaseOnExpiration = deleteDatabaseOnExpiration;
     }
 
     @Override

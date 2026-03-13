@@ -1,6 +1,7 @@
 package br.com.fzdevx.usecase;
 
 import br.com.fzdevx.model.ContainerEvent;
+import br.com.fzdevx.model.RestoreDumpRequest;
 import br.com.fzdevx.model.RunContainerRequest;
 import br.com.fzdevx.service.ContainerExpirationService;
 import br.com.fzdevx.service.PortFinder;
@@ -51,6 +52,9 @@ public class RunContainerUseCase {
     PortFinder portFinder;
 
     @Inject
+    RestoreDumpUseCase restoreDumpUseCase;
+
+    @Inject
     @ConfigProperty(name = "allowed.run.repositories")
     Optional<String> allowedRunRepositories;
 
@@ -89,6 +93,14 @@ public class RunContainerUseCase {
         if (memError.isPresent()) {
             eventSink.accept(ContainerEvent.error("Validating", memError.get()));
             return;
+        }
+
+        if (request.getDatabaseName() != null && !request.getDatabaseName().isBlank()) {
+            Optional<String> dbError = InputValidator.validateDatabaseName(request.getDatabaseName());
+            if (dbError.isPresent()) {
+                eventSink.accept(ContainerEvent.error("Validating", dbError.get()));
+                return;
+            }
         }
 
         // Step 2: Check whitelist
@@ -149,7 +161,20 @@ public class RunContainerUseCase {
             return;
         }
 
-        // Step 5: Schedule expiration if configured
+        // Step 5: Restore dump if specified
+        if (request.getDumpId() != null && !request.getDumpId().isBlank()) {
+            eventSink.accept(ContainerEvent.info("Restoring", "Starting dump restore..."));
+            RestoreDumpRequest restoreReq = new RestoreDumpRequest();
+            restoreReq.setDumpId(request.getDumpId());
+            restoreReq.setRepository(request.getRepository());
+            restoreReq.setTargetDatabase(request.getDatabaseName());
+            restoreReq.setCreateDatabase(false);
+            restoreDumpUseCase.execute(restoreReq, eventSink);
+            // Check if restore ended in error
+            // (the use case will have already emitted error events)
+        }
+
+        // Step 6: Schedule expiration if configured
         String expirationMessage = scheduleExpiration(request, container.getId());
 
         eventSink.accept(ContainerEvent.success("Complete",
@@ -289,15 +314,47 @@ public class RunContainerUseCase {
     }
 
     private String scheduleExpiration(RunContainerRequest request, String fullContainerId) {
-        if (request.getExpiresAt() == null || request.getExpiresAt().isBlank()) {
+        Instant expiresInstant = resolveExpiration(request);
+        if (expiresInstant == null) {
             return "";
         }
 
-        LocalDateTime ldt = LocalDateTime.parse(request.getExpiresAt(), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-        Instant expiresInstant = ldt.atZone(ZoneId.systemDefault()).toInstant();
         String shortId = fullContainerId.substring(0, 10);
-        expirationService.schedule(shortId, fullContainerId, expiresInstant);
+        expirationService.schedule(shortId, fullContainerId, expiresInstant,
+                request.getRepository(), request.getDatabaseName(),
+                request.isDeleteDatabaseOnExpiration());
 
+        LocalDateTime ldt = LocalDateTime.ofInstant(expiresInstant, ZoneId.systemDefault());
         return " (expires at " + ldt.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) + ")";
+    }
+
+    private Instant resolveExpiration(RunContainerRequest request) {
+        Instant maxExpiration = findDbDeletionExpiration(request.getDatabaseName());
+
+        if (request.getExpiresAt() == null || request.getExpiresAt().isBlank()) {
+            return maxExpiration;
+        }
+
+        LocalDateTime ldt = LocalDateTime.parse(request.getExpiresAt(), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        Instant requested = ldt.atZone(ZoneId.systemDefault()).toInstant();
+
+        if (maxExpiration != null && requested.isAfter(maxExpiration)) {
+            return maxExpiration;
+        }
+
+        return requested;
+    }
+
+    private Instant findDbDeletionExpiration(String databaseName) {
+        if (databaseName == null || databaseName.isBlank()) {
+            return null;
+        }
+        for (br.com.fzdevx.model.ContainerExpiration other :
+                expirationService.findByDatabaseName(databaseName)) {
+            if (other.isDeleteDatabaseOnExpiration()) {
+                return other.getExpiresAt();
+            }
+        }
+        return null;
     }
 }

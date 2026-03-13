@@ -27,6 +27,15 @@ public final class InputValidator {
     private static final Pattern DATABASE_NAME_PATTERN =
             Pattern.compile("^[a-zA-Z_][a-zA-Z0-9_-]{0,62}$");
 
+    private static final Pattern UUID_PATTERN =
+            Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
+
+    private static final Pattern FILENAME_PATTERN =
+            Pattern.compile("^[a-zA-Z0-9][a-zA-Z0-9._-]{0,254}$");
+
+    private static final List<String> ALLOWED_DUMP_EXTENSIONS =
+            List.of(".sql", ".dump", ".gz", ".tar.gz");
+
     private InputValidator() {}
 
     public static Optional<String> validateRepository(String repository) {
@@ -129,6 +138,34 @@ public final class InputValidator {
         }
         if (!IMAGE_ID_PATTERN.matcher(imageId).matches()) {
             return Optional.of("Invalid image ID format.");
+        }
+        return Optional.empty();
+    }
+
+    public static Optional<String> validateFilename(String filename) {
+        if (filename == null || filename.isBlank()) {
+            return Optional.of("Filename is required.");
+        }
+        if (filename.contains("..")) {
+            return Optional.of("Filename must not contain '..'.");
+        }
+        if (!FILENAME_PATTERN.matcher(filename).matches()) {
+            return Optional.of("Filename contains invalid characters.");
+        }
+        String lower = filename.toLowerCase();
+        boolean valid = ALLOWED_DUMP_EXTENSIONS.stream().anyMatch(lower::endsWith);
+        if (!valid) {
+            return Optional.of("Unsupported file format. Allowed: .sql, .dump, .gz, .tar.gz");
+        }
+        return Optional.empty();
+    }
+
+    public static Optional<String> validateUuid(String uuid) {
+        if (uuid == null || uuid.isBlank()) {
+            return Optional.of("UUID is required.");
+        }
+        if (!UUID_PATTERN.matcher(uuid).matches()) {
+            return Optional.of("Invalid UUID format.");
         }
         return Optional.empty();
     }
