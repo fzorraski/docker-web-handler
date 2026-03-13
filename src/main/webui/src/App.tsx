@@ -4,6 +4,7 @@ import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 import ContainersPage from './pages/ContainersPage'
 import ImagesPage from './pages/ImagesPage'
+import DatabasePage from './pages/DatabasePage'
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<ContainersPage />} />
           <Route path="/images" element={<ImagesPage />} />
+          <Route path="/database" element={<DatabasePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Box>
