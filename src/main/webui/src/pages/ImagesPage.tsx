@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { DockerImage } from '../types'
 import { getImages } from '../services/imageService'
 import { streamRemoveImage, type ContainerEvent } from '../services/sseService'
@@ -16,6 +16,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   Paper,
   Button,
   CircularProgress,
@@ -36,6 +37,23 @@ export default function ImagesPage() {
   const [removeError, setRemoveError] = useState(false)
   const [removeDone, setRemoveDone] = useState(false)
   const cleanupSse = useRef<(() => void) | null>(null)
+  const [sortKey, setSortKey] = useState<string>('')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const IMAGE_COLUMNS: { key: keyof DockerImage | 'action'; label: string }[] = [
+    { key: 'repository', label: 'Repository' },
+    { key: 'tag', label: 'Tag' },
+    { key: 'imageId', label: 'Image ID' },
+    { key: 'created', label: 'Created' },
+    { key: 'size', label: 'Size' },
+    { key: 'action', label: 'Action' },
+  ]
+
+  function handleSort(key: string) {
+    if (key === 'action') return
+    setSortDir(sortKey === key && sortDir === 'asc' ? 'desc' : 'asc')
+    setSortKey(key)
+  }
 
   const loadImages = useCallback(() => {
     setLoading(true)
@@ -89,9 +107,18 @@ export default function ImagesPage() {
     loadImages()
   }
 
-  const filtered = images.filter((img) =>
-    Object.values(img).some((v) => v.toLowerCase().includes(filter.toLowerCase()))
-  )
+  const filtered = useMemo(() => {
+    const result = images.filter((img) =>
+      Object.values(img).some((v) => v.toLowerCase().includes(filter.toLowerCase()))
+    )
+    if (!sortKey) return result
+    return [...result].sort((a, b) => {
+      const va = (a[sortKey as keyof DockerImage] ?? '').toLowerCase()
+      const vb = (b[sortKey as keyof DockerImage] ?? '').toLowerCase()
+      const cmp = va.localeCompare(vb)
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [images, filter, sortKey, sortDir])
 
   return (
     <>
@@ -124,8 +151,19 @@ export default function ImagesPage() {
           <Table>
             <TableHead>
               <TableRow sx={{ bgcolor: 'primary.main' }}>
-                {['Repository', 'Tag', 'Image ID', 'Created', 'Size', 'Action'].map((h) => (
-                  <TableCell key={h} sx={{ color: 'white', fontWeight: 600 }}>{h}</TableCell>
+                {IMAGE_COLUMNS.map((col) => (
+                  <TableCell key={col.key} sx={{ color: 'white', fontWeight: 600 }}>
+                    {col.key !== 'action' ? (
+                      <TableSortLabel
+                        active={sortKey === col.key}
+                        direction={sortKey === col.key ? sortDir : 'asc'}
+                        onClick={() => handleSort(col.key)}
+                        sx={{ color: 'white !important', '& .MuiTableSortLabel-icon': { color: 'white !important' } }}
+                      >
+                        {col.label}
+                      </TableSortLabel>
+                    ) : col.label}
+                  </TableCell>
                 ))}
               </TableRow>
             </TableHead>

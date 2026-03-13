@@ -19,19 +19,24 @@ import {
 } from '@mui/material'
 import { MobileDateTimePicker } from '@mui/x-date-pickers/MobileDateTimePicker'
 import dayjs, { type Dayjs } from 'dayjs'
-import { Add, Close, Delete, Memory, PlayArrow, Timer } from '@mui/icons-material'
+import { Add, Close, Delete, Memory, PlayArrow, Timer, Warning } from '@mui/icons-material'
+import { Alert } from '@mui/material'
 import {
   getAllowedRepositories,
+  getDatabaseConflicts,
   getDefaultExpirationMinutes,
   getRepositoryDatabases,
   getRepositoryEnvKeys,
   getRepositoryTags,
+  isDeletionOnExpirationEnabled,
   isMemoryLimitEnabled,
   repositoryHasDatabases,
 } from '../services/containerService'
+import { isDumpEnabled, listDumps } from '../services/dumpService'
+import type { DatabaseConflict, DatabaseDump } from '../types'
 import { prepareRunContainer, streamRunContainer, type ContainerEvent } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
-import OperationProgress from './OperationProgress'
+import OperationProgress, { RUN_WITH_RESTORE_STEPS } from './OperationProgress'
 
 interface Props {
   open: boolean
@@ -78,6 +83,16 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const [selectedDb, setSelectedDb] = useState<string | null>(null)
   const [dbEnvVar, setDbEnvVar] = useState<string | null>(null)
   const [dbLoading, setDbLoading] = useState(false)
+  const [dbDeletionEnabled, setDbDeletionEnabled] = useState(false)
+  const [deleteDbOnExpiration, setDeleteDbOnExpiration] = useState(false)
+  const [dbConflict, setDbConflict] = useState<DatabaseConflict | null>(null)
+  const [dumpFeatureEnabled, setDumpFeatureEnabled] = useState(false)
+  const [allDumps, setAllDumps] = useState<DatabaseDump[]>([])
+  const [selectedDump, setSelectedDump] = useState<DatabaseDump | null>(null)
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
+  const [confirmNameInput, setConfirmNameInput] = useState('')
+  const hasDbUsageConflict = (dbConflict?.inUseByContainers?.length ?? 0) > 0
+  const expirationLockedByDb = !!(dbConflict?.scheduledForDeletionBy && dbConflict?.expiresAt)
   const [defaultExpMinutes, setDefaultExpMinutes] = useState(480)
   const [expirationEnabled, setExpirationEnabled] = useState(true)
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(dayjs().add(480, 'minute'))
@@ -102,6 +117,17 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     isMemoryLimitEnabled()
       .then(setMemoryEnabled)
       .catch(() => {})
+    isDeletionOnExpirationEnabled()
+      .then(setDbDeletionEnabled)
+      .catch(() => {})
+    isDumpEnabled()
+      .then((enabled) => {
+        setDumpFeatureEnabled(enabled)
+        if (enabled) {
+          listDumps().then(setAllDumps).catch(() => setAllDumps([]))
+        }
+      })
+      .catch(() => setDumpFeatureEnabled(false))
   }, [])
 
   useEffect(() => {
@@ -170,6 +196,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
 
   function handleDatabaseSelect(dbName: string | null) {
     setSelectedDb(dbName)
+    setDeleteDbOnExpiration(false)
+    setDbConflict(null)
     if (dbEnvVar && dbName) {
       const idx = envVars.findIndex((e) => e.key === dbEnvVar)
       if (idx >= 0) {
@@ -177,6 +205,17 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       } else {
         setEnvVars((prev) => [...prev, { key: dbEnvVar, value: dbName }])
       }
+    }
+    if (dbName) {
+      getDatabaseConflicts(dbName)
+        .then((conflict) => {
+          setDbConflict(conflict)
+          if (conflict.scheduledForDeletionBy && conflict.expiresAt) {
+            setExpirationEnabled(true)
+            setExpiresAt(dayjs(conflict.expiresAt))
+          }
+        })
+        .catch(() => setDbConflict(null))
     }
   }
 
@@ -195,16 +234,31 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setDatabases([])
     setSelectedDb(null)
     setDbEnvVar(null)
+    setDeleteDbOnExpiration(false)
+    setDbConflict(null)
+    setSelectedDump(null)
+    setConfirmDialogOpen(false)
+    setConfirmNameInput('')
   }
 
   async function handleRun() {
     if (!selectedRepo) return notify('Please select a repository.', 'warning')
     if (!selectedTag) return notify('Please select a tag.', 'warning')
 
+    if (deleteDbOnExpiration && selectedDb && expirationEnabled) {
+      setConfirmNameInput('')
+      setConfirmDialogOpen(true)
+      return
+    }
+
     const name = containerName ? ` as "${containerName}"` : ''
     const accepted = await confirm(`Run container from ${selectedRepo}:${selectedTag}${name}?`)
     if (!accepted) return
 
+    executeRun()
+  }
+
+  async function executeRun() {
     setRunning(true)
     setSseEvents([])
     setSseError(false)
@@ -215,14 +269,18 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         .map((e) => `${e.key.trim()}=${e.value.trim()}`)
 
       const parsedMemory = memoryMb ? parseInt(memoryMb, 10) : null
+      const shouldDeleteDb = deleteDbOnExpiration && expirationEnabled && !!selectedDb
 
       const ticket = await prepareRunContainer({
         repository: selectedRepo,
-        tag: selectedTag,
+        tag: selectedTag!,
         containerName,
         envVars: envList,
         expiresAt: expirationEnabled && expiresAt ? expiresAt.format('YYYY-MM-DDTHH:mm:ss') : null,
         memoryMb: parsedMemory && !isNaN(parsedMemory) ? parsedMemory : null,
+        databaseName: selectedDb || null,
+        deleteDatabaseOnExpiration: shouldDeleteDb,
+        dumpId: selectedDump?.id || null,
       })
 
       cleanupSse.current = streamRunContainer(
@@ -248,6 +306,11 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     }
   }
 
+  function handleConfirmRun() {
+    setConfirmDialogOpen(false)
+    executeRun()
+  }
+
   function handleClose() {
     if (cleanupSse.current) {
       cleanupSse.current()
@@ -259,6 +322,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   }
 
   return (
+    <>
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center' }}>
         <Add sx={{ mr: 1 }} /> New Container
@@ -268,7 +332,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       </DialogTitle>
       <DialogContent dividers sx={{ pt: 3 }}>
         {running || sseEvents.length > 0 ? (
-          <OperationProgress events={sseEvents} />
+          <OperationProgress events={sseEvents} steps={selectedDump ? RUN_WITH_RESTORE_STEPS : undefined} />
         ) : (
           <>
             {/* Repository + Tag */}
@@ -387,6 +451,79 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                     )}
                   />
                 </Grid>
+                {selectedDb && dbConflict?.scheduledForDeletionBy && (
+                  <Grid size={{ xs: 12 }}>
+                    <Alert severity="error" variant="outlined">
+                      Database <strong>{selectedDb}</strong> is scheduled for deletion by
+                      container <strong>{dbConflict.scheduledForDeletionBy}</strong>.
+                      It will be dropped when that container expires.
+                    </Alert>
+                    {expirationLockedByDb && (
+                      <Alert severity="info" variant="outlined" sx={{ mt: 1 }}>
+                        Expiration time is synced with container <strong>{dbConflict.scheduledForDeletionBy}</strong>.
+                        This container will be removed together when the database is dropped.
+                      </Alert>
+                    )}
+                  </Grid>
+                )}
+                {dbDeletionEnabled && selectedDb && expirationEnabled && (
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={deleteDbOnExpiration}
+                          onChange={(e) => setDeleteDbOnExpiration(e.target.checked)}
+                          disabled={hasDbUsageConflict}
+                          color="warning"
+                        />
+                      }
+                      label={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Warning fontSize="small" color="warning" /> Delete database on expiration
+                        </Box>
+                      }
+                    />
+                  </Grid>
+                )}
+                {hasDbUsageConflict && dbDeletionEnabled && selectedDb && expirationEnabled && (
+                  <Grid size={{ xs: 12 }}>
+                    <Alert severity="error" variant="outlined">
+                      Cannot enable database deletion. Database <strong>{selectedDb}</strong> is
+                      in use by: <strong>{dbConflict!.inUseByContainers.join(', ')}</strong>.
+                    </Alert>
+                  </Grid>
+                )}
+                {deleteDbOnExpiration && selectedDb && expirationEnabled && !hasDbUsageConflict && (
+                  <Grid size={{ xs: 12 }}>
+                    <Alert severity="warning" variant="outlined">
+                      The database <strong>{selectedDb}</strong> will be permanently deleted when this container expires.
+                      This action cannot be undone.
+                    </Alert>
+                  </Grid>
+                )}
+              </Grid>
+            )}
+
+            {/* Dump Restore */}
+            {dumpFeatureEnabled && dbEnabled && selectedDb && (
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <Autocomplete
+                    options={allDumps.filter((d) => !d.databaseName || d.databaseName === selectedDb)}
+                    getOptionLabel={(d) => d.originalFilename}
+                    value={selectedDump}
+                    onChange={(_e, value) => setSelectedDump(value)}
+                    isOptionEqualToValue={(a, b) => a.id === b.id}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Restore Dump (optional)"
+                        placeholder="Select a dump to restore after start..."
+                        size="small"
+                      />
+                    )}
+                  />
+                </Grid>
               </Grid>
             )}
 
@@ -398,6 +535,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                     <Switch
                       checked={expirationEnabled}
                       onChange={(e) => setExpirationEnabled(e.target.checked)}
+                      disabled={expirationLockedByDb}
                     />
                   }
                   label={
@@ -416,16 +554,21 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                         { label: '1 Day', amount: 1, unit: 'day' as const },
                         { label: '3 Days', amount: 3, unit: 'day' as const },
                         { label: '1 Week', amount: 7, unit: 'day' as const },
-                      ].map((opt) => (
-                        <Chip
-                          key={opt.label}
-                          label={opt.label}
-                          onClick={() => setExpiresAt(dayjs().add(opt.amount, opt.unit))}
-                          color={expiresAt && expiresAt.isSame(dayjs().add(opt.amount, opt.unit), 'minute') ? 'primary' : 'default'}
-                          variant={expiresAt && expiresAt.isSame(dayjs().add(opt.amount, opt.unit), 'minute') ? 'filled' : 'outlined'}
-                          clickable
-                        />
-                      ))}
+                      ].map((opt) => {
+                        const target = dayjs().add(opt.amount, opt.unit)
+                        const exceedsMax = expirationLockedByDb && target.isAfter(dayjs(dbConflict!.expiresAt))
+                        return (
+                          <Chip
+                            key={opt.label}
+                            label={opt.label}
+                            onClick={exceedsMax ? undefined : () => setExpiresAt(target)}
+                            color={expiresAt && expiresAt.isSame(target, 'minute') ? 'primary' : 'default'}
+                            variant={expiresAt && expiresAt.isSame(target, 'minute') ? 'filled' : 'outlined'}
+                            clickable={!exceedsMax}
+                            disabled={exceedsMax}
+                          />
+                        )
+                      })}
                     </Box>
                   </Grid>
                   <Grid size={{ xs: 12, md: 5 }}>
@@ -434,11 +577,14 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                       value={expiresAt}
                       onChange={(v) => setExpiresAt(v)}
                       minDateTime={dayjs()}
+                      maxDateTime={expirationLockedByDb ? dayjs(dbConflict!.expiresAt) : undefined}
                       slotProps={{
                         textField: {
                           fullWidth: true,
                           size: 'small',
-                          helperText: 'Container will be stopped and removed at this time',
+                          helperText: expirationLockedByDb
+                            ? `Cannot exceed expiration of container "${dbConflict!.scheduledForDeletionBy}"`
+                            : 'Container will be stopped and removed at this time',
                         },
                       }}
                     />
@@ -512,5 +658,42 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         )}
       </DialogActions>
     </Dialog>
+
+      <Dialog open={confirmDialogOpen} onClose={() => setConfirmDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: 'warning.main', color: 'white', display: 'flex', alignItems: 'center' }}>
+          <Warning sx={{ mr: 1 }} /> Confirm Database Deletion
+        </DialogTitle>
+        <DialogContent dividers sx={{ pt: 3 }}>
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            The database <strong>{selectedDb}</strong> will be permanently deleted when this container expires.
+            This action cannot be undone.
+          </Alert>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            To confirm, type the database name <strong>{selectedDb}</strong> below:
+          </Typography>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder={selectedDb ?? ''}
+            value={confirmNameInput}
+            onChange={(e) => setConfirmNameInput(e.target.value)}
+            onPaste={(e) => e.preventDefault()}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setConfirmDialogOpen(false)} color="inherit">Cancel</Button>
+          <Button
+            variant="contained"
+            color="warning"
+            disabled={confirmNameInput !== selectedDb}
+            onClick={handleConfirmRun}
+            startIcon={<PlayArrow />}
+          >
+            Confirm & Run
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   )
 }

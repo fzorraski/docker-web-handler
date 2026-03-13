@@ -8,6 +8,8 @@ export interface DockerContainer {
   names: string
   expiresAt?: string
   portPaths?: Record<string, string>
+  databaseName?: string
+  deleteDatabaseOnExpiration?: boolean
 }
 
 export interface DockerImage {
@@ -18,10 +20,29 @@ export interface DockerImage {
   size: string
 }
 
+export interface DatabaseConflict {
+  scheduledForDeletionBy?: string | null
+  inUseByContainers: string[]
+  expiresAt?: string | null
+}
+
 export interface ApiResponse {
   state: number
   message?: string
   tags?: string[]
   databases?: string[]
   dbEnvVar?: string
+}
+
+export interface DatabaseDump {
+  id: string
+  originalFilename: string
+  storedFilename: string
+  databaseName?: string
+  version?: string
+  md5Hash?: string
+  uploadedAt: string
+  expiresAt?: string
+  fileSize: number
+  format: 'SQL' | 'CUSTOM' | 'COMPRESSED'
 }

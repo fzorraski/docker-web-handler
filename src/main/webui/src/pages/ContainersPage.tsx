@@ -5,6 +5,10 @@ import {
   stopContainer,
   startContainer,
   getAllowedRepositories,
+  cancelDatabaseDeletion,
+  cancelExpiration,
+  extendExpiration,
+  isDatabaseListingEnabled,
 } from '../services/containerService'
 import { streamRemoveContainer, type ContainerEvent } from '../services/sseService'
 import NewContainerModal from '../components/NewContainerModal'
@@ -23,6 +27,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   Paper,
   Chip,
   CircularProgress,
@@ -37,7 +42,7 @@ import {
   FormControlLabel,
   Checkbox,
 } from '@mui/material'
-import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn } from '@mui/icons-material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime } from '@mui/icons-material'
 
 interface ColumnDef {
   key: string
@@ -45,7 +50,7 @@ interface ColumnDef {
   defaultVisible: boolean
 }
 
-const COLUMNS: ColumnDef[] = [
+const BASE_COLUMNS: ColumnDef[] = [
   { key: 'containerId', label: 'Container ID', defaultVisible: false },
   { key: 'image', label: 'Image', defaultVisible: true },
   { key: 'tag', label: 'Tag', defaultVisible: true },
@@ -54,18 +59,23 @@ const COLUMNS: ColumnDef[] = [
   { key: 'status', label: 'Status', defaultVisible: true },
   { key: 'ports', label: 'Ports', defaultVisible: true },
   { key: 'names', label: 'Name', defaultVisible: true },
+  { key: 'database', label: 'Database', defaultVisible: true },
   { key: 'expires', label: 'Expires', defaultVisible: true },
   { key: 'actions', label: 'Actions', defaultVisible: true },
 ]
 
 const STORAGE_KEY = 'containerColumnsVisibility'
 
-function loadVisibility(): Record<string, boolean> {
+function buildColumns(dbListingEnabled: boolean): ColumnDef[] {
+  return dbListingEnabled ? BASE_COLUMNS : BASE_COLUMNS.filter((c) => c.key !== 'database')
+}
+
+function loadVisibility(columns: ColumnDef[]): Record<string, boolean> {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored) return JSON.parse(stored)
   } catch { /* ignore */ }
-  return Object.fromEntries(COLUMNS.map((c) => [c.key, c.defaultVisible]))
+  return Object.fromEntries(columns.map((c) => [c.key, c.defaultVisible]))
 }
 
 export default function ContainersPage() {
@@ -74,18 +84,22 @@ export default function ContainersPage() {
   const [filter, setFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [hasRepos, setHasRepos] = useState(false)
+  const [dbListingEnabled, setDbListingEnabled] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
   const [removeEvents, setRemoveEvents] = useState<ContainerEvent[]>([])
   const [removeError, setRemoveError] = useState(false)
   const [removeDone, setRemoveDone] = useState(false)
   const cleanupRemoveSse = useRef<(() => void) | null>(null)
-  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(loadVisibility)
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(() => loadVisibility(BASE_COLUMNS))
   const [columnMenuAnchor, setColumnMenuAnchor] = useState<null | HTMLElement>(null)
+  const [sortKey, setSortKey] = useState<string>('')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
   const machineIp = window.location.hostname
 
-  const visibleColumns = COLUMNS.filter((c) => columnVisibility[c.key])
+  const columns = useMemo(() => buildColumns(dbListingEnabled), [dbListingEnabled])
+  const visibleColumns = columns.filter((c) => columnVisibility[c.key])
   const colSpan = visibleColumns.length
 
   function toggleColumn(key: string) {
@@ -107,7 +121,30 @@ export default function ContainersPage() {
   useEffect(() => {
     loadContainers()
     getAllowedRepositories().then((repos) => setHasRepos(repos.length > 0)).catch(() => {})
+    isDatabaseListingEnabled().then(setDbListingEnabled).catch(() => {})
   }, [loadContainers])
+
+  // Auto-refresh after the nearest container expires
+  useEffect(() => {
+    const now = Date.now()
+    const expirations = containers
+      .filter((c) => c.expiresAt)
+      .map((c) => new Date(c.expiresAt!).getTime())
+    if (expirations.length === 0) return
+
+    const nearest = Math.min(...expirations)
+    // For future expirations: wait until expiration + 6s buffer
+    // For already-expired: wait 6s from now (one retry for backend to clean up)
+    const fireAt = nearest > now ? nearest + 6000 : now + 6000
+    const delay = fireAt - now
+
+    const timer = setTimeout(() => {
+      getContainers()
+        .then(setContainers)
+        .catch(() => {})
+    }, delay)
+    return () => clearTimeout(timer)
+  }, [containers])
 
   async function handleStop(id: string) {
     if (!(await confirm(`Stop container ${id}?`))) return
@@ -171,11 +208,84 @@ export default function ContainersPage() {
     loadContainers()
   }
 
+  async function handleExtendExpiration(id: string) {
+    try {
+      const ok = await extendExpiration(id, 10)
+      notify(ok ? 'Expiration extended by 10 minutes.' : 'Failed to extend expiration.', ok ? 'success' : 'error')
+    } catch {
+      notify('An unexpected error occurred.', 'error')
+    }
+    loadContainers()
+  }
+
+  async function handleCancelExpiration(id: string) {
+    if (!(await confirm(`Cancel expiration for container ${id}? The container will no longer be auto-removed.`))) return
+    try {
+      const ok = await cancelExpiration(id)
+      notify(ok ? 'Expiration cancelled.' : 'Failed to cancel expiration.', ok ? 'success' : 'error')
+    } catch {
+      notify('An unexpected error occurred.', 'error')
+    }
+    loadContainers()
+  }
+
+  async function handleCancelDbDeletion(id: string) {
+    if (!(await confirm(`Cancel database deletion for container ${id}? The database will no longer be dropped on expiration.`))) return
+    try {
+      const ok = await cancelDatabaseDeletion(id)
+      notify(ok ? 'Database deletion cancelled.' : 'Failed to cancel database deletion.', ok ? 'success' : 'error')
+    } catch {
+      notify('An unexpected error occurred.', 'error')
+    }
+    loadContainers()
+  }
+
+  function handleSort(key: string) {
+    if (key === 'actions') return
+    setSortDir(sortKey === key && sortDir === 'asc' ? 'desc' : 'asc')
+    setSortKey(key)
+  }
+
   const isUp = (status: string) => status.includes('Up')
 
-  const filtered = containers.filter((c) =>
-    Object.values(c).some((v) => v.toLowerCase().includes(filter.toLowerCase()))
-  )
+  function getContainerValue(c: DockerContainer, key: string): string {
+    switch (key) {
+      case 'containerId': return c.containerId
+      case 'image': return c.image
+      case 'tag': return c.image.split(':')[1] ?? ''
+      case 'command': return c.command
+      case 'created': return c.created
+      case 'status': return c.status
+      case 'ports': return c.ports
+      case 'names': return c.names
+      case 'database': return c.databaseName ?? ''
+      case 'expires': return c.expiresAt ?? ''
+      default: return ''
+    }
+  }
+
+  const filtered = useMemo(() => {
+    const result = containers.filter((c) =>
+      Object.values(c).some((v) => v.toLowerCase().includes(filter.toLowerCase()))
+    )
+    if (!sortKey) return result
+    return [...result].sort((a, b) => {
+      const va = getContainerValue(a, sortKey).toLowerCase()
+      const vb = getContainerValue(b, sortKey).toLowerCase()
+      const cmp = va.localeCompare(vb)
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [containers, filter, sortKey, sortDir])
+
+  const dbsScheduledForDeletion = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const c of containers) {
+      if (c.databaseName && c.deleteDatabaseOnExpiration) {
+        map.set(c.databaseName, c.names)
+      }
+    }
+    return map
+  }, [containers])
 
   return (
     <>
@@ -224,7 +334,7 @@ export default function ContainersPage() {
             onClose={() => setColumnMenuAnchor(null)}
           >
             <Box sx={{ px: 2, py: 1 }}>
-              {COLUMNS.map((col) => (
+              {columns.map((col) => (
                 <FormControlLabel
                   key={col.key}
                   control={
@@ -247,7 +357,18 @@ export default function ContainersPage() {
             <TableHead>
               <TableRow sx={{ bgcolor: 'primary.main' }}>
                 {visibleColumns.map((col) => (
-                  <TableCell key={col.key} sx={{ color: 'white', fontWeight: 600 }}>{col.label}</TableCell>
+                  <TableCell key={col.key} sx={{ color: 'white', fontWeight: 600 }}>
+                    {col.key !== 'actions' ? (
+                      <TableSortLabel
+                        active={sortKey === col.key}
+                        direction={sortKey === col.key ? sortDir : 'asc'}
+                        onClick={() => handleSort(col.key)}
+                        sx={{ color: 'white !important', '& .MuiTableSortLabel-icon': { color: 'white !important' } }}
+                      >
+                        {col.label}
+                      </TableSortLabel>
+                    ) : col.label}
+                  </TableCell>
                 ))}
               </TableRow>
             </TableHead>
@@ -301,10 +422,51 @@ export default function ContainersPage() {
                     </TableCell>
                   )}
                   {columnVisibility.names && <TableCell sx={{ fontWeight: 600 }}>{c.names}</TableCell>}
+                  {columnVisibility.database && (
+                    <TableCell>
+                      {c.databaseName ? (
+                        <Typography variant="body2">{c.databaseName}</Typography>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">-</Typography>
+                      )}
+                    </TableCell>
+                  )}
                   {columnVisibility.expires && (
                     <TableCell>
                       {c.expiresAt ? (
-                        <ExpirationChip expiresAt={c.expiresAt} />
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <ExpirationChip expiresAt={c.expiresAt} onCancel={() => handleCancelExpiration(c.containerId)} onExpired={loadContainers} />
+                            <Tooltip title="Extend by 10 minutes">
+                              <IconButton size="small" onClick={() => handleExtendExpiration(c.containerId)} sx={{ p: 0.25 }}>
+                                <MoreTime fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
+                          {c.databaseName && c.deleteDatabaseOnExpiration && (
+                            <Tooltip title={`Database "${c.databaseName}" will be deleted on expiration`}>
+                              <Chip
+                                label={`DB: ${c.databaseName}`}
+                                size="small"
+                                color="warning"
+                                icon={<Warning />}
+                                variant="filled"
+                                onDelete={() => handleCancelDbDeletion(c.containerId)}
+                              />
+                            </Tooltip>
+                          )}
+                          {c.databaseName && !c.deleteDatabaseOnExpiration && dbsScheduledForDeletion.has(c.databaseName) && (
+                            <Tooltip title={`Database "${c.databaseName}" will be deleted by container "${dbsScheduledForDeletion.get(c.databaseName)}"`}>
+                              <Chip
+                                label={`DB: ${c.databaseName}`}
+                                size="small"
+                                color="error"
+                                icon={<Warning />}
+                                variant="outlined"
+                              />
+                            </Tooltip>
+                          )}
+                        </Box>
                       ) : (
                         <Typography variant="body2" color="text.secondary">-</Typography>
                       )}
@@ -376,15 +538,24 @@ export default function ContainersPage() {
   )
 }
 
-function ExpirationChip({ expiresAt }: { expiresAt: string }) {
+function ExpirationChip({ expiresAt, onCancel, onExpired }: { expiresAt: string; onCancel: () => void; onExpired: () => void }) {
   const expiresMs = useMemo(() => new Date(expiresAt).getTime(), [expiresAt])
   const [remaining, setRemaining] = useState('')
+  const expiredFired = useRef(false)
+
+  useEffect(() => {
+    expiredFired.current = false
+  }, [expiresMs])
 
   useEffect(() => {
     function update() {
       const diff = expiresMs - Date.now()
       if (diff <= 0) {
         setRemaining('Expiring...')
+        if (!expiredFired.current) {
+          expiredFired.current = true
+          setTimeout(onExpired, 6000)
+        }
         return
       }
       const h = Math.floor(diff / 3600000)
@@ -395,7 +566,7 @@ function ExpirationChip({ expiresAt }: { expiresAt: string }) {
     update()
     const id = setInterval(update, 1000)
     return () => clearInterval(id)
-  }, [expiresMs])
+  }, [expiresMs, onExpired])
 
   return (
     <Chip
@@ -404,6 +575,7 @@ function ExpirationChip({ expiresAt }: { expiresAt: string }) {
       color="warning"
       icon={<Timer />}
       variant="outlined"
+      onDelete={onCancel}
     />
   )
 }

@@ -13,13 +13,15 @@ import type { ContainerEvent } from '../services/sseService'
 const RUN_STEPS = ['Validating', 'Pulling', 'Creating', 'Starting']
 const REMOVE_STEPS = ['Cancelling', 'Stopping', 'Removing']
 const REMOVE_IMAGE_STEPS = ['Removing']
+const RESTORE_STEPS = ['Validating', 'Preparing', 'Creating Database', 'Restoring']
+const RUN_WITH_RESTORE_STEPS = ['Validating', 'Pulling', 'Creating', 'Starting', 'Restoring']
 
 interface Props {
   events: ContainerEvent[]
   steps?: string[]
 }
 
-export { RUN_STEPS, REMOVE_STEPS, REMOVE_IMAGE_STEPS }
+export { RUN_STEPS, REMOVE_STEPS, REMOVE_IMAGE_STEPS, RESTORE_STEPS, RUN_WITH_RESTORE_STEPS }
 
 export default function OperationProgress({ events, steps = RUN_STEPS }: Props) {
   const logRef = useRef<HTMLDivElement>(null)

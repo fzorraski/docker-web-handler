@@ -1,6 +1,6 @@
 import type { DockerImage, ApiResponse } from '../types'
 
-const API = '/images/'
+const API = '/api/images/'
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(res.statusText)
