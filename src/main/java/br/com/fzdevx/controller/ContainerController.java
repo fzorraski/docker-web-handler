@@ -1,11 +1,14 @@
 package br.com.fzdevx.controller;
 
+import br.com.fzdevx.model.ContainerExpiration;
+import br.com.fzdevx.model.DatabaseConflict;
 import br.com.fzdevx.model.DockerContainer;
 import br.com.fzdevx.model.RunContainerRequest;
 import br.com.fzdevx.model.Response;
 import br.com.fzdevx.service.ContainerExpirationService;
 import br.com.fzdevx.service.DatabaseService;
 import br.com.fzdevx.service.RegistryService;
+import br.com.fzdevx.usecase.RestoreDumpUseCase;
 import br.com.fzdevx.util.Constants;
 import br.com.fzdevx.util.DateFormatter;
 import br.com.fzdevx.util.InputValidator;
@@ -88,6 +91,7 @@ public class ContainerController {
 
         for (Container dc : dockerContainers) {
             if (dc.getImage().equals(Constants.DOCKER_WEB_HANDLER_IMAGE)) continue;
+            if (dc.getLabels() != null && dc.getLabels().containsKey(RestoreDumpUseCase.EPHEMERAL_LABEL)) continue;
 
             DockerContainer dockerContainer = new DockerContainer();
             dockerContainer.setContainerId(dc.getId().substring(0, 10));
@@ -108,6 +112,13 @@ public class ContainerController {
             Instant expiresAt = expirationService.getExpiresAt(dockerContainer.getContainerId());
             if (expiresAt != null) {
                 dockerContainer.setExpiresAt(expiresAt.toString());
+            }
+
+            String scheduledDbName = expirationService.getDatabaseName(dockerContainer.getContainerId());
+            if (scheduledDbName != null) {
+                dockerContainer.setDatabaseName(scheduledDbName);
+                dockerContainer.setDeleteDatabaseOnExpiration(
+                        expirationService.isDeleteDatabaseOnExpiration(dockerContainer.getContainerId()));
             }
 
             containers.add(dockerContainer);
@@ -383,6 +394,64 @@ public class ContainerController {
     }
 
     @GET
+    @Path("/database-listing-enabled")
+    @Produces(MediaType.APPLICATION_JSON)
+    public boolean isDatabaseListingEnabled() {
+        return databaseService.isListingEnabled();
+    }
+
+    @GET
+    @Path("/deletion-on-expiration-enabled")
+    @Produces(MediaType.APPLICATION_JSON)
+    public boolean isDeletionOnExpirationEnabled() {
+        return databaseService.isDeletionOnExpirationEnabled();
+    }
+
+    @GET
+    @Path("/database-conflicts")
+    @Produces(MediaType.APPLICATION_JSON)
+    public DatabaseConflict getDatabaseConflicts(@QueryParam("databaseName") String databaseName) {
+        Optional<String> dbError = InputValidator.validateDatabaseName(databaseName);
+        if (dbError.isPresent()) {
+            return new DatabaseConflict(null, Collections.emptyList(), null);
+        }
+
+        List<ContainerExpiration> expirations = expirationService.findByDatabaseName(databaseName);
+        if (expirations.isEmpty()) {
+            return new DatabaseConflict(null, Collections.emptyList(), null);
+        }
+
+        Map<String, String> containerNames = resolveContainerNames();
+
+        String scheduledForDeletionBy = null;
+        String expiresAt = null;
+        List<String> inUseByContainers = new ArrayList<>();
+
+        for (ContainerExpiration exp : expirations) {
+            String displayName = containerNames.getOrDefault(exp.getShortId(), exp.getShortId());
+            if (exp.isDeleteDatabaseOnExpiration()) {
+                scheduledForDeletionBy = displayName;
+                expiresAt = exp.getExpiresAt().toString();
+            }
+            inUseByContainers.add(displayName);
+        }
+
+        return new DatabaseConflict(scheduledForDeletionBy, inUseByContainers, expiresAt);
+    }
+
+    private Map<String, String> resolveContainerNames() {
+        Map<String, String> names = new HashMap<>();
+        try {
+            for (Container dc : dockerClient.listContainersCmd().withShowAll(true).exec()) {
+                String shortId = dc.getId().substring(0, 10);
+                names.put(shortId, dc.getNames()[0].replaceFirst("/", ""));
+            }
+        } catch (Exception ignored) {
+        }
+        return names;
+    }
+
+    @GET
     @Path("/repository-has-databases")
     @Produces(MediaType.APPLICATION_JSON)
     public boolean repositoryHasDatabases(@QueryParam("repository") String repository) {
@@ -438,6 +507,43 @@ public class ContainerController {
 
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/extend-expiration")
+    public boolean extendExpiration(DockerContainer dockerContainer, @QueryParam("minutes") @DefaultValue("10") int minutes) {
+        if (InputValidator.validateContainerId(dockerContainer.getContainerId()).isPresent()) {
+            return false;
+        }
+        if (minutes < 1 || minutes > 1440) {
+            return false;
+        }
+        return expirationService.extendExpiration(dockerContainer.getContainerId(), minutes);
+    }
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/cancel-db-deletion")
+    public boolean cancelDatabaseDeletion(DockerContainer dockerContainer) {
+        if (InputValidator.validateContainerId(dockerContainer.getContainerId()).isPresent()) {
+            return false;
+        }
+        return expirationService.disableDatabaseDeletion(dockerContainer.getContainerId());
+    }
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/cancel-expiration")
+    public boolean cancelExpiration(DockerContainer dockerContainer) {
+        if (InputValidator.validateContainerId(dockerContainer.getContainerId()).isPresent()) {
+            return false;
+        }
+        expirationService.cancel(dockerContainer.getContainerId());
+        return true;
+    }
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     @Path("/run")
     public Response runContainer(RunContainerRequest request) {
@@ -476,6 +582,15 @@ public class ContainerController {
             response.setState(0);
             response.setMessage(memError.get());
             return response;
+        }
+
+        if (request.getDatabaseName() != null && !request.getDatabaseName().isBlank()) {
+            Optional<String> dbError = InputValidator.validateDatabaseName(request.getDatabaseName());
+            if (dbError.isPresent()) {
+                response.setState(0);
+                response.setMessage(dbError.get());
+                return response;
+            }
         }
 
         List<String> allowed = getAllowedRepositories();
@@ -527,11 +642,13 @@ public class ContainerController {
 
             response.setState(1);
 
-            if (request.getExpiresAt() != null && !request.getExpiresAt().isBlank()) {
-                LocalDateTime ldt = LocalDateTime.parse(request.getExpiresAt(), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-                Instant expiresInstant = ldt.atZone(ZoneId.systemDefault()).toInstant();
+            Instant expiresInstant = resolveExpiration(request);
+            if (expiresInstant != null) {
                 String shortId = container.getId().substring(0, 10);
-                expirationService.schedule(shortId, container.getId(), expiresInstant);
+                expirationService.schedule(shortId, container.getId(), expiresInstant,
+                        request.getRepository(), request.getDatabaseName(),
+                        request.isDeleteDatabaseOnExpiration());
+                LocalDateTime ldt = LocalDateTime.ofInstant(expiresInstant, ZoneId.systemDefault());
                 response.setMessage("Container started successfully from " + imageRef
                         + " (expires at " + ldt.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) + ")");
             } else {
@@ -545,4 +662,32 @@ public class ContainerController {
         return response;
     }
 
+    private Instant resolveExpiration(RunContainerRequest request) {
+        Instant maxExpiration = findDbDeletionExpiration(request.getDatabaseName());
+
+        if (request.getExpiresAt() == null || request.getExpiresAt().isBlank()) {
+            return maxExpiration;
+        }
+
+        LocalDateTime ldt = LocalDateTime.parse(request.getExpiresAt(), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        Instant requested = ldt.atZone(ZoneId.systemDefault()).toInstant();
+
+        if (maxExpiration != null && requested.isAfter(maxExpiration)) {
+            return maxExpiration;
+        }
+
+        return requested;
+    }
+
+    private Instant findDbDeletionExpiration(String databaseName) {
+        if (databaseName == null || databaseName.isBlank()) {
+            return null;
+        }
+        for (ContainerExpiration other : expirationService.findByDatabaseName(databaseName)) {
+            if (other.isDeleteDatabaseOnExpiration()) {
+                return other.getExpiresAt();
+            }
+        }
+        return null;
+    }
 }

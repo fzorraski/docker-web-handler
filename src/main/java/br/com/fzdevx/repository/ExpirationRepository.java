@@ -13,5 +13,7 @@ public interface ExpirationRepository {
 
     Optional<ContainerExpiration> findByContainerId(String shortId);
 
+    List<ContainerExpiration> findByDatabaseName(String databaseName);
+
     List<ContainerExpiration> findAll();
 }

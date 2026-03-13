@@ -70,6 +70,18 @@ public class JsonFileExpirationRepository implements ExpirationRepository {
     }
 
     @Override
+    public List<ContainerExpiration> findByDatabaseName(String databaseName) {
+        lock.readLock().lock();
+        try {
+            return readFromFile().stream()
+                    .filter(e -> databaseName.equals(e.getDatabaseName()))
+                    .toList();
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    @Override
     public List<ContainerExpiration> findAll() {
         lock.readLock().lock();
         try {

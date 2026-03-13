@@ -16,6 +16,12 @@ public class RunContainerRequest {
 
     private Long memoryMb;
 
+    private String databaseName;
+
+    private boolean deleteDatabaseOnExpiration;
+
+    private String dumpId;
+
     public String getRepository() {
         return repository;
     }
@@ -62,5 +68,29 @@ public class RunContainerRequest {
 
     public void setMemoryMb(Long memoryMb) {
         this.memoryMb = memoryMb;
+    }
+
+    public String getDatabaseName() {
+        return databaseName;
+    }
+
+    public void setDatabaseName(String databaseName) {
+        this.databaseName = databaseName;
+    }
+
+    public boolean isDeleteDatabaseOnExpiration() {
+        return deleteDatabaseOnExpiration;
+    }
+
+    public void setDeleteDatabaseOnExpiration(boolean deleteDatabaseOnExpiration) {
+        this.deleteDatabaseOnExpiration = deleteDatabaseOnExpiration;
+    }
+
+    public String getDumpId() {
+        return dumpId;
+    }
+
+    public void setDumpId(String dumpId) {
+        this.dumpId = dumpId;
     }
 }

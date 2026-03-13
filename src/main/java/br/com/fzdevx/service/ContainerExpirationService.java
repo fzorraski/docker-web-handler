@@ -26,12 +26,21 @@ public class ContainerExpirationService {
     @Inject
     ExpirationRepository expirationRepository;
 
+    @Inject
+    DatabaseService databaseService;
+
     void onStartup(@Observes StartupEvent event) {
         reloadExpirations();
     }
 
     public void schedule(String shortId, String fullContainerId, Instant expiresAt) {
-        ContainerExpiration expiration = new ContainerExpiration(shortId, fullContainerId, expiresAt);
+        schedule(shortId, fullContainerId, expiresAt, null, null, false);
+    }
+
+    public void schedule(String shortId, String fullContainerId, Instant expiresAt,
+                         String repository, String databaseName, boolean deleteDatabaseOnExpiration) {
+        ContainerExpiration expiration = new ContainerExpiration(shortId, fullContainerId, expiresAt,
+                repository, databaseName, deleteDatabaseOnExpiration);
         expirationRepository.save(expiration);
         scheduleTask(expiration);
     }
@@ -48,6 +57,44 @@ public class ContainerExpirationService {
         return expirationRepository.findByContainerId(shortId)
                 .map(ContainerExpiration::getExpiresAt)
                 .orElse(null);
+    }
+
+    public String getDatabaseName(String shortId) {
+        return expirationRepository.findByContainerId(shortId)
+                .map(ContainerExpiration::getDatabaseName)
+                .orElse(null);
+    }
+
+    public boolean isDeleteDatabaseOnExpiration(String shortId) {
+        return expirationRepository.findByContainerId(shortId)
+                .map(ContainerExpiration::isDeleteDatabaseOnExpiration)
+                .orElse(false);
+    }
+
+    public List<ContainerExpiration> findByDatabaseName(String databaseName) {
+        return expirationRepository.findByDatabaseName(databaseName);
+    }
+
+    public boolean extendExpiration(String shortId, int minutes) {
+        return expirationRepository.findByContainerId(shortId)
+                .map(expiration -> {
+                    Instant newExpiresAt = expiration.getExpiresAt().plusSeconds(minutes * 60L);
+                    expiration.setExpiresAt(newExpiresAt);
+                    expirationRepository.save(expiration);
+                    scheduleTask(expiration);
+                    return true;
+                })
+                .orElse(false);
+    }
+
+    public boolean disableDatabaseDeletion(String shortId) {
+        return expirationRepository.findByContainerId(shortId)
+                .map(expiration -> {
+                    expiration.setDeleteDatabaseOnExpiration(false);
+                    expirationRepository.save(expiration);
+                    return true;
+                })
+                .orElse(false);
     }
 
     void onShutdown(@Observes ShutdownEvent event) {
@@ -97,8 +144,65 @@ public class ContainerExpirationService {
         } catch (Exception e) {
             Log.errorf("Failed to expire container %s: %s", expiration.getShortId(), e.getMessage());
         } finally {
+            dropDatabaseIfConfigured(expiration);
             scheduledTasks.remove(expiration.getShortId());
             expirationRepository.delete(expiration.getShortId());
+        }
+    }
+
+    private void dropDatabaseIfConfigured(ContainerExpiration expiration) {
+        // Re-read from repository to reflect any runtime changes (e.g. user cancelled DB deletion)
+        ContainerExpiration current = expirationRepository.findByContainerId(expiration.getShortId())
+                .orElse(expiration);
+        if (!current.isDeleteDatabaseOnExpiration()) {
+            return;
+        }
+        if (current.getRepository() == null || current.getDatabaseName() == null) {
+            return;
+        }
+        if (!databaseService.isDeletionOnExpirationEnabled()) {
+            return;
+        }
+        if (!databaseService.hasDatabaseConfig(current.getRepository())) {
+            return;
+        }
+        try {
+            databaseService.dropDatabase(current.getRepository(), current.getDatabaseName());
+            Log.infof("Database '%s' dropped on expiration of container %s.",
+                    current.getDatabaseName(), current.getShortId());
+            removeContainersByDatabase(current.getDatabaseName(), current.getShortId());
+        } catch (Exception e) {
+            Log.errorf("Failed to drop database '%s' on expiration of container %s: %s",
+                    current.getDatabaseName(), current.getShortId(), e.getMessage());
+        }
+    }
+
+    private void removeContainersByDatabase(String databaseName, String excludeShortId) {
+        List<ContainerExpiration> others = expirationRepository.findByDatabaseName(databaseName);
+        for (ContainerExpiration other : others) {
+            if (other.getShortId().equals(excludeShortId)) {
+                continue;
+            }
+            Log.infof("Removing container %s because database '%s' was dropped.",
+                    other.getShortId(), databaseName);
+            try {
+                try {
+                    dockerClient.stopContainerCmd(other.getFullContainerId()).exec();
+                } catch (Exception ignored) {
+                }
+                dockerClient.removeContainerCmd(other.getFullContainerId()).exec();
+                Log.infof("Container %s removed (database '%s' no longer exists).",
+                        other.getShortId(), databaseName);
+            } catch (Exception e) {
+                Log.errorf("Failed to remove container %s after database drop: %s",
+                        other.getShortId(), e.getMessage());
+            } finally {
+                ScheduledFuture<?> future = scheduledTasks.remove(other.getShortId());
+                if (future != null) {
+                    future.cancel(false);
+                }
+                expirationRepository.delete(other.getShortId());
+            }
         }
     }
 }
