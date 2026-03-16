@@ -1,9 +1,11 @@
 package br.com.fzdevx.controller;
 
 import br.com.fzdevx.model.DatabaseDump;
+import br.com.fzdevx.model.PostRestoreScriptInfo;
 import br.com.fzdevx.service.DatabaseService;
 import br.com.fzdevx.service.DuplicateDumpException;
 import br.com.fzdevx.service.DumpStorageService;
+import br.com.fzdevx.service.PostRestoreScriptService;
 import br.com.fzdevx.usecase.RestoreDumpUseCase;
 import br.com.fzdevx.util.InputValidator;
 import io.quarkus.logging.Log;
@@ -38,6 +40,9 @@ public class DatabaseDumpController {
 
     @Inject
     RestoreDumpUseCase restoreDumpUseCase;
+
+    @Inject
+    PostRestoreScriptService postRestoreScriptService;
 
     @Inject
     @ConfigProperty(name = "allowed.run.repositories")
@@ -306,6 +311,39 @@ public class DatabaseDumpController {
         }
 
         return Response.ok(Map.of("success", true)).build();
+    }
+
+    @GET
+    @Path("/post-restore-scripts")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getPostRestoreScripts(@QueryParam("repository") String repository) {
+        if (repository == null || repository.isBlank()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "repository parameter is required."))
+                    .build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get()))
+                    .build();
+        }
+
+        boolean enabled = postRestoreScriptService.isEnabled();
+        List<PostRestoreScriptInfo> mandatory = enabled
+                ? postRestoreScriptService.discoverMandatoryScripts(repository)
+                : List.of();
+        List<PostRestoreScriptInfo> optional = enabled
+                ? postRestoreScriptService.discoverOptionalScripts(repository)
+                : List.of();
+
+        return Response.ok(Map.of(
+                "enabled", enabled,
+                "mandatory", mandatory,
+                "optional", optional,
+                "onFailure", postRestoreScriptService.getOnFailure()
+        )).build();
     }
 
     private String extractString(Map<String, List<InputPart>> form, String key) {

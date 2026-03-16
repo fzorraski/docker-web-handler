@@ -167,6 +167,7 @@ public class RunContainerUseCase {
             restoreReq.setRepository(request.getRepository());
             restoreReq.setTargetDatabase(request.getDatabaseName());
             restoreReq.setCreateDatabase(request.isCreateDatabase());
+            restoreReq.setSelectedOptionalScripts(request.getSelectedOptionalScripts());
             boolean restoreSuccess = restoreDumpUseCase.execute(restoreReq, eventSink);
             if (!restoreSuccess) {
                 return;

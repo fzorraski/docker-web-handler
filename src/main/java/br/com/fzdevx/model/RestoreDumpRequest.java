@@ -1,5 +1,7 @@
 package br.com.fzdevx.model;
 
+import java.util.List;
+
 public class RestoreDumpRequest {
 
     private String dumpId;
@@ -7,6 +9,7 @@ public class RestoreDumpRequest {
     private String targetDatabase;
     private boolean createDatabase;
     private String password;
+    private List<String> selectedOptionalScripts;
 
     public String getDumpId() { return dumpId; }
     public void setDumpId(String dumpId) { this.dumpId = dumpId; }
@@ -22,4 +25,7 @@ public class RestoreDumpRequest {
 
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }
+
+    public List<String> getSelectedOptionalScripts() { return selectedOptionalScripts; }
+    public void setSelectedOptionalScripts(List<String> selectedOptionalScripts) { this.selectedOptionalScripts = selectedOptionalScripts; }
 }

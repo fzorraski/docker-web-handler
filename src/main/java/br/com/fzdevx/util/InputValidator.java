@@ -169,4 +169,20 @@ public final class InputValidator {
         }
         return Optional.empty();
     }
+
+    public static Optional<String> validateScriptFilename(String filename) {
+        if (filename == null || filename.isBlank()) {
+            return Optional.of("Script filename is required.");
+        }
+        if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
+            return Optional.of("Script filename must not contain path separators or '..'.");
+        }
+        if (!filename.toLowerCase().endsWith(".sql")) {
+            return Optional.of("Script filename must end with '.sql'.");
+        }
+        if (!FILENAME_PATTERN.matcher(filename).matches()) {
+            return Optional.of("Script filename contains invalid characters.");
+        }
+        return Optional.empty();
+    }
 }
