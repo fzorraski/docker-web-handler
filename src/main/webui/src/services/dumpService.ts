@@ -133,3 +133,22 @@ export async function getDumpRepositories(): Promise<string[]> {
   if (!res.ok) return []
   return res.json()
 }
+
+export interface PostRestoreScriptInfo {
+  filename: string
+  sortOrder: number
+  fileSize: number
+}
+
+export interface PostRestoreScriptsResponse {
+  enabled: boolean
+  mandatory: PostRestoreScriptInfo[]
+  optional: PostRestoreScriptInfo[]
+  onFailure: string
+}
+
+export async function getPostRestoreScripts(repository: string): Promise<PostRestoreScriptsResponse> {
+  const res = await fetch(API + 'post-restore-scripts?repository=' + encodeURIComponent(repository))
+  if (!res.ok) return { enabled: false, mandatory: [], optional: [], onFailure: 'stop' }
+  return res.json()
+}

@@ -24,6 +24,8 @@ public class RunContainerRequest {
 
     private boolean createDatabase;
 
+    private List<String> selectedOptionalScripts;
+
     public String getRepository() {
         return repository;
     }
@@ -102,5 +104,13 @@ public class RunContainerRequest {
 
     public void setCreateDatabase(boolean createDatabase) {
         this.createDatabase = createDatabase;
+    }
+
+    public List<String> getSelectedOptionalScripts() {
+        return selectedOptionalScripts;
+    }
+
+    public void setSelectedOptionalScripts(List<String> selectedOptionalScripts) {
+        this.selectedOptionalScripts = selectedOptionalScripts;
     }
 }

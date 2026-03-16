@@ -49,6 +49,7 @@ export async function prepareRunContainer(body: {
   deleteDatabaseOnExpiration?: boolean
   dumpId?: string | null
   createDatabase?: boolean
+  selectedOptionalScripts?: string[]
 }): Promise<string> {
   const res = await fetch('/api/containers/sse/run/prepare', {
     method: 'POST',
@@ -93,6 +94,7 @@ export async function prepareRestoreDump(body: {
   targetDatabase: string
   createDatabase: boolean
   password: string
+  selectedOptionalScripts?: string[]
 }): Promise<string> {
   const res = await fetch('/api/database/dumps/sse/restore/prepare', {
     method: 'POST',

@@ -15,6 +15,7 @@ import {
   CircularProgress,
   Switch,
   FormControlLabel,
+  Checkbox,
   Chip,
   ToggleButtonGroup,
   ToggleButton,
@@ -34,12 +35,12 @@ import {
   isMemoryLimitEnabled,
   repositoryHasDatabases,
 } from '../services/containerService'
-import { isDumpEnabled, listDumps } from '../services/dumpService'
+import { isDumpEnabled, listDumps, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
 import type { DatabaseConflict, DatabaseDump } from '../types'
 import { buildTargetDbName, formatBytes } from '../utils/format'
 import { prepareRunContainer, streamRunContainer, type ContainerEvent } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
-import OperationProgress, { RUN_WITH_RESTORE_STEPS } from './OperationProgress'
+import OperationProgress, { RUN_WITH_RESTORE_STEPS, RUN_WITH_RESTORE_AND_SCRIPTS_STEPS } from './OperationProgress'
 import DumpBrowserModal from './DumpBrowserModal'
 
 interface Props {
@@ -51,6 +52,12 @@ interface Props {
 interface EnvVar {
   key: string
   value: string
+}
+
+function formatScriptSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
 function compareTagsDesc(a: string, b: string): number {
@@ -97,6 +104,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const [dumpBrowserOpen, setDumpBrowserOpen] = useState(false)
   const [restoreTargetDb, setRestoreTargetDb] = useState('')
   const [createDatabase, setCreateDatabase] = useState(false)
+  const [scriptsResponse, setScriptsResponse] = useState<PostRestoreScriptsResponse | null>(null)
+  const [selectedOptionalScripts, setSelectedOptionalScripts] = useState<string[]>([])
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [confirmNameInput, setConfirmNameInput] = useState('')
   const activeDbName = dbMode === 'restore' ? restoreTargetDb.trim() || null : selectedDb
@@ -148,8 +157,18 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       setDatabases([])
       setSelectedDb(null)
       setDbEnvVar(null)
+      setScriptsResponse(null)
+      setSelectedOptionalScripts([])
       return
     }
+    getPostRestoreScripts(selectedRepo)
+      .then((res) => {
+        setScriptsResponse(res)
+        if (res.enabled) {
+          setSelectedOptionalScripts(res.optional.map((s) => s.filename))
+        }
+      })
+      .catch(() => setScriptsResponse(null))
     setTagsLoading(true)
     setSelectedTag(null)
     getRepositoryTags(selectedRepo)
@@ -296,6 +315,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setDumpBrowserOpen(false)
     setRestoreTargetDb('')
     setCreateDatabase(false)
+    setScriptsResponse(null)
+    setSelectedOptionalScripts([])
     setConfirmDialogOpen(false)
     setConfirmNameInput('')
   }
@@ -346,6 +367,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         deleteDatabaseOnExpiration: shouldDeleteDb,
         dumpId: dbMode === 'restore' ? (selectedDump?.id || null) : null,
         createDatabase: dbMode === 'restore' ? createDatabase : false,
+        selectedOptionalScripts: dbMode === 'restore' && scriptsResponse?.enabled ? selectedOptionalScripts : undefined,
       })
 
       cleanupSse.current = streamRunContainer(
@@ -405,7 +427,11 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       </DialogTitle>
       <DialogContent dividers sx={{ pt: 3 }}>
         {running || sseEvents.length > 0 ? (
-          <OperationProgress events={sseEvents} steps={dbMode === 'restore' && selectedDump ? RUN_WITH_RESTORE_STEPS : undefined} />
+          <OperationProgress events={sseEvents} steps={
+            dbMode === 'restore' && selectedDump
+              ? (scriptsResponse?.enabled ? RUN_WITH_RESTORE_AND_SCRIPTS_STEPS : RUN_WITH_RESTORE_STEPS)
+              : undefined
+          } />
         ) : (
           <>
             {/* Repository + Tag */}
@@ -723,6 +749,65 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                           The database <strong>{restoreTargetDb.trim()}</strong> will be permanently deleted when this container expires.
                           This action cannot be undone.
                         </Alert>
+                      </Grid>
+                    )}
+
+                    {scriptsResponse?.enabled && selectedDump && (scriptsResponse.mandatory.length > 0 || scriptsResponse.optional.length > 0) && (
+                      <Grid size={{ xs: 12 }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+                          Post-Restore Scripts
+                        </Typography>
+                        {scriptsResponse.mandatory.length > 0 && (
+                          <Box sx={{ mb: 1 }}>
+                            <Typography variant="caption" color="text.secondary">Mandatory (always run)</Typography>
+                            {scriptsResponse.mandatory.map((s) => (
+                              <FormControlLabel
+                                key={s.filename}
+                                control={<Checkbox checked disabled size="small" />}
+                                label={
+                                  <Typography variant="body2">
+                                    {s.filename}
+                                    <Chip label={formatScriptSize(s.fileSize)} size="small" variant="outlined" sx={{ ml: 1 }} />
+                                  </Typography>
+                                }
+                                sx={{ display: 'flex', ml: 0 }}
+                              />
+                            ))}
+                          </Box>
+                        )}
+                        {scriptsResponse.optional.length > 0 && (
+                          <Box sx={{ mb: 1 }}>
+                            <Typography variant="caption" color="text.secondary">Optional</Typography>
+                            {scriptsResponse.optional.map((s) => (
+                              <FormControlLabel
+                                key={s.filename}
+                                control={
+                                  <Checkbox
+                                    checked={selectedOptionalScripts.includes(s.filename)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedOptionalScripts((prev) => [...prev, s.filename])
+                                      } else {
+                                        setSelectedOptionalScripts((prev) => prev.filter((f) => f !== s.filename))
+                                      }
+                                    }}
+                                    size="small"
+                                  />
+                                }
+                                label={
+                                  <Typography variant="body2">
+                                    {s.filename}
+                                    <Chip label={formatScriptSize(s.fileSize)} size="small" variant="outlined" sx={{ ml: 1 }} />
+                                  </Typography>
+                                }
+                                sx={{ display: 'flex', ml: 0 }}
+                              />
+                            ))}
+                          </Box>
+                        )}
+                        <Typography variant="caption" color="text.secondary">
+                          On failure: {scriptsResponse.onFailure === 'stop' ? 'stop execution' : 'continue with remaining scripts'}
+                        </Typography>
                       </Grid>
                     )}
                   </>

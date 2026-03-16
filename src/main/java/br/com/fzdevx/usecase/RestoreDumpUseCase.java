@@ -2,9 +2,11 @@ package br.com.fzdevx.usecase;
 
 import br.com.fzdevx.model.ContainerEvent;
 import br.com.fzdevx.model.DatabaseDump;
+import br.com.fzdevx.model.PostRestoreScriptInfo;
 import br.com.fzdevx.model.RestoreDumpRequest;
 import br.com.fzdevx.service.DatabaseService;
 import br.com.fzdevx.service.DumpStorageService;
+import br.com.fzdevx.service.PostRestoreScriptService;
 import br.com.fzdevx.util.InputValidator;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerResponse;
@@ -44,6 +46,9 @@ public class RestoreDumpUseCase {
 
     @Inject
     DatabaseService databaseService;
+
+    @Inject
+    PostRestoreScriptService postRestoreScriptService;
 
     @Inject
     DockerClient dockerClient;
@@ -218,6 +223,25 @@ public class RestoreDumpUseCase {
             eventSink.accept(ContainerEvent.info("Restoring",
                     "Dump '" + dump.getOriginalFilename() + "' restored into '"
                             + request.getTargetDatabase() + "'."));
+
+            // Step 5: Run post-restore scripts if enabled
+            if (postRestoreScriptService.isEnabled()) {
+                List<PostRestoreScriptInfo> scripts = postRestoreScriptService.resolveScriptsToExecute(
+                        request.getRepository(), request.getSelectedOptionalScripts());
+                if (!scripts.isEmpty()) {
+                    if (ctx.cancelled.get()) {
+                        eventSink.accept(ContainerEvent.error("Running Scripts", "Restore cancelled by user."));
+                        return false;
+                    }
+                    boolean scriptsOk = postRestoreScriptService.executeScripts(
+                            scripts, pgInfo, request.getTargetDatabase(), pgImage,
+                            request.getRepository(), eventSink, ctx.cancelled);
+                    if (!scriptsOk && "stop".equalsIgnoreCase(postRestoreScriptService.getOnFailure())) {
+                        return false;
+                    }
+                }
+            }
+
             return true;
 
         } catch (Exception e) {

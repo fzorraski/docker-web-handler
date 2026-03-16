@@ -12,16 +12,26 @@ import {
   IconButton,
   FormControlLabel,
   Switch,
+  Checkbox,
   CircularProgress,
+  Typography,
+  Box,
+  Chip,
 } from '@mui/material'
 import { Close, Restore } from '@mui/icons-material'
 import type { DatabaseDump } from '../types'
 import { buildTargetDbName } from '../utils/format'
-import { getDumpRepositories, cancelRestore } from '../services/dumpService'
+import { getDumpRepositories, cancelRestore, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
 import { getRepositoryDatabases } from '../services/containerService'
 import { prepareRestoreDump, streamRestoreDump, type ContainerEvent } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
-import OperationProgress, { RESTORE_STEPS } from './OperationProgress'
+import OperationProgress, { RESTORE_STEPS, RESTORE_WITH_SCRIPTS_STEPS } from './OperationProgress'
+
+function formatScriptSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
 
 interface Props {
   open: boolean
@@ -43,6 +53,8 @@ export default function RestoreDumpModal({ open, dump, onClose, onRestored }: Pr
   const [cancelling, setCancelling] = useState(false)
   const [sseEvents, setSseEvents] = useState<ContainerEvent[]>([])
   const [sseError, setSseError] = useState(false)
+  const [scriptsResponse, setScriptsResponse] = useState<PostRestoreScriptsResponse | null>(null)
+  const [selectedOptionalScripts, setSelectedOptionalScripts] = useState<string[]>([])
   const cleanupSse = useRef<(() => void) | null>(null)
 
   useEffect(() => {
@@ -54,6 +66,8 @@ export default function RestoreDumpModal({ open, dump, onClose, onRestored }: Pr
   useEffect(() => {
     if (!selectedRepo) {
       setDatabases([])
+      setScriptsResponse(null)
+      setSelectedOptionalScripts([])
       return
     }
     setDbLoading(true)
@@ -64,6 +78,14 @@ export default function RestoreDumpModal({ open, dump, onClose, onRestored }: Pr
       })
       .catch(() => setDatabases([]))
       .finally(() => setDbLoading(false))
+    getPostRestoreScripts(selectedRepo)
+      .then((res) => {
+        setScriptsResponse(res)
+        if (res.enabled) {
+          setSelectedOptionalScripts(res.optional.map((s) => s.filename))
+        }
+      })
+      .catch(() => setScriptsResponse(null))
   }, [selectedRepo])
 
   useEffect(() => {
@@ -82,6 +104,8 @@ export default function RestoreDumpModal({ open, dump, onClose, onRestored }: Pr
     setSseError(false)
     setRunning(false)
     setCancelling(false)
+    setScriptsResponse(null)
+    setSelectedOptionalScripts([])
   }
 
   function handleClose() {
@@ -120,6 +144,7 @@ export default function RestoreDumpModal({ open, dump, onClose, onRestored }: Pr
         targetDatabase: targetDb.trim(),
         createDatabase: createDb || isNew,
         password,
+        selectedOptionalScripts: scriptsResponse?.enabled ? selectedOptionalScripts : undefined,
       })
 
       cleanupSse.current = streamRestoreDump(
@@ -162,7 +187,7 @@ export default function RestoreDumpModal({ open, dump, onClose, onRestored }: Pr
       </DialogTitle>
       <DialogContent dividers sx={{ pt: 3 }}>
         {running || sseEvents.length > 0 ? (
-          <OperationProgress events={sseEvents} steps={RESTORE_STEPS} />
+          <OperationProgress events={sseEvents} steps={scriptsResponse?.enabled ? RESTORE_WITH_SCRIPTS_STEPS : RESTORE_STEPS} />
         ) : (
           <>
             <TextField
@@ -237,6 +262,68 @@ export default function RestoreDumpModal({ open, dump, onClose, onRestored }: Pr
               }
               label="Create database if it doesn't exist"
             />
+
+            {scriptsResponse?.enabled && (scriptsResponse.mandatory.length > 0 || scriptsResponse.optional.length > 0) && (
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
+                  Post-Restore Scripts
+                </Typography>
+
+                {scriptsResponse.mandatory.length > 0 && (
+                  <Box sx={{ mb: 1 }}>
+                    <Typography variant="caption" color="text.secondary">Mandatory (always run)</Typography>
+                    {scriptsResponse.mandatory.map((s) => (
+                      <FormControlLabel
+                        key={s.filename}
+                        control={<Checkbox checked disabled size="small" />}
+                        label={
+                          <Typography variant="body2">
+                            {s.filename}
+                            <Chip label={formatScriptSize(s.fileSize)} size="small" variant="outlined" sx={{ ml: 1 }} />
+                          </Typography>
+                        }
+                        sx={{ display: 'flex', ml: 0 }}
+                      />
+                    ))}
+                  </Box>
+                )}
+
+                {scriptsResponse.optional.length > 0 && (
+                  <Box sx={{ mb: 1 }}>
+                    <Typography variant="caption" color="text.secondary">Optional</Typography>
+                    {scriptsResponse.optional.map((s) => (
+                      <FormControlLabel
+                        key={s.filename}
+                        control={
+                          <Checkbox
+                            checked={selectedOptionalScripts.includes(s.filename)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedOptionalScripts((prev) => [...prev, s.filename])
+                              } else {
+                                setSelectedOptionalScripts((prev) => prev.filter((f) => f !== s.filename))
+                              }
+                            }}
+                            size="small"
+                          />
+                        }
+                        label={
+                          <Typography variant="body2">
+                            {s.filename}
+                            <Chip label={formatScriptSize(s.fileSize)} size="small" variant="outlined" sx={{ ml: 1 }} />
+                          </Typography>
+                        }
+                        sx={{ display: 'flex', ml: 0 }}
+                      />
+                    ))}
+                  </Box>
+                )}
+
+                <Typography variant="caption" color="text.secondary">
+                  On failure: {scriptsResponse.onFailure === 'stop' ? 'stop execution' : 'continue with remaining scripts'}
+                </Typography>
+              </Box>
+            )}
           </>
         )}
       </DialogContent>
