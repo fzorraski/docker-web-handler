@@ -22,7 +22,7 @@ import {
 } from '@mui/material'
 import { MobileDateTimePicker } from '@mui/x-date-pickers/MobileDateTimePicker'
 import dayjs, { type Dayjs } from 'dayjs'
-import { Add, Close, Delete, Memory, PlayArrow, Timer, Warning, FolderOpen } from '@mui/icons-material'
+import { Add, Close, Delete, Memory, PlayArrow, Restore, Timer, Warning, FolderOpen } from '@mui/icons-material'
 import { Alert } from '@mui/material'
 import {
   getAllowedRepositories,
@@ -37,7 +37,7 @@ import {
 } from '../services/containerService'
 import { isDumpEnabled, listDumps, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
 import type { DatabaseConflict, DatabaseDump, DatabaseSnapshot } from '../types'
-import { buildTargetDbName, formatBytes } from '../utils/format'
+import { buildTargetDbName, buildSnapshotTargetDbName, formatBytes } from '../utils/format'
 import { prepareRunContainer, streamRunContainer, type ContainerEvent } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
 import OperationProgress, { RUN_WITH_RESTORE_STEPS, RUN_WITH_RESTORE_AND_SCRIPTS_STEPS } from './OperationProgress'
@@ -109,8 +109,10 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const [selectedOptionalScripts, setSelectedOptionalScripts] = useState<string[]>([])
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [confirmNameInput, setConfirmNameInput] = useState('')
+  const [confirmOverrideOpen, setConfirmOverrideOpen] = useState(false)
   const activeDbName = dbMode === 'restore' ? restoreTargetDb.trim() || null : selectedDb
   const hasDbUsageConflict = (dbConflict?.inUseByContainers?.length ?? 0) > 0
+  const restoreDbExists = !!(dbMode === 'restore' && restoreTargetDb.trim() && databases.includes(restoreTargetDb.trim()))
   const expirationLockedByDb = !!(dbConflict?.scheduledForDeletionBy && dbConflict?.expiresAt)
   const [defaultExpMinutes, setDefaultExpMinutes] = useState(480)
   const [expirationEnabled, setExpirationEnabled] = useState(true)
@@ -299,7 +301,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   function handleSnapshotSelected(snap: DatabaseSnapshot) {
     setSelectedSnapshot(snap)
     setSelectedDump(null)
-    const targetName = snap.sourceDatabaseName
+    const targetName = buildSnapshotTargetDbName(snap)
     setRestoreTargetDb(targetName)
     setCreateDatabase(!databases.includes(targetName))
     if (dbEnvVar && targetName) {
@@ -339,6 +341,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setSelectedOptionalScripts([])
     setConfirmDialogOpen(false)
     setConfirmNameInput('')
+    setConfirmOverrideOpen(false)
   }
 
   async function handleRun() {
@@ -349,6 +352,17 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       if (!selectedDump && !selectedSnapshot) return notify('Please select a dump or snapshot to restore.', 'warning')
       if (!restoreTargetDb.trim()) return notify('Please enter a target database name.', 'warning')
     }
+
+    if (restoreDbExists) {
+      setConfirmOverrideOpen(true)
+      return
+    }
+
+    await proceedAfterOverrideCheck()
+  }
+
+  async function proceedAfterOverrideCheck() {
+    setConfirmOverrideOpen(false)
 
     if (deleteDbOnExpiration && activeDbName && expirationEnabled) {
       setConfirmNameInput('')
@@ -440,7 +454,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       maxWidth="md"
       fullWidth
     >
-      <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center' }}>
+      <DialogTitle sx={{ bgcolor: 'primary.dark', color: 'white', display: 'flex', alignItems: 'center' }}>
         <Add sx={{ mr: 1 }} /> New Container
         <IconButton onClick={handleClose} sx={{ ml: 'auto', color: 'white' }}>
           <Close />
@@ -730,6 +744,15 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                         label="Create database if it doesn't exist"
                       />
                     </Grid>
+                    {restoreDbExists && (
+                      <Grid size={{ xs: 12 }}>
+                        <Alert severity="warning" variant="outlined" icon={<Warning />}>
+                          Database <strong>{restoreTargetDb.trim()}</strong> already exists
+                          {hasDbUsageConflict && <> and is being used by <strong>{dbConflict!.inUseByContainers.join(', ')}</strong></>}.
+                          {' '}Restoring into it will override its current data. You will be asked to confirm before proceeding.
+                        </Alert>
+                      </Grid>
+                    )}
                     {restoreTargetDb.trim() && dbConflict?.scheduledForDeletionBy && (
                       <Grid size={{ xs: 12 }}>
                         <Alert severity="error" variant="outlined">
@@ -983,6 +1006,38 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         onSelect={handleDumpSelected}
         onSelectSnapshot={handleSnapshotSelected}
       />
+
+      <Dialog open={confirmOverrideOpen} onClose={() => setConfirmOverrideOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: 'warning.main', color: 'white', display: 'flex', alignItems: 'center' }}>
+          <Warning sx={{ mr: 1 }} /> Confirm Database Override
+        </DialogTitle>
+        <DialogContent dividers sx={{ pt: 3 }}>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            The database <strong>{restoreTargetDb.trim()}</strong> already exists and contains data
+            {hasDbUsageConflict && <> and is being used by <strong>{dbConflict!.inUseByContainers.join(', ')}</strong></>}.
+          </Alert>
+          <Typography>
+            Restoring into this database will override its current content.
+            This action <strong>cannot be undone</strong>.
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            To avoid this, go back and change the target database name.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setConfirmOverrideOpen(false)} color="inherit">
+            Go Back
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={proceedAfterOverrideCheck}
+            startIcon={<Restore />}
+          >
+            Override and Continue
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={confirmDialogOpen} onClose={() => setConfirmDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: 'warning.main', color: 'white', display: 'flex', alignItems: 'center' }}>
