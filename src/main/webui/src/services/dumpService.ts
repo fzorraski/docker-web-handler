@@ -147,6 +147,26 @@ export interface PostRestoreScriptsResponse {
   onFailure: string
 }
 
+export async function updateDumpExpiration(
+  id: string,
+  expiresAt: string | null,
+  operationsPassword: string,
+): Promise<{ success: boolean; error?: string }> {
+  const res = await fetch(API + 'expiration/' + encodeURIComponent(id), {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Dump-Password': operationsPassword,
+    },
+    body: JSON.stringify({ expiresAt }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.error || res.statusText }
+  }
+  return { success: true }
+}
+
 export async function getPostRestoreScripts(repository: string): Promise<PostRestoreScriptsResponse> {
   const res = await fetch(API + 'post-restore-scripts?repository=' + encodeURIComponent(repository))
   if (!res.ok) return { enabled: false, mandatory: [], optional: [], onFailure: 'stop' }

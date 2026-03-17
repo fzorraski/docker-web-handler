@@ -182,6 +182,27 @@ public class DumpStorageService {
         scheduledExpirations.put(dump.getId(), future);
     }
 
+    public boolean updateExpiration(String id, Instant expiresAt) {
+        Optional<DatabaseDump> opt = dumpRepository.findById(id);
+        if (opt.isEmpty()) return false;
+
+        DatabaseDump dump = opt.get();
+        dump.setExpiresAt(expiresAt);
+        dumpRepository.save(dump);
+
+        // Cancel existing schedule
+        ScheduledFuture<?> existing = scheduledExpirations.remove(id);
+        if (existing != null) existing.cancel(false);
+
+        // Reschedule or leave unscheduled
+        if (expiresAt != null) {
+            scheduleExpiration(dump);
+        }
+
+        Log.infof("Updated expiration for dump '%s' to %s", dump.getOriginalFilename(), expiresAt);
+        return true;
+    }
+
     public Path prepareForRestore(DatabaseDump dump) throws IOException {
         Path storedPath = Path.of(storageDir).resolve(dump.getStoredFilename());
         if (!Files.exists(storedPath)) {
