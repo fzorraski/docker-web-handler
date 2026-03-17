@@ -46,6 +46,7 @@ export interface DatabaseDump {
   expiresAt?: string
   fileSize: number
   format: 'SQL' | 'CUSTOM' | 'COMPRESSED'
+  description?: string
 }
 
 export interface DatabaseSnapshot {
@@ -60,4 +61,5 @@ export interface DatabaseSnapshot {
   fileSize: number
   label?: string
   containerName?: string
+  description?: string
 }

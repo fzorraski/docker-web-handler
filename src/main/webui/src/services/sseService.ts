@@ -125,6 +125,7 @@ export async function prepareSnapshot(body: {
   sourceDatabaseName: string
   format: string
   label?: string
+  description?: string
   expiresAt?: string
   password: string
   containerName?: string

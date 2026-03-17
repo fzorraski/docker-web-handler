@@ -30,4 +30,9 @@ public class CreateSnapshotRequest {
 
     public String getContainerName() { return containerName; }
     public void setContainerName(String containerName) { this.containerName = containerName; }
+
+    private String description;
+
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
 }

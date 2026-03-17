@@ -102,7 +102,8 @@ public class DumpStorageService {
     }
 
     public DatabaseDump storeUpload(InputStream input, String originalFilename,
-                                     String databaseName, String version, Instant expiresAt) throws IOException {
+                                     String databaseName, String version, Instant expiresAt,
+                                     String description) throws IOException {
         Optional<DatabaseDump> existingByName = dumpRepository.findByOriginalFilename(originalFilename);
         if (existingByName.isPresent()) {
             throw new DuplicateDumpException(
@@ -151,6 +152,7 @@ public class DumpStorageService {
 
         dump.setMd5Hash(hash);
         dump.setFileSize(bytesWritten);
+        dump.setDescription(description);
 
         // Detect actual format by reading magic bytes from the stored (gzipped) file
         DatabaseDump.Format detectedFormat = detectFormatFromContent(storedPath);

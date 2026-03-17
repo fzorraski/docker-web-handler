@@ -36,11 +36,23 @@ import {
   AlertTitle,
   Tabs,
   Tab,
+  Tooltip,
+  useTheme,
 } from '@mui/material'
-import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile, CameraAlt } from '@mui/icons-material'
+import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile, CameraAlt, InfoOutlined } from '@mui/icons-material'
 
 export default function DatabasePage() {
   const { notify } = useNotification()
+  const theme = useTheme()
+  const isDark = theme.palette.mode === 'dark'
+  const theadBg = isDark ? 'background.paper' : 'primary.main'
+  const theadColor = isDark ? 'text.primary' : 'white'
+  const theadSortSx = isDark
+    ? { color: 'text.primary !important', '& .MuiTableSortLabel-icon': { color: 'text.secondary !important' } }
+    : { color: 'white !important', '& .MuiTableSortLabel-icon': { color: 'white !important' } }
+  const theadCheckboxSx = isDark
+    ? { color: 'text.primary', '&.Mui-checked': { color: 'primary.main' }, '&.MuiCheckbox-indeterminate': { color: 'primary.main' } }
+    : { color: 'white', '&.Mui-checked': { color: 'white' }, '&.MuiCheckbox-indeterminate': { color: 'white' } }
   const [activeTab, setActiveTab] = useState(0)
 
   // --- Dumps state ---
@@ -225,7 +237,7 @@ export default function DatabasePage() {
 
   const filteredDumps = useMemo(() => {
     const result = dumps.filter((d) =>
-      [d.originalFilename, d.databaseName ?? '', d.version ?? '', d.format, formatBytes(d.fileSize)]
+      [d.originalFilename, d.databaseName ?? '', d.version ?? '', d.format, formatBytes(d.fileSize), d.description ?? '']
         .some((v) => v.toLowerCase().includes(filter.toLowerCase())),
     )
     if (!sortKey) return result
@@ -334,7 +346,7 @@ export default function DatabasePage() {
 
   const filteredSnapshots = useMemo(() => {
     const result = snapshots.filter((s) =>
-      [s.label ?? '', s.repository, s.sourceDatabaseName, s.containerName ?? '', s.format, formatBytes(s.fileSize)]
+      [s.label ?? '', s.repository, s.sourceDatabaseName, s.containerName ?? '', s.format, formatBytes(s.fileSize), s.description ?? '']
         .some((v) => v.toLowerCase().includes(snapFilter.toLowerCase())),
     )
     if (!snapSortKey) return result
@@ -484,23 +496,23 @@ export default function DatabasePage() {
             <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2 }}>
               <Table>
                 <TableHead>
-                  <TableRow sx={{ bgcolor: 'primary.main' }}>
-                    <TableCell padding="checkbox" sx={{ bgcolor: 'primary.main' }}>
+                  <TableRow sx={{ bgcolor: theadBg }}>
+                    <TableCell padding="checkbox" sx={{ bgcolor: theadBg }}>
                       <Checkbox
                         checked={filteredDumps.length > 0 && selected.size === filteredDumps.length}
                         indeterminate={selected.size > 0 && selected.size < filteredDumps.length}
                         onChange={toggleSelectAll}
-                        sx={{ color: 'white', '&.Mui-checked': { color: 'white' }, '&.MuiCheckbox-indeterminate': { color: 'white' } }}
+                        sx={theadCheckboxSx}
                       />
                     </TableCell>
                     {DUMP_COLUMNS.map((col) => (
-                      <TableCell key={col.key} sx={{ color: 'white', fontWeight: 600 }}>
+                      <TableCell key={col.key} sx={{ color: theadColor, fontWeight: 600 }}>
                         {col.key !== 'action' ? (
                           <TableSortLabel
                             active={sortKey === col.key}
                             direction={sortKey === col.key ? sortDir : 'asc'}
                             onClick={() => handleSort(col.key)}
-                            sx={{ color: 'white !important', '& .MuiTableSortLabel-icon': { color: 'white !important' } }}
+                            sx={theadSortSx}
                           >
                             {col.label}
                           </TableSortLabel>
@@ -525,11 +537,44 @@ export default function DatabasePage() {
                     </TableRow>
                   )}
                   {filteredDumps.map((dump) => (
-                    <TableRow key={dump.id} hover selected={selected.has(dump.id)}>
+                    <Tooltip
+                      key={dump.id}
+                      title={dump.description ? (
+                        <Box sx={{ p: 0.5 }}>
+                          <Typography variant="caption" fontWeight={700} sx={{ display: 'block', mb: 0.5, opacity: 0.8 }}>
+                            Description
+                          </Typography>
+                          <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>
+                            {dump.description}
+                          </Typography>
+                        </Box>
+                      ) : ''}
+                      placement="bottom-start"
+                      arrow
+                      disableHoverListener={!dump.description}
+                      slotProps={{
+                        tooltip: {
+                          sx: {
+                            bgcolor: 'primary.dark',
+                            maxWidth: 360,
+                            borderRadius: 2,
+                            px: 2, py: 1.5,
+                            boxShadow: 3,
+                            '& .MuiTooltip-arrow': { color: 'primary.dark' },
+                          },
+                        },
+                      }}
+                    >
+                    <TableRow hover selected={selected.has(dump.id)}>
                       <TableCell padding="checkbox">
                         <Checkbox checked={selected.has(dump.id)} onChange={() => toggleSelect(dump.id)} />
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>{dump.originalFilename}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          {dump.originalFilename}
+                          {dump.description && <InfoOutlined sx={{ fontSize: 16, color: 'text.disabled' }} />}
+                        </Box>
+                      </TableCell>
                       <TableCell>{dump.version || '-'}</TableCell>
                       <TableCell>{dump.databaseName || '-'}</TableCell>
                       <TableCell>
@@ -567,6 +612,7 @@ export default function DatabasePage() {
                         </Box>
                       </TableCell>
                     </TableRow>
+                    </Tooltip>
                   ))}
                 </TableBody>
               </Table>
@@ -589,23 +635,23 @@ export default function DatabasePage() {
             <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2 }}>
               <Table>
                 <TableHead>
-                  <TableRow sx={{ bgcolor: 'primary.main' }}>
-                    <TableCell padding="checkbox" sx={{ bgcolor: 'primary.main' }}>
+                  <TableRow sx={{ bgcolor: theadBg }}>
+                    <TableCell padding="checkbox" sx={{ bgcolor: theadBg }}>
                       <Checkbox
                         checked={filteredSnapshots.length > 0 && snapSelected.size === filteredSnapshots.length}
                         indeterminate={snapSelected.size > 0 && snapSelected.size < filteredSnapshots.length}
                         onChange={toggleSnapSelectAll}
-                        sx={{ color: 'white', '&.Mui-checked': { color: 'white' }, '&.MuiCheckbox-indeterminate': { color: 'white' } }}
+                        sx={theadCheckboxSx}
                       />
                     </TableCell>
                     {SNAP_COLUMNS.map((col) => (
-                      <TableCell key={col.key} sx={{ color: 'white', fontWeight: 600 }}>
+                      <TableCell key={col.key} sx={{ color: theadColor, fontWeight: 600 }}>
                         {col.key !== 'action' ? (
                           <TableSortLabel
                             active={snapSortKey === col.key}
                             direction={snapSortKey === col.key ? snapSortDir : 'asc'}
                             onClick={() => handleSnapSort(col.key)}
-                            sx={{ color: 'white !important', '& .MuiTableSortLabel-icon': { color: 'white !important' } }}
+                            sx={theadSortSx}
                           >
                             {col.label}
                           </TableSortLabel>
@@ -630,11 +676,44 @@ export default function DatabasePage() {
                     </TableRow>
                   )}
                   {filteredSnapshots.map((snap) => (
-                    <TableRow key={snap.id} hover selected={snapSelected.has(snap.id)}>
+                    <Tooltip
+                      key={snap.id}
+                      title={snap.description ? (
+                        <Box sx={{ p: 0.5 }}>
+                          <Typography variant="caption" fontWeight={700} sx={{ display: 'block', mb: 0.5, opacity: 0.8 }}>
+                            Description
+                          </Typography>
+                          <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>
+                            {snap.description}
+                          </Typography>
+                        </Box>
+                      ) : ''}
+                      placement="bottom-start"
+                      arrow
+                      disableHoverListener={!snap.description}
+                      slotProps={{
+                        tooltip: {
+                          sx: {
+                            bgcolor: 'primary.dark',
+                            maxWidth: 360,
+                            borderRadius: 2,
+                            px: 2, py: 1.5,
+                            boxShadow: 3,
+                            '& .MuiTooltip-arrow': { color: 'primary.dark' },
+                          },
+                        },
+                      }}
+                    >
+                    <TableRow hover selected={snapSelected.has(snap.id)}>
                       <TableCell padding="checkbox">
                         <Checkbox checked={snapSelected.has(snap.id)} onChange={() => toggleSnapSelect(snap.id)} />
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>{snap.label || '-'}</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          {snap.label || '-'}
+                          {snap.description && <InfoOutlined sx={{ fontSize: 16, color: 'text.disabled' }} />}
+                        </Box>
+                      </TableCell>
                       <TableCell>{snap.repository}</TableCell>
                       <TableCell>{snap.sourceDatabaseName}</TableCell>
                       <TableCell>{snap.containerName || '-'}</TableCell>
@@ -673,6 +752,7 @@ export default function DatabasePage() {
                         </Box>
                       </TableCell>
                     </TableRow>
+                    </Tooltip>
                   ))}
                 </TableBody>
               </Table>

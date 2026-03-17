@@ -112,6 +112,7 @@ public class CreateSnapshotUseCase {
         DatabaseSnapshot snapshot = new DatabaseSnapshot(
                 request.getRepository(), request.getSourceDatabaseName(), format, request.getLabel());
         snapshot.setContainerName(request.getContainerName());
+        snapshot.setDescription(request.getDescription());
         Instant expiresAt = parseExpiresAt(request.getExpiresAt());
         snapshot.setExpiresAt(expiresAt);
 

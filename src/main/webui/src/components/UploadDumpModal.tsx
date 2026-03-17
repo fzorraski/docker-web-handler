@@ -52,6 +52,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
   const [file, setFile] = useState<File | null>(null)
   const [databaseName, setDatabaseName] = useState('')
   const [version, setVersion] = useState('')
+  const [description, setDescription] = useState('')
   const [defaultExpMinutes, setDefaultExpMinutes] = useState(480)
   const [expirationEnabled, setExpirationEnabled] = useState(false)
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(null)
@@ -71,6 +72,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
     setFile(null)
     setDatabaseName('')
     setVersion('')
+    setDescription('')
     setExpirationEnabled(false)
     setExpiresAt(null)
     setUploading(false)
@@ -104,6 +106,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
         databaseName: databaseName || undefined,
         version: version || undefined,
         expiresAt: expirationEnabled && expiresAt ? expiresAt.format('YYYY-MM-DDTHH:mm:ss') : undefined,
+        description: description || undefined,
       },
       (percent) => setUploadProgress(percent),
     )
@@ -128,7 +131,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center' }}>
+      <DialogTitle sx={{ bgcolor: 'primary.dark', color: 'white', display: 'flex', alignItems: 'center' }}>
         <CloudUpload sx={{ mr: 1 }} /> Upload Dump
         <IconButton onClick={handleClose} sx={{ ml: 'auto', color: 'white' }} disabled={uploading}>
           <Close />
@@ -244,6 +247,20 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
                 />
               </Grid>
             </Grid>
+
+            <TextField
+              fullWidth
+              label="Description (optional)"
+              placeholder="Brief description of this dump"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              size="small"
+              multiline
+              minRows={2}
+              maxRows={4}
+              slotProps={{ htmlInput: { maxLength: 500 } }}
+              sx={{ mb: 3 }}
+            />
 
             {/* Expiration */}
             <Grid container spacing={2} sx={{ alignItems: 'center' }}>

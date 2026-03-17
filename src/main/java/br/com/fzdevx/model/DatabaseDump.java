@@ -20,6 +20,7 @@ public class DatabaseDump {
     private Instant expiresAt;
     private long fileSize;
     private Format format;
+    private String description;
 
     public DatabaseDump() {
     }
@@ -80,6 +81,9 @@ public class DatabaseDump {
 
     public Format getFormat() { return format; }
     public void setFormat(Format format) { this.format = format; }
+
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
 
     @Override
     public boolean equals(Object o) {
