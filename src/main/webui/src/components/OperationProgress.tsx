@@ -17,13 +17,14 @@ const RESTORE_STEPS = ['Validating', 'Preparing', 'Creating Database', 'Restorin
 const RUN_WITH_RESTORE_STEPS = ['Validating', 'Pulling', 'Creating', 'Preparing', 'Creating Database', 'Restoring', 'Starting']
 const RESTORE_WITH_SCRIPTS_STEPS = ['Validating', 'Preparing', 'Creating Database', 'Restoring', 'Running Scripts']
 const RUN_WITH_RESTORE_AND_SCRIPTS_STEPS = ['Validating', 'Pulling', 'Creating', 'Preparing', 'Creating Database', 'Restoring', 'Running Scripts', 'Starting']
+const SNAPSHOT_STEPS = ['Validating', 'Pulling Image', 'Creating Snapshot', 'Saving']
 
 interface Props {
   events: ContainerEvent[]
   steps?: string[]
 }
 
-export { RUN_STEPS, REMOVE_STEPS, REMOVE_IMAGE_STEPS, RESTORE_STEPS, RUN_WITH_RESTORE_STEPS, RESTORE_WITH_SCRIPTS_STEPS, RUN_WITH_RESTORE_AND_SCRIPTS_STEPS }
+export { RUN_STEPS, REMOVE_STEPS, REMOVE_IMAGE_STEPS, RESTORE_STEPS, RUN_WITH_RESTORE_STEPS, RESTORE_WITH_SCRIPTS_STEPS, RUN_WITH_RESTORE_AND_SCRIPTS_STEPS, SNAPSHOT_STEPS }
 
 export default function OperationProgress({ events, steps = RUN_STEPS }: Props) {
   const logRef = useRef<HTMLDivElement>(null)

@@ -10,9 +10,10 @@ import {
   extendExpiration,
   isDatabaseListingEnabled,
 } from '../services/containerService'
-import { getActiveRestores, type ActiveRestore } from '../services/dumpService'
+import { isDumpEnabled, getActiveRestores, type ActiveRestore } from '../services/dumpService'
 import { streamRemoveContainer, type ContainerEvent } from '../services/sseService'
 import NewContainerModal from '../components/NewContainerModal'
+import CreateSnapshotModal from '../components/CreateSnapshotModal'
 import OperationProgress, { REMOVE_STEPS } from '../components/OperationProgress'
 import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
@@ -45,7 +46,7 @@ import {
   Alert,
   AlertTitle,
 } from '@mui/material'
-import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime } from '@mui/icons-material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt } from '@mui/icons-material'
 
 interface ColumnDef {
   key: string
@@ -100,6 +101,11 @@ export default function ContainersPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [activeRestores, setActiveRestores] = useState<ActiveRestore[]>([])
   const [stoppingId, setStoppingId] = useState<string | null>(null)
+  const [dumpEnabled, setDumpEnabled] = useState(false)
+  const [snapshotOpen, setSnapshotOpen] = useState(false)
+  const [snapshotRepo, setSnapshotRepo] = useState<string | undefined>(undefined)
+  const [snapshotDb, setSnapshotDb] = useState<string | undefined>(undefined)
+  const [snapshotContainerName, setSnapshotContainerName] = useState<string | undefined>(undefined)
 
   const machineIp = window.location.hostname
 
@@ -127,6 +133,7 @@ export default function ContainersPage() {
     loadContainers()
     getAllowedRepositories().then((repos) => setHasRepos(repos.length > 0)).catch(() => {})
     isDatabaseListingEnabled().then(setDbListingEnabled).catch(() => {})
+    isDumpEnabled().then(setDumpEnabled).catch(() => {})
   }, [loadContainers])
 
   useEffect(() => {
@@ -253,6 +260,13 @@ export default function ContainersPage() {
       notify('An unexpected error occurred.', 'error')
     }
     loadContainers()
+  }
+
+  function handleSnapshot(c: DockerContainer) {
+    setSnapshotRepo(c.repository ?? undefined)
+    setSnapshotDb(c.databaseName ?? undefined)
+    setSnapshotContainerName(c.names)
+    setSnapshotOpen(true)
   }
 
   function handleSort(key: string) {
@@ -532,6 +546,19 @@ export default function ContainersPage() {
                         >
                           Remove
                         </Button>
+                        {dumpEnabled && c.repository && c.databaseName && (
+                          <Tooltip title={`Snapshot database "${c.databaseName}"`}>
+                            <Button
+                              size="small"
+                              variant="contained"
+                              color="info"
+                              startIcon={<CameraAlt />}
+                              onClick={() => handleSnapshot(c)}
+                            >
+                              Snapshot
+                            </Button>
+                          </Tooltip>
+                        )}
                       </Box>
                     </TableCell>
                   )}
@@ -561,6 +588,20 @@ export default function ContainersPage() {
           )}
         </DialogActions>
       </Dialog>
+
+      <CreateSnapshotModal
+        open={snapshotOpen}
+        onClose={() => {
+          setSnapshotOpen(false)
+          setSnapshotRepo(undefined)
+          setSnapshotDb(undefined)
+          setSnapshotContainerName(undefined)
+        }}
+        onCreated={() => {}}
+        initialRepository={snapshotRepo}
+        initialDatabase={snapshotDb}
+        containerName={snapshotContainerName}
+      />
     </>
   )
 }
