@@ -24,10 +24,18 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  useTheme,
 } from '@mui/material'
 import { Search, Delete } from '@mui/icons-material'
 
 export default function ImagesPage() {
+  const theme = useTheme()
+  const isDark = theme.palette.mode === 'dark'
+  const theadBg = isDark ? 'background.paper' : 'primary.main'
+  const theadColor = isDark ? 'text.primary' : 'white'
+  const theadSortSx = isDark
+    ? { color: 'text.primary !important', '& .MuiTableSortLabel-icon': { color: 'text.secondary !important' } }
+    : { color: 'white !important', '& .MuiTableSortLabel-icon': { color: 'white !important' } }
   const { notify, confirm } = useNotification()
   const [images, setImages] = useState<DockerImage[]>([])
   const [filter, setFilter] = useState('')
@@ -150,15 +158,15 @@ export default function ImagesPage() {
         <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2 }}>
           <Table>
             <TableHead>
-              <TableRow sx={{ bgcolor: 'primary.main' }}>
+              <TableRow sx={{ bgcolor: theadBg }}>
                 {IMAGE_COLUMNS.map((col) => (
-                  <TableCell key={col.key} sx={{ color: 'white', fontWeight: 600 }}>
+                  <TableCell key={col.key} sx={{ color: theadColor, fontWeight: 600 }}>
                     {col.key !== 'action' ? (
                       <TableSortLabel
                         active={sortKey === col.key}
                         direction={sortKey === col.key ? sortDir : 'asc'}
                         onClick={() => handleSort(col.key)}
-                        sx={{ color: 'white !important', '& .MuiTableSortLabel-icon': { color: 'white !important' } }}
+                        sx={theadSortSx}
                       >
                         {col.label}
                       </TableSortLabel>
