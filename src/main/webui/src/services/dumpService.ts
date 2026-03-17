@@ -17,7 +17,7 @@ export async function listDumps(): Promise<DatabaseDump[]> {
 export function uploadDump(
   file: File,
   uploadPassword: string,
-  options?: { databaseName?: string; version?: string; expiresAt?: string },
+  options?: { databaseName?: string; version?: string; expiresAt?: string; description?: string },
   onProgress?: (percent: number) => void,
 ): Promise<{ success: boolean; dump?: DatabaseDump; error?: string }> {
   return new Promise((resolve) => {
@@ -27,6 +27,7 @@ export function uploadDump(
     if (options?.databaseName) formData.append('databaseName', options.databaseName)
     if (options?.version) formData.append('version', options.version)
     if (options?.expiresAt) formData.append('expiresAt', options.expiresAt)
+    if (options?.description) formData.append('description', options.description)
 
     const xhr = new XMLHttpRequest()
 

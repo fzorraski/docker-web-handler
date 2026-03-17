@@ -44,6 +44,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
   const [selectedDb, setSelectedDb] = useState('')
   const [format, setFormat] = useState<'CUSTOM' | 'SQL'>('CUSTOM')
   const [label, setLabel] = useState('')
+  const [description, setDescription] = useState('')
   const [expirationEnabled, setExpirationEnabled] = useState(false)
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(dayjs().add(7, 'day'))
   const [password, setPassword] = useState('')
@@ -97,6 +98,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
     setSelectedDb('')
     setFormat('CUSTOM')
     setLabel('')
+    setDescription('')
     setExpirationEnabled(false)
     setExpiresAt(dayjs().add(7, 'day'))
     setPassword('')
@@ -135,6 +137,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
         sourceDatabaseName: selectedDb,
         format,
         label: label.trim() || undefined,
+        description: description.trim() || undefined,
         expiresAt: expirationEnabled && expiresAt ? expiresAt.format('YYYY-MM-DDTHH:mm:ss') : undefined,
         password,
         containerName,
@@ -195,7 +198,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
       maxWidth="md"
       fullWidth
     >
-      <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center' }}>
+      <DialogTitle sx={{ bgcolor: 'primary.dark', color: 'white', display: 'flex', alignItems: 'center' }}>
         <CameraAlt sx={{ mr: 1 }} /> Create Database Snapshot
         <IconButton onClick={handleClose} sx={{ ml: 'auto', color: 'white' }}>
           <Close />
@@ -305,6 +308,20 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
                 />
               </Grid>
             </Grid>
+
+            <TextField
+              fullWidth
+              label="Description (optional)"
+              placeholder="Brief description of this snapshot"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              size="small"
+              multiline
+              minRows={2}
+              maxRows={4}
+              slotProps={{ htmlInput: { maxLength: 500 } }}
+              sx={{ mb: 3 }}
+            />
 
             <Grid container spacing={2} sx={{ mb: 2 }} alignItems="center">
               <Grid size={{ xs: 12, md: 4 }}>

@@ -21,6 +21,7 @@ public class DatabaseSnapshot {
     private long fileSize;
     private String label;
     private String containerName;
+    private String description;
 
     public DatabaseSnapshot() {
     }
@@ -71,6 +72,9 @@ public class DatabaseSnapshot {
 
     public String getContainerName() { return containerName; }
     public void setContainerName(String containerName) { this.containerName = containerName; }
+
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
 
     @Override
     public boolean equals(Object o) {

@@ -123,10 +123,13 @@ public class DatabaseDumpController {
             String version = extractString(form, "version");
             if (version != null && version.isBlank()) version = null;
 
+            String description = extractString(form, "description");
+            if (description != null && description.isBlank()) description = null;
+
             Instant expiresAt = parseExpiresAt(extractString(form, "expiresAt"));
 
             try (InputStream is = filePart.getBody(InputStream.class, null)) {
-                DatabaseDump dump = dumpStorageService.storeUpload(is, filename, databaseName, version, expiresAt);
+                DatabaseDump dump = dumpStorageService.storeUpload(is, filename, databaseName, version, expiresAt, description);
                 return Response.ok(dump).build();
             }
         } catch (DuplicateDumpException e) {

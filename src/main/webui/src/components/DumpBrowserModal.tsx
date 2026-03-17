@@ -20,8 +20,10 @@ import {
   Tab,
   Box,
   CircularProgress,
+  Tooltip,
+  Typography,
 } from '@mui/material'
-import { Close, Search } from '@mui/icons-material'
+import { Close, Search, InfoOutlined } from '@mui/icons-material'
 import type { DatabaseDump, DatabaseSnapshot } from '../types'
 import { listSnapshots } from '../services/snapshotService'
 import { formatBytes, formatDate } from '../utils/format'
@@ -87,7 +89,7 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
   const filteredDumps = useMemo(() => {
     const lc = filter.toLowerCase()
     const result = dumps.filter((d) =>
-      [d.originalFilename, d.version ?? '', d.databaseName ?? '', d.format]
+      [d.originalFilename, d.version ?? '', d.databaseName ?? '', d.format, d.description ?? '']
         .some((v) => v.toLowerCase().includes(lc)),
     )
     if (!sortKey) return result
@@ -106,7 +108,7 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
   const filteredSnapshots = useMemo(() => {
     const lc = filter.toLowerCase()
     const result = snapshots.filter((s) =>
-      [s.label ?? '', s.sourceDatabaseName, s.repository, s.format]
+      [s.label ?? '', s.sourceDatabaseName, s.repository, s.format, s.description ?? '']
         .some((v) => v.toLowerCase().includes(lc)),
     )
     if (!sortKey) return result
@@ -149,7 +151,7 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center' }}>
+      <DialogTitle sx={{ bgcolor: 'primary.dark', color: 'white', display: 'flex', alignItems: 'center' }}>
         Browse Files
         <IconButton onClick={handleClose} sx={{ ml: 'auto', color: 'white' }}>
           <Close />
@@ -208,8 +210,41 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
                 </TableRow>
               )}
               {tab === 0 && filteredDumps.map((dump) => (
-                <TableRow key={dump.id} hover>
-                  <TableCell sx={{ fontWeight: 600 }}>{dump.originalFilename}</TableCell>
+                <Tooltip
+                  key={dump.id}
+                  title={dump.description ? (
+                    <Box sx={{ p: 0.5 }}>
+                      <Typography variant="caption" fontWeight={700} sx={{ display: 'block', mb: 0.5, opacity: 0.8 }}>
+                        Description
+                      </Typography>
+                      <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>
+                        {dump.description}
+                      </Typography>
+                    </Box>
+                  ) : ''}
+                  placement="bottom-start"
+                  arrow
+                  disableHoverListener={!dump.description}
+                  slotProps={{
+                    tooltip: {
+                      sx: {
+                        bgcolor: 'primary.dark',
+                        maxWidth: 360,
+                        borderRadius: 2,
+                        px: 2, py: 1.5,
+                        boxShadow: 3,
+                        '& .MuiTooltip-arrow': { color: 'primary.dark' },
+                      },
+                    },
+                  }}
+                >
+                <TableRow hover>
+                  <TableCell sx={{ fontWeight: 600 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      {dump.originalFilename}
+                      {dump.description && <InfoOutlined sx={{ fontSize: 16, color: 'text.disabled' }} />}
+                    </Box>
+                  </TableCell>
                   <TableCell>{dump.version || '-'}</TableCell>
                   <TableCell>{dump.databaseName || '-'}</TableCell>
                   <TableCell>
@@ -228,6 +263,7 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
                     </Button>
                   </TableCell>
                 </TableRow>
+                </Tooltip>
               ))}
 
               {/* Snapshots tab */}
@@ -246,8 +282,41 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
                 </TableRow>
               )}
               {tab === 1 && !snapLoading && filteredSnapshots.map((snap) => (
-                <TableRow key={snap.id} hover>
-                  <TableCell sx={{ fontWeight: 600 }}>{snap.label || '-'}</TableCell>
+                <Tooltip
+                  key={snap.id}
+                  title={snap.description ? (
+                    <Box sx={{ p: 0.5 }}>
+                      <Typography variant="caption" fontWeight={700} sx={{ display: 'block', mb: 0.5, opacity: 0.8 }}>
+                        Description
+                      </Typography>
+                      <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>
+                        {snap.description}
+                      </Typography>
+                    </Box>
+                  ) : ''}
+                  placement="bottom-start"
+                  arrow
+                  disableHoverListener={!snap.description}
+                  slotProps={{
+                    tooltip: {
+                      sx: {
+                        bgcolor: 'primary.dark',
+                        maxWidth: 360,
+                        borderRadius: 2,
+                        px: 2, py: 1.5,
+                        boxShadow: 3,
+                        '& .MuiTooltip-arrow': { color: 'primary.dark' },
+                      },
+                    },
+                  }}
+                >
+                <TableRow hover>
+                  <TableCell sx={{ fontWeight: 600 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      {snap.label || '-'}
+                      {snap.description && <InfoOutlined sx={{ fontSize: 16, color: 'text.disabled' }} />}
+                    </Box>
+                  </TableCell>
                   <TableCell>{snap.sourceDatabaseName}</TableCell>
                   <TableCell>{snap.repository}</TableCell>
                   <TableCell>
@@ -266,6 +335,7 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
                     </Button>
                   </TableCell>
                 </TableRow>
+                </Tooltip>
               ))}
             </TableBody>
           </Table>
