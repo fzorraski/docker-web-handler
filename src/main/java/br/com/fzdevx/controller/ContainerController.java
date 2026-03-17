@@ -109,7 +109,18 @@ public class ContainerController {
                 }
             }
 
+            if (dc.getLabels() != null && dc.getLabels().containsKey(Constants.REPOSITORY_LABEL)) {
+                dockerContainer.setRepository(dc.getLabels().get(Constants.REPOSITORY_LABEL));
+            }
+
             Instant expiresAt = expirationService.getExpiresAt(dockerContainer.getContainerId());
+            // Fallback: get repository from expiration metadata for containers created before the label was added
+            if (dockerContainer.getRepository() == null) {
+                String repoFromExpiration = expirationService.getRepository(dockerContainer.getContainerId());
+                if (repoFromExpiration != null) {
+                    dockerContainer.setRepository(repoFromExpiration);
+                }
+            }
             if (expiresAt != null) {
                 dockerContainer.setExpiresAt(expiresAt.toString());
             }

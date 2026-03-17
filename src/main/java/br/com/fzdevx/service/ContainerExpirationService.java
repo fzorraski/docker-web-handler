@@ -71,6 +71,12 @@ public class ContainerExpirationService {
                 .orElse(false);
     }
 
+    public String getRepository(String shortId) {
+        return expirationRepository.findByContainerId(shortId)
+                .map(ContainerExpiration::getRepository)
+                .orElse(null);
+    }
+
     public List<ContainerExpiration> findByDatabaseName(String databaseName) {
         return expirationRepository.findByDatabaseName(databaseName);
     }
