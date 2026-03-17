@@ -56,7 +56,7 @@ export default function OperationProgress({ events, steps = RUN_STEPS }: Props) 
       <Paper
         ref={logRef}
         variant="outlined"
-        sx={{ mt: 3, p: 2, maxHeight: 200, overflow: 'auto', bgcolor: 'grey.50' }}
+        sx={{ mt: 3, p: 2, maxHeight: 200, overflow: 'auto', bgcolor: 'action.hover' }}
       >
         {events.map((e, i) => (
           <Typography
