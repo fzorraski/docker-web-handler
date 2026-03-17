@@ -2,12 +2,15 @@ import { useState, useEffect } from 'react'
 import { AppBar, Toolbar, Typography, Button, Box, IconButton, Tooltip } from '@mui/material'
 import { Link, useLocation } from 'react-router-dom'
 import { DarkMode, LightMode } from '@mui/icons-material'
+import { useTranslation } from 'react-i18next'
 import { isDumpEnabled } from '../services/dumpService'
 import { useThemeMode } from './ThemeModeProvider'
+import LanguageSwitcher from './LanguageSwitcher'
 
 export default function Navbar() {
   const location = useLocation()
   const { mode, toggleMode } = useThemeMode()
+  const { t } = useTranslation()
   const [dumpEnabled, setDumpEnabled] = useState(false)
 
   useEffect(() => {
@@ -15,9 +18,9 @@ export default function Navbar() {
   }, [])
 
   const navItems = [
-    { label: 'Containers', path: '/' },
-    { label: 'Images', path: '/images' },
-    ...(dumpEnabled ? [{ label: 'Database', path: '/database' }] : []),
+    { label: t('navbar.containers'), path: '/' },
+    { label: t('navbar.images'), path: '/images' },
+    ...(dumpEnabled ? [{ label: t('navbar.database'), path: '/database' }] : []),
   ]
 
   return (
@@ -29,7 +32,7 @@ export default function Navbar() {
           to="/"
           sx={{ flexGrow: 1, textDecoration: 'none', color: 'inherit', fontWeight: 700 }}
         >
-          Docker Handler
+          {t('navbar.title')}
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           {navItems.map((item) => (
@@ -46,7 +49,8 @@ export default function Navbar() {
               {item.label}
             </Button>
           ))}
-          <Tooltip title={mode === 'light' ? 'Dark mode' : 'Light mode'} arrow>
+          <LanguageSwitcher />
+          <Tooltip title={mode === 'light' ? t('navbar.darkMode') : t('navbar.lightMode')} arrow>
             <IconButton
               onClick={toggleMode}
               sx={{

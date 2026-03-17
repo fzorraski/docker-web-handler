@@ -17,6 +17,8 @@ import CreateSnapshotModal from '../components/CreateSnapshotModal'
 import OperationProgress, { REMOVE_STEPS } from '../components/OperationProgress'
 import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
+import { useTranslation } from 'react-i18next'
+import { formatBackendDate } from '../utils/format'
 import {
   Box,
   Typography,
@@ -55,25 +57,7 @@ interface ColumnDef {
   defaultVisible: boolean
 }
 
-const BASE_COLUMNS: ColumnDef[] = [
-  { key: 'containerId', label: 'Container ID', defaultVisible: false },
-  { key: 'image', label: 'Image', defaultVisible: true },
-  { key: 'tag', label: 'Tag', defaultVisible: true },
-  { key: 'command', label: 'Command', defaultVisible: false },
-  { key: 'created', label: 'Created', defaultVisible: true },
-  { key: 'status', label: 'Status', defaultVisible: true },
-  { key: 'ports', label: 'Ports', defaultVisible: true },
-  { key: 'names', label: 'Name', defaultVisible: true },
-  { key: 'database', label: 'Database', defaultVisible: true },
-  { key: 'expires', label: 'Expires', defaultVisible: true },
-  { key: 'actions', label: 'Actions', defaultVisible: true },
-]
-
 const STORAGE_KEY = 'containerColumnsVisibility'
-
-function buildColumns(dbListingEnabled: boolean): ColumnDef[] {
-  return dbListingEnabled ? BASE_COLUMNS : BASE_COLUMNS.filter((c) => c.key !== 'database')
-}
 
 function loadVisibility(columns: ColumnDef[]): Record<string, boolean> {
   try {
@@ -85,6 +69,7 @@ function loadVisibility(columns: ColumnDef[]): Record<string, boolean> {
 
 export default function ContainersPage() {
   const { notify, confirm } = useNotification()
+  const { t } = useTranslation()
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
   const theadBg = isDark ? 'background.paper' : 'primary.main'
@@ -103,7 +88,6 @@ export default function ContainersPage() {
   const [removeError, setRemoveError] = useState(false)
   const [removeDone, setRemoveDone] = useState(false)
   const cleanupRemoveSse = useRef<(() => void) | null>(null)
-  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(() => loadVisibility(BASE_COLUMNS))
   const [columnMenuAnchor, setColumnMenuAnchor] = useState<null | HTMLElement>(null)
   const [sortKey, setSortKey] = useState<string>('')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -117,7 +101,25 @@ export default function ContainersPage() {
 
   const machineIp = window.location.hostname
 
-  const columns = useMemo(() => buildColumns(dbListingEnabled), [dbListingEnabled])
+  const BASE_COLUMNS: ColumnDef[] = useMemo(() => [
+    { key: 'containerId', label: t('containers.columns.containerId'), defaultVisible: false },
+    { key: 'image', label: t('containers.columns.image'), defaultVisible: true },
+    { key: 'tag', label: t('containers.columns.tag'), defaultVisible: true },
+    { key: 'command', label: t('containers.columns.command'), defaultVisible: false },
+    { key: 'created', label: t('containers.columns.created'), defaultVisible: true },
+    { key: 'status', label: t('containers.columns.status'), defaultVisible: true },
+    { key: 'ports', label: t('containers.columns.ports'), defaultVisible: true },
+    { key: 'names', label: t('containers.columns.name'), defaultVisible: true },
+    { key: 'database', label: t('containers.columns.database'), defaultVisible: true },
+    { key: 'expires', label: t('containers.columns.expires'), defaultVisible: true },
+    { key: 'actions', label: t('containers.columns.actions'), defaultVisible: true },
+  ], [t])
+
+  const columns = useMemo(() =>
+    dbListingEnabled ? BASE_COLUMNS : BASE_COLUMNS.filter((c) => c.key !== 'database'),
+  [dbListingEnabled, BASE_COLUMNS])
+
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(() => loadVisibility(BASE_COLUMNS))
   const visibleColumns = columns.filter((c) => columnVisibility[c.key])
   const colSpan = visibleColumns.length
 
@@ -151,7 +153,6 @@ export default function ContainersPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Auto-refresh after the nearest container expires
   useEffect(() => {
     const now = Date.now()
     const expirations = containers
@@ -160,8 +161,6 @@ export default function ContainersPage() {
     if (expirations.length === 0) return
 
     const nearest = Math.min(...expirations)
-    // For future expirations: wait until expiration + 6s buffer
-    // For already-expired: wait 6s from now (one retry for backend to clean up)
     const fireAt = nearest > now ? nearest + 6000 : now + 6000
     const delay = fireAt - now
 
@@ -174,13 +173,13 @@ export default function ContainersPage() {
   }, [containers])
 
   async function handleStop(id: string) {
-    if (!(await confirm(`Stop Container ${id}?`))) return
+    if (!(await confirm(t('containers.confirmStop', { id })))) return
     setStoppingId(id)
     try {
       const ok = await stopContainer(id)
-      notify(ok ? 'Container stopped.' : 'Failed to stop container.', ok ? 'success' : 'error')
+      notify(ok ? t('containers.containerStopped') : t('containers.failedToStop'), ok ? 'success' : 'error')
     } catch {
-      notify('An unexpected error occurred while stopping the container.', 'error')
+      notify(t('containers.stopError'), 'error')
     } finally {
       setStoppingId(null)
     }
@@ -188,18 +187,18 @@ export default function ContainersPage() {
   }
 
   async function handleStart(id: string) {
-    if (!(await confirm(`Start container ${id}?`))) return
+    if (!(await confirm(t('containers.confirmStart', { id })))) return
     try {
       const ok = await startContainer(id)
-      notify(ok ? 'Container started.' : 'Failed to start container.', ok ? 'success' : 'error')
+      notify(ok ? t('containers.containerStarted') : t('containers.failedToStart'), ok ? 'success' : 'error')
     } catch {
-      notify('An unexpected error occurred while starting the container.', 'error')
+      notify(t('containers.startError'), 'error')
     }
     loadContainers()
   }
 
   async function handleRemove(id: string) {
-    if (!(await confirm(`Remove container ${id}? This action cannot be undone.`))) return
+    if (!(await confirm(t('containers.confirmRemove', { id })))) return
 
     setRemoveDialogOpen(true)
     setRemoveEvents([])
@@ -215,7 +214,7 @@ export default function ContainersPage() {
           setRemoveDialogOpen(false)
           setRemoveEvents([])
           setRemoveDone(false)
-          notify('Container removed.', 'success')
+          notify(t('containers.containerRemoved'), 'success')
           loadContainers()
         }, 1500)
       },
@@ -241,31 +240,31 @@ export default function ContainersPage() {
   async function handleExtendExpiration(id: string) {
     try {
       const ok = await extendExpiration(id, 10)
-      notify(ok ? 'Expiration extended by 10 minutes.' : 'Failed to extend expiration.', ok ? 'success' : 'error')
+      notify(ok ? t('containers.expirationExtended') : t('containers.failedToExtend'), ok ? 'success' : 'error')
     } catch {
-      notify('An unexpected error occurred.', 'error')
+      notify(t('common.unexpectedError'), 'error')
     }
     loadContainers()
   }
 
   async function handleCancelExpiration(id: string) {
-    if (!(await confirm(`Cancel expiration for container ${id}? The container will no longer be auto-removed.`))) return
+    if (!(await confirm(t('containers.cancelExpiration', { id })))) return
     try {
       const ok = await cancelExpiration(id)
-      notify(ok ? 'Expiration cancelled.' : 'Failed to cancel expiration.', ok ? 'success' : 'error')
+      notify(ok ? t('containers.expirationCancelled') : t('containers.failedToCancelExpiration'), ok ? 'success' : 'error')
     } catch {
-      notify('An unexpected error occurred.', 'error')
+      notify(t('common.unexpectedError'), 'error')
     }
     loadContainers()
   }
 
   async function handleCancelDbDeletion(id: string) {
-    if (!(await confirm(`Cancel database deletion for container ${id}? The database will no longer be dropped on expiration.`))) return
+    if (!(await confirm(t('containers.cancelDbDeletion', { id })))) return
     try {
       const ok = await cancelDatabaseDeletion(id)
-      notify(ok ? 'Database deletion cancelled.' : 'Failed to cancel database deletion.', ok ? 'success' : 'error')
+      notify(ok ? t('containers.dbDeletionCancelled') : t('containers.failedToCancelDbDeletion'), ok ? 'success' : 'error')
     } catch {
-      notify('An unexpected error occurred.', 'error')
+      notify(t('common.unexpectedError'), 'error')
     }
     loadContainers()
   }
@@ -326,11 +325,11 @@ export default function ContainersPage() {
 
   return (
     <>
-      <HeroBanner linkTo="/images" linkLabel="Explore Images" />
+      <HeroBanner linkTo="/images" linkLabel={t('hero.exploreImages')} />
 
       <Box sx={{ maxWidth: '85%', mx: 'auto', mt: 5, mb: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h4" fontWeight="bold">Containers</Typography>
+          <Typography variant="h4" fontWeight="bold">{t('containers.title')}</Typography>
           {hasRepos && (
             <Button
               variant="contained"
@@ -338,17 +337,17 @@ export default function ContainersPage() {
               startIcon={<AddCircleOutline />}
               onClick={() => setModalOpen(true)}
             >
-              New Container
+              {t('containers.newContainer')}
             </Button>
           )}
         </Box>
 
         {activeRestores.length > 0 && (
           <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
-            <AlertTitle>Restore in progress</AlertTitle>
+            <AlertTitle>{t('containers.restoreInProgress')}</AlertTitle>
             {activeRestores.map((r, i) => (
               <Typography key={i} variant="body2">
-                Restoring <strong>{r.dumpFilename}</strong> into <strong>{r.targetDatabase}</strong> ({r.repository})
+                <span dangerouslySetInnerHTML={{ __html: t('containers.restoringInto', { filename: r.dumpFilename, database: r.targetDatabase, repository: r.repository }) }} />
               </Typography>
             ))}
           </Alert>
@@ -357,7 +356,7 @@ export default function ContainersPage() {
         <Box sx={{ display: 'flex', gap: 1, mb: 3, alignItems: 'center' }}>
           <TextField
             fullWidth
-            placeholder="Search containers..."
+            placeholder={t('containers.searchPlaceholder')}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             size="small"
@@ -371,7 +370,7 @@ export default function ContainersPage() {
               },
             }}
           />
-          <Tooltip title="Toggle columns">
+          <Tooltip title={t('containers.toggleColumns')}>
             <IconButton onClick={(e) => setColumnMenuAnchor(e.currentTarget)}>
               <ViewColumn />
             </IconButton>
@@ -431,7 +430,7 @@ export default function ContainersPage() {
               {!loading && filtered.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={colSpan} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                    No containers found
+                    {t('containers.noContainersFound')}
                   </TableCell>
                 </TableRow>
               )}
@@ -441,7 +440,7 @@ export default function ContainersPage() {
                   {columnVisibility.image && <TableCell>{c.image}</TableCell>}
                   {columnVisibility.tag && <TableCell>{c.image.split(':')[1] ?? '-'}</TableCell>}
                   {columnVisibility.command && <TableCell>{c.command}</TableCell>}
-                  {columnVisibility.created && <TableCell>{c.created}</TableCell>}
+                  {columnVisibility.created && <TableCell>{formatBackendDate(c.created)}</TableCell>}
                   {columnVisibility.status && (
                     <TableCell>
                       <Chip
@@ -485,14 +484,14 @@ export default function ContainersPage() {
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <ExpirationChip expiresAt={c.expiresAt} onCancel={() => handleCancelExpiration(c.containerId)} onExpired={loadContainers} />
-                            <Tooltip title="Extend by 10 minutes">
+                            <Tooltip title={t('containers.extendBy10')}>
                               <IconButton size="small" onClick={() => handleExtendExpiration(c.containerId)} sx={{ p: 0.25 }}>
                                 <MoreTime fontSize="small" />
                               </IconButton>
                             </Tooltip>
                           </Box>
                           {c.databaseName && c.deleteDatabaseOnExpiration && (
-                            <Tooltip title={`Database "${c.databaseName}" will be deleted on expiration`}>
+                            <Tooltip title={t('containers.dbWillBeDeleted', { database: c.databaseName })}>
                               <Chip
                                 label={`DB: ${c.databaseName}`}
                                 size="small"
@@ -504,7 +503,7 @@ export default function ContainersPage() {
                             </Tooltip>
                           )}
                           {c.databaseName && !c.deleteDatabaseOnExpiration && dbsScheduledForDeletion.has(c.databaseName) && (
-                            <Tooltip title={`Database "${c.databaseName}" will be deleted by container "${dbsScheduledForDeletion.get(c.databaseName)}"`}>
+                            <Tooltip title={t('containers.dbScheduledByContainer', { database: c.databaseName, container: dbsScheduledForDeletion.get(c.databaseName) })}>
                               <Chip
                                 label={`DB: ${c.databaseName}`}
                                 size="small"
@@ -532,7 +531,7 @@ export default function ContainersPage() {
                             onClick={() => handleStop(c.containerId)}
                             disabled={stoppingId === c.containerId}
                           >
-                            {stoppingId === c.containerId ? 'Stopping...' : 'Stop'}
+                            {stoppingId === c.containerId ? t('containers.stopping') : t('containers.stop')}
                           </Button>
                         ) : (
                           <Button
@@ -542,7 +541,7 @@ export default function ContainersPage() {
                             startIcon={<PlayArrow />}
                             onClick={() => handleStart(c.containerId)}
                           >
-                            Start
+                            {t('containers.start')}
                           </Button>
                         )}
                         <Button
@@ -552,10 +551,10 @@ export default function ContainersPage() {
                           startIcon={<Delete />}
                           onClick={() => handleRemove(c.containerId)}
                         >
-                          Remove
+                          {t('common.remove')}
                         </Button>
                         {dumpEnabled && c.repository && c.databaseName && (
-                          <Tooltip title={`Snapshot database "${c.databaseName}"`}>
+                          <Tooltip title={t('containers.snapshotDatabase', { database: c.databaseName })}>
                             <Button
                               size="small"
                               variant="contained"
@@ -563,7 +562,7 @@ export default function ContainersPage() {
                               startIcon={<CameraAlt />}
                               onClick={() => handleSnapshot(c)}
                             >
-                              Snapshot
+                              {t('containers.snapshot')}
                             </Button>
                           </Tooltip>
                         )}
@@ -585,14 +584,14 @@ export default function ContainersPage() {
 
       <Dialog open={removeDialogOpen} onClose={handleRemoveDialogClose} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
-          <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> Removing Container
+          <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> {t('containers.removingContainer')}
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 3 }}>
           <OperationProgress events={removeEvents} steps={REMOVE_STEPS} />
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           {(removeError || removeDone) && (
-            <Button onClick={handleRemoveDialogClose} color="inherit">Close</Button>
+            <Button onClick={handleRemoveDialogClose} color="inherit">{t('common.close')}</Button>
           )}
         </DialogActions>
       </Dialog>
@@ -615,6 +614,7 @@ export default function ContainersPage() {
 }
 
 function ExpirationChip({ expiresAt, onCancel, onExpired }: { expiresAt: string; onCancel: () => void; onExpired: () => void }) {
+  const { t } = useTranslation()
   const expiresMs = useMemo(() => new Date(expiresAt).getTime(), [expiresAt])
   const [remaining, setRemaining] = useState('')
   const expiredFired = useRef(false)
@@ -627,7 +627,7 @@ function ExpirationChip({ expiresAt, onCancel, onExpired }: { expiresAt: string;
     function update() {
       const diff = expiresMs - Date.now()
       if (diff <= 0) {
-        setRemaining('Expiring...')
+        setRemaining(t('containers.expiring'))
         if (!expiredFired.current) {
           expiredFired.current = true
           setTimeout(onExpired, 6000)
@@ -642,7 +642,7 @@ function ExpirationChip({ expiresAt, onCancel, onExpired }: { expiresAt: string;
     update()
     const id = setInterval(update, 1000)
     return () => clearInterval(id)
-  }, [expiresMs, onExpired])
+  }, [expiresMs, onExpired, t])
 
   return (
     <Chip

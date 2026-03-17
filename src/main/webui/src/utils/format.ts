@@ -1,4 +1,5 @@
 import dayjs from 'dayjs'
+import i18n from '../i18n'
 import type { DatabaseDump, DatabaseSnapshot } from '../types'
 
 export function formatBytes(bytes: number): string {
@@ -7,9 +8,27 @@ export function formatBytes(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(2) + ' MB'
 }
 
+const dateTimeFormat = (locale: string) =>
+  new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+/** Format an ISO date string (e.g. from dump/snapshot timestamps) */
 export function formatDate(iso: string): string {
-  const d = dayjs(iso)
-  return d.isValid() ? d.format('L LT') : iso
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return dateTimeFormat(i18n.language).format(d)
+}
+
+/** Format a backend date string in dd/MM/yyyy HH:mm:ss format */
+export function formatBackendDate(raw: string): string {
+  const d = dayjs(raw, 'DD/MM/YYYY HH:mm:ss')
+  if (!d.isValid()) return raw
+  return dateTimeFormat(i18n.language).format(d.toDate())
 }
 
 export function buildTargetDbName(dump: DatabaseDump): string {
