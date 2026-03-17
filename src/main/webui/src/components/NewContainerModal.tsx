@@ -36,7 +36,7 @@ import {
   repositoryHasDatabases,
 } from '../services/containerService'
 import { isDumpEnabled, listDumps, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
-import type { DatabaseConflict, DatabaseDump } from '../types'
+import type { DatabaseConflict, DatabaseDump, DatabaseSnapshot } from '../types'
 import { buildTargetDbName, formatBytes } from '../utils/format'
 import { prepareRunContainer, streamRunContainer, type ContainerEvent } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
@@ -100,6 +100,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const [dumpFeatureEnabled, setDumpFeatureEnabled] = useState(false)
   const [allDumps, setAllDumps] = useState<DatabaseDump[]>([])
   const [selectedDump, setSelectedDump] = useState<DatabaseDump | null>(null)
+  const [selectedSnapshot, setSelectedSnapshot] = useState<DatabaseSnapshot | null>(null)
   const [dbMode, setDbMode] = useState<'existing' | 'restore'>('existing')
   const [dumpBrowserOpen, setDumpBrowserOpen] = useState(false)
   const [restoreTargetDb, setRestoreTargetDb] = useState('')
@@ -271,6 +272,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setDbConflict(null)
     if (mode === 'existing') {
       setSelectedDump(null)
+      setSelectedSnapshot(null)
       setRestoreTargetDb('')
       setCreateDatabase(false)
     } else {
@@ -280,7 +282,24 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
 
   function handleDumpSelected(dump: DatabaseDump) {
     setSelectedDump(dump)
+    setSelectedSnapshot(null)
     const targetName = buildTargetDbName(dump)
+    setRestoreTargetDb(targetName)
+    setCreateDatabase(!databases.includes(targetName))
+    if (dbEnvVar && targetName) {
+      const idx = envVars.findIndex((e) => e.key === dbEnvVar)
+      if (idx >= 0) {
+        updateEnvVar(idx, 'value', targetName)
+      } else {
+        setEnvVars((prev) => [...prev, { key: dbEnvVar, value: targetName }])
+      }
+    }
+  }
+
+  function handleSnapshotSelected(snap: DatabaseSnapshot) {
+    setSelectedSnapshot(snap)
+    setSelectedDump(null)
+    const targetName = snap.sourceDatabaseName
     setRestoreTargetDb(targetName)
     setCreateDatabase(!databases.includes(targetName))
     if (dbEnvVar && targetName) {
@@ -311,6 +330,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setDeleteDbOnExpiration(false)
     setDbConflict(null)
     setSelectedDump(null)
+    setSelectedSnapshot(null)
     setDbMode('existing')
     setDumpBrowserOpen(false)
     setRestoreTargetDb('')
@@ -326,7 +346,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     if (!selectedTag) return notify('Please select a tag.', 'warning')
 
     if (dbMode === 'restore') {
-      if (!selectedDump) return notify('Please select a dump to restore.', 'warning')
+      if (!selectedDump && !selectedSnapshot) return notify('Please select a dump or snapshot to restore.', 'warning')
       if (!restoreTargetDb.trim()) return notify('Please enter a target database name.', 'warning')
     }
 
@@ -365,7 +385,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         memoryMb: parsedMemory && !isNaN(parsedMemory) ? parsedMemory : null,
         databaseName: activeDbName || null,
         deleteDatabaseOnExpiration: shouldDeleteDb,
-        dumpId: dbMode === 'restore' ? (selectedDump?.id || null) : null,
+        dumpId: dbMode === 'restore' && selectedDump ? selectedDump.id : null,
+        snapshotId: dbMode === 'restore' && selectedSnapshot ? selectedSnapshot.id : null,
         createDatabase: dbMode === 'restore' ? createDatabase : false,
         selectedOptionalScripts: dbMode === 'restore' && scriptsResponse?.enabled ? selectedOptionalScripts : undefined,
       })
@@ -428,7 +449,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       <DialogContent dividers sx={{ pt: 3 }}>
         {running || sseEvents.length > 0 ? (
           <OperationProgress events={sseEvents} steps={
-            dbMode === 'restore' && selectedDump
+            dbMode === 'restore' && (selectedDump || selectedSnapshot)
               ? (scriptsResponse?.enabled ? RUN_WITH_RESTORE_AND_SCRIPTS_STEPS : RUN_WITH_RESTORE_STEPS)
               : undefined
           } />
@@ -622,19 +643,27 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                 {dbMode === 'restore' && (
                   <>
                     <Grid size={{ xs: 12 }}>
-                      {selectedDump ? (
+                      {(selectedDump || selectedSnapshot) ? (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
                           <Box sx={{ flex: 1 }}>
-                            <Typography variant="body2" fontWeight={600}>{selectedDump.originalFilename}</Typography>
+                            <Typography variant="body2" fontWeight={600}>
+                              {selectedDump ? selectedDump.originalFilename : (selectedSnapshot!.label || selectedSnapshot!.sourceDatabaseName)}
+                            </Typography>
                             <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
                               <Chip
-                                label={selectedDump.format}
+                                label={selectedDump ? 'Dump' : 'Snapshot'}
                                 size="small"
-                                color={selectedDump.format === 'SQL' ? 'primary' : selectedDump.format === 'CUSTOM' ? 'secondary' : 'default'}
+                                color={selectedDump ? 'default' : 'info'}
+                                variant="outlined"
+                              />
+                              <Chip
+                                label={(selectedDump ?? selectedSnapshot!).format}
+                                size="small"
+                                color={(selectedDump ?? selectedSnapshot!).format === 'SQL' ? 'primary' : 'secondary'}
                                 variant="outlined"
                               />
                               <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
-                                {formatBytes(selectedDump.fileSize)}
+                                {formatBytes((selectedDump ?? selectedSnapshot!).fileSize)}
                               </Typography>
                             </Box>
                           </Box>
@@ -648,7 +677,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                           startIcon={<FolderOpen />}
                           onClick={() => setDumpBrowserOpen(true)}
                         >
-                          Browse Dumps
+                          Browse Files
                         </Button>
                       )}
                     </Grid>
@@ -668,7 +697,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                           }
                         }}
                         loading={dbLoading}
-                        disabled={!selectedDump}
+                        disabled={!selectedDump && !selectedSnapshot}
                         renderInput={(params) => (
                           <TextField
                             {...params}
@@ -752,7 +781,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                       </Grid>
                     )}
 
-                    {scriptsResponse?.enabled && selectedDump && (scriptsResponse.mandatory.length > 0 || scriptsResponse.optional.length > 0) && (
+                    {scriptsResponse?.enabled && (selectedDump || selectedSnapshot) && (scriptsResponse.mandatory.length > 0 || scriptsResponse.optional.length > 0) && (
                       <Grid size={{ xs: 12 }}>
                         <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
                           Post-Restore Scripts
@@ -952,6 +981,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         dumps={allDumps}
         onClose={() => setDumpBrowserOpen(false)}
         onSelect={handleDumpSelected}
+        onSelectSnapshot={handleSnapshotSelected}
       />
 
       <Dialog open={confirmDialogOpen} onClose={() => setConfirmDialogOpen(false)} maxWidth="sm" fullWidth>

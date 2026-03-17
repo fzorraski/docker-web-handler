@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -16,9 +16,14 @@ import {
   Paper,
   Button,
   Chip,
+  Tabs,
+  Tab,
+  Box,
+  CircularProgress,
 } from '@mui/material'
 import { Close, Search } from '@mui/icons-material'
-import type { DatabaseDump } from '../types'
+import type { DatabaseDump, DatabaseSnapshot } from '../types'
+import { listSnapshots } from '../services/snapshotService'
 import { formatBytes, formatDate } from '../utils/format'
 
 interface Props {
@@ -26,9 +31,10 @@ interface Props {
   dumps: DatabaseDump[]
   onClose: () => void
   onSelect: (dump: DatabaseDump) => void
+  onSelectSnapshot?: (snapshot: DatabaseSnapshot) => void
 }
 
-const COLUMNS: { key: string; label: string }[] = [
+const DUMP_COLUMNS: { key: string; label: string }[] = [
   { key: 'originalFilename', label: 'Filename' },
   { key: 'version', label: 'Version' },
   { key: 'databaseName', label: 'Database' },
@@ -38,10 +44,33 @@ const COLUMNS: { key: string; label: string }[] = [
   { key: 'action', label: '' },
 ]
 
-export default function DumpBrowserModal({ open, dumps, onClose, onSelect }: Props) {
+const SNAP_COLUMNS: { key: string; label: string }[] = [
+  { key: 'label', label: 'Label' },
+  { key: 'sourceDatabaseName', label: 'Database' },
+  { key: 'repository', label: 'Repository' },
+  { key: 'format', label: 'Format' },
+  { key: 'fileSize', label: 'Size' },
+  { key: 'createdAt', label: 'Created At' },
+  { key: 'action', label: '' },
+]
+
+export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSelectSnapshot }: Props) {
+  const [tab, setTab] = useState(0)
   const [filter, setFilter] = useState('')
   const [sortKey, setSortKey] = useState<string>('')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [snapshots, setSnapshots] = useState<DatabaseSnapshot[]>([])
+  const [snapLoading, setSnapLoading] = useState(false)
+
+  useEffect(() => {
+    if (open && tab === 1) {
+      setSnapLoading(true)
+      listSnapshots()
+        .then(setSnapshots)
+        .catch(() => setSnapshots([]))
+        .finally(() => setSnapLoading(false))
+    }
+  }, [open, tab])
 
   function handleSort(key: string) {
     if (key === 'action') return
@@ -49,7 +78,13 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect }: Pro
     setSortKey(key)
   }
 
-  const filtered = useMemo(() => {
+  function handleTabChange(_e: React.SyntheticEvent, newTab: number) {
+    setTab(newTab)
+    setFilter('')
+    setSortKey('')
+  }
+
+  const filteredDumps = useMemo(() => {
     const lc = filter.toLowerCase()
     const result = dumps.filter((d) =>
       [d.originalFilename, d.version ?? '', d.databaseName ?? '', d.format]
@@ -68,31 +103,67 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect }: Pro
     })
   }, [dumps, filter, sortKey, sortDir])
 
-  function handleSelect(dump: DatabaseDump) {
+  const filteredSnapshots = useMemo(() => {
+    const lc = filter.toLowerCase()
+    const result = snapshots.filter((s) =>
+      [s.label ?? '', s.sourceDatabaseName, s.repository, s.format]
+        .some((v) => v.toLowerCase().includes(lc)),
+    )
+    if (!sortKey) return result
+    return [...result].sort((a, b) => {
+      if (sortKey === 'fileSize') {
+        const cmp = a.fileSize - b.fileSize
+        return sortDir === 'asc' ? cmp : -cmp
+      }
+      const va = String((a as unknown as Record<string, unknown>)[sortKey] ?? '').toLowerCase()
+      const vb = String((b as unknown as Record<string, unknown>)[sortKey] ?? '').toLowerCase()
+      const cmp = va.localeCompare(vb)
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [snapshots, filter, sortKey, sortDir])
+
+  function handleSelectDump(dump: DatabaseDump) {
     onSelect(dump)
     onClose()
-    setFilter('')
-    setSortKey('')
+    resetState()
+  }
+
+  function handleSelectSnapshot(snap: DatabaseSnapshot) {
+    onSelectSnapshot?.(snap)
+    onClose()
+    resetState()
   }
 
   function handleClose() {
     onClose()
+    resetState()
+  }
+
+  function resetState() {
     setFilter('')
     setSortKey('')
+    setTab(0)
   }
+
+  const columns = tab === 0 ? DUMP_COLUMNS : SNAP_COLUMNS
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center' }}>
-        Browse Dumps
+        Browse Files
         <IconButton onClick={handleClose} sx={{ ml: 'auto', color: 'white' }}>
           <Close />
         </IconButton>
       </DialogTitle>
-      <DialogContent dividers sx={{ pt: 3 }}>
+      <DialogContent dividers sx={{ pt: 0 }}>
+        <Tabs value={tab} onChange={handleTabChange} sx={{ mb: 2 }}>
+          <Tab label="Uploaded Dumps" />
+          <Tab label="Snapshots" disabled={!onSelectSnapshot} />
+        </Tabs>
+
         <TextField
           fullWidth
-          placeholder="Search dumps..."
+          placeholder={tab === 0 ? 'Search dumps...' : 'Search snapshots...'}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           size="small"
@@ -112,7 +183,7 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect }: Pro
           <Table stickyHeader size="small">
             <TableHead>
               <TableRow>
-                {COLUMNS.map((col) => (
+                {columns.map((col) => (
                   <TableCell key={col.key} sx={{ fontWeight: 600 }}>
                     {col.key !== 'action' ? (
                       <TableSortLabel
@@ -128,14 +199,15 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect }: Pro
               </TableRow>
             </TableHead>
             <TableBody>
-              {filtered.length === 0 && (
+              {/* Dumps tab */}
+              {tab === 0 && filteredDumps.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={COLUMNS.length} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                  <TableCell colSpan={columns.length} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                     No dumps found
                   </TableCell>
                 </TableRow>
               )}
-              {filtered.map((dump) => (
+              {tab === 0 && filteredDumps.map((dump) => (
                 <TableRow key={dump.id} hover>
                   <TableCell sx={{ fontWeight: 600 }}>{dump.originalFilename}</TableCell>
                   <TableCell>{dump.version || '-'}</TableCell>
@@ -151,12 +223,45 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect }: Pro
                   <TableCell>{formatBytes(dump.fileSize)}</TableCell>
                   <TableCell>{formatDate(dump.uploadedAt)}</TableCell>
                   <TableCell>
-                    <Button
+                    <Button size="small" variant="contained" color="primary" onClick={() => handleSelectDump(dump)}>
+                      Select
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+
+              {/* Snapshots tab */}
+              {tab === 1 && snapLoading && (
+                <TableRow>
+                  <TableCell colSpan={columns.length} align="center" sx={{ py: 4 }}>
+                    <CircularProgress size={24} />
+                  </TableCell>
+                </TableRow>
+              )}
+              {tab === 1 && !snapLoading && filteredSnapshots.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={columns.length} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                    No snapshots found
+                  </TableCell>
+                </TableRow>
+              )}
+              {tab === 1 && !snapLoading && filteredSnapshots.map((snap) => (
+                <TableRow key={snap.id} hover>
+                  <TableCell sx={{ fontWeight: 600 }}>{snap.label || '-'}</TableCell>
+                  <TableCell>{snap.sourceDatabaseName}</TableCell>
+                  <TableCell>{snap.repository}</TableCell>
+                  <TableCell>
+                    <Chip
+                      label={snap.format}
                       size="small"
-                      variant="contained"
-                      color="primary"
-                      onClick={() => handleSelect(dump)}
-                    >
+                      color={snap.format === 'SQL' ? 'primary' : 'secondary'}
+                      variant="outlined"
+                    />
+                  </TableCell>
+                  <TableCell>{formatBytes(snap.fileSize)}</TableCell>
+                  <TableCell>{formatDate(snap.createdAt)}</TableCell>
+                  <TableCell>
+                    <Button size="small" variant="contained" color="primary" onClick={() => handleSelectSnapshot(snap)}>
                       Select
                     </Button>
                   </TableCell>

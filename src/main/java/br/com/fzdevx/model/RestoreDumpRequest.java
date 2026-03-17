@@ -28,4 +28,9 @@ public class RestoreDumpRequest {
 
     public List<String> getSelectedOptionalScripts() { return selectedOptionalScripts; }
     public void setSelectedOptionalScripts(List<String> selectedOptionalScripts) { this.selectedOptionalScripts = selectedOptionalScripts; }
+
+    private String snapshotId;
+
+    public String getSnapshotId() { return snapshotId; }
+    public void setSnapshotId(String snapshotId) { this.snapshotId = snapshotId; }
 }
