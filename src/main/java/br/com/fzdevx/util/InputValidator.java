@@ -170,6 +170,33 @@ public final class InputValidator {
         return Optional.empty();
     }
 
+    private static final Pattern SNAPSHOT_LABEL_PATTERN =
+            Pattern.compile("^[a-zA-Z0-9][a-zA-Z0-9 _.-]{0,99}$");
+
+    public static Optional<String> validateSnapshotFormat(String format) {
+        if (format == null || format.isBlank()) {
+            return Optional.of("Snapshot format is required.");
+        }
+        if (!"CUSTOM".equals(format) && !"SQL".equals(format)) {
+            return Optional.of("Snapshot format must be 'CUSTOM' or 'SQL'.");
+        }
+        return Optional.empty();
+    }
+
+    public static Optional<String> validateSnapshotLabel(String label) {
+        if (label == null || label.isBlank()) {
+            return Optional.empty();
+        }
+        if (label.length() > 100) {
+            return Optional.of("Snapshot label exceeds maximum length of 100 characters.");
+        }
+        if (!SNAPSHOT_LABEL_PATTERN.matcher(label).matches()) {
+            return Optional.of("Snapshot label contains invalid characters. "
+                    + "Only letters, digits, spaces, hyphens, underscores, and dots are allowed.");
+        }
+        return Optional.empty();
+    }
+
     public static Optional<String> validateScriptFilename(String filename) {
         if (filename == null || filename.isBlank()) {
             return Optional.of("Script filename is required.");

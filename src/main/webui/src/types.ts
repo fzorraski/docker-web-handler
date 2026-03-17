@@ -10,6 +10,7 @@ export interface DockerContainer {
   portPaths?: Record<string, string>
   databaseName?: string
   deleteDatabaseOnExpiration?: boolean
+  repository?: string
 }
 
 export interface DockerImage {
@@ -45,4 +46,18 @@ export interface DatabaseDump {
   expiresAt?: string
   fileSize: number
   format: 'SQL' | 'CUSTOM' | 'COMPRESSED'
+}
+
+export interface DatabaseSnapshot {
+  id: string
+  storedFilename: string
+  repository: string
+  sourceDatabaseName: string
+  format: 'CUSTOM' | 'SQL'
+  md5Hash?: string
+  createdAt: string
+  expiresAt?: string
+  fileSize: number
+  label?: string
+  containerName?: string
 }

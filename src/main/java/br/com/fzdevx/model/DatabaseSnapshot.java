@@ -20,6 +20,7 @@ public class DatabaseSnapshot {
     private Instant expiresAt;
     private long fileSize;
     private String label;
+    private String containerName;
 
     public DatabaseSnapshot() {
     }
@@ -67,6 +68,9 @@ public class DatabaseSnapshot {
 
     public String getLabel() { return label; }
     public void setLabel(String label) { this.label = label; }
+
+    public String getContainerName() { return containerName; }
+    public void setContainerName(String containerName) { this.containerName = containerName; }
 
     @Override
     public boolean equals(Object o) {

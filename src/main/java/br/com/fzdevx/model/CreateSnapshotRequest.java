@@ -8,6 +8,7 @@ public class CreateSnapshotRequest {
     private String label;
     private String expiresAt;
     private String password;
+    private String containerName;
 
     public String getRepository() { return repository; }
     public void setRepository(String repository) { this.repository = repository; }
@@ -26,4 +27,7 @@ public class CreateSnapshotRequest {
 
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }
+
+    public String getContainerName() { return containerName; }
+    public void setContainerName(String containerName) { this.containerName = containerName; }
 }
