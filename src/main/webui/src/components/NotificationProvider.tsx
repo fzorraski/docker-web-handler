@@ -10,6 +10,7 @@ import {
   DialogActions,
   Button,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 
 interface NotificationContextType {
   notify: (message: string, severity?: AlertColor) => void
@@ -23,6 +24,7 @@ export function useNotification() {
 }
 
 export default function NotificationProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation()
   const [snack, setSnack] = useState<{ message: string; severity: AlertColor; open: boolean }>({
     message: '',
     severity: 'success',
@@ -71,14 +73,14 @@ export default function NotificationProvider({ children }: { children: ReactNode
       </Snackbar>
 
       <Dialog open={dialog.open} onClose={() => handleDialogClose(false)}>
-        <DialogTitle>Confirm</DialogTitle>
+        <DialogTitle>{t('notification.confirmTitle')}</DialogTitle>
         <DialogContent>
           <DialogContentText>{dialog.message}</DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => handleDialogClose(false)} color="inherit">Cancel</Button>
+          <Button onClick={() => handleDialogClose(false)} color="inherit">{t('common.cancel')}</Button>
           <Button onClick={() => handleDialogClose(true)} variant="contained" autoFocus>
-            Confirm
+            {t('common.confirm')}
           </Button>
         </DialogActions>
       </Dialog>

@@ -5,6 +5,8 @@ import { streamRemoveImage, type ContainerEvent } from '../services/sseService'
 import OperationProgress, { REMOVE_IMAGE_STEPS } from '../components/OperationProgress'
 import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
+import { useTranslation } from 'react-i18next'
+import { formatBackendDate } from '../utils/format'
 import {
   Box,
   Typography,
@@ -37,6 +39,7 @@ export default function ImagesPage() {
     ? { color: 'text.primary !important', '& .MuiTableSortLabel-icon': { color: 'text.secondary !important' } }
     : { color: 'white !important', '& .MuiTableSortLabel-icon': { color: 'white !important' } }
   const { notify, confirm } = useNotification()
+  const { t } = useTranslation()
   const [images, setImages] = useState<DockerImage[]>([])
   const [filter, setFilter] = useState('')
   const [loading, setLoading] = useState(true)
@@ -48,14 +51,14 @@ export default function ImagesPage() {
   const [sortKey, setSortKey] = useState<string>('')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
-  const IMAGE_COLUMNS: { key: keyof DockerImage | 'action'; label: string }[] = [
-    { key: 'repository', label: 'Repository' },
-    { key: 'tag', label: 'Tag' },
-    { key: 'imageId', label: 'Image ID' },
-    { key: 'created', label: 'Created' },
-    { key: 'size', label: 'Size' },
-    { key: 'action', label: 'Action' },
-  ]
+  const IMAGE_COLUMNS: { key: keyof DockerImage | 'action'; label: string }[] = useMemo(() => [
+    { key: 'repository', label: t('images.columns.repository') },
+    { key: 'tag', label: t('images.columns.tag') },
+    { key: 'imageId', label: t('images.columns.imageId') },
+    { key: 'created', label: t('images.columns.created') },
+    { key: 'size', label: t('images.columns.size') },
+    { key: 'action', label: t('images.columns.action') },
+  ], [t])
 
   function handleSort(key: string) {
     if (key === 'action') return
@@ -76,7 +79,7 @@ export default function ImagesPage() {
   }, [loadImages])
 
   async function handleRemove(imageId: string) {
-    if (!(await confirm(`Remove image ${imageId}? This action cannot be undone.`))) return
+    if (!(await confirm(t('images.confirmRemove', { id: imageId })))) return
 
     setRemoveDialogOpen(true)
     setRemoveEvents([])
@@ -92,7 +95,7 @@ export default function ImagesPage() {
           setRemoveDialogOpen(false)
           setRemoveEvents([])
           setRemoveDone(false)
-          notify('Image removed successfully.', 'success')
+          notify(t('images.imageRemoved'), 'success')
           loadImages()
         }, 1500)
       },
@@ -130,16 +133,16 @@ export default function ImagesPage() {
 
   return (
     <>
-      <HeroBanner linkTo="/" linkLabel="Explore Containers" />
+      <HeroBanner linkTo="/" linkLabel={t('hero.exploreContainers')} />
 
       <Box sx={{ maxWidth: '85%', mx: 'auto', mt: 5, mb: 4 }}>
         <Typography variant="h4" fontWeight="bold" sx={{ mb: 3 }}>
-          Images
+          {t('images.title')}
         </Typography>
 
         <TextField
           fullWidth
-          placeholder="Search images..."
+          placeholder={t('images.searchPlaceholder')}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           size="small"
@@ -186,7 +189,7 @@ export default function ImagesPage() {
               {!loading && filtered.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                    No images found
+                    {t('images.noImagesFound')}
                   </TableCell>
                 </TableRow>
               )}
@@ -195,7 +198,7 @@ export default function ImagesPage() {
                   <TableCell sx={{ fontWeight: 600 }}>{img.repository}</TableCell>
                   <TableCell>{img.tag}</TableCell>
                   <TableCell>{img.imageId}</TableCell>
-                  <TableCell>{img.created}</TableCell>
+                  <TableCell>{formatBackendDate(img.created)}</TableCell>
                   <TableCell>{img.size}</TableCell>
                   <TableCell>
                     <Button
@@ -205,7 +208,7 @@ export default function ImagesPage() {
                       startIcon={<Delete />}
                       onClick={() => handleRemove(img.imageId)}
                     >
-                      Remove
+                      {t('common.remove')}
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -217,14 +220,14 @@ export default function ImagesPage() {
 
       <Dialog open={removeDialogOpen} onClose={handleRemoveDialogClose} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
-          <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> Removing Image
+          <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> {t('images.removingImage')}
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 3 }}>
           <OperationProgress events={removeEvents} steps={REMOVE_IMAGE_STEPS} />
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           {(removeError || removeDone) && (
-            <Button onClick={handleRemoveDialogClose} color="inherit">Close</Button>
+            <Button onClick={handleRemoveDialogClose} color="inherit">{t('common.close')}</Button>
           )}
         </DialogActions>
       </Dialog>

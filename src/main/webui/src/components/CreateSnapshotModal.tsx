@@ -19,6 +19,7 @@ import {
 import { Close, CameraAlt, Download } from '@mui/icons-material'
 import { MobileDateTimePicker } from '@mui/x-date-pickers/MobileDateTimePicker'
 import dayjs, { type Dayjs } from 'dayjs'
+import { useTranslation } from 'react-i18next'
 import { getSnapshotRepositories, downloadSnapshotDirect, cancelSnapshot } from '../services/snapshotService'
 import { getRepositoryDatabases } from '../services/containerService'
 import { prepareSnapshot, streamSnapshot, type ContainerEvent } from '../services/sseService'
@@ -36,6 +37,7 @@ interface Props {
 
 export default function CreateSnapshotModal({ open, onClose, onCreated, initialRepository, initialDatabase, containerName }: Props) {
   const { notify } = useNotification()
+  const { t } = useTranslation()
   const locked = !!(initialRepository && initialDatabase)
   const [repositories, setRepositories] = useState<string[]>([])
   const [selectedRepo, setSelectedRepo] = useState('')
@@ -150,7 +152,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
           setTimeout(() => {
             onClose()
             onCreated()
-            notify('Snapshot created successfully.', 'success')
+            notify(t('createSnapshot.snapshotCreated'), 'success')
             setTimeout(resetForm, 300)
           }, 1500)
         },
@@ -161,7 +163,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
       )
     } catch (e) {
       setRunning(false)
-      notify(e instanceof Error ? e.message : 'An unexpected error occurred.', 'error')
+      notify(e instanceof Error ? e.message : t('common.unexpectedError'), 'error')
     }
   }
 
@@ -180,9 +182,9 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
   }
 
   function validate(): boolean {
-    if (!selectedRepo) { notify('Please select a repository.', 'warning'); return false }
-    if (!selectedDb) { notify('Please select a database.', 'warning'); return false }
-    if (!password) { notify('Please enter the operations password.', 'warning'); return false }
+    if (!selectedRepo) { notify(t('createSnapshot.selectRepoWarning'), 'warning'); return false }
+    if (!selectedDb) { notify(t('createSnapshot.selectDbWarning'), 'warning'); return false }
+    if (!password) { notify(t('createSnapshot.enterPasswordWarning'), 'warning'); return false }
     return true
   }
 
@@ -199,7 +201,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
       fullWidth
     >
       <DialogTitle sx={{ bgcolor: 'primary.dark', color: 'white', display: 'flex', alignItems: 'center' }}>
-        <CameraAlt sx={{ mr: 1 }} /> Create Database Snapshot
+        <CameraAlt sx={{ mr: 1 }} /> {t('createSnapshot.title')}
         <IconButton onClick={handleClose} sx={{ ml: 'auto', color: 'white' }}>
           <Close />
         </IconButton>
@@ -212,7 +214,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
             <TextField
               fullWidth
               type="password"
-              label="Operations Password"
+              label={t('common.operationsPassword')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               size="small"
@@ -225,7 +227,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
                 {locked ? (
                   <TextField
                     fullWidth
-                    label="Repository"
+                    label={t('createSnapshot.repository')}
                     value={selectedRepo}
                     size="small"
                     disabled
@@ -234,12 +236,12 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
                   <TextField
                     select
                     fullWidth
-                    label="Repository"
+                    label={t('createSnapshot.repository')}
                     value={selectedRepo}
                     onChange={(e) => setSelectedRepo(e.target.value)}
                     size="small"
                   >
-                    <MenuItem value="">Select a repository...</MenuItem>
+                    <MenuItem value="">{t('createSnapshot.selectRepository')}</MenuItem>
                     {repositories.map((r) => (
                       <MenuItem key={r} value={r}>{r}</MenuItem>
                     ))}
@@ -250,7 +252,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
                 {locked ? (
                   <TextField
                     fullWidth
-                    label="Source Database"
+                    label={t('createSnapshot.sourceDatabase')}
                     value={selectedDb}
                     size="small"
                     disabled
@@ -259,7 +261,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
                   <TextField
                     select
                     fullWidth
-                    label="Source Database"
+                    label={t('createSnapshot.sourceDatabase')}
                     value={selectedDb}
                     onChange={(e) => setSelectedDb(e.target.value)}
                     size="small"
@@ -270,7 +272,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
                       },
                     }}
                   >
-                    <MenuItem value="">Select a database...</MenuItem>
+                    <MenuItem value="">{t('createSnapshot.selectDatabase')}</MenuItem>
                     {databases.map((db) => (
                       <MenuItem key={db} value={db}>{db}</MenuItem>
                     ))}
@@ -282,7 +284,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
             <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  Output Format
+                  {t('createSnapshot.outputFormat')}
                 </Typography>
                 <ToggleButtonGroup
                   value={format}
@@ -291,18 +293,18 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
                   size="small"
                   fullWidth
                 >
-                  <ToggleButton value="CUSTOM">Custom (.dump)</ToggleButton>
-                  <ToggleButton value="SQL">SQL (.sql)</ToggleButton>
+                  <ToggleButton value="CUSTOM">{t('createSnapshot.customFormat')}</ToggleButton>
+                  <ToggleButton value="SQL">{t('createSnapshot.sqlFormat')}</ToggleButton>
                 </ToggleButtonGroup>
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
                   fullWidth
-                  label="Label (optional)"
+                  label={t('createSnapshot.labelField')}
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
                   size="small"
-                  placeholder="e.g. before-migration-v2"
+                  placeholder={t('createSnapshot.labelPlaceholder')}
                   slotProps={{ htmlInput: { maxLength: 100 } }}
                   sx={{ mt: 3 }}
                 />
@@ -311,8 +313,8 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
 
             <TextField
               fullWidth
-              label="Description (optional)"
-              placeholder="Brief description of this snapshot"
+              label={t('createSnapshot.descriptionLabel')}
+              placeholder={t('createSnapshot.descriptionPlaceholder')}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               size="small"
@@ -332,13 +334,13 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
                       onChange={(e) => setExpirationEnabled(e.target.checked)}
                     />
                   }
-                  label="Auto-delete snapshot"
+                  label={t('createSnapshot.autoDeleteSnapshot')}
                 />
               </Grid>
               {expirationEnabled && (
                 <Grid size={{ xs: 12, md: 8 }}>
                   <MobileDateTimePicker
-                    label="Expires at"
+                    label={t('createSnapshot.expiresAt')}
                     value={expiresAt}
                     onChange={(v) => setExpiresAt(v)}
                     minDateTime={dayjs()}
@@ -346,7 +348,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
                       textField: {
                         fullWidth: true,
                         size: 'small',
-                        helperText: 'Snapshot will be automatically deleted at this time',
+                        helperText: t('createSnapshot.expiresHelperText'),
                       },
                     }}
                   />
@@ -359,7 +361,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
       <DialogActions sx={{ px: 3, py: 2 }}>
         {sseError ? (
           <>
-            <Button onClick={handleClose} color="inherit">Close</Button>
+            <Button onClick={handleClose} color="inherit">{t('common.close')}</Button>
             <Button
               variant="contained"
               color="primary"
@@ -368,7 +370,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
                 setSseError(false)
               }}
             >
-              Back to Form
+              {t('common.backToForm')}
             </Button>
           </>
         ) : running ? (
@@ -379,11 +381,11 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
             disabled={cancelling}
             startIcon={cancelling ? <CircularProgress size={20} /> : undefined}
           >
-            {cancelling ? 'Cancelling...' : 'Cancel'}
+            {cancelling ? t('common.cancelling') : t('common.cancel')}
           </Button>
         ) : (
           <>
-            <Button onClick={handleClose} color="inherit">Cancel</Button>
+            <Button onClick={handleClose} color="inherit">{t('common.cancel')}</Button>
             <Button
               variant="contained"
               color="info"
@@ -391,7 +393,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
               disabled={!formReady || downloading}
               startIcon={downloading ? <CircularProgress size={20} /> : <Download />}
             >
-              {downloading ? 'Preparing...' : 'Download'}
+              {downloading ? t('common.preparing') : t('common.download')}
             </Button>
             <Button
               variant="contained"
@@ -400,7 +402,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
               disabled={!formReady}
               startIcon={<CameraAlt />}
             >
-              Save to Server
+              {t('createSnapshot.saveToServer')}
             </Button>
           </>
         )}

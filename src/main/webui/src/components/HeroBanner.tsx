@@ -1,5 +1,6 @@
 import { Box, Typography, Button, useTheme } from '@mui/material'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 interface Props {
   linkTo: string
@@ -9,6 +10,7 @@ interface Props {
 export default function HeroBanner({ linkTo, linkLabel }: Props) {
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
+  const { t } = useTranslation()
 
   return (
     <Box
@@ -22,10 +24,10 @@ export default function HeroBanner({ linkTo, linkLabel }: Props) {
       }}
     >
       <Typography variant="h2" fontWeight="bold" gutterBottom>
-        Docker Handler
+        {t('hero.title')}
       </Typography>
       <Typography variant="h6" sx={{ mb: 3 }}>
-        A simple docker web handler!
+        {t('hero.subtitle')}
       </Typography>
       <Button
         component={Link}

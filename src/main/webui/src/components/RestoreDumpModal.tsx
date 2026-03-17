@@ -20,6 +20,7 @@ import {
   Alert,
 } from '@mui/material'
 import { Close, Restore, Warning } from '@mui/icons-material'
+import { useTranslation } from 'react-i18next'
 import type { DatabaseDump, DatabaseSnapshot } from '../types'
 import { buildTargetDbName, buildSnapshotTargetDbName } from '../utils/format'
 import { getDumpRepositories, cancelRestore, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
@@ -46,6 +47,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
   const source = snapshot ?? dump
   const isSnapshot = !!snapshot
   const { notify } = useNotification()
+  const { t } = useTranslation()
   const [repositories, setRepositories] = useState<string[]>([])
   const [selectedRepo, setSelectedRepo] = useState('')
   const [databases, setDatabases] = useState<string[]>([])
@@ -139,7 +141,6 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
       cleanupSse.current = null
     }
     onClose()
-    // Reset after close so the dialog content doesn't flash empty during closing animation
     setTimeout(resetForm, 300)
   }
 
@@ -147,14 +148,13 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
     if (!selectedRepo || !targetDb.trim()) return
     setCancelling(true)
     await cancelRestore(selectedRepo, targetDb.trim())
-    // The backend will send an ERROR event through SSE which triggers the onError handler
   }
 
   function handleRestoreClick() {
     if (!source) return
-    if (!selectedRepo) return notify('Please select a repository.', 'warning')
-    if (!targetDb.trim()) return notify('Please enter a target database.', 'warning')
-    if (!password) return notify('Please enter the operations password.', 'warning')
+    if (!selectedRepo) return notify(t('restoreDump.selectRepoWarning'), 'warning')
+    if (!targetDb.trim()) return notify(t('restoreDump.enterTargetDbWarning'), 'warning')
+    if (!password) return notify(t('restoreDump.enterPasswordWarning'), 'warning')
 
     if (dbExists) {
       setConfirmOverrideOpen(true)
@@ -190,7 +190,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
           setTimeout(() => {
             onClose()
             onRestored()
-            notify(isSnapshot ? 'Snapshot restored successfully.' : 'Dump restored successfully.', 'success')
+            notify(isSnapshot ? t('restoreDump.snapshotRestored') : t('restoreDump.dumpRestored'), 'success')
             setTimeout(resetForm, 300)
           }, 1500)
         },
@@ -201,9 +201,13 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
       )
     } catch (e) {
       setRunning(false)
-      notify(e instanceof Error ? e.message : 'An unexpected error occurred.', 'error')
+      notify(e instanceof Error ? e.message : t('common.unexpectedError'), 'error')
     }
   }
+
+  const usedBySuffix = inUseBy.length > 0
+    ? t('restoreDump.dbUsedBySuffix', { containers: inUseBy.join(', ') })
+    : ''
 
   return (
     <Dialog
@@ -217,8 +221,8 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
     >
       <DialogTitle sx={{ bgcolor: 'primary.dark', color: 'white', display: 'flex', alignItems: 'center' }}>
         <Restore sx={{ mr: 1 }} /> {isSnapshot
-          ? `Restore Snapshot - ${snapshot!.label || snapshot!.sourceDatabaseName}`
-          : `Restore Dump ${dump ? `- ${dump.originalFilename}` : ''}`}
+          ? t('restoreDump.restoreSnapshot', { name: snapshot!.label || snapshot!.sourceDatabaseName })
+          : dump ? t('restoreDump.restoreDumpNamed', { filename: dump.originalFilename }) : t('restoreDump.restoreDump')}
         <IconButton onClick={handleClose} sx={{ ml: 'auto', color: 'white' }}>
           <Close />
         </IconButton>
@@ -231,7 +235,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
             <TextField
               fullWidth
               type="password"
-              label="Operations Password"
+              label={t('common.operationsPassword')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               size="small"
@@ -244,12 +248,12 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
                 <TextField
                   select
                   fullWidth
-                  label="Repository"
+                  label={t('restoreDump.repository')}
                   value={selectedRepo}
                   onChange={(e) => setSelectedRepo(e.target.value)}
                   size="small"
                 >
-                  <MenuItem value="">Select a repository...</MenuItem>
+                  <MenuItem value="">{t('restoreDump.selectRepository')}</MenuItem>
                   {repositories.map((r) => (
                     <MenuItem key={r} value={r}>{r}</MenuItem>
                   ))}
@@ -271,8 +275,8 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
                   renderInput={(params) => (
                     <TextField
                       {...params}
-                      label="Target Database"
-                      placeholder="Select or type a new database name"
+                      label={t('restoreDump.targetDatabase')}
+                      placeholder={t('restoreDump.targetDbPlaceholder')}
                       size="small"
                       slotProps={{
                         input: {
@@ -293,9 +297,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
 
             {dbExists && (
               <Alert severity="warning" variant="outlined" icon={<Warning />} sx={{ mb: 2 }}>
-                Database <strong>{targetDb.trim()}</strong> already exists
-                {inUseBy.length > 0 && <> and is being used by <strong>{inUseBy.join(', ')}</strong></>}.
-                {' '}Restoring into it will override its current data. You will be asked to confirm before proceeding.
+                <span dangerouslySetInnerHTML={{ __html: t('restoreDump.dbAlreadyExists', { database: targetDb.trim(), usedBy: usedBySuffix }) }} />
               </Alert>
             )}
 
@@ -306,18 +308,18 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
                   onChange={(e) => setCreateDb(e.target.checked)}
                 />
               }
-              label="Create database if it doesn't exist"
+              label={t('restoreDump.createDatabase')}
             />
 
             {scriptsResponse?.enabled && (scriptsResponse.mandatory.length > 0 || scriptsResponse.optional.length > 0) && (
               <Box sx={{ mt: 3 }}>
                 <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
-                  Post-Restore Scripts
+                  {t('restoreDump.postRestoreScripts')}
                 </Typography>
 
                 {scriptsResponse.mandatory.length > 0 && (
                   <Box sx={{ mb: 1 }}>
-                    <Typography variant="caption" color="text.secondary">Mandatory (always run)</Typography>
+                    <Typography variant="caption" color="text.secondary">{t('restoreDump.mandatoryScripts')}</Typography>
                     {scriptsResponse.mandatory.map((s) => (
                       <FormControlLabel
                         key={s.filename}
@@ -336,7 +338,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
 
                 {scriptsResponse.optional.length > 0 && (
                   <Box sx={{ mb: 1 }}>
-                    <Typography variant="caption" color="text.secondary">Optional</Typography>
+                    <Typography variant="caption" color="text.secondary">{t('restoreDump.optionalScripts')}</Typography>
                     {scriptsResponse.optional.map((s) => (
                       <FormControlLabel
                         key={s.filename}
@@ -366,7 +368,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
                 )}
 
                 <Typography variant="caption" color="text.secondary">
-                  On failure: {scriptsResponse.onFailure === 'stop' ? 'stop execution' : 'continue with remaining scripts'}
+                  {scriptsResponse.onFailure === 'stop' ? t('restoreDump.onFailureStop') : t('restoreDump.onFailureContinue')}
                 </Typography>
               </Box>
             )}
@@ -376,7 +378,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
       <DialogActions sx={{ px: 3, py: 2 }}>
         {sseError ? (
           <>
-            <Button onClick={handleClose} color="inherit">Close</Button>
+            <Button onClick={handleClose} color="inherit">{t('common.close')}</Button>
             <Button
               variant="contained"
               color="primary"
@@ -385,7 +387,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
                 setSseError(false)
               }}
             >
-              Back to Form
+              {t('common.backToForm')}
             </Button>
           </>
         ) : running ? (
@@ -396,11 +398,11 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
             disabled={cancelling}
             startIcon={cancelling ? <CircularProgress size={20} /> : undefined}
           >
-            {cancelling ? 'Cancelling...' : 'Cancel Restore'}
+            {cancelling ? t('common.cancelling') : t('restoreDump.cancelRestore')}
           </Button>
         ) : (
           <>
-            <Button onClick={handleClose} color="inherit">Cancel</Button>
+            <Button onClick={handleClose} color="inherit">{t('common.cancel')}</Button>
             <Button
               variant="contained"
               color="success"
@@ -408,7 +410,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
               disabled={running || !selectedRepo || !targetDb.trim() || !password}
               startIcon={<Restore />}
             >
-              Restore
+              {t('common.restore')}
             </Button>
           </>
         )}
@@ -416,24 +418,22 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
 
       <Dialog open={confirmOverrideOpen} onClose={() => setConfirmOverrideOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: 'warning.main', color: 'white', display: 'flex', alignItems: 'center' }}>
-          <Warning sx={{ mr: 1 }} /> Confirm Database Override
+          <Warning sx={{ mr: 1 }} /> {t('restoreDump.confirmDbOverride')}
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 3 }}>
           <Alert severity="warning" sx={{ mb: 2 }}>
-            The database <strong>{targetDb.trim()}</strong> already exists and contains data
-            {inUseBy.length > 0 && <> and is being used by <strong>{inUseBy.join(', ')}</strong></>}.
+            <span dangerouslySetInnerHTML={{ __html: t('restoreDump.dbOverrideWarning', { database: targetDb.trim(), usedBy: usedBySuffix }) }} />
           </Alert>
           <Typography>
-            Restoring into this database will override its current content.
-            This action <strong>cannot be undone</strong>.
+            <span dangerouslySetInnerHTML={{ __html: t('restoreDump.dbOverrideText') }} />
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            To avoid this, go back and change the target database name.
+            {t('restoreDump.dbOverrideHint')}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setConfirmOverrideOpen(false)} color="inherit">
-            Go Back
+            {t('common.goBack')}
           </Button>
           <Button
             variant="contained"
@@ -441,7 +441,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
             onClick={executeRestore}
             startIcon={<Restore />}
           >
-            Override and Restore
+            {t('restoreDump.overrideAndRestore')}
           </Button>
         </DialogActions>
       </Dialog>

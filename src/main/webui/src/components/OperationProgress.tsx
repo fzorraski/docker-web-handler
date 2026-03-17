@@ -8,6 +8,7 @@ import {
   LinearProgress,
   Paper,
 } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import type { ContainerEvent } from '../services/sseService'
 
 const RUN_STEPS = ['Validating', 'Pulling', 'Creating', 'Starting']
@@ -27,11 +28,14 @@ interface Props {
 export { RUN_STEPS, REMOVE_STEPS, REMOVE_IMAGE_STEPS, RESTORE_STEPS, RUN_WITH_RESTORE_STEPS, RESTORE_WITH_SCRIPTS_STEPS, RUN_WITH_RESTORE_AND_SCRIPTS_STEPS, SNAPSHOT_STEPS }
 
 export default function OperationProgress({ events, steps = RUN_STEPS }: Props) {
+  const { t } = useTranslation()
   const logRef = useRef<HTMLDivElement>(null)
   const lastEvent = events[events.length - 1]
   const currentStep = lastEvent?.step ?? ''
   const isError = lastEvent?.type === 'ERROR'
   const isComplete = lastEvent?.type === 'SUCCESS'
+
+  const stepTranslations: Record<string, string> = t('steps', { returnObjects: true })
 
   const activeIndex = currentStep === 'Complete'
     ? steps.length
@@ -48,7 +52,9 @@ export default function OperationProgress({ events, steps = RUN_STEPS }: Props) 
       <Stepper activeStep={activeIndex === -1 ? 0 : activeIndex} alternativeLabel>
         {steps.map((label, index) => (
           <Step key={label} completed={index < activeIndex || isComplete}>
-            <StepLabel error={isError && index === activeIndex}>{label}</StepLabel>
+            <StepLabel error={isError && index === activeIndex}>
+              {stepTranslations[label] ?? label}
+            </StepLabel>
           </Step>
         ))}
       </Stepper>

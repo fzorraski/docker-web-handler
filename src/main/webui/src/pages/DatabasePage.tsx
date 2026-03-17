@@ -9,6 +9,7 @@ import RestoreDumpModal from '../components/RestoreDumpModal'
 import CreateSnapshotModal from '../components/CreateSnapshotModal'
 import EditExpirationDialog from '../components/EditExpirationDialog'
 import { formatBytes, formatDate } from '../utils/format'
+import { useTranslation } from 'react-i18next'
 import {
   Box,
   Typography,
@@ -43,6 +44,7 @@ import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertD
 
 export default function DatabasePage() {
   const { notify } = useNotification()
+  const { t } = useTranslation()
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
   const theadBg = isDark ? 'background.paper' : 'primary.main'
@@ -97,30 +99,30 @@ export default function DatabasePage() {
     ((expiresAt: string | null, password: string) => Promise<{ success: boolean; error?: string }>) | null
   >(null)
 
-  const DUMP_COLUMNS: { key: string; label: string }[] = [
-    { key: 'originalFilename', label: 'Original Filename' },
-    { key: 'version', label: 'Version' },
-    { key: 'databaseName', label: 'Database' },
-    { key: 'format', label: 'Format' },
-    { key: 'fileSize', label: 'Size' },
-    { key: 'md5Hash', label: 'MD5' },
-    { key: 'uploadedAt', label: 'Uploaded At' },
-    { key: 'expiresAt', label: 'Expires' },
-    { key: 'action', label: 'Actions' },
-  ]
+  const DUMP_COLUMNS: { key: string; label: string }[] = useMemo(() => [
+    { key: 'originalFilename', label: t('database.dumpColumns.originalFilename') },
+    { key: 'version', label: t('database.dumpColumns.version') },
+    { key: 'databaseName', label: t('database.dumpColumns.database') },
+    { key: 'format', label: t('database.dumpColumns.format') },
+    { key: 'fileSize', label: t('database.dumpColumns.size') },
+    { key: 'md5Hash', label: t('database.dumpColumns.md5') },
+    { key: 'uploadedAt', label: t('database.dumpColumns.uploadedAt') },
+    { key: 'expiresAt', label: t('database.dumpColumns.expires') },
+    { key: 'action', label: t('database.dumpColumns.actions') },
+  ], [t])
 
-  const SNAP_COLUMNS: { key: string; label: string }[] = [
-    { key: 'label', label: 'Label' },
-    { key: 'repository', label: 'Repository' },
-    { key: 'sourceDatabaseName', label: 'Database' },
-    { key: 'containerName', label: 'Container' },
-    { key: 'format', label: 'Format' },
-    { key: 'fileSize', label: 'Size' },
-    { key: 'md5Hash', label: 'MD5' },
-    { key: 'createdAt', label: 'Created At' },
-    { key: 'expiresAt', label: 'Expires' },
-    { key: 'action', label: 'Actions' },
-  ]
+  const SNAP_COLUMNS: { key: string; label: string }[] = useMemo(() => [
+    { key: 'label', label: t('database.snapColumns.label') },
+    { key: 'repository', label: t('database.snapColumns.repository') },
+    { key: 'sourceDatabaseName', label: t('database.snapColumns.database') },
+    { key: 'containerName', label: t('database.snapColumns.container') },
+    { key: 'format', label: t('database.snapColumns.format') },
+    { key: 'fileSize', label: t('database.snapColumns.size') },
+    { key: 'md5Hash', label: t('database.snapColumns.md5') },
+    { key: 'createdAt', label: t('database.snapColumns.createdAt') },
+    { key: 'expiresAt', label: t('database.snapColumns.expires') },
+    { key: 'action', label: t('database.snapColumns.actions') },
+  ], [t])
 
   // --- Dumps logic ---
   function handleSort(key: string) {
@@ -210,26 +212,26 @@ export default function DatabasePage() {
       if (isBulkDelete) {
         const result = await deleteDumpsBulk([...selected], deletePassword)
         if (result.success) {
-          notify(`${result.deleted} dump${result.deleted === 1 ? '' : 's'} deleted successfully.`, 'success')
+          notify(t('database.dumpsDeleted', { count: result.deleted }), 'success')
           setSelected(new Set())
           setDeleteDialogOpen(false)
           loadDumps()
         } else {
-          notify(result.error || 'Delete failed.', 'error')
+          notify(result.error || t('database.deleteFailed'), 'error')
         }
       } else if (deletingDump) {
         const result = await deleteDump(deletingDump.id, deletePassword)
         if (result.success) {
-          notify('Dump deleted successfully.', 'success')
+          notify(t('database.dumpDeleted'), 'success')
           setDeleteDialogOpen(false)
           setDeletingDump(null)
           loadDumps()
         } else {
-          notify(result.error || 'Delete failed.', 'error')
+          notify(result.error || t('database.deleteFailed'), 'error')
         }
       }
     } catch {
-      notify('An unexpected error occurred.', 'error')
+      notify(t('common.unexpectedError'), 'error')
     } finally {
       setDeleteLoading(false)
     }
@@ -297,26 +299,26 @@ export default function DatabasePage() {
       if (isSnapBulkDelete) {
         const result = await deleteSnapshotsBulk([...snapSelected], snapDeletePassword)
         if (result.success) {
-          notify(`${result.deleted} snapshot${result.deleted === 1 ? '' : 's'} deleted successfully.`, 'success')
+          notify(t('database.snapshotsDeleted', { count: result.deleted }), 'success')
           setSnapSelected(new Set())
           setSnapDeleteDialogOpen(false)
           loadSnapshots()
         } else {
-          notify(result.error || 'Delete failed.', 'error')
+          notify(result.error || t('database.deleteFailed'), 'error')
         }
       } else if (deletingSnapshot) {
         const result = await deleteSnapshot(deletingSnapshot.id, snapDeletePassword)
         if (result.success) {
-          notify('Snapshot deleted successfully.', 'success')
+          notify(t('database.snapshotDeleted'), 'success')
           setSnapDeleteDialogOpen(false)
           setDeletingSnapshot(null)
           loadSnapshots()
         } else {
-          notify(result.error || 'Delete failed.', 'error')
+          notify(result.error || t('database.deleteFailed'), 'error')
         }
       }
     } catch {
-      notify('An unexpected error occurred.', 'error')
+      notify(t('common.unexpectedError'), 'error')
     } finally {
       setSnapDeleteLoading(false)
     }
@@ -363,44 +365,46 @@ export default function DatabasePage() {
   }, [snapshots, snapFilter, snapSortKey, snapSortDir])
 
   const currentStorageInfo = activeTab === 0 ? storageInfo : snapStorageInfo
-  const currentFileLabel = activeTab === 0 ? 'dump' : 'snapshot'
+  const currentFileLabel = activeTab === 0
+    ? (currentStorageInfo?.fileCount === 1 ? t('database.dumpFile') : t('database.dumpFiles'))
+    : (currentStorageInfo?.fileCount === 1 ? t('database.snapshotFile') : t('database.snapshotFiles'))
 
   return (
     <>
-      <HeroBanner linkTo="/" linkLabel="Explore Containers" />
+      <HeroBanner linkTo="/" linkLabel={t('hero.exploreContainers')} />
 
       <Box sx={{ maxWidth: '85%', mx: 'auto', mt: 5, mb: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
           <Typography variant="h4" fontWeight="bold">
-            Database Files
+            {t('database.title')}
           </Typography>
           <Box sx={{ display: 'flex', gap: 1 }}>
             {activeTab === 0 && selected.size > 0 && (
               <Button variant="contained" color="error" startIcon={<Delete />} onClick={handleBulkDeleteClick}>
-                Delete ({selected.size})
+                {t('common.delete')} ({selected.size})
               </Button>
             )}
             {activeTab === 1 && snapSelected.size > 0 && (
               <Button variant="contained" color="error" startIcon={<Delete />} onClick={handleSnapBulkDeleteClick}>
-                Delete ({snapSelected.size})
+                {t('common.delete')} ({snapSelected.size})
               </Button>
             )}
             {activeTab === 0 && (
               <Button variant="contained" color="primary" startIcon={<CloudUpload />} onClick={() => setUploadOpen(true)}>
-                Upload Dump
+                {t('database.uploadDump')}
               </Button>
             )}
             {activeTab === 1 && (
               <Button variant="contained" color="primary" startIcon={<CameraAlt />} onClick={() => setSnapshotOpen(true)}>
-                Create Snapshot
+                {t('database.createSnapshot')}
               </Button>
             )}
           </Box>
         </Box>
 
         <Tabs value={activeTab} onChange={(_e, v) => setActiveTab(v)} sx={{ mb: 3 }}>
-          <Tab label={`Dumps (${dumps.length})`} />
-          <Tab label={`Snapshots (${snapshots.length})`} />
+          <Tab label={t('database.dumpsTab', { count: dumps.length })} />
+          <Tab label={t('database.snapshotsTab', { count: snapshots.length })} />
         </Tabs>
 
         {currentStorageInfo && currentStorageInfo.maxBytes > 0 && (
@@ -414,7 +418,7 @@ export default function DatabasePage() {
                       {formatBytes(currentStorageInfo.totalBytes)}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      of {formatBytes(currentStorageInfo.maxBytes)} used
+                      {t('database.storageUsed', { max: formatBytes(currentStorageInfo.maxBytes) })}
                     </Typography>
                   </Box>
                 </Box>
@@ -427,7 +431,7 @@ export default function DatabasePage() {
                       {currentStorageInfo.fileCount}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      {currentStorageInfo.fileCount === 1 ? `${currentFileLabel} file` : `${currentFileLabel} files`}
+                      {currentFileLabel}
                     </Typography>
                   </Box>
                 </Box>
@@ -435,7 +439,7 @@ export default function DatabasePage() {
               <Grid size={{ xs: 12, md: 4 }}>
                 <Box>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                    <Typography variant="body2" color="text.secondary">Storage usage</Typography>
+                    <Typography variant="body2" color="text.secondary">{t('database.storageUsage')}</Typography>
                     <Typography variant="body2" fontWeight="bold">
                       {currentStorageInfo.maxBytes > 0 ? Math.min(100, (currentStorageInfo.totalBytes / currentStorageInfo.maxBytes * 100)).toFixed(1) : 0}%
                     </Typography>
@@ -461,10 +465,10 @@ export default function DatabasePage() {
 
         {activeRestores.length > 0 && (
           <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
-            <AlertTitle>Restore in progress</AlertTitle>
+            <AlertTitle>{t('database.restoreInProgress')}</AlertTitle>
             {activeRestores.map((r, i) => (
               <Typography key={i} variant="body2">
-                Restoring <strong>{r.dumpFilename}</strong> into <strong>{r.targetDatabase}</strong> ({r.repository})
+                <span dangerouslySetInnerHTML={{ __html: t('database.restoringInto', { filename: r.dumpFilename, database: r.targetDatabase, repository: r.repository }) }} />
               </Typography>
             ))}
           </Alert>
@@ -472,10 +476,10 @@ export default function DatabasePage() {
 
         {activeTab === 1 && activeSnaps.length > 0 && (
           <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
-            <AlertTitle>Snapshot in progress</AlertTitle>
+            <AlertTitle>{t('database.snapshotInProgress')}</AlertTitle>
             {activeSnaps.map((s, i) => (
               <Typography key={i} variant="body2">
-                Creating snapshot of <strong>{s.sourceDatabaseName}</strong> ({s.repository})
+                <span dangerouslySetInnerHTML={{ __html: t('database.creatingSnapshotOf', { database: s.sourceDatabaseName, repository: s.repository }) }} />
               </Typography>
             ))}
           </Alert>
@@ -486,7 +490,7 @@ export default function DatabasePage() {
           <>
             <TextField
               fullWidth
-              placeholder="Search dumps..."
+              placeholder={t('database.searchDumps')}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               size="small"
@@ -532,7 +536,7 @@ export default function DatabasePage() {
                   {!loading && filteredDumps.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={DUMP_COLUMNS.length + 1} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                        No dumps found
+                        {t('database.noDumpsFound')}
                       </TableCell>
                     </TableRow>
                   )}
@@ -542,7 +546,7 @@ export default function DatabasePage() {
                       title={dump.description ? (
                         <Box sx={{ p: 0.5 }}>
                           <Typography variant="caption" fontWeight={700} sx={{ display: 'block', mb: 0.5, opacity: 0.8 }}>
-                            Description
+                            {t('common.description')}
                           </Typography>
                           <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>
                             {dump.description}
@@ -590,7 +594,7 @@ export default function DatabasePage() {
                       <TableCell>
                         <Chip
                           icon={<Timer />}
-                          label={dump.expiresAt ? formatDate(dump.expiresAt) : 'No expiration'}
+                          label={dump.expiresAt ? formatDate(dump.expiresAt) : t('common.noExpiration')}
                           size="small"
                           color={dump.expiresAt && new Date(dump.expiresAt) < new Date() ? 'error' : 'default'}
                           variant="outlined"
@@ -601,13 +605,13 @@ export default function DatabasePage() {
                       <TableCell>
                         <Box sx={{ display: 'flex', gap: 1 }}>
                           <Button size="small" variant="contained" color="primary" startIcon={<Download />} href={`/api/database/dumps/download/${dump.id}`}>
-                            Download
+                            {t('common.download')}
                           </Button>
                           <Button size="small" variant="contained" color="success" startIcon={<Restore />} onClick={() => handleRestoreClick(dump)}>
-                            Restore
+                            {t('common.restore')}
                           </Button>
                           <Button size="small" variant="contained" color="error" startIcon={<Delete />} onClick={() => handleDeleteClick(dump)}>
-                            Delete
+                            {t('common.delete')}
                           </Button>
                         </Box>
                       </TableCell>
@@ -625,7 +629,7 @@ export default function DatabasePage() {
           <>
             <TextField
               fullWidth
-              placeholder="Search snapshots..."
+              placeholder={t('database.searchSnapshots')}
               value={snapFilter}
               onChange={(e) => setSnapFilter(e.target.value)}
               size="small"
@@ -671,7 +675,7 @@ export default function DatabasePage() {
                   {!snapLoading && filteredSnapshots.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={SNAP_COLUMNS.length + 1} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                        No snapshots found
+                        {t('database.noSnapshotsFound')}
                       </TableCell>
                     </TableRow>
                   )}
@@ -681,7 +685,7 @@ export default function DatabasePage() {
                       title={snap.description ? (
                         <Box sx={{ p: 0.5 }}>
                           <Typography variant="caption" fontWeight={700} sx={{ display: 'block', mb: 0.5, opacity: 0.8 }}>
-                            Description
+                            {t('common.description')}
                           </Typography>
                           <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>
                             {snap.description}
@@ -730,7 +734,7 @@ export default function DatabasePage() {
                       <TableCell>
                         <Chip
                           icon={<Timer />}
-                          label={snap.expiresAt ? formatDate(snap.expiresAt) : 'No expiration'}
+                          label={snap.expiresAt ? formatDate(snap.expiresAt) : t('common.noExpiration')}
                           size="small"
                           color={snap.expiresAt && new Date(snap.expiresAt) < new Date() ? 'error' : 'default'}
                           variant="outlined"
@@ -741,13 +745,13 @@ export default function DatabasePage() {
                       <TableCell>
                         <Box sx={{ display: 'flex', gap: 1 }}>
                           <Button size="small" variant="contained" color="primary" startIcon={<Download />} href={`/api/database/snapshots/download/${snap.id}`}>
-                            Download
+                            {t('common.download')}
                           </Button>
                           <Button size="small" variant="contained" color="success" startIcon={<Restore />} onClick={() => { setRestoreSnapshot(snap); setRestoreSnapOpen(true) }}>
-                            Restore
+                            {t('common.restore')}
                           </Button>
                           <Button size="small" variant="contained" color="error" startIcon={<Delete />} onClick={() => handleSnapDeleteClick(snap)}>
-                            Delete
+                            {t('common.delete')}
                           </Button>
                         </Box>
                       </TableCell>
@@ -812,22 +816,22 @@ export default function DatabasePage() {
         fullWidth
       >
         <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
-          <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> Delete {isBulkDelete ? `${selected.size} Dumps` : 'Dump'}
+          <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> {isBulkDelete ? t('database.deleteDumps', { count: selected.size }) : t('database.deleteDump')}
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 3 }}>
           {isBulkDelete ? (
             <Typography sx={{ mb: 2 }}>
-              Delete <strong>{selected.size}</strong> selected dump{selected.size === 1 ? '' : 's'}? This action cannot be undone.
+              <span dangerouslySetInnerHTML={{ __html: t('database.deleteDumpsBulkConfirm', { count: selected.size }) }} />
             </Typography>
           ) : (
             <Typography sx={{ mb: 2 }}>
-              Delete dump <strong>{deletingDump?.originalFilename}</strong>? This action cannot be undone.
+              <span dangerouslySetInnerHTML={{ __html: t('database.deleteDumpConfirm', { filename: deletingDump?.originalFilename }) }} />
             </Typography>
           )}
           <TextField
             fullWidth
             type="password"
-            label="Operations Password"
+            label={t('common.operationsPassword')}
             value={deletePassword}
             onChange={(e) => setDeletePassword(e.target.value)}
             size="small"
@@ -836,7 +840,7 @@ export default function DatabasePage() {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setDeleteDialogOpen(false)} color="inherit" disabled={deleteLoading}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             variant="contained"
@@ -845,7 +849,7 @@ export default function DatabasePage() {
             disabled={deleteLoading || !deletePassword}
             startIcon={deleteLoading ? <CircularProgress size={20} /> : <Delete />}
           >
-            {deleteLoading ? 'Deleting...' : 'Delete'}
+            {deleteLoading ? t('common.deleting') : t('common.delete')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -858,22 +862,22 @@ export default function DatabasePage() {
         fullWidth
       >
         <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
-          <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> Delete {isSnapBulkDelete ? `${snapSelected.size} Snapshots` : 'Snapshot'}
+          <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> {isSnapBulkDelete ? t('database.deleteSnapshots', { count: snapSelected.size }) : t('database.deleteSnapshot')}
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 3 }}>
           {isSnapBulkDelete ? (
             <Typography sx={{ mb: 2 }}>
-              Delete <strong>{snapSelected.size}</strong> selected snapshot{snapSelected.size === 1 ? '' : 's'}? This action cannot be undone.
+              <span dangerouslySetInnerHTML={{ __html: t('database.deleteSnapshotsBulkConfirm', { count: snapSelected.size }) }} />
             </Typography>
           ) : (
             <Typography sx={{ mb: 2 }}>
-              Delete snapshot <strong>{deletingSnapshot?.label || deletingSnapshot?.sourceDatabaseName}</strong>? This action cannot be undone.
+              <span dangerouslySetInnerHTML={{ __html: t('database.deleteSnapshotConfirm', { name: deletingSnapshot?.label || deletingSnapshot?.sourceDatabaseName }) }} />
             </Typography>
           )}
           <TextField
             fullWidth
             type="password"
-            label="Operations Password"
+            label={t('common.operationsPassword')}
             value={snapDeletePassword}
             onChange={(e) => setSnapDeletePassword(e.target.value)}
             size="small"
@@ -882,7 +886,7 @@ export default function DatabasePage() {
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setSnapDeleteDialogOpen(false)} color="inherit" disabled={snapDeleteLoading}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             variant="contained"
@@ -891,7 +895,7 @@ export default function DatabasePage() {
             disabled={snapDeleteLoading || !snapDeletePassword}
             startIcon={snapDeleteLoading ? <CircularProgress size={20} /> : <Delete />}
           >
-            {snapDeleteLoading ? 'Deleting...' : 'Delete'}
+            {snapDeleteLoading ? t('common.deleting') : t('common.delete')}
           </Button>
         </DialogActions>
       </Dialog>

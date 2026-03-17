@@ -24,6 +24,7 @@ import { MobileDateTimePicker } from '@mui/x-date-pickers/MobileDateTimePicker'
 import dayjs, { type Dayjs } from 'dayjs'
 import { Add, Close, Delete, Memory, PlayArrow, Restore, Timer, Warning, FolderOpen } from '@mui/icons-material'
 import { Alert } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import {
   getAllowedRepositories,
   getDatabaseConflicts,
@@ -79,6 +80,7 @@ function compareTagsDesc(a: string, b: string): number {
 
 export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const { notify, confirm } = useNotification()
+  const { t } = useTranslation()
   const [repositories, setRepositories] = useState<string[]>([])
   const [selectedRepo, setSelectedRepo] = useState('')
   const [allTags, setAllTags] = useState<string[]>([])
@@ -345,12 +347,12 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   }
 
   async function handleRun() {
-    if (!selectedRepo) return notify('Please select a repository.', 'warning')
-    if (!selectedTag) return notify('Please select a tag.', 'warning')
+    if (!selectedRepo) return notify(t('newContainer.selectRepoWarning'), 'warning')
+    if (!selectedTag) return notify(t('newContainer.selectTagWarning'), 'warning')
 
     if (dbMode === 'restore') {
-      if (!selectedDump && !selectedSnapshot) return notify('Please select a dump or snapshot to restore.', 'warning')
-      if (!restoreTargetDb.trim()) return notify('Please enter a target database name.', 'warning')
+      if (!selectedDump && !selectedSnapshot) return notify(t('newContainer.selectDumpWarning'), 'warning')
+      if (!restoreTargetDb.trim()) return notify(t('newContainer.enterTargetDbWarning'), 'warning')
     }
 
     if (restoreDbExists) {
@@ -370,8 +372,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       return
     }
 
-    const name = containerName ? ` as "${containerName}"` : ''
-    const accepted = await confirm(`Run container from ${selectedRepo}:${selectedTag}${name}?`)
+    const name = containerName ? t('newContainer.confirmRunAs', { containerName }) : ''
+    const accepted = await confirm(t('newContainer.confirmRun', { repo: selectedRepo, tag: selectedTag, name }))
     if (!accepted) return
 
     executeRun()
@@ -414,7 +416,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
             resetForm()
             onClose()
             onCreated()
-            notify('Container started successfully.', 'success')
+            notify(t('newContainer.containerStarted'), 'success')
           }, 1500)
         },
         () => {
@@ -424,7 +426,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       )
     } catch {
       setRunning(false)
-      notify('An unexpected error occurred.', 'error')
+      notify(t('common.unexpectedError'), 'error')
     }
   }
 
@@ -443,6 +445,10 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     onClose()
   }
 
+  const usedBySuffix = hasDbUsageConflict
+    ? t('newContainer.dbUsedBySuffix', { containers: dbConflict!.inUseByContainers.join(', ') })
+    : ''
+
   return (
     <>
     <Dialog
@@ -455,7 +461,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       fullWidth
     >
       <DialogTitle sx={{ bgcolor: 'primary.dark', color: 'white', display: 'flex', alignItems: 'center' }}>
-        <Add sx={{ mr: 1 }} /> New Container
+        <Add sx={{ mr: 1 }} /> {t('newContainer.title')}
         <IconButton onClick={handleClose} sx={{ ml: 'auto', color: 'white' }}>
           <Close />
         </IconButton>
@@ -475,12 +481,12 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                 <TextField
                   select
                   fullWidth
-                  label="Repository"
+                  label={t('newContainer.repository')}
                   value={selectedRepo}
                   onChange={(e) => setSelectedRepo(e.target.value)}
                   size="small"
                 >
-                  <MenuItem value="">Select a repository...</MenuItem>
+                  <MenuItem value="">{t('newContainer.selectRepository')}</MenuItem>
                   {repositories.map((r) => (
                     <MenuItem key={r} value={r}>{r}</MenuItem>
                   ))}
@@ -493,13 +499,13 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                   onChange={(_e, value) => setSelectedTag(value)}
                   disabled={!selectedRepo}
                   loading={tagsLoading}
-                  noOptionsText={!selectedRepo ? 'Select a repository first...' : 'No tags found'}
+                  noOptionsText={!selectedRepo ? t('newContainer.selectRepoFirst') : t('newContainer.noTagsFound')}
                   slotProps={{ listbox: { style: { maxHeight: 7 * 36 } } }}
                   renderInput={(params) => (
                     <TextField
                       {...params}
-                      label="Tag"
-                      placeholder="Type to filter tags..."
+                      label={t('newContainer.tag')}
+                      placeholder={t('newContainer.tagPlaceholder')}
                       size="small"
                       slotProps={{
                         input: {
@@ -523,26 +529,26 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
                   fullWidth
-                  label="Container Name"
-                  placeholder="e.g. my-app-container (optional)"
+                  label={t('newContainer.containerName')}
+                  placeholder={t('newContainer.containerNamePlaceholder')}
                   value={containerName}
                   onChange={(e) => setContainerName(e.target.value)}
                   size="small"
                   error={!containerNameValid}
-                  helperText={!containerNameValid ? 'Only letters, digits, underscores, periods, and hyphens; must start with a letter or digit' : ''}
+                  helperText={!containerNameValid ? t('newContainer.containerNameError') : ''}
                 />
               </Grid>
               {memoryEnabled && (
                 <Grid size={{ xs: 12, md: 6 }}>
                   <TextField
                     fullWidth
-                    label="Memory Limit (MB)"
-                    placeholder="e.g. 512 (optional)"
+                    label={t('newContainer.memoryLimit')}
+                    placeholder={t('newContainer.memoryPlaceholder')}
                     value={memoryMb}
                     onChange={(e) => setMemoryMb(e.target.value.replace(/\D/g, ''))}
                     size="small"
                     type="text"
-                    helperText="Leave empty for no limit"
+                    helperText={t('newContainer.memoryHelperText')}
                     slotProps={{
                       input: {
                         startAdornment: <Memory fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />,
@@ -564,8 +570,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                       onChange={(_e, value) => { if (value) handleDbModeChange(value) }}
                       size="small"
                     >
-                      <ToggleButton value="existing">Existing Database</ToggleButton>
-                      <ToggleButton value="restore">Restore from Dump</ToggleButton>
+                      <ToggleButton value="existing">{t('newContainer.existingDatabase')}</ToggleButton>
+                      <ToggleButton value="restore">{t('newContainer.restoreFromDump')}</ToggleButton>
                     </ToggleButtonGroup>
                   </Grid>
                 )}
@@ -578,13 +584,13 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                         value={selectedDb}
                         onChange={(_e, value) => handleDatabaseSelect(value)}
                         loading={dbLoading}
-                        noOptionsText={dbLoading ? 'Loading databases...' : 'No databases found'}
+                        noOptionsText={dbLoading ? t('newContainer.loadingDatabases') : t('newContainer.noDatabasesFound')}
                         slotProps={{ listbox: { style: { maxHeight: 7 * 36 } } }}
                         renderInput={(params) => (
                           <TextField
                             {...params}
-                            label="Database"
-                            placeholder="Select a database..."
+                            label={t('newContainer.database')}
+                            placeholder={t('newContainer.selectDatabase')}
                             size="small"
                             slotProps={{
                               input: {
@@ -604,14 +610,11 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                     {selectedDb && dbConflict?.scheduledForDeletionBy && (
                       <Grid size={{ xs: 12 }}>
                         <Alert severity="error" variant="outlined">
-                          Database <strong>{selectedDb}</strong> is scheduled for deletion by
-                          container <strong>{dbConflict.scheduledForDeletionBy}</strong>.
-                          It will be dropped when that container expires.
+                          <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbScheduledForDeletion', { database: selectedDb, container: dbConflict.scheduledForDeletionBy }) }} />
                         </Alert>
                         {expirationLockedByDb && (
                           <Alert severity="info" variant="outlined" sx={{ mt: 1 }}>
-                            Expiration time is synced with container <strong>{dbConflict.scheduledForDeletionBy}</strong>.
-                            This container will be removed together when the database is dropped.
+                            <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbExpirationSynced', { container: dbConflict.scheduledForDeletionBy }) }} />
                           </Alert>
                         )}
                       </Grid>
@@ -629,7 +632,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                           }
                           label={
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <Warning fontSize="small" color="warning" /> Delete database on expiration
+                              <Warning fontSize="small" color="warning" /> {t('newContainer.deleteDbOnExpiration')}
                             </Box>
                           }
                         />
@@ -638,16 +641,14 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                     {hasDbUsageConflict && dbDeletionEnabled && selectedDb && expirationEnabled && (
                       <Grid size={{ xs: 12 }}>
                         <Alert severity="error" variant="outlined">
-                          Cannot enable database deletion. Database <strong>{selectedDb}</strong> is
-                          in use by: <strong>{dbConflict!.inUseByContainers.join(', ')}</strong>.
+                          <span dangerouslySetInnerHTML={{ __html: t('newContainer.cannotEnableDbDeletion', { database: selectedDb, containers: dbConflict!.inUseByContainers.join(', ') }) }} />
                         </Alert>
                       </Grid>
                     )}
                     {deleteDbOnExpiration && selectedDb && expirationEnabled && !hasDbUsageConflict && (
                       <Grid size={{ xs: 12 }}>
                         <Alert severity="warning" variant="outlined">
-                          The database <strong>{selectedDb}</strong> will be permanently deleted when this container expires.
-                          This action cannot be undone.
+                          <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbWillBeDeleted', { database: selectedDb }) }} />
                         </Alert>
                       </Grid>
                     )}
@@ -665,7 +666,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                             </Typography>
                             <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
                               <Chip
-                                label={selectedDump ? 'Dump' : 'Snapshot'}
+                                label={selectedDump ? t('newContainer.dump') : t('containers.snapshot')}
                                 size="small"
                                 color={selectedDump ? 'default' : 'info'}
                                 variant="outlined"
@@ -682,7 +683,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                             </Box>
                           </Box>
                           <Button size="small" variant="outlined" onClick={() => setDumpBrowserOpen(true)}>
-                            Change
+                            {t('common.change')}
                           </Button>
                         </Box>
                       ) : (
@@ -691,7 +692,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                           startIcon={<FolderOpen />}
                           onClick={() => setDumpBrowserOpen(true)}
                         >
-                          Browse Files
+                          {t('newContainer.browseFiles')}
                         </Button>
                       )}
                     </Grid>
@@ -715,8 +716,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                         renderInput={(params) => (
                           <TextField
                             {...params}
-                            label="Target Database"
-                            placeholder="Select or type a new database name"
+                            label={t('newContainer.targetDatabase')}
+                            placeholder={t('newContainer.targetDbPlaceholder')}
                             size="small"
                             slotProps={{
                               input: {
@@ -741,29 +742,24 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                             onChange={(e) => setCreateDatabase(e.target.checked)}
                           />
                         }
-                        label="Create database if it doesn't exist"
+                        label={t('newContainer.createDatabase')}
                       />
                     </Grid>
                     {restoreDbExists && (
                       <Grid size={{ xs: 12 }}>
                         <Alert severity="warning" variant="outlined" icon={<Warning />}>
-                          Database <strong>{restoreTargetDb.trim()}</strong> already exists
-                          {hasDbUsageConflict && <> and is being used by <strong>{dbConflict!.inUseByContainers.join(', ')}</strong></>}.
-                          {' '}Restoring into it will override its current data. You will be asked to confirm before proceeding.
+                          <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbAlreadyExists', { database: restoreTargetDb.trim(), usedBy: usedBySuffix }) }} />
                         </Alert>
                       </Grid>
                     )}
                     {restoreTargetDb.trim() && dbConflict?.scheduledForDeletionBy && (
                       <Grid size={{ xs: 12 }}>
                         <Alert severity="error" variant="outlined">
-                          Database <strong>{restoreTargetDb.trim()}</strong> is scheduled for deletion by
-                          container <strong>{dbConflict.scheduledForDeletionBy}</strong>.
-                          It will be dropped when that container expires.
+                          <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbScheduledForDeletion', { database: restoreTargetDb.trim(), container: dbConflict.scheduledForDeletionBy }) }} />
                         </Alert>
                         {expirationLockedByDb && (
                           <Alert severity="info" variant="outlined" sx={{ mt: 1 }}>
-                            Expiration time is synced with container <strong>{dbConflict.scheduledForDeletionBy}</strong>.
-                            This container will be removed together when the database is dropped.
+                            <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbExpirationSynced', { container: dbConflict.scheduledForDeletionBy }) }} />
                           </Alert>
                         )}
                       </Grid>
@@ -781,7 +777,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                           }
                           label={
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <Warning fontSize="small" color="warning" /> Delete database on expiration
+                              <Warning fontSize="small" color="warning" /> {t('newContainer.deleteDbOnExpiration')}
                             </Box>
                           }
                         />
@@ -790,16 +786,14 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                     {hasDbUsageConflict && dbDeletionEnabled && restoreTargetDb.trim() && expirationEnabled && (
                       <Grid size={{ xs: 12 }}>
                         <Alert severity="error" variant="outlined">
-                          Cannot enable database deletion. Database <strong>{restoreTargetDb.trim()}</strong> is
-                          in use by: <strong>{dbConflict!.inUseByContainers.join(', ')}</strong>.
+                          <span dangerouslySetInnerHTML={{ __html: t('newContainer.cannotEnableDbDeletion', { database: restoreTargetDb.trim(), containers: dbConflict!.inUseByContainers.join(', ') }) }} />
                         </Alert>
                       </Grid>
                     )}
                     {deleteDbOnExpiration && restoreTargetDb.trim() && expirationEnabled && !hasDbUsageConflict && (
                       <Grid size={{ xs: 12 }}>
                         <Alert severity="warning" variant="outlined">
-                          The database <strong>{restoreTargetDb.trim()}</strong> will be permanently deleted when this container expires.
-                          This action cannot be undone.
+                          <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbWillBeDeleted', { database: restoreTargetDb.trim() }) }} />
                         </Alert>
                       </Grid>
                     )}
@@ -807,11 +801,11 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                     {scriptsResponse?.enabled && (selectedDump || selectedSnapshot) && (scriptsResponse.mandatory.length > 0 || scriptsResponse.optional.length > 0) && (
                       <Grid size={{ xs: 12 }}>
                         <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
-                          Post-Restore Scripts
+                          {t('newContainer.postRestoreScripts')}
                         </Typography>
                         {scriptsResponse.mandatory.length > 0 && (
                           <Box sx={{ mb: 1 }}>
-                            <Typography variant="caption" color="text.secondary">Mandatory (always run)</Typography>
+                            <Typography variant="caption" color="text.secondary">{t('newContainer.mandatoryScripts')}</Typography>
                             {scriptsResponse.mandatory.map((s) => (
                               <FormControlLabel
                                 key={s.filename}
@@ -829,7 +823,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                         )}
                         {scriptsResponse.optional.length > 0 && (
                           <Box sx={{ mb: 1 }}>
-                            <Typography variant="caption" color="text.secondary">Optional</Typography>
+                            <Typography variant="caption" color="text.secondary">{t('newContainer.optionalScripts')}</Typography>
                             {scriptsResponse.optional.map((s) => (
                               <FormControlLabel
                                 key={s.filename}
@@ -858,7 +852,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                           </Box>
                         )}
                         <Typography variant="caption" color="text.secondary">
-                          On failure: {scriptsResponse.onFailure === 'stop' ? 'stop execution' : 'continue with remaining scripts'}
+                          {scriptsResponse.onFailure === 'stop' ? t('newContainer.onFailureStop') : t('newContainer.onFailureContinue')}
                         </Typography>
                       </Grid>
                     )}
@@ -880,7 +874,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                   }
                   label={
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Timer fontSize="small" /> Auto-expire
+                      <Timer fontSize="small" /> {t('newContainer.autoExpire')}
                     </Box>
                   }
                 />
@@ -890,10 +884,10 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                   <Grid size={{ xs: 12, md: 4 }}>
                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                       {[
-                        { label: '2 Hours', amount: 2, unit: 'hour' as const },
-                        { label: '1 Day', amount: 1, unit: 'day' as const },
-                        { label: '3 Days', amount: 3, unit: 'day' as const },
-                        { label: '1 Week', amount: 7, unit: 'day' as const },
+                        { label: t('newContainer.presets.2hours'), amount: 2, unit: 'hour' as const },
+                        { label: t('newContainer.presets.1day'), amount: 1, unit: 'day' as const },
+                        { label: t('newContainer.presets.3days'), amount: 3, unit: 'day' as const },
+                        { label: t('newContainer.presets.1week'), amount: 7, unit: 'day' as const },
                       ].map((opt) => {
                         const target = dayjs().add(opt.amount, opt.unit)
                         const exceedsMax = expirationLockedByDb && target.isAfter(dayjs(dbConflict!.expiresAt))
@@ -913,7 +907,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                   </Grid>
                   <Grid size={{ xs: 12, md: 5 }}>
                     <MobileDateTimePicker
-                      label="Expires at"
+                      label={t('newContainer.expiresAt')}
                       value={expiresAt}
                       onChange={(v) => setExpiresAt(v)}
                       minDateTime={dayjs()}
@@ -923,8 +917,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                           fullWidth: true,
                           size: 'small',
                           helperText: expirationLockedByDb
-                            ? `Cannot exceed expiration of container "${dbConflict!.scheduledForDeletionBy}"`
-                            : 'Container will be stopped and removed at this time',
+                            ? t('newContainer.expiresLockedHelperText', { container: dbConflict!.scheduledForDeletionBy })
+                            : t('newContainer.expiresHelperText'),
                         },
                       }}
                     />
@@ -935,7 +929,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
 
             {/* Environment Variables */}
             <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
-              Environment Variables
+              {t('newContainer.environmentVariables')}
             </Typography>
             {envVars.map((env, i) => (
               <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -960,7 +954,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
               </Box>
             ))}
             <Button size="small" startIcon={<Add />} onClick={addEnvVar}>
-              Add Variable
+              {t('newContainer.addVariable')}
             </Button>
           </>
         )}
@@ -968,7 +962,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       <DialogActions sx={{ px: 3, py: 2 }}>
         {sseError ? (
           <>
-            <Button onClick={handleClose} color="inherit">Close</Button>
+            <Button onClick={handleClose} color="inherit">{t('common.close')}</Button>
             <Button
               variant="contained"
               color="primary"
@@ -977,14 +971,14 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                 setSseError(false)
               }}
             >
-              Back to Form
+              {t('common.backToForm')}
             </Button>
           </>
         ) : running ? (
-          <Button onClick={handleClose} color="inherit">Cancel</Button>
+          <Button onClick={handleClose} color="inherit">{t('common.cancel')}</Button>
         ) : (
           <>
-            <Button onClick={handleClose} color="inherit">Cancel</Button>
+            <Button onClick={handleClose} color="inherit">{t('common.cancel')}</Button>
             <Button
               variant="contained"
               color="success"
@@ -992,7 +986,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
               disabled={running || !containerNameValid}
               startIcon={<PlayArrow />}
             >
-              Run Container
+              {t('newContainer.runContainer')}
             </Button>
           </>
         )}
@@ -1009,24 +1003,22 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
 
       <Dialog open={confirmOverrideOpen} onClose={() => setConfirmOverrideOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: 'warning.main', color: 'white', display: 'flex', alignItems: 'center' }}>
-          <Warning sx={{ mr: 1 }} /> Confirm Database Override
+          <Warning sx={{ mr: 1 }} /> {t('newContainer.confirmDbOverride')}
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 3 }}>
           <Alert severity="warning" sx={{ mb: 2 }}>
-            The database <strong>{restoreTargetDb.trim()}</strong> already exists and contains data
-            {hasDbUsageConflict && <> and is being used by <strong>{dbConflict!.inUseByContainers.join(', ')}</strong></>}.
+            <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbOverrideWarning', { database: restoreTargetDb.trim(), usedBy: usedBySuffix }) }} />
           </Alert>
           <Typography>
-            Restoring into this database will override its current content.
-            This action <strong>cannot be undone</strong>.
+            <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbOverrideText') }} />
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            To avoid this, go back and change the target database name.
+            {t('newContainer.dbOverrideHint')}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={() => setConfirmOverrideOpen(false)} color="inherit">
-            Go Back
+            {t('common.goBack')}
           </Button>
           <Button
             variant="contained"
@@ -1034,22 +1026,21 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
             onClick={proceedAfterOverrideCheck}
             startIcon={<Restore />}
           >
-            Override and Continue
+            {t('newContainer.overrideAndContinue')}
           </Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={confirmDialogOpen} onClose={() => setConfirmDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: 'warning.main', color: 'white', display: 'flex', alignItems: 'center' }}>
-          <Warning sx={{ mr: 1 }} /> Confirm Database Deletion
+          <Warning sx={{ mr: 1 }} /> {t('newContainer.confirmDbDeletion')}
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 3 }}>
           <Alert severity="warning" sx={{ mb: 3 }}>
-            The database <strong>{activeDbName}</strong> will be permanently deleted when this container expires.
-            This action cannot be undone.
+            <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbDeletionWarning', { database: activeDbName }) }} />
           </Alert>
           <Typography variant="body2" sx={{ mb: 2 }}>
-            To confirm, type the database name <strong>{activeDbName}</strong> below:
+            <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbDeletionConfirmText', { database: activeDbName }) }} />
           </Typography>
           <TextField
             fullWidth
@@ -1062,7 +1053,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setConfirmDialogOpen(false)} color="inherit">Cancel</Button>
+          <Button onClick={() => setConfirmDialogOpen(false)} color="inherit">{t('common.cancel')}</Button>
           <Button
             variant="contained"
             color="warning"
@@ -1070,7 +1061,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
             onClick={handleConfirmRun}
             startIcon={<PlayArrow />}
           >
-            Confirm & Run
+            {t('newContainer.confirmAndRun')}
           </Button>
         </DialogActions>
       </Dialog>

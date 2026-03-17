@@ -1,6 +1,9 @@
 import { Box, Typography } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 
 export default function Footer() {
+  const { t } = useTranslation()
+
   return (
     <Box
       component="footer"
@@ -12,7 +15,7 @@ export default function Footer() {
         textAlign: 'center',
       }}
     >
-      <Typography variant="body2">2024 Docker Handler.</Typography>
+      <Typography variant="body2">{t('footer.copyright')}</Typography>
     </Box>
   )
 }

@@ -24,6 +24,7 @@ import {
   Typography,
 } from '@mui/material'
 import { Close, Search, InfoOutlined } from '@mui/icons-material'
+import { useTranslation } from 'react-i18next'
 import type { DatabaseDump, DatabaseSnapshot } from '../types'
 import { listSnapshots } from '../services/snapshotService'
 import { formatBytes, formatDate } from '../utils/format'
@@ -36,33 +37,34 @@ interface Props {
   onSelectSnapshot?: (snapshot: DatabaseSnapshot) => void
 }
 
-const DUMP_COLUMNS: { key: string; label: string }[] = [
-  { key: 'originalFilename', label: 'Filename' },
-  { key: 'version', label: 'Version' },
-  { key: 'databaseName', label: 'Database' },
-  { key: 'format', label: 'Format' },
-  { key: 'fileSize', label: 'Size' },
-  { key: 'uploadedAt', label: 'Uploaded At' },
-  { key: 'action', label: '' },
-]
-
-const SNAP_COLUMNS: { key: string; label: string }[] = [
-  { key: 'label', label: 'Label' },
-  { key: 'sourceDatabaseName', label: 'Database' },
-  { key: 'repository', label: 'Repository' },
-  { key: 'format', label: 'Format' },
-  { key: 'fileSize', label: 'Size' },
-  { key: 'createdAt', label: 'Created At' },
-  { key: 'action', label: '' },
-]
-
 export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSelectSnapshot }: Props) {
+  const { t } = useTranslation()
   const [tab, setTab] = useState(0)
   const [filter, setFilter] = useState('')
   const [sortKey, setSortKey] = useState<string>('')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [snapshots, setSnapshots] = useState<DatabaseSnapshot[]>([])
   const [snapLoading, setSnapLoading] = useState(false)
+
+  const DUMP_COLUMNS: { key: string; label: string }[] = useMemo(() => [
+    { key: 'originalFilename', label: t('dumpBrowser.dumpColumns.filename') },
+    { key: 'version', label: t('dumpBrowser.dumpColumns.version') },
+    { key: 'databaseName', label: t('dumpBrowser.dumpColumns.database') },
+    { key: 'format', label: t('dumpBrowser.dumpColumns.format') },
+    { key: 'fileSize', label: t('dumpBrowser.dumpColumns.size') },
+    { key: 'uploadedAt', label: t('dumpBrowser.dumpColumns.uploadedAt') },
+    { key: 'action', label: '' },
+  ], [t])
+
+  const SNAP_COLUMNS: { key: string; label: string }[] = useMemo(() => [
+    { key: 'label', label: t('dumpBrowser.snapColumns.label') },
+    { key: 'sourceDatabaseName', label: t('dumpBrowser.snapColumns.database') },
+    { key: 'repository', label: t('dumpBrowser.snapColumns.repository') },
+    { key: 'format', label: t('dumpBrowser.snapColumns.format') },
+    { key: 'fileSize', label: t('dumpBrowser.snapColumns.size') },
+    { key: 'createdAt', label: t('dumpBrowser.snapColumns.createdAt') },
+    { key: 'action', label: '' },
+  ], [t])
 
   useEffect(() => {
     if (open && tab === 1) {
@@ -152,20 +154,20 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ bgcolor: 'primary.dark', color: 'white', display: 'flex', alignItems: 'center' }}>
-        Browse Files
+        {t('dumpBrowser.title')}
         <IconButton onClick={handleClose} sx={{ ml: 'auto', color: 'white' }}>
           <Close />
         </IconButton>
       </DialogTitle>
       <DialogContent dividers sx={{ pt: 0 }}>
         <Tabs value={tab} onChange={handleTabChange} sx={{ mb: 2 }}>
-          <Tab label="Uploaded Dumps" />
-          <Tab label="Snapshots" disabled={!onSelectSnapshot} />
+          <Tab label={t('dumpBrowser.uploadedDumps')} />
+          <Tab label={t('dumpBrowser.snapshots')} disabled={!onSelectSnapshot} />
         </Tabs>
 
         <TextField
           fullWidth
-          placeholder={tab === 0 ? 'Search dumps...' : 'Search snapshots...'}
+          placeholder={tab === 0 ? t('dumpBrowser.searchDumps') : t('dumpBrowser.searchSnapshots')}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           size="small"
@@ -205,7 +207,7 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
               {tab === 0 && filteredDumps.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={columns.length} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                    No dumps found
+                    {t('dumpBrowser.noDumpsFound')}
                   </TableCell>
                 </TableRow>
               )}
@@ -215,7 +217,7 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
                   title={dump.description ? (
                     <Box sx={{ p: 0.5 }}>
                       <Typography variant="caption" fontWeight={700} sx={{ display: 'block', mb: 0.5, opacity: 0.8 }}>
-                        Description
+                        {t('common.description')}
                       </Typography>
                       <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>
                         {dump.description}
@@ -259,7 +261,7 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
                   <TableCell>{formatDate(dump.uploadedAt)}</TableCell>
                   <TableCell>
                     <Button size="small" variant="contained" color="primary" onClick={() => handleSelectDump(dump)}>
-                      Select
+                      {t('common.select')}
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -277,7 +279,7 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
               {tab === 1 && !snapLoading && filteredSnapshots.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={columns.length} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                    No snapshots found
+                    {t('dumpBrowser.noSnapshotsFound')}
                   </TableCell>
                 </TableRow>
               )}
@@ -287,7 +289,7 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
                   title={snap.description ? (
                     <Box sx={{ p: 0.5 }}>
                       <Typography variant="caption" fontWeight={700} sx={{ display: 'block', mb: 0.5, opacity: 0.8 }}>
-                        Description
+                        {t('common.description')}
                       </Typography>
                       <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>
                         {snap.description}
@@ -331,7 +333,7 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
                   <TableCell>{formatDate(snap.createdAt)}</TableCell>
                   <TableCell>
                     <Button size="small" variant="contained" color="primary" onClick={() => handleSelectSnapshot(snap)}>
-                      Select
+                      {t('common.select')}
                     </Button>
                   </TableCell>
                 </TableRow>

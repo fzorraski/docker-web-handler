@@ -18,7 +18,9 @@ import {
 } from '@mui/material'
 import { MobileDateTimePicker } from '@mui/x-date-pickers/MobileDateTimePicker'
 import dayjs, { type Dayjs } from 'dayjs'
+import { formatDate } from '../utils/format'
 import { CheckCircle, Close, CloudUpload, Timer } from '@mui/icons-material'
+import { useTranslation } from 'react-i18next'
 import { uploadDump } from '../services/dumpService'
 import { getDefaultExpirationMinutes } from '../services/containerService'
 import { useNotification } from './NotificationProvider'
@@ -39,15 +41,9 @@ function formatBytes(bytes: number): string {
 
 const ACCEPTED_EXTENSIONS = '.sql,.dump,.gz'
 
-const EXPIRATION_PRESETS = [
-  { label: '1 Day', amount: 1, unit: 'day' as const },
-  { label: '3 Days', amount: 3, unit: 'day' as const },
-  { label: '1 Week', amount: 7, unit: 'day' as const },
-  { label: '1 Month', amount: 30, unit: 'day' as const },
-]
-
 export default function UploadDumpModal({ open, onClose, onUploaded, existingFilenames }: Props) {
   const { notify } = useNotification()
+  const { t } = useTranslation()
   const [password, setPassword] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [databaseName, setDatabaseName] = useState('')
@@ -60,6 +56,13 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
   const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadResult, setUploadResult] = useState<DatabaseDump | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
+
+  const EXPIRATION_PRESETS = [
+    { label: t('uploadDump.presets.1day'), amount: 1, unit: 'day' as const },
+    { label: t('uploadDump.presets.3days'), amount: 3, unit: 'day' as const },
+    { label: t('uploadDump.presets.1week'), amount: 7, unit: 'day' as const },
+    { label: t('uploadDump.presets.1month'), amount: 30, unit: 'day' as const },
+  ]
 
   useEffect(() => {
     getDefaultExpirationMinutes()
@@ -91,8 +94,8 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
   }
 
   async function handleUpload() {
-    if (!file) return notify('Please select a file.', 'warning')
-    if (!password) return notify('Please enter the upload password.', 'warning')
+    if (!file) return notify(t('uploadDump.selectFileWarning'), 'warning')
+    if (!password) return notify(t('uploadDump.enterPasswordWarning'), 'warning')
 
     setUploading(true)
     setUploadProgress(0)
@@ -115,7 +118,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
     if (result.success && result.dump) {
       setUploadResult(result.dump)
     } else {
-      setUploadError(result.error || 'Upload failed.')
+      setUploadError(result.error || t('uploadDump.uploadFailed'))
     }
   }
 
@@ -132,7 +135,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ bgcolor: 'primary.dark', color: 'white', display: 'flex', alignItems: 'center' }}>
-        <CloudUpload sx={{ mr: 1 }} /> Upload Dump
+        <CloudUpload sx={{ mr: 1 }} /> {t('uploadDump.title')}
         <IconButton onClick={handleClose} sx={{ ml: 'auto', color: 'white' }} disabled={uploading}>
           <Close />
         </IconButton>
@@ -142,7 +145,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
         {uploading && (
           <Box sx={{ py: 2 }}>
             <Typography variant="body1" sx={{ mb: 1, fontWeight: 600 }}>
-              Uploading {file?.name}...
+              {t('uploadDump.uploading', { filename: file?.name })}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               {formatBytes(file?.size ?? 0)} &mdash; {uploadProgress}%
@@ -159,23 +162,23 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
         {uploadResult && (
           <Alert severity="success" icon={<CheckCircle />} sx={{ py: 2 }}>
             <Typography variant="body1" fontWeight={600} sx={{ mb: 1 }}>
-              Upload complete!
+              {t('uploadDump.uploadComplete')}
             </Typography>
-            <Typography variant="body2"><strong>File:</strong> {uploadResult.originalFilename}</Typography>
-            <Typography variant="body2"><strong>Size:</strong> {formatBytes(uploadResult.fileSize)}</Typography>
-            <Typography variant="body2"><strong>Format:</strong> {uploadResult.format}</Typography>
+            <Typography variant="body2"><strong>{t('uploadDump.file')}</strong> {uploadResult.originalFilename}</Typography>
+            <Typography variant="body2"><strong>{t('uploadDump.size')}</strong> {formatBytes(uploadResult.fileSize)}</Typography>
+            <Typography variant="body2"><strong>{t('uploadDump.format')}</strong> {uploadResult.format}</Typography>
             {uploadResult.md5Hash && (
-              <Typography variant="body2" fontFamily="monospace"><strong>MD5:</strong> {uploadResult.md5Hash}</Typography>
+              <Typography variant="body2" fontFamily="monospace"><strong>{t('uploadDump.md5')}</strong> {uploadResult.md5Hash}</Typography>
             )}
             {uploadResult.version && (
-              <Typography variant="body2"><strong>Version:</strong> {uploadResult.version}</Typography>
+              <Typography variant="body2"><strong>{t('uploadDump.version')}</strong> {uploadResult.version}</Typography>
             )}
             {uploadResult.databaseName && (
-              <Typography variant="body2"><strong>Database:</strong> {uploadResult.databaseName}</Typography>
+              <Typography variant="body2"><strong>{t('uploadDump.database')}</strong> {uploadResult.databaseName}</Typography>
             )}
             {uploadResult.expiresAt && (
               <Typography variant="body2">
-                <strong>Expires:</strong> {dayjs(uploadResult.expiresAt).format('L LT')}
+                <strong>{t('uploadDump.expires')}</strong> {formatDate(uploadResult.expiresAt)}
               </Typography>
             )}
           </Alert>
@@ -184,7 +187,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
         {/* Upload error */}
         {uploadError && (
           <Alert severity="error" sx={{ py: 2 }}>
-            <Typography variant="body1" fontWeight={600} sx={{ mb: 1 }}>Upload failed</Typography>
+            <Typography variant="body1" fontWeight={600} sx={{ mb: 1 }}>{t('uploadDump.uploadFailed')}</Typography>
             <Typography variant="body2">{uploadError}</Typography>
           </Alert>
         )}
@@ -195,7 +198,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
             <TextField
               fullWidth
               type="password"
-              label="Upload Password"
+              label={t('common.uploadPassword')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               size="small"
@@ -205,7 +208,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
 
             <Box sx={{ mb: 3 }}>
               <Button variant="outlined" component="label" startIcon={<CloudUpload />} fullWidth>
-                {file ? file.name : 'Select file (.sql, .dump, .gz)'}
+                {file ? file.name : t('uploadDump.selectFile')}
                 <input
                   type="file"
                   hidden
@@ -220,7 +223,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
               )}
               {isDuplicateFilename && (
                 <Alert severity="warning" variant="outlined" sx={{ mt: 1 }}>
-                  A dump with the filename <strong>{file!.name}</strong> already exists.
+                  <span dangerouslySetInnerHTML={{ __html: t('uploadDump.duplicateFilename', { filename: file!.name }) }} />
                 </Alert>
               )}
             </Box>
@@ -229,8 +232,8 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
                   fullWidth
-                  label="Version (optional)"
-                  placeholder="e.g. 1.2.0, sprint-42"
+                  label={t('uploadDump.versionLabel')}
+                  placeholder={t('uploadDump.versionPlaceholder')}
                   value={version}
                   onChange={(e) => setVersion(e.target.value)}
                   size="small"
@@ -239,8 +242,8 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
                   fullWidth
-                  label="Database Name (optional)"
-                  placeholder="Associate with a database"
+                  label={t('uploadDump.databaseLabel')}
+                  placeholder={t('uploadDump.databasePlaceholder')}
                   value={databaseName}
                   onChange={(e) => setDatabaseName(e.target.value)}
                   size="small"
@@ -250,8 +253,8 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
 
             <TextField
               fullWidth
-              label="Description (optional)"
-              placeholder="Brief description of this dump"
+              label={t('uploadDump.descriptionLabel')}
+              placeholder={t('uploadDump.descriptionPlaceholder')}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               size="small"
@@ -274,7 +277,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
                   }
                   label={
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Timer fontSize="small" /> Auto-expire
+                      <Timer fontSize="small" /> {t('uploadDump.autoExpire')}
                     </Box>
                   }
                 />
@@ -300,7 +303,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
                   </Grid>
                   <Grid size={{ xs: 12 }}>
                     <MobileDateTimePicker
-                      label="Expires at"
+                      label={t('uploadDump.expiresAt')}
                       value={expiresAt}
                       onChange={(v) => setExpiresAt(v)}
                       minDateTime={dayjs()}
@@ -308,7 +311,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
                         textField: {
                           fullWidth: true,
                           size: 'small',
-                          helperText: 'Dump will be automatically deleted at this time',
+                          helperText: t('uploadDump.expiresHelperText'),
                         },
                       }}
                     />
@@ -321,20 +324,20 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
         {uploadResult ? (
-          <Button variant="contained" color="primary" onClick={handleClose}>Done</Button>
+          <Button variant="contained" color="primary" onClick={handleClose}>{t('common.done')}</Button>
         ) : uploadError ? (
           <>
-            <Button onClick={handleClose} color="inherit">Close</Button>
+            <Button onClick={handleClose} color="inherit">{t('common.close')}</Button>
             <Button variant="contained" color="primary" onClick={() => {
               setUploadError(null)
               setUploadProgress(0)
             }}>
-              Try Again
+              {t('common.tryAgain')}
             </Button>
           </>
         ) : (
           <>
-            <Button onClick={handleClose} color="inherit" disabled={uploading}>Cancel</Button>
+            <Button onClick={handleClose} color="inherit" disabled={uploading}>{t('common.cancel')}</Button>
             <Button
               variant="contained"
               color="primary"
@@ -342,7 +345,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
               disabled={uploading || !file || !password || isDuplicateFilename}
               startIcon={<CloudUpload />}
             >
-              Upload
+              {t('common.upload')}
             </Button>
           </>
         )}
