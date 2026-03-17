@@ -41,6 +41,8 @@ nb-configuration.xml
 # Runtime data
 data/
 
+.claude
+
 # Frontend (Quinoa/React)
 src/main/webui/node_modules/
 src/main/webui/dist/

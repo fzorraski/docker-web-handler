@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
+import { useSseOperation } from '../hooks/useSseOperation'
 import {
   Autocomplete,
   Dialog,
@@ -25,7 +26,7 @@ import type { DatabaseDump, DatabaseSnapshot } from '../types'
 import { buildTargetDbName, buildSnapshotTargetDbName } from '../utils/format'
 import { getDumpRepositories, cancelRestore, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
 import { getDatabaseConflicts, getRepositoryDatabases } from '../services/containerService'
-import { prepareRestoreDump, streamRestoreDump, type ContainerEvent } from '../services/sseService'
+import { prepareRestoreDump, streamRestoreDump } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
 import OperationProgress, { RESTORE_STEPS, RESTORE_WITH_SCRIPTS_STEPS } from './OperationProgress'
 
@@ -55,15 +56,12 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
   const [targetDb, setTargetDb] = useState<string>('')
   const [createDb, setCreateDb] = useState(false)
   const [password, setPassword] = useState('')
-  const [running, setRunning] = useState(false)
   const [cancelling, setCancelling] = useState(false)
-  const [sseEvents, setSseEvents] = useState<ContainerEvent[]>([])
-  const [sseError, setSseError] = useState(false)
+  const sse = useSseOperation()
   const [scriptsResponse, setScriptsResponse] = useState<PostRestoreScriptsResponse | null>(null)
   const [selectedOptionalScripts, setSelectedOptionalScripts] = useState<string[]>([])
   const [confirmOverrideOpen, setConfirmOverrideOpen] = useState(false)
   const [inUseBy, setInUseBy] = useState<string[]>([])
-  const cleanupSse = useRef<(() => void) | null>(null)
 
   const dbExists = !!(targetDb.trim() && databases.includes(targetDb.trim()))
 
@@ -125,9 +123,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
     setTargetDb('')
     setCreateDb(false)
     setPassword('')
-    setSseEvents([])
-    setSseError(false)
-    setRunning(false)
+    sse.reset()
     setCancelling(false)
     setScriptsResponse(null)
     setSelectedOptionalScripts([])
@@ -136,10 +132,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
   }
 
   function handleClose() {
-    if (cleanupSse.current) {
-      cleanupSse.current()
-      cleanupSse.current = null
-    }
+    sse.cleanup()
     onClose()
     setTimeout(resetForm, 300)
   }
@@ -166,9 +159,6 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
 
   async function executeRestore() {
     setConfirmOverrideOpen(false)
-    setRunning(true)
-    setSseEvents([])
-    setSseError(false)
 
     try {
       const isNew = !databases.includes(targetDb.trim())
@@ -183,9 +173,8 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
         selectedOptionalScripts: scriptsResponse?.enabled ? selectedOptionalScripts : undefined,
       })
 
-      cleanupSse.current = streamRestoreDump(
-        ticket,
-        (event) => setSseEvents((prev) => [...prev, event]),
+      sse.start(
+        (onEvent, onDone, onError) => streamRestoreDump(ticket, onEvent, onDone, onError),
         () => {
           setTimeout(() => {
             onClose()
@@ -194,13 +183,8 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
             setTimeout(resetForm, 300)
           }, 1500)
         },
-        () => {
-          setRunning(false)
-          setSseError(true)
-        },
       )
     } catch (e) {
-      setRunning(false)
       notify(e instanceof Error ? e.message : t('common.unexpectedError'), 'error')
     }
   }
@@ -213,7 +197,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
     <Dialog
       open={open}
       onClose={(_event, reason) => {
-        if (running && (reason === 'escapeKeyDown' || reason === 'backdropClick')) return
+        if (sse.isRunning && (reason === 'escapeKeyDown' || reason === 'backdropClick')) return
         handleClose()
       }}
       maxWidth="md"
@@ -228,8 +212,8 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
         </IconButton>
       </DialogTitle>
       <DialogContent dividers sx={{ pt: 3 }}>
-        {running || sseEvents.length > 0 ? (
-          <OperationProgress events={sseEvents} steps={scriptsResponse?.enabled ? RESTORE_WITH_SCRIPTS_STEPS : RESTORE_STEPS} />
+        {sse.isRunning || sse.events.length > 0 ? (
+          <OperationProgress events={sse.events} steps={scriptsResponse?.enabled ? RESTORE_WITH_SCRIPTS_STEPS : RESTORE_STEPS} />
         ) : (
           <>
             <TextField
@@ -376,21 +360,18 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
-        {sseError ? (
+        {sse.hasError ? (
           <>
             <Button onClick={handleClose} color="inherit">{t('common.close')}</Button>
             <Button
               variant="contained"
               color="primary"
-              onClick={() => {
-                setSseEvents([])
-                setSseError(false)
-              }}
+              onClick={() => sse.reset()}
             >
               {t('common.backToForm')}
             </Button>
           </>
-        ) : running ? (
+        ) : sse.isRunning ? (
           <Button
             onClick={handleCancel}
             color="error"
@@ -407,7 +388,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
               variant="contained"
               color="success"
               onClick={handleRestoreClick}
-              disabled={running || !selectedRepo || !targetDb.trim() || !password}
+              disabled={sse.isRunning || !selectedRepo || !targetDb.trim() || !password}
               startIcon={<Restore />}
             >
               {t('common.restore')}

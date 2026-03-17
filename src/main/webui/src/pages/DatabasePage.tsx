@@ -8,6 +8,8 @@ import UploadDumpModal from '../components/UploadDumpModal'
 import RestoreDumpModal from '../components/RestoreDumpModal'
 import CreateSnapshotModal from '../components/CreateSnapshotModal'
 import EditExpirationDialog from '../components/EditExpirationDialog'
+import PasswordConfirmDialog from '../components/PasswordConfirmDialog'
+import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
 import { formatBytes, formatDate } from '../utils/format'
 import { useTranslation } from 'react-i18next'
 import {
@@ -27,10 +29,6 @@ import {
   CircularProgress,
   Chip,
   Checkbox,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   LinearProgress,
   Grid,
   Alert,
@@ -38,23 +36,19 @@ import {
   Tabs,
   Tab,
   Tooltip,
-  useTheme,
 } from '@mui/material'
 import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile, CameraAlt, InfoOutlined } from '@mui/icons-material'
+
+type PendingDelete =
+  | { kind: 'dump'; dump: DatabaseDump }
+  | { kind: 'dumpBulk'; ids: string[] }
+  | { kind: 'snapshot'; snapshot: DatabaseSnapshot }
+  | { kind: 'snapshotBulk'; ids: string[] }
 
 export default function DatabasePage() {
   const { notify } = useNotification()
   const { t } = useTranslation()
-  const theme = useTheme()
-  const isDark = theme.palette.mode === 'dark'
-  const theadBg = isDark ? 'background.paper' : 'primary.main'
-  const theadColor = isDark ? 'text.primary' : 'white'
-  const theadSortSx = isDark
-    ? { color: 'text.primary !important', '& .MuiTableSortLabel-icon': { color: 'text.secondary !important' } }
-    : { color: 'white !important', '& .MuiTableSortLabel-icon': { color: 'white !important' } }
-  const theadCheckboxSx = isDark
-    ? { color: 'text.primary', '&.Mui-checked': { color: 'primary.main' }, '&.MuiCheckbox-indeterminate': { color: 'primary.main' } }
-    : { color: 'white', '&.Mui-checked': { color: 'white' }, '&.MuiCheckbox-indeterminate': { color: 'white' } }
+  const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
   const [activeTab, setActiveTab] = useState(0)
 
   // --- Dumps state ---
@@ -66,10 +60,6 @@ export default function DatabasePage() {
   const [uploadOpen, setUploadOpen] = useState(false)
   const [restoreOpen, setRestoreOpen] = useState(false)
   const [restoreDump, setRestoreDump] = useState<DatabaseDump | null>(null)
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [deletingDump, setDeletingDump] = useState<DatabaseDump | null>(null)
-  const [deletePassword, setDeletePassword] = useState('')
-  const [deleteLoading, setDeleteLoading] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [storageInfo, setStorageInfo] = useState<{ totalBytes: number; fileCount: number; maxBytes: number } | null>(null)
   const [activeRestores, setActiveRestores] = useState<ActiveRestore[]>([])
@@ -84,12 +74,11 @@ export default function DatabasePage() {
   const [snapStorageInfo, setSnapStorageInfo] = useState<{ totalBytes: number; fileCount: number; maxBytes: number } | null>(null)
   const [activeSnaps, setActiveSnaps] = useState<ActiveSnapshot[]>([])
   const [snapshotOpen, setSnapshotOpen] = useState(false)
-  const [snapDeleteDialogOpen, setSnapDeleteDialogOpen] = useState(false)
-  const [deletingSnapshot, setDeletingSnapshot] = useState<DatabaseSnapshot | null>(null)
-  const [snapDeletePassword, setSnapDeletePassword] = useState('')
-  const [snapDeleteLoading, setSnapDeleteLoading] = useState(false)
   const [restoreSnapOpen, setRestoreSnapOpen] = useState(false)
   const [restoreSnapshot, setRestoreSnapshot] = useState<DatabaseSnapshot | null>(null)
+
+  // --- Delete dialog state (unified) ---
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
 
   // --- Edit expiration state ---
   const [expirationEditOpen, setExpirationEditOpen] = useState(false)
@@ -188,9 +177,7 @@ export default function DatabasePage() {
   }
 
   function handleBulkDeleteClick() {
-    setDeletingDump(null)
-    setDeletePassword('')
-    setDeleteDialogOpen(true)
+    setPendingDelete({ kind: 'dumpBulk', ids: [...selected] })
   }
 
   function handleRestoreClick(dump: DatabaseDump) {
@@ -199,42 +186,7 @@ export default function DatabasePage() {
   }
 
   function handleDeleteClick(dump: DatabaseDump) {
-    setDeletingDump(dump)
-    setDeletePassword('')
-    setDeleteDialogOpen(true)
-  }
-
-  const isBulkDelete = !deletingDump && selected.size > 0
-
-  async function handleDeleteConfirm() {
-    setDeleteLoading(true)
-    try {
-      if (isBulkDelete) {
-        const result = await deleteDumpsBulk([...selected], deletePassword)
-        if (result.success) {
-          notify(t('database.dumpsDeleted', { count: result.deleted }), 'success')
-          setSelected(new Set())
-          setDeleteDialogOpen(false)
-          loadDumps()
-        } else {
-          notify(result.error || t('database.deleteFailed'), 'error')
-        }
-      } else if (deletingDump) {
-        const result = await deleteDump(deletingDump.id, deletePassword)
-        if (result.success) {
-          notify(t('database.dumpDeleted'), 'success')
-          setDeleteDialogOpen(false)
-          setDeletingDump(null)
-          loadDumps()
-        } else {
-          notify(result.error || t('database.deleteFailed'), 'error')
-        }
-      }
-    } catch {
-      notify(t('common.unexpectedError'), 'error')
-    } finally {
-      setDeleteLoading(false)
-    }
+    setPendingDelete({ kind: 'dump', dump })
   }
 
   const filteredDumps = useMemo(() => {
@@ -280,38 +232,50 @@ export default function DatabasePage() {
   }
 
   function handleSnapBulkDeleteClick() {
-    setDeletingSnapshot(null)
-    setSnapDeletePassword('')
-    setSnapDeleteDialogOpen(true)
+    setPendingDelete({ kind: 'snapshotBulk', ids: [...snapSelected] })
   }
 
   function handleSnapDeleteClick(snap: DatabaseSnapshot) {
-    setDeletingSnapshot(snap)
-    setSnapDeletePassword('')
-    setSnapDeleteDialogOpen(true)
+    setPendingDelete({ kind: 'snapshot', snapshot: snap })
   }
 
-  const isSnapBulkDelete = !deletingSnapshot && snapSelected.size > 0
-
-  async function handleSnapDeleteConfirm() {
-    setSnapDeleteLoading(true)
+  async function handleDeleteConfirm(password: string) {
+    if (!pendingDelete) return
     try {
-      if (isSnapBulkDelete) {
-        const result = await deleteSnapshotsBulk([...snapSelected], snapDeletePassword)
+      if (pendingDelete.kind === 'dump') {
+        const result = await deleteDump(pendingDelete.dump.id, password)
         if (result.success) {
-          notify(t('database.snapshotsDeleted', { count: result.deleted }), 'success')
-          setSnapSelected(new Set())
-          setSnapDeleteDialogOpen(false)
+          notify(t('database.dumpDeleted'), 'success')
+          setPendingDelete(null)
+          loadDumps()
+        } else {
+          notify(result.error || t('database.deleteFailed'), 'error')
+        }
+      } else if (pendingDelete.kind === 'dumpBulk') {
+        const result = await deleteDumpsBulk(pendingDelete.ids, password)
+        if (result.success) {
+          notify(t('database.dumpsDeleted', { count: result.deleted }), 'success')
+          setSelected(new Set())
+          setPendingDelete(null)
+          loadDumps()
+        } else {
+          notify(result.error || t('database.deleteFailed'), 'error')
+        }
+      } else if (pendingDelete.kind === 'snapshot') {
+        const result = await deleteSnapshot(pendingDelete.snapshot.id, password)
+        if (result.success) {
+          notify(t('database.snapshotDeleted'), 'success')
+          setPendingDelete(null)
           loadSnapshots()
         } else {
           notify(result.error || t('database.deleteFailed'), 'error')
         }
-      } else if (deletingSnapshot) {
-        const result = await deleteSnapshot(deletingSnapshot.id, snapDeletePassword)
+      } else if (pendingDelete.kind === 'snapshotBulk') {
+        const result = await deleteSnapshotsBulk(pendingDelete.ids, password)
         if (result.success) {
-          notify(t('database.snapshotDeleted'), 'success')
-          setSnapDeleteDialogOpen(false)
-          setDeletingSnapshot(null)
+          notify(t('database.snapshotsDeleted', { count: result.deleted }), 'success')
+          setSnapSelected(new Set())
+          setPendingDelete(null)
           loadSnapshots()
         } else {
           notify(result.error || t('database.deleteFailed'), 'error')
@@ -319,8 +283,26 @@ export default function DatabasePage() {
       }
     } catch {
       notify(t('common.unexpectedError'), 'error')
-    } finally {
-      setSnapDeleteLoading(false)
+    }
+  }
+
+  function getDeleteDialogTitle(): string {
+    if (!pendingDelete) return ''
+    switch (pendingDelete.kind) {
+      case 'dump': return t('database.deleteDump')
+      case 'dumpBulk': return t('database.deleteDumps', { count: pendingDelete.ids.length })
+      case 'snapshot': return t('database.deleteSnapshot')
+      case 'snapshotBulk': return t('database.deleteSnapshots', { count: pendingDelete.ids.length })
+    }
+  }
+
+  function getDeleteDialogMessage(): string {
+    if (!pendingDelete) return ''
+    switch (pendingDelete.kind) {
+      case 'dump': return t('database.deleteDumpConfirm', { filename: pendingDelete.dump.originalFilename })
+      case 'dumpBulk': return t('database.deleteDumpsBulkConfirm', { count: pendingDelete.ids.length })
+      case 'snapshot': return t('database.deleteSnapshotConfirm', { name: pendingDelete.snapshot.label || pendingDelete.snapshot.sourceDatabaseName })
+      case 'snapshotBulk': return t('database.deleteSnapshotsBulkConfirm', { count: pendingDelete.ids.length })
     }
   }
 
@@ -808,97 +790,14 @@ export default function DatabasePage() {
         onRestored={loadSnapshots}
       />
 
-      {/* Dump delete dialog */}
-      <Dialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
-          <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> {isBulkDelete ? t('database.deleteDumps', { count: selected.size }) : t('database.deleteDump')}
-        </DialogTitle>
-        <DialogContent dividers sx={{ pt: 3 }}>
-          {isBulkDelete ? (
-            <Typography sx={{ mb: 2 }}>
-              <span dangerouslySetInnerHTML={{ __html: t('database.deleteDumpsBulkConfirm', { count: selected.size }) }} />
-            </Typography>
-          ) : (
-            <Typography sx={{ mb: 2 }}>
-              <span dangerouslySetInnerHTML={{ __html: t('database.deleteDumpConfirm', { filename: deletingDump?.originalFilename }) }} />
-            </Typography>
-          )}
-          <TextField
-            fullWidth
-            type="password"
-            label={t('common.operationsPassword')}
-            value={deletePassword}
-            onChange={(e) => setDeletePassword(e.target.value)}
-            size="small"
-            autoComplete="off"
-          />
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setDeleteDialogOpen(false)} color="inherit" disabled={deleteLoading}>
-            {t('common.cancel')}
-          </Button>
-          <Button
-            variant="contained"
-            color="error"
-            onClick={handleDeleteConfirm}
-            disabled={deleteLoading || !deletePassword}
-            startIcon={deleteLoading ? <CircularProgress size={20} /> : <Delete />}
-          >
-            {deleteLoading ? t('common.deleting') : t('common.delete')}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Snapshot delete dialog */}
-      <Dialog
-        open={snapDeleteDialogOpen}
-        onClose={() => setSnapDeleteDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
-          <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> {isSnapBulkDelete ? t('database.deleteSnapshots', { count: snapSelected.size }) : t('database.deleteSnapshot')}
-        </DialogTitle>
-        <DialogContent dividers sx={{ pt: 3 }}>
-          {isSnapBulkDelete ? (
-            <Typography sx={{ mb: 2 }}>
-              <span dangerouslySetInnerHTML={{ __html: t('database.deleteSnapshotsBulkConfirm', { count: snapSelected.size }) }} />
-            </Typography>
-          ) : (
-            <Typography sx={{ mb: 2 }}>
-              <span dangerouslySetInnerHTML={{ __html: t('database.deleteSnapshotConfirm', { name: deletingSnapshot?.label || deletingSnapshot?.sourceDatabaseName }) }} />
-            </Typography>
-          )}
-          <TextField
-            fullWidth
-            type="password"
-            label={t('common.operationsPassword')}
-            value={snapDeletePassword}
-            onChange={(e) => setSnapDeletePassword(e.target.value)}
-            size="small"
-            autoComplete="off"
-          />
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setSnapDeleteDialogOpen(false)} color="inherit" disabled={snapDeleteLoading}>
-            {t('common.cancel')}
-          </Button>
-          <Button
-            variant="contained"
-            color="error"
-            onClick={handleSnapDeleteConfirm}
-            disabled={snapDeleteLoading || !snapDeletePassword}
-            startIcon={snapDeleteLoading ? <CircularProgress size={20} /> : <Delete />}
-          >
-            {snapDeleteLoading ? t('common.deleting') : t('common.delete')}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Unified delete dialog */}
+      <PasswordConfirmDialog
+        open={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={handleDeleteConfirm}
+        title={getDeleteDialogTitle()}
+        message={getDeleteDialogMessage()}
+      />
     </>
   )
 }

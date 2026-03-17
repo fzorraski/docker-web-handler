@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
+import { useSseOperation } from '../hooks/useSseOperation'
 import {
   Autocomplete,
   Dialog,
@@ -39,7 +40,7 @@ import {
 import { isDumpEnabled, listDumps, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
 import type { DatabaseConflict, DatabaseDump, DatabaseSnapshot } from '../types'
 import { buildTargetDbName, buildSnapshotTargetDbName, formatBytes } from '../utils/format'
-import { prepareRunContainer, streamRunContainer, type ContainerEvent } from '../services/sseService'
+import { prepareRunContainer, streamRunContainer } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
 import OperationProgress, { RUN_WITH_RESTORE_STEPS, RUN_WITH_RESTORE_AND_SCRIPTS_STEPS } from './OperationProgress'
 import DumpBrowserModal from './DumpBrowserModal'
@@ -119,10 +120,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const [defaultExpMinutes, setDefaultExpMinutes] = useState(480)
   const [expirationEnabled, setExpirationEnabled] = useState(true)
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(dayjs().add(480, 'minute'))
-  const [running, setRunning] = useState(false)
-  const [sseEvents, setSseEvents] = useState<ContainerEvent[]>([])
-  const [sseError, setSseError] = useState(false)
-  const cleanupSse = useRef<(() => void) | null>(null)
+  const sse = useSseOperation()
 
   useEffect(() => {
     getAllowedRepositories()
@@ -325,8 +323,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setMemoryMb('')
     setExpirationEnabled(true)
     setExpiresAt(dayjs().add(defaultExpMinutes, 'minute'))
-    setSseEvents([])
-    setSseError(false)
+    sse.reset()
     setDbEnabled(false)
     setDatabases([])
     setSelectedDb(null)
@@ -380,10 +377,6 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   }
 
   async function executeRun() {
-    setRunning(true)
-    setSseEvents([])
-    setSseError(false)
-
     try {
       const envList = envVars
         .filter((e) => e.key.trim())
@@ -407,25 +400,18 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         selectedOptionalScripts: dbMode === 'restore' && scriptsResponse?.enabled ? selectedOptionalScripts : undefined,
       })
 
-      cleanupSse.current = streamRunContainer(
-        ticket,
-        (event) => setSseEvents((prev) => [...prev, event]),
+      sse.start(
+        (onEvent, onDone, onError) => streamRunContainer(ticket, onEvent, onDone, onError),
         () => {
           setTimeout(() => {
-            setRunning(false)
             resetForm()
             onClose()
             onCreated()
             notify(t('newContainer.containerStarted'), 'success')
           }, 1500)
         },
-        () => {
-          setRunning(false)
-          setSseError(true)
-        },
       )
     } catch {
-      setRunning(false)
       notify(t('common.unexpectedError'), 'error')
     }
   }
@@ -436,11 +422,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   }
 
   function handleClose() {
-    if (cleanupSse.current) {
-      cleanupSse.current()
-      cleanupSse.current = null
-    }
-    setRunning(false)
+    sse.cleanup()
     resetForm()
     onClose()
   }
@@ -454,7 +436,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     <Dialog
       open={open}
       onClose={(_event, reason) => {
-        if (running && (reason === 'escapeKeyDown' || reason === 'backdropClick')) return
+        if (sse.isRunning && (reason === 'escapeKeyDown' || reason === 'backdropClick')) return
         handleClose()
       }}
       maxWidth="md"
@@ -467,8 +449,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         </IconButton>
       </DialogTitle>
       <DialogContent dividers sx={{ pt: 3 }}>
-        {running || sseEvents.length > 0 ? (
-          <OperationProgress events={sseEvents} steps={
+        {sse.isRunning || sse.events.length > 0 ? (
+          <OperationProgress events={sse.events} steps={
             dbMode === 'restore' && (selectedDump || selectedSnapshot)
               ? (scriptsResponse?.enabled ? RUN_WITH_RESTORE_AND_SCRIPTS_STEPS : RUN_WITH_RESTORE_STEPS)
               : undefined
@@ -960,21 +942,18 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
-        {sseError ? (
+        {sse.hasError ? (
           <>
             <Button onClick={handleClose} color="inherit">{t('common.close')}</Button>
             <Button
               variant="contained"
               color="primary"
-              onClick={() => {
-                setSseEvents([])
-                setSseError(false)
-              }}
+              onClick={() => sse.reset()}
             >
               {t('common.backToForm')}
             </Button>
           </>
-        ) : running ? (
+        ) : sse.isRunning ? (
           <Button onClick={handleClose} color="inherit">{t('common.cancel')}</Button>
         ) : (
           <>
@@ -983,7 +962,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
               variant="contained"
               color="success"
               onClick={handleRun}
-              disabled={running || !containerNameValid}
+              disabled={sse.isRunning || !containerNameValid}
               startIcon={<PlayArrow />}
             >
               {t('newContainer.runContainer')}

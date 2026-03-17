@@ -7,6 +7,9 @@ import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
 import { useTranslation } from 'react-i18next'
 import { formatBackendDate } from '../utils/format'
+import { useTableSort } from '../hooks/useTableSort'
+import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
+import { useSseOperation } from '../hooks/useSseOperation'
 import {
   Box,
   Typography,
@@ -26,30 +29,28 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  useTheme,
 } from '@mui/material'
 import { Search, Delete } from '@mui/icons-material'
 
+const filterImage = (img: DockerImage, query: string) =>
+  Object.values(img).some((v) => v.toLowerCase().includes(query.toLowerCase()))
+
+const sortImageValue = (img: DockerImage, key: string) =>
+  (img[key as keyof DockerImage] ?? '').toLowerCase()
+
 export default function ImagesPage() {
-  const theme = useTheme()
-  const isDark = theme.palette.mode === 'dark'
-  const theadBg = isDark ? 'background.paper' : 'primary.main'
-  const theadColor = isDark ? 'text.primary' : 'white'
-  const theadSortSx = isDark
-    ? { color: 'text.primary !important', '& .MuiTableSortLabel-icon': { color: 'text.secondary !important' } }
-    : { color: 'white !important', '& .MuiTableSortLabel-icon': { color: 'white !important' } }
+  const { theadBg, theadColor, theadSortSx } = useTableHeaderTheme()
   const { notify, confirm } = useNotification()
   const { t } = useTranslation()
   const [images, setImages] = useState<DockerImage[]>([])
-  const [filter, setFilter] = useState('')
   const [loading, setLoading] = useState(true)
-  const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
-  const [removeEvents, setRemoveEvents] = useState<ContainerEvent[]>([])
-  const [removeError, setRemoveError] = useState(false)
-  const [removeDone, setRemoveDone] = useState(false)
-  const cleanupSse = useRef<(() => void) | null>(null)
-  const [sortKey, setSortKey] = useState<string>('')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const removeSse = useSseOperation()
+
+  const { filter, setFilter, sortKey, sortDir, handleSort, sorted: filtered } = useTableSort({
+    data: images,
+    filterFn: filterImage,
+    sortValueFn: sortImageValue,
+  })
 
   const IMAGE_COLUMNS: { key: keyof DockerImage | 'action'; label: string }[] = useMemo(() => [
     { key: 'repository', label: t('images.columns.repository') },
@@ -59,12 +60,6 @@ export default function ImagesPage() {
     { key: 'size', label: t('images.columns.size') },
     { key: 'action', label: t('images.columns.action') },
   ], [t])
-
-  function handleSort(key: string) {
-    if (key === 'action') return
-    setSortDir(sortKey === key && sortDir === 'asc' ? 'desc' : 'asc')
-    setSortKey(key)
-  }
 
   const loadImages = useCallback(() => {
     setLoading(true)
@@ -81,55 +76,24 @@ export default function ImagesPage() {
   async function handleRemove(imageId: string) {
     if (!(await confirm(t('images.confirmRemove', { id: imageId })))) return
 
-    setRemoveDialogOpen(true)
-    setRemoveEvents([])
-    setRemoveError(false)
-    setRemoveDone(false)
-
-    cleanupSse.current = streamRemoveImage(
-      imageId,
-      (event) => setRemoveEvents((prev) => [...prev, event]),
+    removeSse.start(
+      (onEvent, onDone, onError) => streamRemoveImage(imageId, onEvent, onDone, onError),
       () => {
-        setRemoveDone(true)
         setTimeout(() => {
-          setRemoveDialogOpen(false)
-          setRemoveEvents([])
-          setRemoveDone(false)
+          removeSse.reset()
           notify(t('images.imageRemoved'), 'success')
           loadImages()
         }, 1500)
       },
-      () => {
-        setRemoveError(true)
-        loadImages()
-      },
+      () => loadImages(),
     )
   }
 
   function handleRemoveDialogClose() {
-    if (cleanupSse.current) {
-      cleanupSse.current()
-      cleanupSse.current = null
-    }
-    setRemoveDialogOpen(false)
-    setRemoveEvents([])
-    setRemoveError(false)
-    setRemoveDone(false)
+    removeSse.cleanup()
+    removeSse.reset()
     loadImages()
   }
-
-  const filtered = useMemo(() => {
-    const result = images.filter((img) =>
-      Object.values(img).some((v) => v.toLowerCase().includes(filter.toLowerCase()))
-    )
-    if (!sortKey) return result
-    return [...result].sort((a, b) => {
-      const va = (a[sortKey as keyof DockerImage] ?? '').toLowerCase()
-      const vb = (b[sortKey as keyof DockerImage] ?? '').toLowerCase()
-      const cmp = va.localeCompare(vb)
-      return sortDir === 'asc' ? cmp : -cmp
-    })
-  }, [images, filter, sortKey, sortDir])
 
   return (
     <>
@@ -218,15 +182,15 @@ export default function ImagesPage() {
         </TableContainer>
       </Box>
 
-      <Dialog open={removeDialogOpen} onClose={handleRemoveDialogClose} maxWidth="sm" fullWidth>
+      <Dialog open={removeSse.events.length > 0} onClose={handleRemoveDialogClose} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
           <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> {t('images.removingImage')}
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 3 }}>
-          <OperationProgress events={removeEvents} steps={REMOVE_IMAGE_STEPS} />
+          <OperationProgress events={removeSse.events} steps={REMOVE_IMAGE_STEPS} />
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          {(removeError || removeDone) && (
+          {(removeSse.hasError || removeSse.isDone) && (
             <Button onClick={handleRemoveDialogClose} color="inherit">{t('common.close')}</Button>
           )}
         </DialogActions>

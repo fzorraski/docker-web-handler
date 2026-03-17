@@ -11,7 +11,7 @@ import {
   isDatabaseListingEnabled,
 } from '../services/containerService'
 import { isDumpEnabled, getActiveRestores, type ActiveRestore } from '../services/dumpService'
-import { streamRemoveContainer, type ContainerEvent } from '../services/sseService'
+import { streamRemoveContainer } from  '../services/sseService'
 import NewContainerModal from '../components/NewContainerModal'
 import CreateSnapshotModal from '../components/CreateSnapshotModal'
 import OperationProgress, { REMOVE_STEPS } from '../components/OperationProgress'
@@ -19,6 +19,8 @@ import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
 import { useTranslation } from 'react-i18next'
 import { formatBackendDate } from '../utils/format'
+import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
+import { useSseOperation } from '../hooks/useSseOperation'
 import {
   Box,
   Typography,
@@ -47,7 +49,6 @@ import {
   Checkbox,
   Alert,
   AlertTitle,
-  useTheme,
 } from '@mui/material'
 import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt } from '@mui/icons-material'
 
@@ -70,24 +71,14 @@ function loadVisibility(columns: ColumnDef[]): Record<string, boolean> {
 export default function ContainersPage() {
   const { notify, confirm } = useNotification()
   const { t } = useTranslation()
-  const theme = useTheme()
-  const isDark = theme.palette.mode === 'dark'
-  const theadBg = isDark ? 'background.paper' : 'primary.main'
-  const theadColor = isDark ? 'text.primary' : 'white'
-  const theadSortSx = isDark
-    ? { color: 'text.primary !important', '& .MuiTableSortLabel-icon': { color: 'text.secondary !important' } }
-    : { color: 'white !important', '& .MuiTableSortLabel-icon': { color: 'white !important' } }
+  const { theadBg, theadColor, theadSortSx } = useTableHeaderTheme()
+  const removeSse = useSseOperation()
   const [containers, setContainers] = useState<DockerContainer[]>([])
   const [filter, setFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [hasRepos, setHasRepos] = useState(false)
   const [dbListingEnabled, setDbListingEnabled] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
-  const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
-  const [removeEvents, setRemoveEvents] = useState<ContainerEvent[]>([])
-  const [removeError, setRemoveError] = useState(false)
-  const [removeDone, setRemoveDone] = useState(false)
-  const cleanupRemoveSse = useRef<(() => void) | null>(null)
   const [columnMenuAnchor, setColumnMenuAnchor] = useState<null | HTMLElement>(null)
   const [sortKey, setSortKey] = useState<string>('')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -200,40 +191,22 @@ export default function ContainersPage() {
   async function handleRemove(id: string) {
     if (!(await confirm(t('containers.confirmRemove', { id })))) return
 
-    setRemoveDialogOpen(true)
-    setRemoveEvents([])
-    setRemoveError(false)
-    setRemoveDone(false)
-
-    cleanupRemoveSse.current = streamRemoveContainer(
-      id,
-      (event) => setRemoveEvents((prev) => [...prev, event]),
+    removeSse.start(
+      (onEvent, onDone, onError) => streamRemoveContainer(id, onEvent, onDone, onError),
       () => {
-        setRemoveDone(true)
         setTimeout(() => {
-          setRemoveDialogOpen(false)
-          setRemoveEvents([])
-          setRemoveDone(false)
+          removeSse.reset()
           notify(t('containers.containerRemoved'), 'success')
           loadContainers()
         }, 1500)
       },
-      () => {
-        setRemoveError(true)
-        loadContainers()
-      },
+      () => loadContainers(),
     )
   }
 
   function handleRemoveDialogClose() {
-    if (cleanupRemoveSse.current) {
-      cleanupRemoveSse.current()
-      cleanupRemoveSse.current = null
-    }
-    setRemoveDialogOpen(false)
-    setRemoveEvents([])
-    setRemoveError(false)
-    setRemoveDone(false)
+    removeSse.cleanup()
+    removeSse.reset()
     loadContainers()
   }
 
@@ -582,15 +555,15 @@ export default function ContainersPage() {
         onCreated={loadContainers}
       />
 
-      <Dialog open={removeDialogOpen} onClose={handleRemoveDialogClose} maxWidth="sm" fullWidth>
+      <Dialog open={removeSse.events.length > 0} onClose={handleRemoveDialogClose} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
           <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> {t('containers.removingContainer')}
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 3 }}>
-          <OperationProgress events={removeEvents} steps={REMOVE_STEPS} />
+          <OperationProgress events={removeSse.events} steps={REMOVE_STEPS} />
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          {(removeError || removeDone) && (
+          {(removeSse.hasError || removeSse.isDone) && (
             <Button onClick={handleRemoveDialogClose} color="inherit">{t('common.close')}</Button>
           )}
         </DialogActions>

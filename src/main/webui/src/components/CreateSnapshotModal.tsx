@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useSseOperation } from '../hooks/useSseOperation'
 import {
   Dialog,
   DialogTitle,
@@ -22,7 +23,7 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { useTranslation } from 'react-i18next'
 import { getSnapshotRepositories, downloadSnapshotDirect, cancelSnapshot } from '../services/snapshotService'
 import { getRepositoryDatabases } from '../services/containerService'
-import { prepareSnapshot, streamSnapshot, type ContainerEvent } from '../services/sseService'
+import { prepareSnapshot, streamSnapshot } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
 import OperationProgress, { SNAPSHOT_STEPS } from './OperationProgress'
 
@@ -50,12 +51,9 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
   const [expirationEnabled, setExpirationEnabled] = useState(false)
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(dayjs().add(7, 'day'))
   const [password, setPassword] = useState('')
-  const [running, setRunning] = useState(false)
   const [cancelling, setCancelling] = useState(false)
-  const [sseEvents, setSseEvents] = useState<ContainerEvent[]>([])
-  const [sseError, setSseError] = useState(false)
   const [downloading, setDownloading] = useState(false)
-  const cleanupSse = useRef<(() => void) | null>(null)
+  const sse = useSseOperation()
   const pendingInitialDb = useRef<string | undefined>(undefined)
 
   useEffect(() => {
@@ -104,18 +102,13 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
     setExpirationEnabled(false)
     setExpiresAt(dayjs().add(7, 'day'))
     setPassword('')
-    setSseEvents([])
-    setSseError(false)
-    setRunning(false)
+    sse.reset()
     setCancelling(false)
     setDownloading(false)
   }
 
   function handleClose() {
-    if (cleanupSse.current) {
-      cleanupSse.current()
-      cleanupSse.current = null
-    }
+    sse.cleanup()
     onClose()
     setTimeout(resetForm, 300)
   }
@@ -129,10 +122,6 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
   async function handleSaveToServer() {
     if (!validate()) return
 
-    setRunning(true)
-    setSseEvents([])
-    setSseError(false)
-
     try {
       const ticket = await prepareSnapshot({
         repository: selectedRepo,
@@ -145,9 +134,8 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
         containerName,
       })
 
-      cleanupSse.current = streamSnapshot(
-        ticket,
-        (event) => setSseEvents((prev) => [...prev, event]),
+      sse.start(
+        (onEvent, onDone, onError) => streamSnapshot(ticket, onEvent, onDone, onError),
         () => {
           setTimeout(() => {
             onClose()
@@ -156,13 +144,8 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
             setTimeout(resetForm, 300)
           }, 1500)
         },
-        () => {
-          setRunning(false)
-          setSseError(true)
-        },
       )
     } catch (e) {
-      setRunning(false)
       notify(e instanceof Error ? e.message : t('common.unexpectedError'), 'error')
     }
   }
@@ -194,7 +177,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
     <Dialog
       open={open}
       onClose={(_event, reason) => {
-        if (running && (reason === 'escapeKeyDown' || reason === 'backdropClick')) return
+        if (sse.isRunning && (reason === 'escapeKeyDown' || reason === 'backdropClick')) return
         handleClose()
       }}
       maxWidth="md"
@@ -207,8 +190,8 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
         </IconButton>
       </DialogTitle>
       <DialogContent dividers sx={{ pt: 3 }}>
-        {running || sseEvents.length > 0 ? (
-          <OperationProgress events={sseEvents} steps={SNAPSHOT_STEPS} />
+        {sse.isRunning || sse.events.length > 0 ? (
+          <OperationProgress events={sse.events} steps={SNAPSHOT_STEPS} />
         ) : (
           <>
             <TextField
@@ -359,21 +342,18 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
-        {sseError ? (
+        {sse.hasError ? (
           <>
             <Button onClick={handleClose} color="inherit">{t('common.close')}</Button>
             <Button
               variant="contained"
               color="primary"
-              onClick={() => {
-                setSseEvents([])
-                setSseError(false)
-              }}
+              onClick={() => sse.reset()}
             >
               {t('common.backToForm')}
             </Button>
           </>
-        ) : running ? (
+        ) : sse.isRunning ? (
           <Button
             onClick={handleCancel}
             color="error"
