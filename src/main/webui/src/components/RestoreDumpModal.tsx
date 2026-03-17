@@ -17,12 +17,13 @@ import {
   Typography,
   Box,
   Chip,
+  Alert,
 } from '@mui/material'
-import { Close, Restore } from '@mui/icons-material'
+import { Close, Restore, Warning } from '@mui/icons-material'
 import type { DatabaseDump, DatabaseSnapshot } from '../types'
-import { buildTargetDbName } from '../utils/format'
+import { buildTargetDbName, buildSnapshotTargetDbName } from '../utils/format'
 import { getDumpRepositories, cancelRestore, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
-import { getRepositoryDatabases } from '../services/containerService'
+import { getDatabaseConflicts, getRepositoryDatabases } from '../services/containerService'
 import { prepareRestoreDump, streamRestoreDump, type ContainerEvent } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
 import OperationProgress, { RESTORE_STEPS, RESTORE_WITH_SCRIPTS_STEPS } from './OperationProgress'
@@ -58,7 +59,11 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
   const [sseError, setSseError] = useState(false)
   const [scriptsResponse, setScriptsResponse] = useState<PostRestoreScriptsResponse | null>(null)
   const [selectedOptionalScripts, setSelectedOptionalScripts] = useState<string[]>([])
+  const [confirmOverrideOpen, setConfirmOverrideOpen] = useState(false)
+  const [inUseBy, setInUseBy] = useState<string[]>([])
   const cleanupSse = useRef<(() => void) | null>(null)
+
+  const dbExists = !!(targetDb.trim() && databases.includes(targetDb.trim()))
 
   useEffect(() => {
     if (open) {
@@ -94,12 +99,23 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
   useEffect(() => {
     if (!open) return
     if (snapshot) {
-      setTargetDb(snapshot.sourceDatabaseName)
+      setTargetDb(buildSnapshotTargetDbName(snapshot))
       setSelectedRepo(snapshot.repository)
     } else if (dump) {
       setTargetDb(buildTargetDbName(dump))
     }
   }, [open, dump, snapshot])
+
+  useEffect(() => {
+    const name = targetDb.trim()
+    if (name && databases.includes(name)) {
+      getDatabaseConflicts(name)
+        .then((conflict) => setInUseBy(conflict.inUseByContainers ?? []))
+        .catch(() => setInUseBy([]))
+    } else {
+      setInUseBy([])
+    }
+  }, [targetDb, databases])
 
   function resetForm() {
     setSelectedRepo('')
@@ -113,6 +129,8 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
     setCancelling(false)
     setScriptsResponse(null)
     setSelectedOptionalScripts([])
+    setConfirmOverrideOpen(false)
+    setInUseBy([])
   }
 
   function handleClose() {
@@ -132,12 +150,22 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
     // The backend will send an ERROR event through SSE which triggers the onError handler
   }
 
-  async function handleRestore() {
+  function handleRestoreClick() {
     if (!source) return
     if (!selectedRepo) return notify('Please select a repository.', 'warning')
     if (!targetDb.trim()) return notify('Please enter a target database.', 'warning')
     if (!password) return notify('Please enter the operations password.', 'warning')
 
+    if (dbExists) {
+      setConfirmOverrideOpen(true)
+      return
+    }
+
+    executeRestore()
+  }
+
+  async function executeRestore() {
+    setConfirmOverrideOpen(false)
     setRunning(true)
     setSseEvents([])
     setSseError(false)
@@ -187,7 +215,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
       maxWidth="md"
       fullWidth
     >
-      <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center' }}>
+      <DialogTitle sx={{ bgcolor: 'primary.dark', color: 'white', display: 'flex', alignItems: 'center' }}>
         <Restore sx={{ mr: 1 }} /> {isSnapshot
           ? `Restore Snapshot - ${snapshot!.label || snapshot!.sourceDatabaseName}`
           : `Restore Dump ${dump ? `- ${dump.originalFilename}` : ''}`}
@@ -262,6 +290,14 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
                 />
               </Grid>
             </Grid>
+
+            {dbExists && (
+              <Alert severity="warning" variant="outlined" icon={<Warning />} sx={{ mb: 2 }}>
+                Database <strong>{targetDb.trim()}</strong> already exists
+                {inUseBy.length > 0 && <> and is being used by <strong>{inUseBy.join(', ')}</strong></>}.
+                {' '}Restoring into it will override its current data. You will be asked to confirm before proceeding.
+              </Alert>
+            )}
 
             <FormControlLabel
               control={
@@ -368,7 +404,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
             <Button
               variant="contained"
               color="success"
-              onClick={handleRestore}
+              onClick={handleRestoreClick}
               disabled={running || !selectedRepo || !targetDb.trim() || !password}
               startIcon={<Restore />}
             >
@@ -377,6 +413,38 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
           </>
         )}
       </DialogActions>
+
+      <Dialog open={confirmOverrideOpen} onClose={() => setConfirmOverrideOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: 'warning.main', color: 'white', display: 'flex', alignItems: 'center' }}>
+          <Warning sx={{ mr: 1 }} /> Confirm Database Override
+        </DialogTitle>
+        <DialogContent dividers sx={{ pt: 3 }}>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            The database <strong>{targetDb.trim()}</strong> already exists and contains data
+            {inUseBy.length > 0 && <> and is being used by <strong>{inUseBy.join(', ')}</strong></>}.
+          </Alert>
+          <Typography>
+            Restoring into this database will override its current content.
+            This action <strong>cannot be undone</strong>.
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            To avoid this, go back and change the target database name.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setConfirmOverrideOpen(false)} color="inherit">
+            Go Back
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={executeRestore}
+            startIcon={<Restore />}
+          >
+            Override and Restore
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   )
 }
