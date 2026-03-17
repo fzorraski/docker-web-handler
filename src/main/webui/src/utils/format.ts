@@ -1,5 +1,5 @@
 import dayjs from 'dayjs'
-import type { DatabaseDump } from '../types'
+import type { DatabaseDump, DatabaseSnapshot } from '../types'
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
@@ -24,4 +24,10 @@ export function buildTargetDbName(dump: DatabaseDump): string {
   }
   const raw = parts.length > 0 ? parts.join('_') : ''
   return raw.replace(/[^a-zA-Z0-9_-]/g, '_')
+}
+
+export function buildSnapshotTargetDbName(snapshot: DatabaseSnapshot): string {
+  const suffix = dayjs().format('YYYYMMDDHHmmss')
+  const base = snapshot.sourceDatabaseName.replace(/[^a-zA-Z0-9_-]/g, '_')
+  return `${base}_restore_${suffix}`
 }
