@@ -30,6 +30,8 @@ public class DockerContainer {
 
     private boolean deleteDatabaseOnExpiration;
 
+    private String repository;
+
     public String getContainerId() {
         return containerId;
     }
@@ -140,6 +142,14 @@ public class DockerContainer {
 
     public void setDeleteDatabaseOnExpiration(boolean deleteDatabaseOnExpiration) {
         this.deleteDatabaseOnExpiration = deleteDatabaseOnExpiration;
+    }
+
+    public String getRepository() {
+        return repository;
+    }
+
+    public void setRepository(String repository) {
+        this.repository = repository;
     }
 
     @Override
