@@ -2,11 +2,13 @@ package br.com.fzdevx.usecase;
 
 import br.com.fzdevx.model.ContainerEvent;
 import br.com.fzdevx.model.DatabaseDump;
+import br.com.fzdevx.model.DatabaseSnapshot;
 import br.com.fzdevx.model.PostRestoreScriptInfo;
 import br.com.fzdevx.model.RestoreDumpRequest;
 import br.com.fzdevx.service.DatabaseService;
 import br.com.fzdevx.service.DumpStorageService;
 import br.com.fzdevx.service.PostRestoreScriptService;
+import br.com.fzdevx.service.SnapshotStorageService;
 import br.com.fzdevx.util.InputValidator;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerResponse;
@@ -49,6 +51,9 @@ public class RestoreDumpUseCase {
 
     @Inject
     PostRestoreScriptService postRestoreScriptService;
+
+    @Inject
+    SnapshotStorageService snapshotStorageService;
 
     @Inject
     DockerClient dockerClient;
@@ -101,10 +106,13 @@ public class RestoreDumpUseCase {
     }
 
     public boolean execute(RestoreDumpRequest request, Consumer<ContainerEvent> eventSink) {
+        boolean isSnapshot = request.getSnapshotId() != null && !request.getSnapshotId().isBlank();
+        String sourceId = isSnapshot ? request.getSnapshotId() : request.getDumpId();
+
         // Step 1: Validate
         eventSink.accept(ContainerEvent.info("Validating", "Validating restore request..."));
 
-        Optional<String> uuidError = InputValidator.validateUuid(request.getDumpId());
+        Optional<String> uuidError = InputValidator.validateUuid(sourceId);
         if (uuidError.isPresent()) {
             eventSink.accept(ContainerEvent.error("Validating", uuidError.get()));
             return false;
@@ -128,18 +136,41 @@ public class RestoreDumpUseCase {
             return false;
         }
 
-        Optional<DatabaseDump> dumpOpt = dumpStorageService.findById(request.getDumpId());
-        if (dumpOpt.isEmpty()) {
-            eventSink.accept(ContainerEvent.error("Validating", "Dump not found: " + request.getDumpId()));
-            return false;
+        // Resolve source: dump or snapshot
+        DatabaseDump dump = null;
+        DatabaseSnapshot snapshot = null;
+        String displayName;
+        if (isSnapshot) {
+            Optional<DatabaseSnapshot> snapOpt = snapshotStorageService.findById(request.getSnapshotId());
+            if (snapOpt.isEmpty()) {
+                eventSink.accept(ContainerEvent.error("Validating", "Snapshot not found: " + request.getSnapshotId()));
+                return false;
+            }
+            snapshot = snapOpt.get();
+            displayName = snapshot.getLabel() != null && !snapshot.getLabel().isBlank()
+                    ? snapshot.getLabel() : "snapshot-" + snapshot.getSourceDatabaseName();
+            // Create a synthetic dump for the restore methods (reuse format mapping)
+            dump = new DatabaseDump();
+            dump.setFormat(snapshot.getFormat() == DatabaseSnapshot.Format.SQL
+                    ? DatabaseDump.Format.SQL : DatabaseDump.Format.CUSTOM);
+            dump.setOriginalFilename(displayName);
+        } else {
+            Optional<DatabaseDump> dumpOpt = dumpStorageService.findById(request.getDumpId());
+            if (dumpOpt.isEmpty()) {
+                eventSink.accept(ContainerEvent.error("Validating", "Dump not found: " + request.getDumpId()));
+                return false;
+            }
+            dump = dumpOpt.get();
+            displayName = dump.getOriginalFilename();
         }
 
-        DatabaseDump dump = dumpOpt.get();
+        final DatabaseDump dumpFinal = dump;
+        final DatabaseSnapshot snapshotFinal = snapshot;
 
         // Concurrency check
         String lockKey = request.getRepository() + ":" + request.getTargetDatabase();
         RestoreContext ctx = new RestoreContext(new ActiveRestoreInfo(
-                request.getRepository(), request.getTargetDatabase(), dump.getOriginalFilename()));
+                request.getRepository(), request.getTargetDatabase(), displayName));
         if (activeRestores.putIfAbsent(lockKey, ctx) != null) {
             eventSink.accept(ContainerEvent.error("Validating",
                     "A restore is already in progress for " + request.getTargetDatabase()
@@ -157,9 +188,13 @@ public class RestoreDumpUseCase {
                 eventSink.accept(ContainerEvent.error("Preparing", "Restore cancelled by user."));
                 return false;
             }
-            eventSink.accept(ContainerEvent.info("Preparing", "Decompressing dump file..."));
-            tempFile = dumpStorageService.prepareForRestore(dump);
-            eventSink.accept(ContainerEvent.info("Preparing", "Dump file ready."));
+            eventSink.accept(ContainerEvent.info("Preparing", "Decompressing file..."));
+            if (isSnapshot) {
+                tempFile = snapshotStorageService.prepareForRestore(snapshotFinal);
+            } else {
+                tempFile = dumpStorageService.prepareForRestore(dump);
+            }
+            eventSink.accept(ContainerEvent.info("Preparing", "File ready."));
 
             // Step 3: Create database if needed
             if (ctx.cancelled.get()) {

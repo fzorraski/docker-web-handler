@@ -19,7 +19,7 @@ import {
   Chip,
 } from '@mui/material'
 import { Close, Restore } from '@mui/icons-material'
-import type { DatabaseDump } from '../types'
+import type { DatabaseDump, DatabaseSnapshot } from '../types'
 import { buildTargetDbName } from '../utils/format'
 import { getDumpRepositories, cancelRestore, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
 import { getRepositoryDatabases } from '../services/containerService'
@@ -36,11 +36,14 @@ function formatScriptSize(bytes: number): string {
 interface Props {
   open: boolean
   dump: DatabaseDump | null
+  snapshot?: DatabaseSnapshot | null
   onClose: () => void
   onRestored: () => void
 }
 
-export default function RestoreDumpModal({ open, dump, onClose, onRestored }: Props) {
+export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRestored }: Props) {
+  const source = snapshot ?? dump
+  const isSnapshot = !!snapshot
   const { notify } = useNotification()
   const [repositories, setRepositories] = useState<string[]>([])
   const [selectedRepo, setSelectedRepo] = useState('')
@@ -89,10 +92,14 @@ export default function RestoreDumpModal({ open, dump, onClose, onRestored }: Pr
   }, [selectedRepo])
 
   useEffect(() => {
-    if (open && dump) {
+    if (!open) return
+    if (snapshot) {
+      setTargetDb(snapshot.sourceDatabaseName)
+      setSelectedRepo(snapshot.repository)
+    } else if (dump) {
       setTargetDb(buildTargetDbName(dump))
     }
-  }, [open, dump])
+  }, [open, dump, snapshot])
 
   function resetForm() {
     setSelectedRepo('')
@@ -126,7 +133,7 @@ export default function RestoreDumpModal({ open, dump, onClose, onRestored }: Pr
   }
 
   async function handleRestore() {
-    if (!dump) return
+    if (!source) return
     if (!selectedRepo) return notify('Please select a repository.', 'warning')
     if (!targetDb.trim()) return notify('Please enter a target database.', 'warning')
     if (!password) return notify('Please enter the operations password.', 'warning')
@@ -139,7 +146,8 @@ export default function RestoreDumpModal({ open, dump, onClose, onRestored }: Pr
       const isNew = !databases.includes(targetDb.trim())
 
       const ticket = await prepareRestoreDump({
-        dumpId: dump.id,
+        dumpId: isSnapshot ? undefined : (source as DatabaseDump).id,
+        snapshotId: isSnapshot ? (source as DatabaseSnapshot).id : undefined,
         repository: selectedRepo,
         targetDatabase: targetDb.trim(),
         createDatabase: createDb || isNew,
@@ -154,7 +162,7 @@ export default function RestoreDumpModal({ open, dump, onClose, onRestored }: Pr
           setTimeout(() => {
             onClose()
             onRestored()
-            notify('Dump restored successfully.', 'success')
+            notify(isSnapshot ? 'Snapshot restored successfully.' : 'Dump restored successfully.', 'success')
             setTimeout(resetForm, 300)
           }, 1500)
         },
@@ -180,7 +188,9 @@ export default function RestoreDumpModal({ open, dump, onClose, onRestored }: Pr
       fullWidth
     >
       <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center' }}>
-        <Restore sx={{ mr: 1 }} /> Restore Dump {dump ? `- ${dump.originalFilename}` : ''}
+        <Restore sx={{ mr: 1 }} /> {isSnapshot
+          ? `Restore Snapshot - ${snapshot!.label || snapshot!.sourceDatabaseName}`
+          : `Restore Dump ${dump ? `- ${dump.originalFilename}` : ''}`}
         <IconButton onClick={handleClose} sx={{ ml: 'auto', color: 'white' }}>
           <Close />
         </IconButton>

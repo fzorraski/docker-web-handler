@@ -26,6 +26,8 @@ public class RunContainerRequest {
 
     private List<String> selectedOptionalScripts;
 
+    private String snapshotId;
+
     public String getRepository() {
         return repository;
     }
@@ -112,5 +114,13 @@ public class RunContainerRequest {
 
     public void setSelectedOptionalScripts(List<String> selectedOptionalScripts) {
         this.selectedOptionalScripts = selectedOptionalScripts;
+    }
+
+    public String getSnapshotId() {
+        return snapshotId;
+    }
+
+    public void setSnapshotId(String snapshotId) {
+        this.snapshotId = snapshotId;
     }
 }

@@ -26,6 +26,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import br.com.fzdevx.util.Constants;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -159,11 +161,14 @@ public class RunContainerUseCase {
 
         eventSink.accept(ContainerEvent.info("Creating", "Container created."));
 
-        // Step 4: Restore dump if specified (before starting the container so the DB is ready)
-        if (request.getDumpId() != null && !request.getDumpId().isBlank()) {
-            eventSink.accept(ContainerEvent.info("Restoring", "Starting dump restore..."));
+        // Step 4: Restore dump/snapshot if specified (before starting the container so the DB is ready)
+        boolean hasDump = request.getDumpId() != null && !request.getDumpId().isBlank();
+        boolean hasSnapshot = request.getSnapshotId() != null && !request.getSnapshotId().isBlank();
+        if (hasDump || hasSnapshot) {
+            eventSink.accept(ContainerEvent.info("Restoring", "Starting restore..."));
             RestoreDumpRequest restoreReq = new RestoreDumpRequest();
-            restoreReq.setDumpId(request.getDumpId());
+            restoreReq.setDumpId(hasDump ? request.getDumpId() : null);
+            restoreReq.setSnapshotId(hasSnapshot ? request.getSnapshotId() : null);
             restoreReq.setRepository(request.getRepository());
             restoreReq.setTargetDatabase(request.getDatabaseName());
             restoreReq.setCreateDatabase(request.isCreateDatabase());
@@ -245,6 +250,8 @@ public class RunContainerUseCase {
         if (!mergedEnvVars.isEmpty()) {
             createCmd.withEnv(mergedEnvVars);
         }
+
+        createCmd.withLabels(Map.of(Constants.REPOSITORY_LABEL, request.getRepository()));
 
         return createCmd.exec();
     }
