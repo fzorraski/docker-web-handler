@@ -48,6 +48,7 @@ export async function prepareRunContainer(body: {
   databaseName?: string | null
   deleteDatabaseOnExpiration?: boolean
   dumpId?: string | null
+  snapshotId?: string | null
   createDatabase?: boolean
   selectedOptionalScripts?: string[]
 }): Promise<string> {
@@ -89,7 +90,8 @@ export function streamRemoveContainer(
 }
 
 export async function prepareRestoreDump(body: {
-  dumpId: string
+  dumpId?: string
+  snapshotId?: string
   repository: string
   targetDatabase: string
   createDatabase: boolean
@@ -116,4 +118,35 @@ export function streamRestoreDump(
   onError: (message: string) => void,
 ): () => void {
   return streamSse(`/api/database/dumps/sse/restore/${ticket}`, onEvent, onDone, onError)
+}
+
+export async function prepareSnapshot(body: {
+  repository: string
+  sourceDatabaseName: string
+  format: string
+  label?: string
+  expiresAt?: string
+  password: string
+  containerName?: string
+}): Promise<string> {
+  const res = await fetch('/api/database/snapshots/sse/create/prepare', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || res.statusText)
+  }
+  const data = await res.json()
+  return data.ticket
+}
+
+export function streamSnapshot(
+  ticket: string,
+  onEvent: (event: ContainerEvent) => void,
+  onDone: () => void,
+  onError: (message: string) => void,
+): () => void {
+  return streamSse(`/api/database/snapshots/sse/create/${ticket}`, onEvent, onDone, onError)
 }

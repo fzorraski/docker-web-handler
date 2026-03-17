@@ -108,6 +108,25 @@ public class SnapshotStorageService {
                 snapshot.getFileSize(), snapshot.getMd5Hash());
     }
 
+    public boolean updateExpiration(String id, Instant expiresAt) {
+        Optional<DatabaseSnapshot> opt = snapshotRepository.findById(id);
+        if (opt.isEmpty()) return false;
+
+        DatabaseSnapshot snapshot = opt.get();
+        snapshot.setExpiresAt(expiresAt);
+        snapshotRepository.save(snapshot);
+
+        ScheduledFuture<?> existing = scheduledExpirations.remove(id);
+        if (existing != null) existing.cancel(false);
+
+        if (expiresAt != null) {
+            scheduleExpiration(snapshot);
+        }
+
+        Log.infof("Updated expiration for snapshot '%s' to %s", id, expiresAt);
+        return true;
+    }
+
     public Path prepareForRestore(DatabaseSnapshot snapshot) throws IOException {
         Path storedPath = Path.of(storageDir).resolve(snapshot.getStoredFilename());
         if (!Files.exists(storedPath)) {

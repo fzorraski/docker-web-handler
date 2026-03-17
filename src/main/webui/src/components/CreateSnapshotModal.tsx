@@ -13,8 +13,12 @@ import {
   ToggleButtonGroup,
   ToggleButton,
   Typography,
+  FormControlLabel,
+  Switch,
 } from '@mui/material'
 import { Close, CameraAlt, Download } from '@mui/icons-material'
+import { MobileDateTimePicker } from '@mui/x-date-pickers/MobileDateTimePicker'
+import dayjs, { type Dayjs } from 'dayjs'
 import { getSnapshotRepositories, downloadSnapshotDirect, cancelSnapshot } from '../services/snapshotService'
 import { getRepositoryDatabases } from '../services/containerService'
 import { prepareSnapshot, streamSnapshot, type ContainerEvent } from '../services/sseService'
@@ -27,9 +31,10 @@ interface Props {
   onCreated: () => void
   initialRepository?: string
   initialDatabase?: string
+  containerName?: string
 }
 
-export default function CreateSnapshotModal({ open, onClose, onCreated, initialRepository, initialDatabase }: Props) {
+export default function CreateSnapshotModal({ open, onClose, onCreated, initialRepository, initialDatabase, containerName }: Props) {
   const { notify } = useNotification()
   const locked = !!(initialRepository && initialDatabase)
   const [repositories, setRepositories] = useState<string[]>([])
@@ -39,6 +44,8 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
   const [selectedDb, setSelectedDb] = useState('')
   const [format, setFormat] = useState<'CUSTOM' | 'SQL'>('CUSTOM')
   const [label, setLabel] = useState('')
+  const [expirationEnabled, setExpirationEnabled] = useState(false)
+  const [expiresAt, setExpiresAt] = useState<Dayjs | null>(dayjs().add(7, 'day'))
   const [password, setPassword] = useState('')
   const [running, setRunning] = useState(false)
   const [cancelling, setCancelling] = useState(false)
@@ -90,6 +97,8 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
     setSelectedDb('')
     setFormat('CUSTOM')
     setLabel('')
+    setExpirationEnabled(false)
+    setExpiresAt(dayjs().add(7, 'day'))
     setPassword('')
     setSseEvents([])
     setSseError(false)
@@ -126,7 +135,9 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
         sourceDatabaseName: selectedDb,
         format,
         label: label.trim() || undefined,
+        expiresAt: expirationEnabled && expiresAt ? expiresAt.format('YYYY-MM-DDTHH:mm:ss') : undefined,
         password,
+        containerName,
       })
 
       cleanupSse.current = streamSnapshot(
@@ -160,6 +171,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
       format,
       label: label.trim() || undefined,
       password,
+      containerName,
     })
     setTimeout(() => setDownloading(false), 3000)
   }
@@ -292,6 +304,37 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
                   sx={{ mt: 3 }}
                 />
               </Grid>
+            </Grid>
+
+            <Grid container spacing={2} sx={{ mb: 2 }} alignItems="center">
+              <Grid size={{ xs: 12, md: 4 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={expirationEnabled}
+                      onChange={(e) => setExpirationEnabled(e.target.checked)}
+                    />
+                  }
+                  label="Auto-delete snapshot"
+                />
+              </Grid>
+              {expirationEnabled && (
+                <Grid size={{ xs: 12, md: 8 }}>
+                  <MobileDateTimePicker
+                    label="Expires at"
+                    value={expiresAt}
+                    onChange={(v) => setExpiresAt(v)}
+                    minDateTime={dayjs()}
+                    slotProps={{
+                      textField: {
+                        fullWidth: true,
+                        size: 'small',
+                        helperText: 'Snapshot will be automatically deleted at this time',
+                      },
+                    }}
+                  />
+                </Grid>
+              )}
             </Grid>
           </>
         )}

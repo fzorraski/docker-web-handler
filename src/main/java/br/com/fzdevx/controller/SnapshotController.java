@@ -203,6 +203,43 @@ public class SnapshotController {
         return Response.ok(Map.of("success", true, "deleted", deleted)).build();
     }
 
+    @PUT
+    @Path("/expiration/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response updateExpiration(@PathParam("id") String id,
+                                      @HeaderParam("X-Dump-Password") String password,
+                                      Map<String, String> body) {
+        if (!dumpStorageService.isEnabled()) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Dump feature is disabled.")).build();
+        }
+        Optional<String> uuidError = InputValidator.validateUuid(id);
+        if (uuidError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", uuidError.get())).build();
+        }
+        if (!dumpStorageService.validateOperationsPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
+        }
+        String expiresAtStr = body.get("expiresAt");
+        Instant expiresAt = null;
+        if (expiresAtStr != null && !expiresAtStr.isBlank()) {
+            try {
+                expiresAt = java.time.LocalDateTime.parse(expiresAtStr,
+                        java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                        .atZone(java.time.ZoneId.systemDefault()).toInstant();
+            } catch (Exception ignored) {}
+        }
+        boolean updated = snapshotStorageService.updateExpiration(id, expiresAt);
+        if (!updated) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", "Snapshot not found.")).build();
+        }
+        return Response.ok(Map.of("success", true)).build();
+    }
+
     @GET
     @Path("/storage-info")
     @Produces(MediaType.APPLICATION_JSON)
