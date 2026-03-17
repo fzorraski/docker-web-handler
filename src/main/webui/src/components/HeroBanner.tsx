@@ -1,4 +1,4 @@
-import { Box, Typography, Button } from '@mui/material'
+import { Box, Typography, Button, useTheme } from '@mui/material'
 import { Link } from 'react-router-dom'
 
 interface Props {
@@ -7,10 +7,15 @@ interface Props {
 }
 
 export default function HeroBanner({ linkTo, linkLabel }: Props) {
+  const theme = useTheme()
+  const isDark = theme.palette.mode === 'dark'
+
   return (
     <Box
       sx={{
-        background: 'linear-gradient(to right, #ff6f61, #de6b48)',
+        background: isDark
+          ? 'linear-gradient(to right, #d4544a, #b04a3a)'
+          : 'linear-gradient(to right, #ff6f61, #de6b48)',
         color: 'white',
         py: 8,
         textAlign: 'center',

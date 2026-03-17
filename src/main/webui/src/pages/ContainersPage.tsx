@@ -45,6 +45,7 @@ import {
   Checkbox,
   Alert,
   AlertTitle,
+  useTheme,
 } from '@mui/material'
 import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt } from '@mui/icons-material'
 
@@ -84,6 +85,13 @@ function loadVisibility(columns: ColumnDef[]): Record<string, boolean> {
 
 export default function ContainersPage() {
   const { notify, confirm } = useNotification()
+  const theme = useTheme()
+  const isDark = theme.palette.mode === 'dark'
+  const theadBg = isDark ? 'background.paper' : 'primary.main'
+  const theadColor = isDark ? 'text.primary' : 'white'
+  const theadSortSx = isDark
+    ? { color: 'text.primary !important', '& .MuiTableSortLabel-icon': { color: 'text.secondary !important' } }
+    : { color: 'white !important', '& .MuiTableSortLabel-icon': { color: 'white !important' } }
   const [containers, setContainers] = useState<DockerContainer[]>([])
   const [filter, setFilter] = useState('')
   const [loading, setLoading] = useState(true)
@@ -395,15 +403,15 @@ export default function ContainersPage() {
         <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2 }}>
           <Table>
             <TableHead>
-              <TableRow sx={{ bgcolor: 'primary.main' }}>
+              <TableRow sx={{ bgcolor: theadBg }}>
                 {visibleColumns.map((col) => (
-                  <TableCell key={col.key} sx={{ color: 'white', fontWeight: 600 }}>
+                  <TableCell key={col.key} sx={{ color: theadColor, fontWeight: 600 }}>
                     {col.key !== 'actions' ? (
                       <TableSortLabel
                         active={sortKey === col.key}
                         direction={sortKey === col.key ? sortDir : 'asc'}
                         onClick={() => handleSort(col.key)}
-                        sx={{ color: 'white !important', '& .MuiTableSortLabel-icon': { color: 'white !important' } }}
+                        sx={theadSortSx}
                       >
                         {col.label}
                       </TableSortLabel>
