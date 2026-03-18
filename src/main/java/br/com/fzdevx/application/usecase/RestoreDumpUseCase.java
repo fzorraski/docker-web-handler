@@ -80,9 +80,14 @@ public class RestoreDumpUseCase {
     }
 
     private final ConcurrentHashMap<String, RestoreContext> activeRestores = new ConcurrentHashMap<>();
+    private final AtomicInteger totalRestores = new AtomicInteger(0);
 
     public List<ActiveRestoreInfo> getActiveRestores() {
         return activeRestores.values().stream().map(ctx -> ctx.info).toList();
+    }
+
+    public int getTotalRestores() {
+        return totalRestores.get();
     }
 
     public boolean cancel(String repository, String targetDatabase) {
@@ -284,6 +289,7 @@ public class RestoreDumpUseCase {
             } else {
                 dumpStorageService.markUsed(request.getDumpId());
             }
+            totalRestores.incrementAndGet();
 
             return true;
 
