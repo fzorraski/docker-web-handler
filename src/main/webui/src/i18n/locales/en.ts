@@ -37,6 +37,13 @@ const en = {
 
   footer: {
     copyright: '2024 Docker Handler.',
+    soFar: 'So far:',
+    startedAt: 'Total managed resources since {{date}}',
+    containers: 'Containers',
+    images: 'Images',
+    dumps: 'Dumps',
+    snapshots: 'Snapshots',
+    restores: 'Restores',
   },
 
   hero: {
