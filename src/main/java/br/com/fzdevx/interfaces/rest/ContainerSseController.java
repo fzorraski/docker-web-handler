@@ -5,6 +5,7 @@ import br.com.fzdevx.application.dto.RunContainerRequest;
 import br.com.fzdevx.infrastructure.config.RequestStash;
 import br.com.fzdevx.application.usecase.RemoveContainerUseCase;
 import br.com.fzdevx.application.usecase.RunContainerUseCase;
+import br.com.fzdevx.application.usecase.StreamContainerLogsUseCase;
 import br.com.fzdevx.interfaces.rest.util.SseHelper; // ✦ CLEAN — extracted duplicated SSE logic into shared helper
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -26,6 +27,9 @@ public class ContainerSseController {
 
     @Inject
     RemoveContainerUseCase removeContainerUseCase;
+
+    @Inject
+    StreamContainerLogsUseCase streamContainerLogsUseCase;
 
     @POST
     @Path("/run/prepare")
@@ -64,6 +68,21 @@ public class ContainerSseController {
                              @Context Sse sse) {
         try {
             removeContainerUseCase.execute(containerId, event -> SseHelper.sendEvent(sink, sse, event));
+        } finally {
+            SseHelper.closeSink(sink);
+        }
+    }
+
+    @GET
+    @Path("/logs/{containerId}")
+    @Produces(MediaType.SERVER_SENT_EVENTS)
+    public void streamLogs(@PathParam("containerId") String containerId,
+                           @Context SseEventSink sink,
+                           @Context Sse sse) {
+        try {
+            streamContainerLogsUseCase.execute(containerId,
+                    event -> SseHelper.sendEvent(sink, sse, event),
+                    () -> !sink.isClosed());
         } finally {
             SseHelper.closeSink(sink);
         }

@@ -7,6 +7,7 @@ import com.github.dockerjava.api.model.Container;
 
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 // ⚠ SOLID — DIP: port interface abstracting Docker container operations for use cases
 public interface DockerContainerPort {
@@ -22,4 +23,6 @@ public interface DockerContainerPort {
     CreateContainerCmd createContainerCmd(String imageRef);
 
     void pullImage(String imageRef, String repository, String tag, Consumer<ContainerEvent> eventSink) throws InterruptedException;
+
+    void streamLogs(String containerId, int tail, Consumer<ContainerEvent> eventSink, Supplier<Boolean> isActive);
 }

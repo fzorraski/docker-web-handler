@@ -3,17 +3,22 @@ package br.com.fzdevx.infrastructure.docker;
 import br.com.fzdevx.application.port.DockerContainerPort;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.command.CreateContainerCmd;
-import com.github.dockerjava.api.model.AuthConfig;
 import com.github.dockerjava.api.model.Container;
+import com.github.dockerjava.api.model.Frame;
 import com.github.dockerjava.api.model.PullResponseItem;
+import com.github.dockerjava.api.model.StreamType;
 import com.github.dockerjava.core.command.PullImageResultCallback;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 // ⚠ SOLID — DIP: adapter implementing DockerContainerPort for use cases
 @ApplicationScoped
@@ -45,6 +50,40 @@ public class DockerContainerAdapter implements DockerContainerPort {
     @Override
     public CreateContainerCmd createContainerCmd(String imageRef) {
         return dockerClient.createContainerCmd(imageRef);
+    }
+
+    @Override
+    public void streamLogs(String containerId, int tail, Consumer<ContainerEvent> eventSink, Supplier<Boolean> isActive) {
+        ResultCallback.Adapter<Frame> callback = new ResultCallback.Adapter<>() {
+            @Override
+            public void onNext(Frame frame) {
+                if (!isActive.get()) {
+                    try { close(); } catch (IOException ignored) {}
+                    return;
+                }
+                String line = new String(frame.getPayload(), StandardCharsets.UTF_8).stripTrailing();
+                if (!line.isEmpty()) {
+                    String streamType = frame.getStreamType() == StreamType.STDERR ? "STDERR" : "STDOUT";
+                    eventSink.accept(ContainerEvent.info(streamType, line));
+                }
+            }
+        };
+
+        try {
+            dockerClient.logContainerCmd(containerId)
+                    .withStdOut(true)
+                    .withStdErr(true)
+                    .withFollowStream(true)
+                    .withTail(tail)
+                    .withTimestamps(true)
+                    .exec(callback);
+
+            callback.awaitCompletion();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            eventSink.accept(ContainerEvent.error("Logs", "Log stream error: " + e.getMessage()));
+        }
     }
 
     @Override

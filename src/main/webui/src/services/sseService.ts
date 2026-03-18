@@ -80,6 +80,15 @@ export function streamRemoveImage(
   return streamSse(`/api/images/sse/remove/${encodeURIComponent(imageId)}`, onEvent, onDone, onError)
 }
 
+export function streamContainerLogs(
+  containerId: string,
+  onEvent: (event: ContainerEvent) => void,
+  onDone: () => void,
+  onError: (message: string) => void,
+): () => void {
+  return streamSse(`/api/containers/sse/logs/${encodeURIComponent(containerId)}`, onEvent, onDone, onError)
+}
+
 export function streamRemoveContainer(
   containerId: string,
   onEvent: (event: ContainerEvent) => void,
