@@ -271,6 +271,13 @@ public class DumpStorageService {
         return Path.of(storageDir).resolve(dump.getStoredFilename()).toFile();
     }
 
+    public void markUsed(String id) {
+        dumpRepository.findById(id).ifPresent(dump -> {
+            dump.setLastUsedAt(java.time.Instant.now());
+            dumpRepository.save(dump);
+        });
+    }
+
     public Optional<DatabaseDump> findById(String id) {
         return dumpRepository.findById(id);
     }

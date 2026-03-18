@@ -166,6 +166,8 @@ public class DatabaseDumpController {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
 
+        dumpStorageService.markUsed(id);
+
         String downloadName = dump.getOriginalFilename().toLowerCase().endsWith(".gz")
                 ? dump.getOriginalFilename()
                 : dump.getOriginalFilename() + ".gz";
@@ -273,6 +275,39 @@ public class DatabaseDumpController {
                     .entity(Map.of("error", "Dump not found.")).build();
         }
         return Response.ok(Map.of("success", true)).build();
+    }
+
+    @POST
+    @Path("/cleanup-idle")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response cleanupIdleDumps(Map<String, Object> body) {
+        if (!dumpStorageService.isEnabled()) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Dump feature is disabled.")).build();
+        }
+
+        String password = body.get("password") != null ? body.get("password").toString() : "";
+        int minDays = body.get("minDays") != null ? ((Number) body.get("minDays")).intValue() : 0;
+
+        if (!dumpStorageService.validateOperationsPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
+        }
+
+        java.time.Instant cutoff = java.time.Instant.now().minus(minDays, java.time.temporal.ChronoUnit.DAYS);
+        List<DatabaseDump> all = dumpStorageService.findAll();
+
+        int deleted = 0;
+        for (DatabaseDump dump : all) {
+            java.time.Instant reference = dump.getLastUsedAt() != null ? dump.getLastUsedAt() : dump.getUploadedAt();
+            if (reference != null && reference.isBefore(cutoff)) {
+                dumpStorageService.deleteDump(dump.getId());
+                deleted++;
+            }
+        }
+
+        return Response.ok(Map.of("success", true, "deleted", deleted)).build();
     }
 
     @GET

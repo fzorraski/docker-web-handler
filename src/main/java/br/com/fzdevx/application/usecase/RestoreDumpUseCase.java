@@ -278,6 +278,13 @@ public class RestoreDumpUseCase {
                 }
             }
 
+            // Track usage on successful restore
+            if (isSnapshot) {
+                snapshotStorageService.markUsed(request.getSnapshotId());
+            } else {
+                dumpStorageService.markUsed(request.getDumpId());
+            }
+
             return true;
 
         } catch (Exception e) {

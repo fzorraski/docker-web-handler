@@ -22,6 +22,7 @@ public class DatabaseSnapshot {
     private String label;
     private String containerName;
     private String description;
+    private Instant lastUsedAt;
 
     public DatabaseSnapshot() {
     }
@@ -75,6 +76,9 @@ public class DatabaseSnapshot {
 
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+
+    public Instant getLastUsedAt() { return lastUsedAt; }
+    public void setLastUsedAt(Instant lastUsedAt) { this.lastUsedAt = lastUsedAt; }
 
     @Override
     public boolean equals(Object o) {

@@ -143,3 +143,14 @@ export function downloadSnapshotDirect(body: {
       console.error('Download failed:', err)
     })
 }
+
+export async function cleanupIdleSnapshots(password: string, minDays: number): Promise<{ success: boolean; deleted?: number; error?: string }> {
+  const res = await fetch(API + 'cleanup-idle', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password, minDays }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { success: false, error: data.error || res.statusText }
+  return { success: true, deleted: data.deleted }
+}

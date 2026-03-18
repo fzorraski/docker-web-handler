@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { DatabaseDump, DatabaseSnapshot } from '../types'
-import { listDumps, deleteDump, deleteDumpsBulk, getStorageInfo, getActiveRestores, updateDumpExpiration, type ActiveRestore } from '../services/dumpService'
-import { listSnapshots, deleteSnapshot, deleteSnapshotsBulk, getSnapshotStorageInfo, getActiveSnapshots, updateSnapshotExpiration, type ActiveSnapshot } from '../services/snapshotService'
+import { listDumps, deleteDump, deleteDumpsBulk, getStorageInfo, getActiveRestores, updateDumpExpiration, cleanupIdleDumps, type ActiveRestore } from '../services/dumpService'
+import { listSnapshots, deleteSnapshot, deleteSnapshotsBulk, getSnapshotStorageInfo, getActiveSnapshots, updateSnapshotExpiration, cleanupIdleSnapshots, type ActiveSnapshot } from '../services/snapshotService'
 import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
 import UploadDumpModal from '../components/UploadDumpModal'
@@ -11,6 +11,7 @@ import EditExpirationDialog from '../components/EditExpirationDialog'
 import PasswordConfirmDialog from '../components/PasswordConfirmDialog'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
 import { formatBytes, formatDate } from '../utils/format'
+import { getLastUsedColor, getLastUsedLabel } from '../utils/lastUsedColor'
 import { useTranslation } from 'react-i18next'
 import {
   Box,
@@ -37,8 +38,15 @@ import {
   Tab,
   Tooltip,
   IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Slider,
+  Switch,
+  FormControlLabel,
 } from '@mui/material'
-import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile, CameraAlt, InfoOutlined } from '@mui/icons-material'
+import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile, CameraAlt, InfoOutlined, CleaningServices, Warning } from '@mui/icons-material'
 
 type PendingDelete =
   | { kind: 'dump'; dump: DatabaseDump }
@@ -89,6 +97,17 @@ export default function DatabasePage() {
     ((expiresAt: string | null, password: string) => Promise<{ success: boolean; error?: string }>) | null
   >(null)
 
+  // --- Filter state ---
+  const [showNeverUsedDumps, setShowNeverUsedDumps] = useState(false)
+  const [showNeverUsedSnaps, setShowNeverUsedSnaps] = useState(false)
+
+  // --- Cleanup by idle time state ---
+  const [cleanupTarget, setCleanupTarget] = useState<'dump' | 'snapshot' | null>(null)
+  const [cleanupPassword, setCleanupPassword] = useState('')
+  const [cleanupMinDays, setCleanupMinDays] = useState(30)
+  const [cleanupLoading, setCleanupLoading] = useState(false)
+  const [cleanupError, setCleanupError] = useState('')
+
   const DUMP_COLUMNS: { key: string; label: string }[] = useMemo(() => [
     { key: 'originalFilename', label: t('database.dumpColumns.originalFilename') },
     { key: 'version', label: t('database.dumpColumns.version') },
@@ -98,6 +117,7 @@ export default function DatabasePage() {
     { key: 'md5Hash', label: t('database.dumpColumns.md5') },
     { key: 'uploadedAt', label: t('database.dumpColumns.uploadedAt') },
     { key: 'expiresAt', label: t('database.dumpColumns.expires') },
+    { key: 'lastUsedAt', label: t('database.dumpColumns.lastUsed') },
     { key: 'action', label: t('database.dumpColumns.actions') },
   ], [t])
 
@@ -111,6 +131,7 @@ export default function DatabasePage() {
     { key: 'md5Hash', label: t('database.snapColumns.md5') },
     { key: 'createdAt', label: t('database.snapColumns.createdAt') },
     { key: 'expiresAt', label: t('database.snapColumns.expires') },
+    { key: 'lastUsedAt', label: t('database.snapColumns.lastUsed') },
     { key: 'action', label: t('database.snapColumns.actions') },
   ], [t])
 
@@ -191,7 +212,8 @@ export default function DatabasePage() {
   }
 
   const filteredDumps = useMemo(() => {
-    const result = dumps.filter((d) =>
+    let data = showNeverUsedDumps ? dumps.filter(d => !d.lastUsedAt) : dumps
+    const result = data.filter((d) =>
       [d.originalFilename, d.databaseName ?? '', d.version ?? '', d.format, formatBytes(d.fileSize), d.description ?? '']
         .some((v) => v.toLowerCase().includes(filter.toLowerCase())),
     )
@@ -206,7 +228,7 @@ export default function DatabasePage() {
       const cmp = va.localeCompare(vb)
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [dumps, filter, sortKey, sortDir])
+  }, [dumps, filter, sortKey, sortDir, showNeverUsedDumps])
 
   // --- Snapshots logic ---
   function handleSnapSort(key: string) {
@@ -330,7 +352,8 @@ export default function DatabasePage() {
   }
 
   const filteredSnapshots = useMemo(() => {
-    const result = snapshots.filter((s) =>
+    let data = showNeverUsedSnaps ? snapshots.filter(s => !s.lastUsedAt) : snapshots
+    const result = data.filter((s) =>
       [s.label ?? '', s.repository, s.sourceDatabaseName, s.containerName ?? '', s.format, formatBytes(s.fileSize), s.description ?? '']
         .some((v) => v.toLowerCase().includes(snapFilter.toLowerCase())),
     )
@@ -345,7 +368,46 @@ export default function DatabasePage() {
       const cmp = va.localeCompare(vb)
       return snapSortDir === 'asc' ? cmp : -cmp
     })
-  }, [snapshots, snapFilter, snapSortKey, snapSortDir])
+  }, [snapshots, snapFilter, snapSortKey, snapSortDir, showNeverUsedSnaps])
+
+  function openCleanupDialog(target: 'dump' | 'snapshot') {
+    setCleanupTarget(target)
+    setCleanupPassword('')
+    setCleanupMinDays(30)
+    setCleanupError('')
+  }
+
+  function closeCleanupDialog() {
+    if (!cleanupLoading) {
+      setCleanupTarget(null)
+      setCleanupPassword('')
+      setCleanupError('')
+    }
+  }
+
+  async function handleCleanupConfirm() {
+    setCleanupLoading(true)
+    setCleanupError('')
+    try {
+      const result = cleanupTarget === 'dump'
+        ? await cleanupIdleDumps(cleanupPassword, cleanupMinDays)
+        : await cleanupIdleSnapshots(cleanupPassword, cleanupMinDays)
+
+      if (result.success) {
+        setCleanupTarget(null)
+        setCleanupPassword('')
+        notify(t('database.cleanupComplete', { count: result.deleted ?? 0 }), 'success')
+        if (cleanupTarget === 'dump') loadDumps()
+        else loadSnapshots()
+      } else {
+        setCleanupError(result.error || 'Unknown error')
+      }
+    } catch (e) {
+      setCleanupError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setCleanupLoading(false)
+    }
+  }
 
   const currentStorageInfo = activeTab === 0 ? storageInfo : snapStorageInfo
   const currentFileLabel = activeTab === 0
@@ -373,14 +435,28 @@ export default function DatabasePage() {
               </Button>
             )}
             {activeTab === 0 && (
-              <Button variant="contained" color="primary" startIcon={<CloudUpload />} onClick={() => setUploadOpen(true)}>
-                {t('database.uploadDump')}
-              </Button>
+              <>
+                <Tooltip title={t('database.cleanUpByIdleDesc')}>
+                  <Button variant="contained" color="warning" startIcon={<CleaningServices />} onClick={() => openCleanupDialog('dump')} disabled={dumps.length === 0} size="small">
+                    {t('database.cleanUpByIdle')}
+                  </Button>
+                </Tooltip>
+                <Button variant="contained" color="primary" startIcon={<CloudUpload />} onClick={() => setUploadOpen(true)}>
+                  {t('database.uploadDump')}
+                </Button>
+              </>
             )}
             {activeTab === 1 && (
-              <Button variant="contained" color="primary" startIcon={<CameraAlt />} onClick={() => setSnapshotOpen(true)}>
-                {t('database.createSnapshot')}
-              </Button>
+              <>
+                <Tooltip title={t('database.cleanUpByIdleDesc')}>
+                  <Button variant="contained" color="warning" startIcon={<CleaningServices />} onClick={() => openCleanupDialog('snapshot')} disabled={snapshots.length === 0} size="small">
+                    {t('database.cleanUpByIdle')}
+                  </Button>
+                </Tooltip>
+                <Button variant="contained" color="primary" startIcon={<CameraAlt />} onClick={() => setSnapshotOpen(true)}>
+                  {t('database.createSnapshot')}
+                </Button>
+              </>
             )}
           </Box>
         </Box>
@@ -471,15 +547,20 @@ export default function DatabasePage() {
         {/* ==================== DUMPS TAB ==================== */}
         {activeTab === 0 && (
           <>
-            <TextField
-              fullWidth
-              placeholder={t('database.searchDumps')}
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              size="small"
-              sx={{ mb: 3 }}
-              slotProps={{ input: { startAdornment: <InputAdornment position="start"><Search color="action" /></InputAdornment> } }}
-            />
+            <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center' }}>
+              <TextField
+                placeholder={t('database.searchDumps')}
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                size="small"
+                sx={{ flex: 1 }}
+                slotProps={{ input: { startAdornment: <InputAdornment position="start"><Search color="action" /></InputAdornment> } }}
+              />
+              <FormControlLabel
+                control={<Switch checked={showNeverUsedDumps} onChange={(e) => setShowNeverUsedDumps(e.target.checked)} size="small" />}
+                label={<Typography variant="body2">{t('database.showNeverUsed')}</Typography>}
+              />
+            </Box>
             <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2 }}>
               <Table>
                 <TableHead>
@@ -586,6 +667,14 @@ export default function DatabasePage() {
                         />
                       </TableCell>
                       <TableCell>
+                        <Chip
+                          label={getLastUsedLabel(dump.lastUsedAt, false, '', t('database.neverUsed'))}
+                          color={getLastUsedColor(dump.lastUsedAt)}
+                          size="small"
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>
                         <Box sx={{ display: 'flex', gap: 0.25 }}>
                           <Tooltip title={t('common.download')}>
                             <IconButton size="small" color="primary" component="a" href={`/api/database/dumps/download/${dump.id}`}>
@@ -616,15 +705,20 @@ export default function DatabasePage() {
         {/* ==================== SNAPSHOTS TAB ==================== */}
         {activeTab === 1 && (
           <>
-            <TextField
-              fullWidth
-              placeholder={t('database.searchSnapshots')}
-              value={snapFilter}
-              onChange={(e) => setSnapFilter(e.target.value)}
-              size="small"
-              sx={{ mb: 3 }}
-              slotProps={{ input: { startAdornment: <InputAdornment position="start"><Search color="action" /></InputAdornment> } }}
-            />
+            <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center' }}>
+              <TextField
+                placeholder={t('database.searchSnapshots')}
+                value={snapFilter}
+                onChange={(e) => setSnapFilter(e.target.value)}
+                size="small"
+                sx={{ flex: 1 }}
+                slotProps={{ input: { startAdornment: <InputAdornment position="start"><Search color="action" /></InputAdornment> } }}
+              />
+              <FormControlLabel
+                control={<Switch checked={showNeverUsedSnaps} onChange={(e) => setShowNeverUsedSnaps(e.target.checked)} size="small" />}
+                label={<Typography variant="body2">{t('database.showNeverUsed')}</Typography>}
+              />
+            </Box>
             <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2 }}>
               <Table>
                 <TableHead>
@@ -732,6 +826,14 @@ export default function DatabasePage() {
                         />
                       </TableCell>
                       <TableCell>
+                        <Chip
+                          label={getLastUsedLabel(snap.lastUsedAt, false, '', t('database.neverUsed'))}
+                          color={getLastUsedColor(snap.lastUsedAt)}
+                          size="small"
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>
                         <Box sx={{ display: 'flex', gap: 0.25 }}>
                           <Tooltip title={t('common.download')}>
                             <IconButton size="small" color="primary" component="a" href={`/api/database/snapshots/download/${snap.id}`}>
@@ -811,6 +913,72 @@ export default function DatabasePage() {
         title={getDeleteDialogTitle()}
         message={getDeleteDialogMessage()}
       />
+
+      {/* Cleanup by idle time dialog */}
+      <Dialog open={cleanupTarget !== null} onClose={closeCleanupDialog} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: 'warning.main', color: 'white' }}>
+          <CleaningServices sx={{ mr: 1, verticalAlign: 'middle' }} />
+          {cleanupTarget === 'dump' ? t('database.cleanUpDumps') : t('database.cleanUpSnapshots')}
+        </DialogTitle>
+        <DialogContent dividers sx={{ pt: 3 }}>
+          <Typography sx={{ mb: 2 }}>
+            {cleanupTarget === 'dump' ? t('database.cleanUpDumpsDesc') : t('database.cleanUpSnapshotsDesc')}
+          </Typography>
+
+          <Alert severity="info" icon={<Warning />} sx={{ mb: 3 }}>
+            {t('database.idleTrackingWarning')}
+          </Alert>
+
+          <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+            {t('database.minDaysLabel')}
+          </Typography>
+          <Box sx={{ px: 2, mb: 3 }}>
+            <Slider
+              value={cleanupMinDays}
+              onChange={(_, v) => setCleanupMinDays(v as number)}
+              min={1}
+              max={90}
+              step={1}
+              marks={[
+                { value: 1, label: '1' },
+                { value: 7, label: '7' },
+                { value: 14, label: '14' },
+                { value: 30, label: '30' },
+                { value: 60, label: '60' },
+                { value: 90, label: '90' },
+              ]}
+              valueLabelDisplay="auto"
+              valueLabelFormat={(v) => t('database.daysValue', { count: v })}
+            />
+          </Box>
+
+          <TextField
+            fullWidth
+            type="password"
+            label={t('common.operationsPassword')}
+            value={cleanupPassword}
+            onChange={(e) => { setCleanupPassword(e.target.value); setCleanupError('') }}
+            size="small"
+            autoComplete="off"
+            error={!!cleanupError}
+            helperText={cleanupError}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={closeCleanupDialog} color="inherit" disabled={cleanupLoading}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={handleCleanupConfirm}
+            disabled={cleanupLoading || !cleanupPassword}
+            startIcon={cleanupLoading ? <CircularProgress size={20} /> : <CleaningServices />}
+          >
+            {cleanupLoading ? t('common.deleting') : t('common.confirm')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   )
 }

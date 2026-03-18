@@ -168,6 +168,17 @@ export async function updateDumpExpiration(
   return { success: true }
 }
 
+export async function cleanupIdleDumps(password: string, minDays: number): Promise<{ success: boolean; deleted?: number; error?: string }> {
+  const res = await fetch(API + 'cleanup-idle', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password, minDays }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { success: false, error: data.error || res.statusText }
+  return { success: true, deleted: data.deleted }
+}
+
 export async function getPostRestoreScripts(repository: string): Promise<PostRestoreScriptsResponse> {
   const res = await fetch(API + 'post-restore-scripts?repository=' + encodeURIComponent(repository))
   if (!res.ok) return { enabled: false, mandatory: [], optional: [], onFailure: 'stop' }

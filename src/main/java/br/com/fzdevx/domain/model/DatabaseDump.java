@@ -21,6 +21,7 @@ public class DatabaseDump {
     private long fileSize;
     private Format format;
     private String description;
+    private Instant lastUsedAt;
 
     public DatabaseDump() {
     }
@@ -84,6 +85,9 @@ public class DatabaseDump {
 
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+
+    public Instant getLastUsedAt() { return lastUsedAt; }
+    public void setLastUsedAt(Instant lastUsedAt) { this.lastUsedAt = lastUsedAt; }
 
     @Override
     public boolean equals(Object o) {

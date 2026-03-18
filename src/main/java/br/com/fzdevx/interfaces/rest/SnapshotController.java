@@ -77,6 +77,8 @@ public class SnapshotController {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
 
+        snapshotStorageService.markUsed(id);
+
         String downloadName = buildDownloadFilename(snapshot) + ".gz";
 
         // ⚠ SECURITY — OWASP A01: sanitize filename in Content-Disposition header
@@ -232,6 +234,40 @@ public class SnapshotController {
                     .entity(Map.of("error", "Snapshot not found.")).build();
         }
         return Response.ok(Map.of("success", true)).build();
+    }
+
+    @POST
+    @Path("/cleanup-idle")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response cleanupIdleSnapshots(Map<String, Object> body) {
+        if (!dumpStorageService.isEnabled()) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Feature is disabled.")).build();
+        }
+
+        String password = body.get("password") != null ? body.get("password").toString() : "";
+        int minDays = body.get("minDays") != null ? ((Number) body.get("minDays")).intValue() : 0;
+
+        if (!dumpStorageService.validateOperationsPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
+        }
+
+        java.time.temporal.ChronoUnit DAYS = java.time.temporal.ChronoUnit.DAYS;
+        Instant cutoff = Instant.now().minus(minDays, DAYS);
+        List<DatabaseSnapshot> all = snapshotStorageService.findAll();
+
+        int deleted = 0;
+        for (DatabaseSnapshot snap : all) {
+            Instant reference = snap.getLastUsedAt() != null ? snap.getLastUsedAt() : snap.getCreatedAt();
+            if (reference != null && reference.isBefore(cutoff)) {
+                snapshotStorageService.deleteSnapshot(snap.getId());
+                deleted++;
+            }
+        }
+
+        return Response.ok(Map.of("success", true, "deleted", deleted)).build();
     }
 
     @GET

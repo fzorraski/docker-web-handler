@@ -176,6 +176,13 @@ public class SnapshotStorageService {
         return Path.of(storageDir).resolve(snapshot.getStoredFilename()).toFile();
     }
 
+    public void markUsed(String id) {
+        snapshotRepository.findById(id).ifPresent(snap -> {
+            snap.setLastUsedAt(java.time.Instant.now());
+            snapshotRepository.save(snap);
+        });
+    }
+
     public Optional<DatabaseSnapshot> findById(String id) {
         return snapshotRepository.findById(id);
     }
