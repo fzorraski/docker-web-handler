@@ -1,3 +1,6 @@
+// Navbar — dark surface with accent-pill active states and monospace brand mark.
+// Nav items: muted by default, accent color + subtle bg on active/hover.
+
 import { useState, useEffect } from 'react'
 import {
   AppBar, Toolbar, Typography, Button, Box, IconButton, Tooltip,
@@ -19,6 +22,7 @@ export default function Navbar() {
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const theme = useTheme()
+  const isDark = theme.palette.mode === 'dark'
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
 
   useEffect(() => {
@@ -39,18 +43,51 @@ export default function Navbar() {
     setDrawerOpen(false)
   }
 
+  const isActive = (path: string) => location.pathname === path
+
   return (
     <>
       <AppBar position="static">
         <Toolbar>
-          <Typography
-            variant="h6"
-            component={Link}
-            to="/"
-            sx={{ flexGrow: 1, textDecoration: 'none', color: 'inherit', fontWeight: 700 }}
-          >
-            {t('navbar.title')}
-          </Typography>
+          {/* Brand mark: 4-square grid icon + monospace title */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexGrow: 1 }}>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '2px',
+                flexShrink: 0,
+              }}
+            >
+              {[1, 0.6, 0.6, 0.3].map((opacity, i) => (
+                <Box
+                  key={i}
+                  sx={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: '2px',
+                    bgcolor: isDark ? 'primary.main' : 'primary.light',
+                    opacity,
+                  }}
+                />
+              ))}
+            </Box>
+            <Typography
+              variant="h6"
+              component={Link}
+              to="/"
+              sx={{
+                textDecoration: 'none',
+                color: 'inherit',
+                fontWeight: 700,
+                fontFamily: "'JetBrains Mono', monospace",
+                letterSpacing: '-0.02em',
+                fontSize: '1rem',
+              }}
+            >
+              {t('navbar.title')}
+            </Typography>
+          </Box>
 
           {/* Desktop nav */}
           <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: 0.5 }}>
@@ -60,9 +97,21 @@ export default function Navbar() {
                 component={Link}
                 to={item.path}
                 sx={{
-                  color: location.pathname === item.path ? 'secondary.main' : 'inherit',
+                  color: isActive(item.path)
+                    ? 'primary.main'
+                    : isDark ? 'rgba(255,255,255,0.55)' : 'text.secondary',
                   fontWeight: 600,
-                  '&:hover': { color: 'secondary.main' },
+                  fontSize: '0.85rem',
+                  borderRadius: '8px',
+                  px: 2,
+                  py: 0.75,
+                  ...(isActive(item.path) && {
+                    bgcolor: isDark ? 'rgba(255,109,0,0.12)' : 'rgba(230,81,0,0.08)',
+                  }),
+                  '&:hover': {
+                    color: 'primary.main',
+                    bgcolor: isDark ? 'rgba(255,109,0,0.07)' : 'rgba(230,81,0,0.05)',
+                  },
                 }}
               >
                 {item.label}
@@ -74,9 +123,9 @@ export default function Navbar() {
                 onClick={toggleMode}
                 sx={{
                   ml: 1,
-                  color: 'inherit',
-                  transition: 'transform 0.3s ease',
-                  '&:hover': { transform: 'rotate(30deg)' },
+                  color: isDark ? 'rgba(255,255,255,0.55)' : 'text.secondary',
+                  transition: 'transform 0.3s ease, color 0.2s ease',
+                  '&:hover': { transform: 'rotate(30deg)', color: 'primary.main' },
                 }}
               >
                 {mode === 'light' ? <DarkMode /> : <LightMode />}
@@ -106,18 +155,31 @@ export default function Navbar() {
                 <ListItemButton
                   component={Link}
                   to={item.path}
-                  selected={location.pathname === item.path}
+                  selected={isActive(item.path)}
                   onClick={handleDrawerClose}
+                  sx={{
+                    ...(isActive(item.path) && {
+                      bgcolor: isDark ? 'rgba(255,109,0,0.12)' : 'rgba(230,81,0,0.08)',
+                      borderRight: '3px solid',
+                      borderColor: 'primary.main',
+                    }),
+                    '&.Mui-selected': {
+                      bgcolor: isDark ? 'rgba(255,109,0,0.12)' : 'rgba(230,81,0,0.08)',
+                    },
+                  }}
                 >
                   <ListItemText
                     primary={item.label}
-                    primaryTypographyProps={{ fontWeight: 600 }}
+                    primaryTypographyProps={{
+                      fontWeight: 600,
+                      color: isActive(item.path) ? 'primary.main' : undefined,
+                    }}
                   />
                 </ListItemButton>
               </ListItem>
             ))}
           </List>
-          <Divider />
+          <Divider sx={{ borderColor: isDark ? 'rgba(255,255,255,0.06)' : undefined }} />
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1 }}>
             <LanguageSwitcher />
             <Tooltip title={mode === 'light' ? t('navbar.darkMode') : t('navbar.lightMode')} arrow>

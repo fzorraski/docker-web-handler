@@ -1,23 +1,24 @@
+// Log color themes — aligned with the design system accent and semantic palette.
+// Dark colors: cyan/green/amber/red on #0D0F14 surfaces (WCAG AA compliant).
+
 import type { LogLevel } from './logLevelParser'
 
 type ColorSet = Record<LogLevel, string>
 
-// Colors optimized for dark backgrounds (#1a1a2e)
 const DARK_COLORS: ColorSet = {
-  ERROR:   '#ff6b6b',
-  WARN:    '#ffd93d',
-  INFO:    '#6bcb77',
-  DEBUG:   '#4d96ff',
-  TRACE:   '#8b8b8b',
-  UNKNOWN: '#e0e0e0',
+  ERROR:   '#FF5252',
+  WARN:    '#FFAB00',
+  INFO:    '#00E676',
+  DEBUG:   '#FF6D00',
+  TRACE:   '#7A8494',
+  UNKNOWN: '#E8ECF1',
 }
 
-// Colors optimized for light backgrounds (#f8f9fb)
 const LIGHT_COLORS: ColorSet = {
   ERROR:   '#c62828',
   WARN:    '#e65100',
   INFO:    '#2e7d32',
-  DEBUG:   '#1565c0',
+  DEBUG:   '#E65100',
   TRACE:   '#757575',
   UNKNOWN: '#424242',
 }
@@ -27,11 +28,11 @@ export function getLogLevelColors(isDark: boolean): ColorSet {
 }
 
 export function getStackTraceColor(isDark: boolean): string {
-  return isDark ? '#cc5555' : '#b71c1c'
+  return isDark ? '#FF5252' : '#b71c1c'
 }
 
 export function getExcColor(isDark: boolean): string {
-  return isDark ? '#ff9f43' : '#e65100'
+  return isDark ? '#FFAB00' : '#e65100'
 }
 
 export interface LogTheme {
@@ -60,25 +61,25 @@ export interface LogTheme {
 export function getLogTheme(isDark: boolean): LogTheme {
   return isDark ? {
     levelColors: DARK_COLORS,
-    stackTraceColor: '#cc5555',
-    excColor: '#ff9f43',
-    toolbarBg: '#1e1e3a',
-    toolbarBorder: '#333355',
-    logViewerBg: '#1a1a2e',
-    searchBg: '#12122a',
-    searchText: '#e0e0e0',
-    searchPlaceholder: '#666',
-    searchBorder: '#444',
-    searchBorderHover: '#666',
-    searchBorderFocus: '#4d96ff',
-    iconColor: '#ccc',
-    iconDisabled: '#444',
-    chipInactive: '#555',
-    chipBorderInactive: '#444',
-    emptyText: '#666',
-    highlightMark: '#ffd93d',
-    excHighlightBg: 'rgba(255,159,67,0.2)',
-    excSubtleBg: 'rgba(255,159,67,0.05)',
+    stackTraceColor: '#FF5252',
+    excColor: '#FFAB00',
+    toolbarBg: '#13151C',
+    toolbarBorder: 'rgba(255,255,255,0.07)',
+    logViewerBg: '#0D0F14',
+    searchBg: '#1A1D27',
+    searchText: '#E8ECF1',
+    searchPlaceholder: '#7A8494',
+    searchBorder: 'rgba(255,255,255,0.1)',
+    searchBorderHover: 'rgba(255,255,255,0.2)',
+    searchBorderFocus: '#FF6D00',
+    iconColor: '#E8ECF1',
+    iconDisabled: 'rgba(255,255,255,0.2)',
+    chipInactive: '#7A8494',
+    chipBorderInactive: 'rgba(255,255,255,0.1)',
+    emptyText: '#7A8494',
+    highlightMark: '#FFAB00',
+    excHighlightBg: 'rgba(255,82,82,0.15)',
+    excSubtleBg: 'rgba(255,82,82,0.05)',
   } : {
     levelColors: LIGHT_COLORS,
     stackTraceColor: '#b71c1c',
@@ -91,7 +92,7 @@ export function getLogTheme(isDark: boolean): LogTheme {
     searchPlaceholder: '#999',
     searchBorder: '#c0c8d0',
     searchBorderHover: '#90a0b0',
-    searchBorderFocus: '#1565c0',
+    searchBorderFocus: '#E65100',
     iconColor: '#555',
     iconDisabled: '#ccc',
     chipInactive: '#999',

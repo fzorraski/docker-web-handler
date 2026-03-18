@@ -435,10 +435,10 @@ export default function DatabasePage() {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                   <Storage color="primary" sx={{ fontSize: 36 }} />
                   <Box>
-                    <Typography variant="h6" fontWeight="bold" lineHeight={1.2}>
+                    <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2, fontFamily: "'JetBrains Mono', monospace" }}>
                       {formatBytes(currentStorageInfo.totalBytes)}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.65rem', fontWeight: 600 }}>
                       {t('database.storageUsed', { max: formatBytes(currentStorageInfo.maxBytes) })}
                     </Typography>
                   </Box>
@@ -448,10 +448,10 @@ export default function DatabasePage() {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                   <InsertDriveFile color="action" sx={{ fontSize: 36 }} />
                   <Box>
-                    <Typography variant="h6" fontWeight="bold" lineHeight={1.2}>
+                    <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2, fontFamily: "'JetBrains Mono', monospace" }}>
                       {currentStorageInfo.fileCount}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.65rem', fontWeight: 600 }}>
                       {currentFileLabel}
                     </Typography>
                   </Box>
@@ -603,7 +603,7 @@ export default function DatabasePage() {
                             borderRadius: 2,
                             px: 2, py: 1.5,
                             boxShadow: 3,
-                            '& .MuiTooltip-arrow': { color: 'primary.dark' },
+                            '& .MuiTooltip-arrow': { color: 'primary.dark', left: '50% !important', transform: 'translateX(-50%) !important' },
                           },
                         },
                       }}
@@ -612,7 +612,7 @@ export default function DatabasePage() {
                       <TableCell padding="checkbox">
                         <Checkbox checked={selected.has(dump.id)} onChange={() => toggleSelect(dump.id)} />
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>
+                      <TableCell sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                           {dump.originalFilename}
                           {dump.description && <InfoOutlined sx={{ fontSize: 16, color: 'text.disabled' }} />}
@@ -623,7 +623,7 @@ export default function DatabasePage() {
                       <TableCell>
                         <Chip label={dump.format} size="small" color={dump.format === 'SQL' ? 'primary' : dump.format === 'CUSTOM' ? 'secondary' : 'default'} variant="outlined" />
                       </TableCell>
-                      <TableCell>{formatBytes(dump.fileSize)}</TableCell>
+                      <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{formatBytes(dump.fileSize)}</TableCell>
                       <TableCell>
                         <Typography variant="caption" fontFamily="monospace" title={dump.md5Hash} sx={{ cursor: 'default' }}>
                           {dump.md5Hash ? dump.md5Hash.substring(0, 8) + '...' : '-'}
@@ -774,7 +774,7 @@ export default function DatabasePage() {
                             borderRadius: 2,
                             px: 2, py: 1.5,
                             boxShadow: 3,
-                            '& .MuiTooltip-arrow': { color: 'primary.dark' },
+                            '& .MuiTooltip-arrow': { color: 'primary.dark', left: '50% !important', transform: 'translateX(-50%) !important' },
                           },
                         },
                       }}
@@ -783,7 +783,7 @@ export default function DatabasePage() {
                       <TableCell padding="checkbox">
                         <Checkbox checked={snapSelected.has(snap.id)} onChange={() => toggleSnapSelect(snap.id)} />
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>
+                      <TableCell sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                           {snap.label || '-'}
                           {snap.description && <InfoOutlined sx={{ fontSize: 16, color: 'text.disabled' }} />}
@@ -795,7 +795,7 @@ export default function DatabasePage() {
                       <TableCell>
                         <Chip label={snap.format} size="small" color={snap.format === 'SQL' ? 'primary' : 'secondary'} variant="outlined" />
                       </TableCell>
-                      <TableCell>{formatBytes(snap.fileSize)}</TableCell>
+                      <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{formatBytes(snap.fileSize)}</TableCell>
                       <TableCell>
                         <Typography variant="caption" fontFamily="monospace" title={snap.md5Hash} sx={{ cursor: 'default' }}>
                           {snap.md5Hash ? snap.md5Hash.substring(0, 8) + '...' : '-'}

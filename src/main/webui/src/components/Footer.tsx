@@ -1,3 +1,6 @@
+// Footer — dark surface bar with monospace stat counters and subtle border separation.
+// Uses theme-aware tokens for background and text colors.
+
 import { useState, useEffect } from 'react'
 import { Box, Typography, Tooltip, useTheme } from '@mui/material'
 import { Dns, PhotoLibrary, Storage, CameraAlt, SettingsBackupRestore } from '@mui/icons-material'
@@ -40,9 +43,9 @@ export default function Footer() {
     <Box
       component="footer"
       sx={{
-        bgcolor: isDark ? '#13151C' : 'primary.dark',
-        color: isDark ? 'text.secondary' : 'primary.contrastText',
-        borderTop: isDark ? '1px solid rgba(255,255,255,0.07)' : 'none',
+        bgcolor: isDark ? '#13151C' : '#FFFFFF',
+        color: isDark ? 'text.secondary' : 'text.secondary',
+        borderTop: isDark ? '1px solid rgba(255,255,255,0.07)' : '1px solid rgba(0,0,0,0.1)',
         py: 1.25,
         px: 3,
         mt: 'auto',
@@ -59,7 +62,7 @@ export default function Footer() {
                 variant="body2"
                 sx={{
                   fontSize: '0.65rem',
-                  opacity: 0.4,
+                  opacity: isDark ? 0.4 : 0.55,
                   letterSpacing: '0.04em',
                   fontWeight: 500,
                   mr: 0.5,
@@ -71,13 +74,13 @@ export default function Footer() {
               </Typography>
             </Tooltip>
             <Box sx={{ display: 'flex', gap: 1.5 }}>
-              <StatItem icon={<Dns />} label={t('footer.containers')} value={stats.containers} />
-              <StatItem icon={<PhotoLibrary />} label={t('footer.images')} value={stats.images} />
+              <StatItem icon={<Dns />} label={t('footer.containers')} value={stats.containers} isDark={isDark} />
+              <StatItem icon={<PhotoLibrary />} label={t('footer.images')} value={stats.images} isDark={isDark} />
               {(stats.dumps > 0 || stats.snapshots > 0) && (
                 <>
-                  <StatItem icon={<Storage />} label={t('footer.dumps')} value={stats.dumps} />
-                  <StatItem icon={<CameraAlt />} label={t('footer.snapshots')} value={stats.snapshots} />
-                  <StatItem icon={<SettingsBackupRestore />} label={t('footer.restores')} value={stats.restores} />
+                  <StatItem icon={<Storage />} label={t('footer.dumps')} value={stats.dumps} isDark={isDark} />
+                  <StatItem icon={<CameraAlt />} label={t('footer.snapshots')} value={stats.snapshots} isDark={isDark} />
+                  <StatItem icon={<SettingsBackupRestore />} label={t('footer.restores')} value={stats.restores} isDark={isDark} />
                 </>
               )}
             </Box>
@@ -86,7 +89,7 @@ export default function Footer() {
       </Box>
 
       {/* Center: copyright */}
-      <Typography variant="body2" sx={{ fontSize: '0.75rem', opacity: 0.5 }}>
+      <Typography variant="body2" sx={{ fontSize: '0.75rem', opacity: isDark ? 0.5 : 0.6 }}>
         {t('footer.copyright')}
       </Typography>
 
@@ -96,12 +99,20 @@ export default function Footer() {
   )
 }
 
-function StatItem({ icon, label, value }: { icon: React.ReactElement; label: string; value: number }) {
+function StatItem({ icon, label, value, isDark }: { icon: React.ReactElement; label: string; value: number; isDark: boolean }) {
   return (
     <Tooltip title={label} arrow>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4, cursor: 'default' }}>
-        <Box sx={{ display: 'flex', opacity: 0.4, '& > svg': { fontSize: 13 } }}>{icon}</Box>
-        <Typography variant="body2" sx={{ fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 700 }}>
+        <Box sx={{ display: 'flex', opacity: isDark ? 0.4 : 0.55, '& > svg': { fontSize: 13 } }}>{icon}</Box>
+        <Typography
+          variant="body2"
+          sx={{
+            fontSize: '0.72rem',
+            fontFamily: "'JetBrains Mono', monospace",
+            fontWeight: 700,
+            color: isDark ? 'primary.main' : 'text.primary',
+          }}
+        >
           {value}
         </Typography>
       </Box>

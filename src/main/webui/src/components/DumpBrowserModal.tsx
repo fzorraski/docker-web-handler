@@ -235,7 +235,7 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
                         borderRadius: 2,
                         px: 2, py: 1.5,
                         boxShadow: 3,
-                        '& .MuiTooltip-arrow': { color: 'primary.dark' },
+                        '& .MuiTooltip-arrow': { color: 'primary.dark', left: '50% !important', transform: 'translateX(-50%) !important' },
                       },
                     },
                   }}
@@ -307,7 +307,7 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
                         borderRadius: 2,
                         px: 2, py: 1.5,
                         boxShadow: 3,
-                        '& .MuiTooltip-arrow': { color: 'primary.dark' },
+                        '& .MuiTooltip-arrow': { color: 'primary.dark', left: '50% !important', transform: 'translateX(-50%) !important' },
                       },
                     },
                   }}

@@ -214,29 +214,29 @@ export default function ImagesPage() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                 <PhotoLibrary color="primary" sx={{ fontSize: 32 }} />
                 <Box>
-                  <Typography variant="h5" fontWeight="bold" lineHeight={1.2}>{images.length}</Typography>
-                  <Typography variant="body2" color="text.secondary">{t('images.overview.total')}</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.2, fontFamily: "'JetBrains Mono', monospace" }}>{images.length}</Typography>
+                  <Typography sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.65rem', fontWeight: 600 }}>{t('images.overview.total')}</Typography>
                 </Box>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                 <CheckCircle color="success" sx={{ fontSize: 32 }} />
                 <Box>
-                  <Typography variant="h5" fontWeight="bold" lineHeight={1.2}>{inUseCount}</Typography>
-                  <Typography variant="body2" color="text.secondary">{t('images.overview.inUse')}</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.2, fontFamily: "'JetBrains Mono', monospace" }}>{inUseCount}</Typography>
+                  <Typography sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.65rem', fontWeight: 600 }}>{t('images.overview.inUse')}</Typography>
                 </Box>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                 <RemoveCircleOutline color={unusedCount > 0 ? 'warning' : 'disabled'} sx={{ fontSize: 32 }} />
                 <Box>
-                  <Typography variant="h5" fontWeight="bold" lineHeight={1.2}>{unusedCount}</Typography>
-                  <Typography variant="body2" color="text.secondary">{t('images.overview.unused')}</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.2, fontFamily: "'JetBrains Mono', monospace" }}>{unusedCount}</Typography>
+                  <Typography sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.65rem', fontWeight: 600 }}>{t('images.overview.unused')}</Typography>
                 </Box>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                 <DataUsage color="info" sx={{ fontSize: 32 }} />
                 <Box>
-                  <Typography variant="h5" fontWeight="bold" lineHeight={1.2}>{totalSize}</Typography>
-                  <Typography variant="body2" color="text.secondary">{t('images.overview.totalSize')}</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.2, fontFamily: "'JetBrains Mono', monospace" }}>{totalSize}</Typography>
+                  <Typography sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.65rem', fontWeight: 600 }}>{t('images.overview.totalSize')}</Typography>
                 </Box>
               </Box>
             </Box>
@@ -339,7 +339,7 @@ export default function ImagesPage() {
                 <TableRow key={img.imageId} hover>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{img.repository}</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{img.repository}</Typography>
                       {img.parentId && (
                         <Tooltip title={t('images.parentImage', { id: img.parentId })}>
                           <AccountTree sx={{ fontSize: 16, color: 'text.secondary' }} />
@@ -352,10 +352,10 @@ export default function ImagesPage() {
                       )}
                     </Box>
                   </TableCell>
-                  <TableCell>{img.tag}</TableCell>
-                  <TableCell>{img.imageId}</TableCell>
+                  <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{img.tag}</TableCell>
+                  <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem' }}>{img.imageId}</TableCell>
                   <TableCell>{formatBackendDate(img.created)}</TableCell>
-                  <TableCell>{img.size}</TableCell>
+                  <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{img.size}</TableCell>
                   <TableCell>
                     <Tooltip title={img.inUse ? t('images.usedByContainers', { count: img.containerCount }) : ''}>
                       <Chip

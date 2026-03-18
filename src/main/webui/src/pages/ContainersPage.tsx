@@ -338,29 +338,29 @@ export default function ContainersPage() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                 <Dns color="primary" sx={{ fontSize: 32 }} />
                 <Box>
-                  <Typography variant="h5" fontWeight="bold" lineHeight={1.2}>{containers.length}</Typography>
-                  <Typography variant="body2" color="text.secondary">{t('containers.overview.total')}</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.2, fontFamily: "'JetBrains Mono', monospace" }}>{containers.length}</Typography>
+                  <Typography sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.65rem', fontWeight: 600 }}>{t('containers.overview.total')}</Typography>
                 </Box>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                 <CheckCircle color="success" sx={{ fontSize: 32 }} />
                 <Box>
-                  <Typography variant="h5" fontWeight="bold" lineHeight={1.2}>{runningCount}</Typography>
-                  <Typography variant="body2" color="text.secondary">{t('containers.overview.running')}</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.2, fontFamily: "'JetBrains Mono', monospace" }}>{runningCount}</Typography>
+                  <Typography sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.65rem', fontWeight: 600 }}>{t('containers.overview.running')}</Typography>
                 </Box>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                 <StopCircle color={stoppedCount > 0 ? 'error' : 'disabled'} sx={{ fontSize: 32 }} />
                 <Box>
-                  <Typography variant="h5" fontWeight="bold" lineHeight={1.2}>{stoppedCount}</Typography>
-                  <Typography variant="body2" color="text.secondary">{t('containers.overview.stopped')}</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.2, fontFamily: "'JetBrains Mono', monospace" }}>{stoppedCount}</Typography>
+                  <Typography sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.65rem', fontWeight: 600 }}>{t('containers.overview.stopped')}</Typography>
                 </Box>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                 <Schedule color={expiringCount > 0 ? 'warning' : 'disabled'} sx={{ fontSize: 32 }} />
                 <Box>
-                  <Typography variant="h5" fontWeight="bold" lineHeight={1.2}>{expiringCount}</Typography>
-                  <Typography variant="body2" color="text.secondary">{t('containers.overview.expiring')}</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.2, fontFamily: "'JetBrains Mono', monospace" }}>{expiringCount}</Typography>
+                  <Typography sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.65rem', fontWeight: 600 }}>{t('containers.overview.expiring')}</Typography>
                 </Box>
               </Box>
             </Box>
@@ -461,9 +461,9 @@ export default function ContainersPage() {
               )}
               {filtered.map((c) => (
                 <TableRow key={c.containerId} hover>
-                  {columnVisibility.containerId && <TableCell>{c.containerId}</TableCell>}
+                  {columnVisibility.containerId && <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem' }}>{c.containerId}</TableCell>}
                   {columnVisibility.image && <TableCell>{c.image}</TableCell>}
-                  {columnVisibility.tag && <TableCell>{c.image.split(':')[1] ?? '-'}</TableCell>}
+                  {columnVisibility.tag && <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{c.image.split(':')[1] ?? '-'}</TableCell>}
                   {columnVisibility.command && <TableCell>{c.command}</TableCell>}
                   {columnVisibility.created && <TableCell>{formatBackendDate(c.created)}</TableCell>}
                   {columnVisibility.status && (
@@ -472,7 +472,8 @@ export default function ContainersPage() {
                         label={c.status}
                         size="small"
                         color={isUp(c.status) ? 'success' : 'default'}
-                        variant={isUp(c.status) ? 'filled' : 'outlined'}
+                        variant="outlined"
+                        sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem' }}
                       />
                     </TableCell>
                   )}
@@ -485,7 +486,7 @@ export default function ContainersPage() {
                               href={`http://${machineIp}:${port.trim()}${c.portPaths?.[port.trim()] ?? ''}`}
                               target="_blank"
                               rel="noreferrer"
-                              sx={{ mr: 1, fontWeight: 600 }}
+                              sx={{ mr: 1, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}
                             >
                               {port.trim()}
                             </MuiLink>
@@ -493,7 +494,7 @@ export default function ContainersPage() {
                         : '-'}
                     </TableCell>
                   )}
-                  {columnVisibility.names && <TableCell sx={{ fontWeight: 600 }}>{c.names}</TableCell>}
+                  {columnVisibility.names && <TableCell sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{c.names}</TableCell>}
                   {columnVisibility.database && (
                     <TableCell>
                       {c.databaseName ? (
@@ -580,15 +581,6 @@ export default function ContainersPage() {
                             <Terminal />
                           </IconButton>
                         </Tooltip>
-                        <Tooltip title={t('common.remove')}>
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => handleRemove(c.containerId, c.names)}
-                          >
-                            <Delete />
-                          </IconButton>
-                        </Tooltip>
                         {dumpEnabled && c.repository && c.databaseName && (
                           <Tooltip title={t('containers.snapshotDatabase', { database: c.databaseName })}>
                             <IconButton
@@ -600,6 +592,15 @@ export default function ContainersPage() {
                             </IconButton>
                           </Tooltip>
                         )}
+                        <Tooltip title={t('common.remove')}>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleRemove(c.containerId, c.names)}
+                          >
+                            <Delete />
+                          </IconButton>
+                        </Tooltip>
                       </Box>
                     </TableCell>
                   )}
