@@ -5,6 +5,7 @@ import br.com.fzdevx.application.dto.CreateSnapshotRequest;
 import br.com.fzdevx.domain.model.DatabaseSnapshot;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.application.port.DatabasePort;
+import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import br.com.fzdevx.infrastructure.persistence.SnapshotStorageService;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.domain.shared.DateTimeParser;
@@ -50,6 +51,9 @@ public class CreateSnapshotUseCase {
 
     @Inject
     DockerClient dockerClient;
+
+    @Inject
+    ResourceCounterService resourceCounterService;
 
     public record ActiveSnapshotInfo(String repository, String sourceDatabaseName) {}
 
@@ -146,6 +150,7 @@ public class CreateSnapshotUseCase {
 
             eventSink.accept(ContainerEvent.info("Saving", "Snapshot saved successfully."));
             snapshotStorageService.saveMetadata(snapshot);
+            resourceCounterService.increment(ResourceCounterService.SNAPSHOTS);
             return true;
 
         } catch (Exception e) {

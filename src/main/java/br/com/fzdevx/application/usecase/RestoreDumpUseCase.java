@@ -9,6 +9,7 @@ import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.application.port.DatabasePort;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
 import br.com.fzdevx.infrastructure.docker.PostRestoreScriptService;
+import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import br.com.fzdevx.infrastructure.persistence.SnapshotStorageService;
 import br.com.fzdevx.domain.shared.InputValidator;
 import com.github.dockerjava.api.DockerClient;
@@ -59,6 +60,9 @@ public class RestoreDumpUseCase {
     @Inject
     DockerClient dockerClient;
 
+    @Inject
+    ResourceCounterService resourceCounterService;
+
     public static final String EPHEMERAL_LABEL = "docker-web-handler.ephemeral";
 
     private static final Pattern WARNINGS_IGNORED_PATTERN =
@@ -80,14 +84,9 @@ public class RestoreDumpUseCase {
     }
 
     private final ConcurrentHashMap<String, RestoreContext> activeRestores = new ConcurrentHashMap<>();
-    private final AtomicInteger totalRestores = new AtomicInteger(0);
 
     public List<ActiveRestoreInfo> getActiveRestores() {
         return activeRestores.values().stream().map(ctx -> ctx.info).toList();
-    }
-
-    public int getTotalRestores() {
-        return totalRestores.get();
     }
 
     public boolean cancel(String repository, String targetDatabase) {
@@ -289,7 +288,7 @@ public class RestoreDumpUseCase {
             } else {
                 dumpStorageService.markUsed(request.getDumpId());
             }
-            totalRestores.incrementAndGet();
+            resourceCounterService.increment(ResourceCounterService.RESTORES);
 
             return true;
 

@@ -8,6 +8,7 @@ import br.com.fzdevx.domain.exception.DuplicateDumpException;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
 import br.com.fzdevx.infrastructure.docker.PostRestoreScriptService;
 import br.com.fzdevx.application.usecase.RestoreDumpUseCase;
+import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import br.com.fzdevx.interfaces.rest.util.ContentDispositionHelper;
 import br.com.fzdevx.domain.shared.DateTimeParser; // ✦ CLEAN — using shared date parser
 import br.com.fzdevx.domain.shared.InputValidator;
@@ -44,6 +45,9 @@ public class DatabaseDumpController {
 
     @Inject
     AllowedRepositoryResolver allowedRepositoryResolver;
+
+    @Inject
+    ResourceCounterService resourceCounterService;
 
     @GET
     @Path("/enabled")
@@ -127,6 +131,7 @@ public class DatabaseDumpController {
 
             try (InputStream is = filePart.getBody(InputStream.class, null)) {
                 DatabaseDump dump = dumpStorageService.storeUpload(is, filename, databaseName, version, expiresAt, description);
+                resourceCounterService.increment(ResourceCounterService.DUMPS);
                 return Response.ok(dump).build();
             }
         } catch (DuplicateDumpException e) {

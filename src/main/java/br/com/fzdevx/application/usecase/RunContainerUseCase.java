@@ -5,6 +5,7 @@ import br.com.fzdevx.application.dto.RestoreDumpRequest;
 import br.com.fzdevx.application.dto.RunContainerRequest;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver; // ✦ CLEAN — using shared allowed-repos resolver
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import br.com.fzdevx.infrastructure.docker.PortFinder;
 import br.com.fzdevx.infrastructure.registry.RegistryService;
 import br.com.fzdevx.domain.shared.InputValidator;
@@ -63,6 +64,9 @@ public class RunContainerUseCase {
 
     @Inject
     Config config;
+
+    @Inject
+    ResourceCounterService resourceCounterService;
 
     public void execute(RunContainerRequest request, Consumer<ContainerEvent> eventSink) {
         // Step 1: Validate inputs
@@ -189,6 +193,9 @@ public class RunContainerUseCase {
 
         // Step 6: Schedule expiration if configured
         String expirationMessage = scheduleExpiration(request, container.getId());
+
+        resourceCounterService.increment(ResourceCounterService.CONTAINERS);
+        resourceCounterService.increment(ResourceCounterService.IMAGES);
 
         eventSink.accept(ContainerEvent.success("Complete",
                 "Container started successfully from " + imageRef + expirationMessage));
