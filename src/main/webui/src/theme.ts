@@ -21,6 +21,10 @@ export function buildTheme(mode: PaletteMode) {
             primary: { main: '#1e3d59' },
             secondary: { main: '#ff6f61' },
             background: { default: '#f4f6f9', paper: '#ffffff' },
+            info: { main: '#0288d1' },
+            success: { main: '#2e7d32' },
+            warning: { main: '#ed6c02' },
+            error: { main: '#d32f2f' },
           }
         : {
             mode: 'dark',
@@ -83,8 +87,27 @@ export function buildTheme(mode: PaletteMode) {
           },
         },
       },
+      MuiTableRow: {
+        styleOverrides: {
+          root: {
+            transition: 'background-color 0.2s ease',
+          },
+        },
+      },
+      MuiIconButton: {
+        styleOverrides: {
+          root: {
+            transition: 'background-color 0.2s ease, color 0.2s ease, transform 0.15s ease',
+            '&:active': { transform: 'scale(0.92)' },
+          },
+        },
+      },
       MuiButton: {
         styleOverrides: {
+          root: {
+            transition: 'background-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease',
+            '&:active': { transform: 'scale(0.97)' },
+          },
           containedPrimary: {
             ...(mode === 'dark' && {
               backgroundColor: '#58a6ff',

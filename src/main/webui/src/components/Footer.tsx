@@ -9,7 +9,7 @@ export default function Footer() {
       component="footer"
       sx={{
         bgcolor: 'primary.dark',
-        color: '#f5f5f5',
+        color: 'primary.contrastText',
         py: 2.5,
         mt: 'auto',
         textAlign: 'center',
