@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import type { ContainerEvent } from '../services/sseService'
 
 type StreamFn = (
@@ -23,6 +23,12 @@ export function useSseOperation(): UseSseOperationResult {
   const [hasError, setHasError] = useState(false)
   const [isDone, setIsDone] = useState(false)
   const cleanupRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    return () => {
+      cleanupRef.current?.()
+    }
+  }, [])
 
   const cleanup = useCallback(() => {
     if (cleanupRef.current) {

@@ -288,7 +288,7 @@ export default function ContainersPage() {
 
   const filtered = useMemo(() => {
     const result = containers.filter((c) =>
-      Object.values(c).some((v) => v.toLowerCase().includes(filter.toLowerCase()))
+      Object.values(c).some((v) => String(v ?? '').toLowerCase().includes(filter.toLowerCase()))
     )
     if (!sortKey) return result
     return [...result].sort((a, b) => {
@@ -317,7 +317,7 @@ export default function ContainersPage() {
     <>
       <HeroBanner linkTo="/images" linkLabel={t('hero.exploreImages')} />
 
-      <Box sx={{ maxWidth: '85%', mx: 'auto', mt: 5, mb: 4 }}>
+      <Box sx={{ maxWidth: { xs: '95%', md: '90%', lg: '85%' }, mx: 'auto', mt: 5, mb: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h4" fontWeight="bold">{t('containers.title')}</Typography>
           {hasRepos && (
@@ -424,8 +424,8 @@ export default function ContainersPage() {
           </Menu>
         </Box>
 
-        <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2 }}>
-          <Table>
+        <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2, overflowX: 'auto' }}>
+          <Table aria-label="Containers">
             <TableHead>
               <TableRow sx={{ bgcolor: theadBg }}>
                 {visibleColumns.map((col) => (
@@ -659,6 +659,7 @@ function ExpirationChip({ expiresAt, onCancel, onExpired }: { expiresAt: string;
   const expiresMs = useMemo(() => new Date(expiresAt).getTime(), [expiresAt])
   const [remaining, setRemaining] = useState('')
   const expiredFired = useRef(false)
+  const expiredTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     expiredFired.current = false
@@ -671,7 +672,7 @@ function ExpirationChip({ expiresAt, onCancel, onExpired }: { expiresAt: string;
         setRemaining(t('containers.expiring'))
         if (!expiredFired.current) {
           expiredFired.current = true
-          setTimeout(onExpired, 6000)
+          expiredTimerRef.current = setTimeout(onExpired, 6000)
         }
         return
       }
@@ -682,7 +683,10 @@ function ExpirationChip({ expiresAt, onCancel, onExpired }: { expiresAt: string;
     }
     update()
     const id = setInterval(update, 1000)
-    return () => clearInterval(id)
+    return () => {
+      clearInterval(id)
+      if (expiredTimerRef.current) clearTimeout(expiredTimerRef.current)
+    }
   }, [expiresMs, onExpired, t])
 
   return (

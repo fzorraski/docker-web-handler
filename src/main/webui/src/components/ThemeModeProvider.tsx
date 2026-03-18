@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useMemo, useCallback, type ReactNode } from 'react'
 import { ThemeProvider, CssBaseline, type PaletteMode, useMediaQuery } from '@mui/material'
 import { buildTheme } from '../theme'
 
@@ -36,18 +36,19 @@ export default function ThemeModeProvider({ children }: { children: ReactNode })
     }
   }, [prefersDark])
 
-  function toggleMode() {
+  const toggleMode = useCallback(() => {
     setMode((prev) => {
       const next = prev === 'light' ? 'dark' : 'light'
       try { localStorage.setItem(STORAGE_KEY, next) } catch { /* ignore */ }
       return next
     })
-  }
+  }, [])
 
   const theme = useMemo(() => buildTheme(mode), [mode])
+  const contextValue = useMemo(() => ({ mode, toggleMode }), [mode, toggleMode])
 
   return (
-    <ThemeModeContext.Provider value={{ mode, toggleMode }}>
+    <ThemeModeContext.Provider value={contextValue}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
         {children}

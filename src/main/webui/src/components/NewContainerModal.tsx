@@ -123,6 +123,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const sse = useSseOperation()
 
   useEffect(() => {
+    if (!open) return
     getAllowedRepositories()
       .then((repos) => {
         setRepositories(repos)
@@ -149,7 +150,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         }
       })
       .catch(() => setDumpFeatureEnabled(false))
-  }, [])
+  }, [open])
 
   useEffect(() => {
     if (!selectedRepo) {
