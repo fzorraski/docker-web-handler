@@ -19,6 +19,11 @@ export interface DockerImage {
   imageId: string
   created: string
   size: string
+  inUse: boolean
+  containerCount: number
+  parentId: string
+  childIds: string[]
+  lastUsedAt: string | null
 }
 
 export interface DatabaseConflict {
@@ -47,6 +52,7 @@ export interface DatabaseDump {
   fileSize: number
   format: 'SQL' | 'CUSTOM' | 'COMPRESSED'
   description?: string
+  lastUsedAt?: string
 }
 
 export interface DatabaseSnapshot {
@@ -62,4 +68,5 @@ export interface DatabaseSnapshot {
   label?: string
   containerName?: string
   description?: string
+  lastUsedAt?: string
 }

@@ -3,12 +3,13 @@ package br.com.fzdevx.infrastructure.docker;
 import br.com.fzdevx.application.port.DockerImagePort;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.model.Image;
+import com.github.dockerjava.api.model.PruneResponse;
+import com.github.dockerjava.api.model.PruneType;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.util.List;
 
-// ⚠ SOLID — DIP: adapter implementing DockerImagePort for use cases
 @ApplicationScoped
 public class DockerImageAdapter implements DockerImagePort {
 
@@ -23,5 +24,12 @@ public class DockerImageAdapter implements DockerImagePort {
     @Override
     public void removeImage(String imageId) {
         dockerClient.removeImageCmd(imageId).exec();
+    }
+
+    @Override
+    public PruneResponse pruneImages(boolean all) {
+        return dockerClient.pruneCmd(PruneType.IMAGES)
+                .withDangling(!all)
+                .exec();
     }
 }

@@ -71,6 +71,32 @@ export function streamRunContainer(
   return streamSse(`/api/containers/sse/run/${ticket}`, onEvent, onDone, onError)
 }
 
+export async function preparePruneImages(body: {
+  password: string
+  minDays: number
+}): Promise<string> {
+  const res = await fetch('/api/images/sse/prune/prepare', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || res.statusText)
+  }
+  const data = await res.json()
+  return data.ticket
+}
+
+export function streamPruneImages(
+  ticket: string,
+  onEvent: (event: ContainerEvent) => void,
+  onDone: () => void,
+  onError: (message: string) => void,
+): () => void {
+  return streamSse(`/api/images/sse/prune/${ticket}`, onEvent, onDone, onError)
+}
+
 export function streamRemoveImage(
   imageId: string,
   onEvent: (event: ContainerEvent) => void,

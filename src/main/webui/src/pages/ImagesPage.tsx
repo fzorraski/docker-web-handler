@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { DockerImage } from '../types'
 import { getImages } from '../services/imageService'
-import { streamRemoveImage, type ContainerEvent } from '../services/sseService'
-import OperationProgress, { REMOVE_IMAGE_STEPS } from '../components/OperationProgress'
+import { streamRemoveImage, preparePruneImages, streamPruneImages } from '../services/sseService'
+import OperationProgress, { REMOVE_IMAGE_STEPS, PRUNE_IMAGES_STEPS } from '../components/OperationProgress'
 import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
 import { useTranslation } from 'react-i18next'
@@ -31,14 +31,41 @@ import {
   DialogActions,
   IconButton,
   Tooltip,
+  Chip,
+  FormControlLabel,
+  Switch,
+  Slider,
+  Alert,
 } from '@mui/material'
-import { Search, Delete } from '@mui/icons-material'
+import { Search, Delete, DeleteSweep, CleaningServices, AccountTree, Info, Warning, PhotoLibrary, CheckCircle, RemoveCircleOutline, DataUsage } from '@mui/icons-material'
+import { getLastUsedColor, getLastUsedLabel } from '../utils/lastUsedColor'
 
-const filterImage = (img: DockerImage, query: string) =>
-  Object.values(img).some((v) => v.toLowerCase().includes(query.toLowerCase()))
+const COL_SPAN = 8
 
-const sortImageValue = (img: DockerImage, key: string) =>
-  (img[key as keyof DockerImage] ?? '').toLowerCase()
+const filterImage = (img: DockerImage, query: string) => {
+  const q = query.toLowerCase()
+  return img.repository.toLowerCase().includes(q)
+    || img.tag.toLowerCase().includes(q)
+    || img.imageId.toLowerCase().includes(q)
+    || img.size.toLowerCase().includes(q)
+}
+
+const sortImageValue = (img: DockerImage, key: string) => {
+  if (key === 'inUse') return img.inUse ? '0' : '1'
+  if (key === 'lastUsedAt') return img.lastUsedAt ?? ''
+  return (img[key as keyof DockerImage] ?? '').toString().toLowerCase()
+}
+
+const DAY_MARKS = [
+  { value: 1, label: '1' },
+  { value: 7, label: '7' },
+  { value: 14, label: '14' },
+  { value: 30, label: '30' },
+  { value: 60, label: '60' },
+  { value: 90, label: '90' },
+]
+
+type PruneMode = 'byDate' | 'all'
 
 export default function ImagesPage() {
   const { theadBg, theadColor, theadSortSx } = useTableHeaderTheme()
@@ -46,22 +73,51 @@ export default function ImagesPage() {
   const { t } = useTranslation()
   const [images, setImages] = useState<DockerImage[]>([])
   const [loading, setLoading] = useState(true)
+  const [showUnusedOnly, setShowUnusedOnly] = useState(false)
   const removeSse = useSseOperation()
+  const pruneSse = useSseOperation()
+
+  // Prune dialog state
+  const [pruneMode, setPruneMode] = useState<PruneMode | null>(null)
+  const [prunePassword, setPrunePassword] = useState('')
+  const [pruneMinDays, setPruneMinDays] = useState(5)
+  const [prunePreparing, setPrunePreparing] = useState(false)
+  const [pruneError, setPruneError] = useState('')
+
+  const filteredByUsage = useMemo(
+    () => showUnusedOnly ? images.filter(img => !img.inUse) : images,
+    [images, showUnusedOnly]
+  )
 
   const { filter, setFilter, sortKey, sortDir, handleSort, sorted: filtered } = useTableSort({
-    data: images,
+    data: filteredByUsage,
     filterFn: filterImage,
     sortValueFn: sortImageValue,
   })
 
-  const IMAGE_COLUMNS: { key: keyof DockerImage | 'action'; label: string }[] = useMemo(() => [
-    { key: 'repository', label: t('images.columns.repository') },
-    { key: 'tag', label: t('images.columns.tag') },
-    { key: 'imageId', label: t('images.columns.imageId') },
-    { key: 'created', label: t('images.columns.created') },
-    { key: 'size', label: t('images.columns.size') },
-    { key: 'action', label: t('images.columns.action') },
+  const IMAGE_COLUMNS: { key: string; label: string; sortable: boolean }[] = useMemo(() => [
+    { key: 'repository', label: t('images.columns.repository'), sortable: true },
+    { key: 'tag', label: t('images.columns.tag'), sortable: true },
+    { key: 'imageId', label: t('images.columns.imageId'), sortable: true },
+    { key: 'created', label: t('images.columns.created'), sortable: true },
+    { key: 'size', label: t('images.columns.size'), sortable: true },
+    { key: 'inUse', label: t('images.columns.status'), sortable: true },
+    { key: 'lastUsedAt', label: t('images.columns.lastUsed'), sortable: true },
+    { key: 'action', label: t('images.columns.action'), sortable: false },
   ], [t])
+
+  const unusedCount = useMemo(() => images.filter(img => !img.inUse).length, [images])
+  const inUseCount = useMemo(() => images.filter(img => img.inUse).length, [images])
+
+  const totalSize = useMemo(() => {
+    let bytes = 0
+    for (const img of images) {
+      const match = img.size.match(/([\d.]+)\s*MB/)
+      if (match) bytes += parseFloat(match[1])
+    }
+    if (bytes >= 1024) return (bytes / 1024).toFixed(2) + ' GB'
+    return bytes.toFixed(2) + ' MB'
+  }, [images])
 
   const loadImages = useCallback(() => {
     setLoading(true)
@@ -97,6 +153,54 @@ export default function ImagesPage() {
     loadImages()
   }
 
+  function openPruneDialog(mode: PruneMode) {
+    setPruneMode(mode)
+    setPrunePassword('')
+    setPruneMinDays(5)
+    setPruneError('')
+  }
+
+  function closePruneDialog() {
+    if (!prunePreparing) {
+      setPruneMode(null)
+      setPrunePassword('')
+      setPruneError('')
+    }
+  }
+
+  async function handlePruneConfirm() {
+    setPrunePreparing(true)
+    setPruneError('')
+    try {
+      const minDays = pruneMode === 'all' ? 0 : pruneMinDays
+      const ticket = await preparePruneImages({ password: prunePassword, minDays })
+      setPruneMode(null)
+      setPrunePassword('')
+
+      pruneSse.start(
+        (onEvent, onDone, onError) => streamPruneImages(ticket, onEvent, onDone, onError),
+        () => {
+          setTimeout(() => {
+            pruneSse.reset()
+            notify(t('images.pruneComplete'), 'success')
+            loadImages()
+          }, 1500)
+        },
+        () => loadImages(),
+      )
+    } catch (e) {
+      setPruneError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setPrunePreparing(false)
+    }
+  }
+
+  function handlePruneProgressClose() {
+    pruneSse.cleanup()
+    pruneSse.reset()
+    loadImages()
+  }
+
   return (
     <>
       <HeroBanner linkTo="/" linkLabel={t('hero.exploreContainers')} />
@@ -106,23 +210,97 @@ export default function ImagesPage() {
           {t('images.title')}
         </Typography>
 
-        <TextField
-          fullWidth
-          placeholder={t('images.searchPlaceholder')}
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          size="small"
-          sx={{ mb: 3 }}
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Search color="action" />
-                </InputAdornment>
-              ),
-            },
-          }}
-        />
+        {!loading && images.length > 0 && (
+          <Paper elevation={2} sx={{ p: 2.5, mb: 3, borderRadius: 2 }}>
+            <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'space-around' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <PhotoLibrary color="primary" sx={{ fontSize: 32 }} />
+                <Box>
+                  <Typography variant="h5" fontWeight="bold" lineHeight={1.2}>{images.length}</Typography>
+                  <Typography variant="body2" color="text.secondary">{t('images.overview.total')}</Typography>
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <CheckCircle color="success" sx={{ fontSize: 32 }} />
+                <Box>
+                  <Typography variant="h5" fontWeight="bold" lineHeight={1.2}>{inUseCount}</Typography>
+                  <Typography variant="body2" color="text.secondary">{t('images.overview.inUse')}</Typography>
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <RemoveCircleOutline color={unusedCount > 0 ? 'warning' : 'disabled'} sx={{ fontSize: 32 }} />
+                <Box>
+                  <Typography variant="h5" fontWeight="bold" lineHeight={1.2}>{unusedCount}</Typography>
+                  <Typography variant="body2" color="text.secondary">{t('images.overview.unused')}</Typography>
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <DataUsage color="info" sx={{ fontSize: 32 }} />
+                <Box>
+                  <Typography variant="h5" fontWeight="bold" lineHeight={1.2}>{totalSize}</Typography>
+                  <Typography variant="body2" color="text.secondary">{t('images.overview.totalSize')}</Typography>
+                </Box>
+              </Box>
+            </Box>
+          </Paper>
+        )}
+
+        <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
+          <TextField
+            placeholder={t('images.searchPlaceholder')}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            size="small"
+            sx={{ flex: 1, minWidth: 200 }}
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search color="action" />
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={showUnusedOnly}
+                onChange={(e) => setShowUnusedOnly(e.target.checked)}
+                size="small"
+              />
+            }
+            label={
+              <Typography variant="body2">
+                {t('images.showUnusedOnly')} ({unusedCount})
+              </Typography>
+            }
+          />
+          <Tooltip title={t('images.cleanUpByIdleDesc')}>
+            <Button
+              variant="contained"
+              color="warning"
+              startIcon={<CleaningServices />}
+              onClick={() => openPruneDialog('byDate')}
+              disabled={unusedCount === 0}
+              size="small"
+            >
+              {t('images.cleanUpByIdle')}
+            </Button>
+          </Tooltip>
+          <Tooltip title={t('images.removeAllUnusedDesc')}>
+            <Button
+              variant="contained"
+              color="error"
+              startIcon={<DeleteSweep />}
+              onClick={() => openPruneDialog('all')}
+              disabled={unusedCount === 0}
+              size="small"
+            >
+              {t('images.removeAllUnused')}
+            </Button>
+          </Tooltip>
+        </Box>
 
         <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2 }}>
           <Table>
@@ -130,7 +308,7 @@ export default function ImagesPage() {
               <TableRow sx={{ bgcolor: theadBg }}>
                 {IMAGE_COLUMNS.map((col) => (
                   <TableCell key={col.key} sx={{ color: theadColor, fontWeight: 600 }}>
-                    {col.key !== 'action' ? (
+                    {col.sortable ? (
                       <TableSortLabel
                         active={sortKey === col.key}
                         direction={sortKey === col.key ? sortDir : 'asc'}
@@ -147,25 +325,57 @@ export default function ImagesPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={COL_SPAN} align="center" sx={{ py: 4 }}>
                     <CircularProgress size={28} />
                   </TableCell>
                 </TableRow>
               )}
               {!loading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                  <TableCell colSpan={COL_SPAN} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                     {t('images.noImagesFound')}
                   </TableCell>
                 </TableRow>
               )}
               {filtered.map((img) => (
                 <TableRow key={img.imageId} hover>
-                  <TableCell sx={{ fontWeight: 600 }}>{img.repository}</TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{img.repository}</Typography>
+                      {img.parentId && (
+                        <Tooltip title={t('images.parentImage', { id: img.parentId })}>
+                          <AccountTree sx={{ fontSize: 16, color: 'text.secondary' }} />
+                        </Tooltip>
+                      )}
+                      {img.childIds && img.childIds.length > 0 && (
+                        <Tooltip title={t('images.childImages', { count: img.childIds.length })}>
+                          <Info sx={{ fontSize: 16, color: 'info.main' }} />
+                        </Tooltip>
+                      )}
+                    </Box>
+                  </TableCell>
                   <TableCell>{img.tag}</TableCell>
                   <TableCell>{img.imageId}</TableCell>
                   <TableCell>{formatBackendDate(img.created)}</TableCell>
                   <TableCell>{img.size}</TableCell>
+                  <TableCell>
+                    <Tooltip title={img.inUse ? t('images.usedByContainers', { count: img.containerCount }) : ''}>
+                      <Chip
+                        label={img.inUse ? t('images.inUse') : t('images.unused')}
+                        color={img.inUse ? 'success' : 'default'}
+                        size="small"
+                        variant="outlined"
+                      />
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={getLastUsedLabel(img.lastUsedAt, img.inUse, t('images.activeNow'), t('images.neverUsed'))}
+                      color={getLastUsedColor(img.lastUsedAt, img.inUse as boolean)}
+                      size="small"
+                      variant="outlined"
+                    />
+                  </TableCell>
                   <TableCell>
                     <Tooltip title={t('common.remove')}>
                       <IconButton
@@ -184,6 +394,7 @@ export default function ImagesPage() {
         </TableContainer>
       </Box>
 
+      {/* Remove Image SSE Dialog */}
       <Dialog open={removeSse.events.length > 0} onClose={handleRemoveDialogClose} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
           <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> {t('images.removingImage')}
@@ -194,6 +405,90 @@ export default function ImagesPage() {
         <DialogActions sx={{ px: 3, py: 2 }}>
           {(removeSse.hasError || removeSse.isDone) && (
             <Button onClick={handleRemoveDialogClose} color="inherit">{t('common.close')}</Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Prune Confirmation Dialog */}
+      <Dialog open={pruneMode !== null} onClose={closePruneDialog} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: pruneMode === 'all' ? 'error.main' : 'warning.main', color: 'white' }}>
+          {pruneMode === 'all'
+            ? <><DeleteSweep sx={{ mr: 1, verticalAlign: 'middle' }} /> {t('images.removeAllUnused')}</>
+            : <><CleaningServices sx={{ mr: 1, verticalAlign: 'middle' }} /> {t('images.cleanUpByIdle')}</>
+          }
+        </DialogTitle>
+        <DialogContent dividers sx={{ pt: 3 }}>
+          {pruneMode === 'all' ? (
+            <Typography sx={{ mb: 3 }}>
+              {t('images.confirmPruneAll')}
+            </Typography>
+          ) : (
+            <>
+              <Typography sx={{ mb: 2 }}>
+                {t('images.confirmPruneByDate')}
+              </Typography>
+
+              <Alert severity="info" icon={<Warning />} sx={{ mb: 3 }}>
+                {t('images.idleTrackingWarning')}
+              </Alert>
+
+              <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+                {t('images.minDaysLabel')}
+              </Typography>
+              <Box sx={{ px: 2, mb: 3 }}>
+                <Slider
+                  value={pruneMinDays}
+                  onChange={(_, v) => setPruneMinDays(v as number)}
+                  min={1}
+                  max={90}
+                  step={1}
+                  marks={DAY_MARKS}
+                  valueLabelDisplay="auto"
+                  valueLabelFormat={(v) => t('images.daysValue', { count: v })}
+                />
+              </Box>
+            </>
+          )}
+
+          <TextField
+            fullWidth
+            type="password"
+            label={t('common.operationsPassword')}
+            value={prunePassword}
+            onChange={(e) => { setPrunePassword(e.target.value); setPruneError('') }}
+            size="small"
+            autoComplete="off"
+            error={!!pruneError}
+            helperText={pruneError}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={closePruneDialog} color="inherit" disabled={prunePreparing}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="contained"
+            color={pruneMode === 'all' ? 'error' : 'warning'}
+            onClick={handlePruneConfirm}
+            disabled={prunePreparing || !prunePassword}
+            startIcon={prunePreparing ? <CircularProgress size={20} /> : (pruneMode === 'all' ? <DeleteSweep /> : <CleaningServices />)}
+          >
+            {prunePreparing ? t('common.preparing') : t('common.confirm')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Prune SSE Progress Dialog */}
+      <Dialog open={pruneSse.events.length > 0} onClose={handlePruneProgressClose} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: 'warning.main', color: 'white' }}>
+          <DeleteSweep sx={{ mr: 1, verticalAlign: 'middle' }} /> {t('images.pruningImages')}
+        </DialogTitle>
+        <DialogContent dividers sx={{ pt: 3 }}>
+          <OperationProgress events={pruneSse.events} steps={PRUNE_IMAGES_STEPS} />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          {(pruneSse.hasError || pruneSse.isDone) && (
+            <Button onClick={handlePruneProgressClose} color="inherit">{t('common.close')}</Button>
           )}
         </DialogActions>
       </Dialog>

@@ -1,6 +1,7 @@
 package br.com.fzdevx.infrastructure.config;
 
 import br.com.fzdevx.application.dto.CreateSnapshotRequest;
+import br.com.fzdevx.application.dto.PruneImagesRequest;
 import br.com.fzdevx.application.dto.RestoreDumpRequest;
 import br.com.fzdevx.application.dto.RunContainerRequest;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -14,6 +15,7 @@ public class RequestStash {
     private final ConcurrentHashMap<String, RunContainerRequest> stash = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, RestoreDumpRequest> restoreStash = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CreateSnapshotRequest> snapshotStash = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, PruneImagesRequest> pruneStash = new ConcurrentHashMap<>();
 
     public String stash(RunContainerRequest request) {
         String ticket = UUID.randomUUID().toString();
@@ -43,5 +45,15 @@ public class RequestStash {
 
     public CreateSnapshotRequest retrieveSnapshot(String ticket) {
         return snapshotStash.remove(ticket);
+    }
+
+    public String stashPrune(PruneImagesRequest request) {
+        String ticket = UUID.randomUUID().toString();
+        pruneStash.put(ticket, request);
+        return ticket;
+    }
+
+    public PruneImagesRequest retrievePrune(String ticket) {
+        return pruneStash.remove(ticket);
     }
 }

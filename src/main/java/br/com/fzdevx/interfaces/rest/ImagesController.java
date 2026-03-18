@@ -2,13 +2,10 @@ package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.domain.model.DockerImage;
 import br.com.fzdevx.interfaces.rest.dto.Response;
-import br.com.fzdevx.infrastructure.util.BytesConverter;
-import br.com.fzdevx.domain.shared.Constants;
-import br.com.fzdevx.infrastructure.util.DateFormatter;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.interfaces.rest.dto.ResponseWrapper;
+import br.com.fzdevx.application.usecase.ListImagesUseCase;
 import com.github.dockerjava.api.DockerClient;
-import com.github.dockerjava.api.model.Image;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -24,28 +21,14 @@ public class ImagesController {
     @Inject
     DockerClient dockerClient;
 
+    @Inject
+    ListImagesUseCase listImagesUseCase;
+
     @GET
     @Path("/list")
     @Produces(MediaType.APPLICATION_JSON)
     public List<DockerImage> getImages() {
-        List<Image> dockerImages = dockerClient.listImagesCmd().exec();
-        List<DockerImage> images = new ArrayList<>();
-
-        for (Image img : dockerImages) {
-            if (img.getRepoTags().length > 0 && img.getRepoTags()[0].split(":")[0].equals(Constants.DOCKER_WEB_HANDLER_IMAGE))
-                continue;
-
-            DockerImage dockerImage = new DockerImage();
-            dockerImage.setRepository(img.getRepoTags().length > 0 ? img.getRepoTags()[0].split(":")[0] : "-");
-            dockerImage.setImageId(img.getId().substring(0, 20));
-            dockerImage.setTag(img.getRepoTags().length > 0 ? img.getRepoTags()[0].split(":")[1] : "-");
-            dockerImage.setCreated(DateFormatter.convertSecondsToDate(img.getCreated()));
-            dockerImage.setSize(BytesConverter.bytesToMegabytesFormatted(img.getSize(), 2));
-
-            images.add(dockerImage);
-        }
-
-        return images;
+        return listImagesUseCase.execute();
     }
 
     @POST
@@ -74,6 +57,4 @@ public class ImagesController {
         }
         return ResponseWrapper.wrapper(commandResponse);
     }
-
-
 }

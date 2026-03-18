@@ -2,17 +2,20 @@ package br.com.fzdevx.domain.model;
 
 import br.com.fzdevx.infrastructure.util.SanitizeHtml;
 
+import java.util.List;
+
 public class DockerImage {
 
     private String repository;
-
     private String tag;
-
     private String imageId;
-
     private String created;
-
     private String size;
+    private boolean inUse;
+    private int containerCount;
+    private String parentId;
+    private List<String> childIds;
+    private String lastUsedAt;
 
     public String getRepository() {
         return repository;
@@ -52,5 +55,45 @@ public class DockerImage {
 
     public void setSize(String size) {
         this.size = size;
+    }
+
+    public boolean isInUse() {
+        return inUse;
+    }
+
+    public void setInUse(boolean inUse) {
+        this.inUse = inUse;
+    }
+
+    public int getContainerCount() {
+        return containerCount;
+    }
+
+    public void setContainerCount(int containerCount) {
+        this.containerCount = containerCount;
+    }
+
+    public String getParentId() {
+        return parentId;
+    }
+
+    public void setParentId(String parentId) {
+        this.parentId = parentId;
+    }
+
+    public List<String> getChildIds() {
+        return childIds;
+    }
+
+    public void setChildIds(List<String> childIds) {
+        this.childIds = childIds;
+    }
+
+    public String getLastUsedAt() {
+        return lastUsedAt;
+    }
+
+    public void setLastUsedAt(String lastUsedAt) {
+        this.lastUsedAt = lastUsedAt;
     }
 }
