@@ -419,47 +419,9 @@ export default function DatabasePage() {
       <HeroBanner linkTo="/" linkLabel={t('hero.exploreContainers')} />
 
       <Box sx={{ maxWidth: { xs: '95%', md: '90%', lg: '85%' }, mx: 'auto', mt: 5, mb: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-          <Typography variant="h4" fontWeight="bold">
-            {t('database.title')}
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            {activeTab === 0 && selected.size > 0 && (
-              <Button variant="contained" color="error" startIcon={<Delete />} onClick={handleBulkDeleteClick}>
-                {t('common.delete')} ({selected.size})
-              </Button>
-            )}
-            {activeTab === 1 && snapSelected.size > 0 && (
-              <Button variant="contained" color="error" startIcon={<Delete />} onClick={handleSnapBulkDeleteClick}>
-                {t('common.delete')} ({snapSelected.size})
-              </Button>
-            )}
-            {activeTab === 0 && (
-              <>
-                <Tooltip title={t('database.cleanUpByIdleDesc')}>
-                  <Button variant="contained" color="warning" startIcon={<CleaningServices />} onClick={() => openCleanupDialog('dump')} disabled={dumps.length === 0} size="small">
-                    {t('database.cleanUpByIdle')}
-                  </Button>
-                </Tooltip>
-                <Button variant="contained" color="primary" startIcon={<CloudUpload />} onClick={() => setUploadOpen(true)}>
-                  {t('database.uploadDump')}
-                </Button>
-              </>
-            )}
-            {activeTab === 1 && (
-              <>
-                <Tooltip title={t('database.cleanUpByIdleDesc')}>
-                  <Button variant="contained" color="warning" startIcon={<CleaningServices />} onClick={() => openCleanupDialog('snapshot')} disabled={snapshots.length === 0} size="small">
-                    {t('database.cleanUpByIdle')}
-                  </Button>
-                </Tooltip>
-                <Button variant="contained" color="primary" startIcon={<CameraAlt />} onClick={() => setSnapshotOpen(true)}>
-                  {t('database.createSnapshot')}
-                </Button>
-              </>
-            )}
-          </Box>
-        </Box>
+        <Typography variant="h4" fontWeight="bold" sx={{ mb: 1 }}>
+          {t('database.title')}
+        </Typography>
 
         <Tabs value={activeTab} onChange={(_e, v) => setActiveTab(v)} sx={{ mb: 3 }}>
           <Tab label={t('database.dumpsTab', { count: dumps.length })} />
@@ -547,19 +509,32 @@ export default function DatabasePage() {
         {/* ==================== DUMPS TAB ==================== */}
         {activeTab === 0 && (
           <>
-            <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
               <TextField
                 placeholder={t('database.searchDumps')}
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 size="small"
-                sx={{ flex: 1 }}
+                sx={{ flex: 1, minWidth: 200 }}
                 slotProps={{ input: { startAdornment: <InputAdornment position="start"><Search color="action" /></InputAdornment> } }}
               />
               <FormControlLabel
                 control={<Switch checked={showNeverUsedDumps} onChange={(e) => setShowNeverUsedDumps(e.target.checked)} size="small" />}
                 label={<Typography variant="body2">{t('database.showNeverUsed')}</Typography>}
               />
+              {selected.size > 0 && (
+                <Button variant="contained" color="error" startIcon={<Delete />} onClick={handleBulkDeleteClick} size="small">
+                  {t('common.delete')} ({selected.size})
+                </Button>
+              )}
+              <Tooltip title={t('database.cleanUpByIdleDesc')}>
+                <Button variant="contained" color="warning" startIcon={<CleaningServices />} onClick={() => openCleanupDialog('dump')} disabled={dumps.length === 0} size="small">
+                  {t('database.cleanUpByIdle')}
+                </Button>
+              </Tooltip>
+              <Button variant="contained" color="primary" startIcon={<CloudUpload />} onClick={() => setUploadOpen(true)} size="small">
+                {t('database.uploadDump')}
+              </Button>
             </Box>
             <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2, overflowX: 'auto' }}>
               <Table aria-label="Database dumps">
@@ -705,19 +680,32 @@ export default function DatabasePage() {
         {/* ==================== SNAPSHOTS TAB ==================== */}
         {activeTab === 1 && (
           <>
-            <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
               <TextField
                 placeholder={t('database.searchSnapshots')}
                 value={snapFilter}
                 onChange={(e) => setSnapFilter(e.target.value)}
                 size="small"
-                sx={{ flex: 1 }}
+                sx={{ flex: 1, minWidth: 200 }}
                 slotProps={{ input: { startAdornment: <InputAdornment position="start"><Search color="action" /></InputAdornment> } }}
               />
               <FormControlLabel
                 control={<Switch checked={showNeverUsedSnaps} onChange={(e) => setShowNeverUsedSnaps(e.target.checked)} size="small" />}
                 label={<Typography variant="body2">{t('database.showNeverUsed')}</Typography>}
               />
+              {snapSelected.size > 0 && (
+                <Button variant="contained" color="error" startIcon={<Delete />} onClick={handleSnapBulkDeleteClick} size="small">
+                  {t('common.delete')} ({snapSelected.size})
+                </Button>
+              )}
+              <Tooltip title={t('database.cleanUpByIdleDesc')}>
+                <Button variant="contained" color="warning" startIcon={<CleaningServices />} onClick={() => openCleanupDialog('snapshot')} disabled={snapshots.length === 0} size="small">
+                  {t('database.cleanUpByIdle')}
+                </Button>
+              </Tooltip>
+              <Button variant="contained" color="primary" startIcon={<CameraAlt />} onClick={() => setSnapshotOpen(true)} size="small">
+                {t('database.createSnapshot')}
+              </Button>
             </Box>
             <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2, overflowX: 'auto' }}>
               <Table aria-label="Database snapshots">
