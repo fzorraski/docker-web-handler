@@ -38,7 +38,7 @@ const ptBR: typeof en = {
   },
 
   footer: {
-    copyright: '2024 Docker Handler.',
+    copyright: '2026 Docker Handler.',
     soFar: 'Ate agora:',
     startedAt: 'Total de recursos gerenciados desde {{date}}',
     containers: 'Containers',

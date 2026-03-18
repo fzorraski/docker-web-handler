@@ -36,7 +36,7 @@ const en = {
   },
 
   footer: {
-    copyright: '2024 Docker Handler.',
+    copyright: '2026 Docker Handler.',
     soFar: 'So far:',
     startedAt: 'Total managed resources since {{date}}',
     containers: 'Containers',

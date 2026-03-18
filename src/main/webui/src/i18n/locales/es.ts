@@ -38,7 +38,7 @@ const es: typeof en = {
   },
 
   footer: {
-    copyright: '2024 Docker Handler.',
+    copyright: '2026 Docker Handler.',
     soFar: 'Hasta ahora:',
     startedAt: 'Total de recursos gestionados desde {{date}}',
     containers: 'Contenedores',
