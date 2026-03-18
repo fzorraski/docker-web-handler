@@ -14,6 +14,7 @@ import { isDumpEnabled, getActiveRestores, type ActiveRestore } from '../service
 import { streamRemoveContainer } from  '../services/sseService'
 import NewContainerModal from '../components/NewContainerModal'
 import CreateSnapshotModal from '../components/CreateSnapshotModal'
+import ContainerLogsDialog from '../components/ContainerLogsDialog'
 import OperationProgress, { REMOVE_STEPS } from '../components/OperationProgress'
 import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
@@ -50,7 +51,7 @@ import {
   Alert,
   AlertTitle,
 } from '@mui/material'
-import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt } from '@mui/icons-material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt, Terminal } from '@mui/icons-material'
 
 interface ColumnDef {
   key: string
@@ -89,6 +90,8 @@ export default function ContainersPage() {
   const [snapshotRepo, setSnapshotRepo] = useState<string | undefined>(undefined)
   const [snapshotDb, setSnapshotDb] = useState<string | undefined>(undefined)
   const [snapshotContainerName, setSnapshotContainerName] = useState<string | undefined>(undefined)
+  const [logsContainerId, setLogsContainerId] = useState<string | null>(null)
+  const [logsContainerName, setLogsContainerName] = useState('')
 
   const machineIp = window.location.hostname
 
@@ -163,8 +166,8 @@ export default function ContainersPage() {
     return () => clearTimeout(timer)
   }, [containers])
 
-  async function handleStop(id: string) {
-    if (!(await confirm(t('containers.confirmStop', { id })))) return
+  async function handleStop(id: string, name: string) {
+    if (!(await confirm(t('containers.confirmStop', { name })))) return
     setStoppingId(id)
     try {
       const ok = await stopContainer(id)
@@ -177,8 +180,8 @@ export default function ContainersPage() {
     loadContainers()
   }
 
-  async function handleStart(id: string) {
-    if (!(await confirm(t('containers.confirmStart', { id })))) return
+  async function handleStart(id: string, name: string) {
+    if (!(await confirm(t('containers.confirmStart', { name })))) return
     try {
       const ok = await startContainer(id)
       notify(ok ? t('containers.containerStarted') : t('containers.failedToStart'), ok ? 'success' : 'error')
@@ -188,8 +191,8 @@ export default function ContainersPage() {
     loadContainers()
   }
 
-  async function handleRemove(id: string) {
-    if (!(await confirm(t('containers.confirmRemove', { id })))) return
+  async function handleRemove(id: string, name: string) {
+    if (!(await confirm(t('containers.confirmRemove', { name })))) return
 
     removeSse.start(
       (onEvent, onDone, onError) => streamRemoveContainer(id, onEvent, onDone, onError),
@@ -220,8 +223,8 @@ export default function ContainersPage() {
     loadContainers()
   }
 
-  async function handleCancelExpiration(id: string) {
-    if (!(await confirm(t('containers.cancelExpiration', { id })))) return
+  async function handleCancelExpiration(id: string, name: string) {
+    if (!(await confirm(t('containers.cancelExpiration', { name })))) return
     try {
       const ok = await cancelExpiration(id)
       notify(ok ? t('containers.expirationCancelled') : t('containers.failedToCancelExpiration'), ok ? 'success' : 'error')
@@ -231,8 +234,8 @@ export default function ContainersPage() {
     loadContainers()
   }
 
-  async function handleCancelDbDeletion(id: string) {
-    if (!(await confirm(t('containers.cancelDbDeletion', { id })))) return
+  async function handleCancelDbDeletion(id: string, name: string) {
+    if (!(await confirm(t('containers.cancelDbDeletion', { name })))) return
     try {
       const ok = await cancelDatabaseDeletion(id)
       notify(ok ? t('containers.dbDeletionCancelled') : t('containers.failedToCancelDbDeletion'), ok ? 'success' : 'error')
@@ -247,6 +250,16 @@ export default function ContainersPage() {
     setSnapshotDb(c.databaseName ?? undefined)
     setSnapshotContainerName(c.names)
     setSnapshotOpen(true)
+  }
+
+  function handleViewLogs(c: DockerContainer) {
+    setLogsContainerId(c.containerId)
+    setLogsContainerName(c.names)
+  }
+
+  function handleLogsClose() {
+    setLogsContainerId(null)
+    setLogsContainerName('')
   }
 
   function handleSort(key: string) {
@@ -456,7 +469,7 @@ export default function ContainersPage() {
                       {c.expiresAt ? (
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <ExpirationChip expiresAt={c.expiresAt} onCancel={() => handleCancelExpiration(c.containerId)} onExpired={loadContainers} />
+                            <ExpirationChip expiresAt={c.expiresAt} onCancel={() => handleCancelExpiration(c.containerId, c.names)} onExpired={loadContainers} />
                             <Tooltip title={t('containers.extendBy10')}>
                               <IconButton size="small" onClick={() => handleExtendExpiration(c.containerId)} sx={{ p: 0.25 }}>
                                 <MoreTime fontSize="small" />
@@ -471,7 +484,7 @@ export default function ContainersPage() {
                                 color="warning"
                                 icon={<Warning />}
                                 variant="filled"
-                                onDelete={() => handleCancelDbDeletion(c.containerId)}
+                                onDelete={() => handleCancelDbDeletion(c.containerId, c.names)}
                               />
                             </Tooltip>
                           )}
@@ -494,49 +507,58 @@ export default function ContainersPage() {
                   )}
                   {columnVisibility.actions && (
                     <TableCell>
-                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      <Box sx={{ display: 'flex', gap: 0.25 }}>
                         {isUp(c.status) ? (
-                          <Button
-                            size="small"
-                            variant="contained"
-                            color="warning"
-                            startIcon={stoppingId === c.containerId ? <CircularProgress size={18} color="inherit" /> : <Stop />}
-                            onClick={() => handleStop(c.containerId)}
-                            disabled={stoppingId === c.containerId}
-                          >
-                            {stoppingId === c.containerId ? t('containers.stopping') : t('containers.stop')}
-                          </Button>
+                          <Tooltip title={stoppingId === c.containerId ? t('containers.stopping') : t('containers.stop')}>
+                            <span>
+                              <IconButton
+                                size="small"
+                                color="warning"
+                                onClick={() => handleStop(c.containerId, c.names)}
+                                disabled={stoppingId === c.containerId}
+                              >
+                                {stoppingId === c.containerId ? <CircularProgress size={18} color="inherit" /> : <Stop />}
+                              </IconButton>
+                            </span>
+                          </Tooltip>
                         ) : (
-                          <Button
-                            size="small"
-                            variant="contained"
-                            color="primary"
-                            startIcon={<PlayArrow />}
-                            onClick={() => handleStart(c.containerId)}
-                          >
-                            {t('containers.start')}
-                          </Button>
+                          <Tooltip title={t('containers.start')}>
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={() => handleStart(c.containerId, c.names)}
+                            >
+                              <PlayArrow />
+                            </IconButton>
+                          </Tooltip>
                         )}
-                        <Button
-                          size="small"
-                          variant="contained"
-                          color="error"
-                          startIcon={<Delete />}
-                          onClick={() => handleRemove(c.containerId)}
-                        >
-                          {t('common.remove')}
-                        </Button>
+                        <Tooltip title={t('containers.logs.viewLogs')}>
+                          <IconButton
+                            size="small"
+                            color="secondary"
+                            onClick={() => handleViewLogs(c)}
+                          >
+                            <Terminal />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title={t('common.remove')}>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleRemove(c.containerId, c.names)}
+                          >
+                            <Delete />
+                          </IconButton>
+                        </Tooltip>
                         {dumpEnabled && c.repository && c.databaseName && (
                           <Tooltip title={t('containers.snapshotDatabase', { database: c.databaseName })}>
-                            <Button
+                            <IconButton
                               size="small"
-                              variant="contained"
                               color="info"
-                              startIcon={<CameraAlt />}
                               onClick={() => handleSnapshot(c)}
                             >
-                              {t('containers.snapshot')}
-                            </Button>
+                              <CameraAlt />
+                            </IconButton>
                           </Tooltip>
                         )}
                       </Box>
@@ -581,6 +603,13 @@ export default function ContainersPage() {
         initialRepository={snapshotRepo}
         initialDatabase={snapshotDb}
         containerName={snapshotContainerName}
+      />
+
+      <ContainerLogsDialog
+        open={logsContainerId !== null}
+        containerId={logsContainerId ?? ''}
+        containerName={logsContainerName}
+        onClose={handleLogsClose}
       />
     </>
   )
