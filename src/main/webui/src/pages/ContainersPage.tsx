@@ -51,7 +51,7 @@ import {
   Alert,
   AlertTitle,
 } from '@mui/material'
-import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt, Terminal } from '@mui/icons-material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule } from '@mui/icons-material'
 
 interface ColumnDef {
   key: string
@@ -309,6 +309,10 @@ export default function ContainersPage() {
     return map
   }, [containers])
 
+  const runningCount = useMemo(() => containers.filter(c => isUp(c.status)).length, [containers])
+  const stoppedCount = useMemo(() => containers.filter(c => !isUp(c.status)).length, [containers])
+  const expiringCount = useMemo(() => containers.filter(c => c.expiresAt).length, [containers])
+
   return (
     <>
       <HeroBanner linkTo="/images" linkLabel={t('hero.exploreImages')} />
@@ -327,6 +331,41 @@ export default function ContainersPage() {
             </Button>
           )}
         </Box>
+
+        {!loading && containers.length > 0 && (
+          <Paper elevation={2} sx={{ p: 2.5, mb: 3, borderRadius: 2 }}>
+            <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'space-around' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Dns color="primary" sx={{ fontSize: 32 }} />
+                <Box>
+                  <Typography variant="h5" fontWeight="bold" lineHeight={1.2}>{containers.length}</Typography>
+                  <Typography variant="body2" color="text.secondary">{t('containers.overview.total')}</Typography>
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <CheckCircle color="success" sx={{ fontSize: 32 }} />
+                <Box>
+                  <Typography variant="h5" fontWeight="bold" lineHeight={1.2}>{runningCount}</Typography>
+                  <Typography variant="body2" color="text.secondary">{t('containers.overview.running')}</Typography>
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <StopCircle color={stoppedCount > 0 ? 'error' : 'disabled'} sx={{ fontSize: 32 }} />
+                <Box>
+                  <Typography variant="h5" fontWeight="bold" lineHeight={1.2}>{stoppedCount}</Typography>
+                  <Typography variant="body2" color="text.secondary">{t('containers.overview.stopped')}</Typography>
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Schedule color={expiringCount > 0 ? 'warning' : 'disabled'} sx={{ fontSize: 32 }} />
+                <Box>
+                  <Typography variant="h5" fontWeight="bold" lineHeight={1.2}>{expiringCount}</Typography>
+                  <Typography variant="body2" color="text.secondary">{t('containers.overview.expiring')}</Typography>
+                </Box>
+              </Box>
+            </Box>
+          </Paper>
+        )}
 
         {activeRestores.length > 0 && (
           <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
