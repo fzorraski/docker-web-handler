@@ -274,16 +274,36 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
   }, [displayedLogs.length, autoScroll, wordWrap, listRef])
 
   // Scroll detection for virtualized list
+  // Uses requestAnimationFrame retry because listRef.current.element may not
+  // be available on the first render when the List component mounts.
   useEffect(() => {
-    if (wordWrap || !listRef.current?.element) return
-    const el = listRef.current.element
-    const handler = () => {
-      const totalHeight = displayedCountRef.current * ROW_HEIGHT
-      const isAtBottom = totalHeight - el.scrollTop - el.clientHeight < 50
-      setAutoScroll(isAtBottom)
+    if (wordWrap || displayedLogs.length === 0) return
+
+    let handler: (() => void) | null = null
+    let attachedEl: HTMLElement | null = null
+    let rafId: number | null = null
+
+    function tryAttach() {
+      const el = listRef.current?.element
+      if (!el) {
+        rafId = requestAnimationFrame(tryAttach)
+        return
+      }
+      attachedEl = el
+      handler = () => {
+        const totalHeight = displayedCountRef.current * ROW_HEIGHT
+        const isAtBottom = totalHeight - el.scrollTop - el.clientHeight < 50
+        setAutoScroll(isAtBottom)
+      }
+      el.addEventListener('scroll', handler, { passive: true })
     }
-    el.addEventListener('scroll', handler, { passive: true })
-    return () => el.removeEventListener('scroll', handler)
+
+    tryAttach()
+
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      if (attachedEl && handler) attachedEl.removeEventListener('scroll', handler)
+    }
   }, [wordWrap, listRef, displayedLogs.length])
 
   const handleWrapScroll = useCallback(() => {
