@@ -40,8 +40,6 @@ import {
 import { Search, Delete, DeleteSweep, CleaningServices, AccountTree, Info, Warning, PhotoLibrary, CheckCircle, RemoveCircleOutline, DataUsage } from '@mui/icons-material'
 import { getLastUsedColor, getLastUsedLabel } from '../utils/lastUsedColor'
 
-const COL_SPAN = 8
-
 const filterImage = (img: DockerImage, query: string) => {
   const q = query.toLowerCase()
   return img.repository.toLowerCase().includes(q)
@@ -205,7 +203,7 @@ export default function ImagesPage() {
     <>
       <HeroBanner linkTo="/" linkLabel={t('hero.exploreContainers')} />
 
-      <Box sx={{ maxWidth: '85%', mx: 'auto', mt: 5, mb: 4 }}>
+      <Box sx={{ maxWidth: { xs: '95%', md: '90%', lg: '85%' }, mx: 'auto', mt: 5, mb: 4 }}>
         <Typography variant="h4" fontWeight="bold" sx={{ mb: 3 }}>
           {t('images.title')}
         </Typography>
@@ -302,8 +300,8 @@ export default function ImagesPage() {
           </Tooltip>
         </Box>
 
-        <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2 }}>
-          <Table>
+        <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2, overflowX: 'auto' }}>
+          <Table aria-label="Docker images">
             <TableHead>
               <TableRow sx={{ bgcolor: theadBg }}>
                 {IMAGE_COLUMNS.map((col) => (
@@ -325,14 +323,14 @@ export default function ImagesPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={COL_SPAN} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={IMAGE_COLUMNS.length} align="center" sx={{ py: 4 }}>
                     <CircularProgress size={28} />
                   </TableCell>
                 </TableRow>
               )}
               {!loading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={COL_SPAN} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                  <TableCell colSpan={IMAGE_COLUMNS.length} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                     {t('images.noImagesFound')}
                   </TableCell>
                 </TableRow>

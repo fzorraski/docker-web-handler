@@ -23,7 +23,7 @@ export default function HeroBanner({ linkTo, linkLabel }: Props) {
         textAlign: 'center',
       }}
     >
-      <Typography variant="h2" fontWeight="bold" gutterBottom>
+      <Typography variant="h2" fontWeight="bold" gutterBottom sx={{ fontSize: { xs: '1.75rem', sm: '2.5rem', md: '3rem' } }}>
         {t('hero.title')}
       </Typography>
       <Typography variant="h6" sx={{ mb: 3 }}>
@@ -35,11 +35,13 @@ export default function HeroBanner({ linkTo, linkLabel }: Props) {
         variant="contained"
         size="large"
         sx={{
-          bgcolor: 'rgba(255,255,255,0.2)',
+          bgcolor: 'rgba(255,255,255,0.25)',
           color: 'white',
           borderRadius: '50px',
           px: 4,
-          '&:hover': { bgcolor: 'rgba(255,255,255,0.35)' },
+          border: '1px solid rgba(255,255,255,0.4)',
+          backdropFilter: 'blur(4px)',
+          '&:hover': { bgcolor: 'rgba(255,255,255,0.4)', borderColor: 'rgba(255,255,255,0.6)' },
         }}
       >
         {linkLabel}

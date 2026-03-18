@@ -418,7 +418,7 @@ export default function DatabasePage() {
     <>
       <HeroBanner linkTo="/" linkLabel={t('hero.exploreContainers')} />
 
-      <Box sx={{ maxWidth: '85%', mx: 'auto', mt: 5, mb: 4 }}>
+      <Box sx={{ maxWidth: { xs: '95%', md: '90%', lg: '85%' }, mx: 'auto', mt: 5, mb: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
           <Typography variant="h4" fontWeight="bold">
             {t('database.title')}
@@ -561,8 +561,8 @@ export default function DatabasePage() {
                 label={<Typography variant="body2">{t('database.showNeverUsed')}</Typography>}
               />
             </Box>
-            <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2 }}>
-              <Table>
+            <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2, overflowX: 'auto' }}>
+              <Table aria-label="Database dumps">
                 <TableHead>
                   <TableRow sx={{ bgcolor: theadBg }}>
                     <TableCell padding="checkbox" sx={{ bgcolor: theadBg }}>
@@ -719,8 +719,8 @@ export default function DatabasePage() {
                 label={<Typography variant="body2">{t('database.showNeverUsed')}</Typography>}
               />
             </Box>
-            <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2 }}>
-              <Table>
+            <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2, overflowX: 'auto' }}>
+              <Table aria-label="Database snapshots">
                 <TableHead>
                   <TableRow sx={{ bgcolor: theadBg }}>
                     <TableCell padding="checkbox" sx={{ bgcolor: theadBg }}>
