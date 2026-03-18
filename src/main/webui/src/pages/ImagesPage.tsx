@@ -29,6 +29,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  IconButton,
+  Tooltip,
 } from '@mui/material'
 import { Search, Delete } from '@mui/icons-material'
 
@@ -165,15 +167,15 @@ export default function ImagesPage() {
                   <TableCell>{formatBackendDate(img.created)}</TableCell>
                   <TableCell>{img.size}</TableCell>
                   <TableCell>
-                    <Button
-                      size="small"
-                      variant="contained"
-                      color="error"
-                      startIcon={<Delete />}
-                      onClick={() => handleRemove(img.imageId)}
-                    >
-                      {t('common.remove')}
-                    </Button>
+                    <Tooltip title={t('common.remove')}>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => handleRemove(img.imageId)}
+                      >
+                        <Delete />
+                      </IconButton>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))}

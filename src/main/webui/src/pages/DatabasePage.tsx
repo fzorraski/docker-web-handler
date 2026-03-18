@@ -36,6 +36,7 @@ import {
   Tabs,
   Tab,
   Tooltip,
+  IconButton,
 } from '@mui/material'
 import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile, CameraAlt, InfoOutlined } from '@mui/icons-material'
 
@@ -585,16 +586,22 @@ export default function DatabasePage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                          <Button size="small" variant="contained" color="primary" startIcon={<Download />} href={`/api/database/dumps/download/${dump.id}`}>
-                            {t('common.download')}
-                          </Button>
-                          <Button size="small" variant="contained" color="success" startIcon={<Restore />} onClick={() => handleRestoreClick(dump)}>
-                            {t('common.restore')}
-                          </Button>
-                          <Button size="small" variant="contained" color="error" startIcon={<Delete />} onClick={() => handleDeleteClick(dump)}>
-                            {t('common.delete')}
-                          </Button>
+                        <Box sx={{ display: 'flex', gap: 0.25 }}>
+                          <Tooltip title={t('common.download')}>
+                            <IconButton size="small" color="primary" component="a" href={`/api/database/dumps/download/${dump.id}`}>
+                              <Download />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title={t('common.restore')}>
+                            <IconButton size="small" color="success" onClick={() => handleRestoreClick(dump)}>
+                              <Restore />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title={t('common.delete')}>
+                            <IconButton size="small" color="error" onClick={() => handleDeleteClick(dump)}>
+                              <Delete />
+                            </IconButton>
+                          </Tooltip>
                         </Box>
                       </TableCell>
                     </TableRow>
@@ -725,16 +732,22 @@ export default function DatabasePage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                          <Button size="small" variant="contained" color="primary" startIcon={<Download />} href={`/api/database/snapshots/download/${snap.id}`}>
-                            {t('common.download')}
-                          </Button>
-                          <Button size="small" variant="contained" color="success" startIcon={<Restore />} onClick={() => { setRestoreSnapshot(snap); setRestoreSnapOpen(true) }}>
-                            {t('common.restore')}
-                          </Button>
-                          <Button size="small" variant="contained" color="error" startIcon={<Delete />} onClick={() => handleSnapDeleteClick(snap)}>
-                            {t('common.delete')}
-                          </Button>
+                        <Box sx={{ display: 'flex', gap: 0.25 }}>
+                          <Tooltip title={t('common.download')}>
+                            <IconButton size="small" color="primary" component="a" href={`/api/database/snapshots/download/${snap.id}`}>
+                              <Download />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title={t('common.restore')}>
+                            <IconButton size="small" color="success" onClick={() => { setRestoreSnapshot(snap); setRestoreSnapOpen(true) }}>
+                              <Restore />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title={t('common.delete')}>
+                            <IconButton size="small" color="error" onClick={() => handleSnapDeleteClick(snap)}>
+                              <Delete />
+                            </IconButton>
+                          </Tooltip>
                         </Box>
                       </TableCell>
                     </TableRow>
