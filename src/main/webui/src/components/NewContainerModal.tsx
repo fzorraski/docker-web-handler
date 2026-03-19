@@ -78,6 +78,15 @@ function compareTagsDesc(a: string, b: string): number {
   return 0
 }
 
+const sectionSx = {
+  p: 2.5,
+  mb: 2,
+  borderRadius: 2,
+  border: 1,
+  borderColor: 'divider',
+  bgcolor: 'rgba(255,255,255,0.02)',
+}
+
 export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const { notify, confirm } = useNotification()
   const { t } = useTranslation()
@@ -508,8 +517,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
           } />
         ) : (
           <>
-            {/* Repository + Tag */}
-            <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Box sx={sectionSx}>
+            <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
                   select
@@ -555,10 +564,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                   )}
                 />
               </Grid>
-            </Grid>
 
-            {/* Container name + Memory */}
-            <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <TextField
                   fullWidth
@@ -591,10 +597,12 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                 </Grid>
               )}
             </Grid>
+            </Box>
 
             {/* Database */}
             {dbEnabled && (
-              <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Box sx={sectionSx}>
+              <Grid container spacing={2}>
                 {dumpFeatureEnabled && (
                   <Grid size={{ xs: 12 }}>
                     <ToggleButtonGroup
@@ -955,10 +963,12 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                   </>
                 )}
               </Grid>
+              </Box>
             )}
 
             {/* Expiration */}
-            <Grid container spacing={2} sx={{ mb: 3, alignItems: 'center' }}>
+            <Box sx={sectionSx}>
+            <Grid container spacing={2} sx={{ alignItems: 'center' }}>
               <Grid size={{ xs: 12, md: 3 }}>
                 <FormControlLabel
                   control={
@@ -1022,8 +1032,10 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                 </>
               )}
             </Grid>
+            </Box>
 
             {/* Environment Variables */}
+            <Box sx={sectionSx}>
             <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
               {t('newContainer.environmentVariables')}
             </Typography>
@@ -1052,6 +1064,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
             <Button size="small" startIcon={<Add />} onClick={addEnvVar}>
               {t('newContainer.addVariable')}
             </Button>
+            </Box>
           </>
         )}
       </DialogContent>

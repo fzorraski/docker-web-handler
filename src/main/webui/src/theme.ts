@@ -68,6 +68,26 @@ export function buildTheme(mode: PaletteMode) {
           body: {
             transition: 'background-color 0.3s ease, color 0.3s ease',
           },
+          ...(isDark && {
+            '*': {
+              scrollbarWidth: 'thin',
+              scrollbarColor: `${BORDER_MEDIUM} transparent`,
+            },
+            '*::-webkit-scrollbar': {
+              width: 8,
+              height: 8,
+            },
+            '*::-webkit-scrollbar-track': {
+              background: 'transparent',
+            },
+            '*::-webkit-scrollbar-thumb': {
+              background: BORDER_MEDIUM,
+              borderRadius: 4,
+            },
+            '*::-webkit-scrollbar-thumb:hover': {
+              background: 'rgba(255,255,255,0.2)',
+            },
+          }),
         },
       },
 
