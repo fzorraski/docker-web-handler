@@ -23,6 +23,8 @@ import {
   WrapText,
   ContentCopy,
   BugReport,
+  Pause,
+  PlayArrow,
 } from '@mui/icons-material'
 import { List, useListRef, type RowComponentProps } from 'react-window'
 import { useTranslation } from 'react-i18next'
@@ -30,6 +32,8 @@ import { streamContainerLogs } from '../services/sseService'
 import type { ContainerEvent } from '../services/sseService'
 import { parseLogLevel, stripAnsi, type LogLevel } from '../utils/logLevelParser'
 import { getLogTheme, type LogTheme } from '../utils/logColors'
+import useFullScreenDialog from '../hooks/useFullScreenDialog'
+import FullscreenToggleButton from './FullscreenToggleButton'
 
 interface LogEntry {
   stream: string
@@ -132,9 +136,13 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
   )
   const [showExceptions, setShowExceptions] = useState(true)
   const [wordWrap, setWordWrap] = useState(false)
+  const { fullScreen, toggleFullScreen, resetFullScreen, dialogProps, contentSx, viewerSx } = useFullScreenDialog()
   const [currentErrorIdx, setCurrentErrorIdx] = useState(-1)
   const [currentExcIdx, setCurrentExcIdx] = useState(-1)
   const [copySnackbar, setCopySnackbar] = useState(false)
+  const [paused, setPaused] = useState(false)
+  const [pausedBufferCount, setPausedBufferCount] = useState(0)
+  const pausedRef = useRef(false)
 
   const listRef = useListRef(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -172,8 +180,14 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
         if (event.type === 'INFO' || event.type === 'PROGRESS') {
           const message = stripAnsi(event.message)
           const { level, isStackTrace, isExceptionStart } = parseLogLevel(message, event.step)
-          pendingLogsRef.current.push({ stream: event.step, message, level, isStackTrace, isExceptionStart })
-          if (flushTimerRef.current === null) {
+          const pending = pendingLogsRef.current
+          pending.push({ stream: event.step, message, level, isStackTrace, isExceptionStart })
+          if (pausedRef.current) {
+            // Cap buffer while paused to prevent unbounded memory growth
+            if (pending.length > TRIM_THRESHOLD) {
+              pendingLogsRef.current = pending.slice(-MAX_LOG_LINES)
+            }
+          } else if (flushTimerRef.current === null) {
             flushTimerRef.current = setTimeout(flushLogs, FLUSH_INTERVAL_MS)
           }
         }
@@ -404,6 +418,26 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
     setCopySnackbar(true)
   }, [displayedLogs])
 
+  const togglePaused = useCallback(() => {
+    const next = !pausedRef.current
+    pausedRef.current = next
+    setPaused(next)
+    if (!next) {
+      // Resume: flush accumulated logs immediately
+      flushLogs()
+      setPausedBufferCount(0)
+    }
+  }, [flushLogs])
+
+  // Periodically update the buffered count while paused
+  useEffect(() => {
+    if (!paused) return
+    const id = setInterval(() => {
+      setPausedBufferCount(pendingLogsRef.current.length)
+    }, 500)
+    return () => clearInterval(id)
+  }, [paused])
+
   function handleClose() {
     cleanupRef.current?.()
     cleanupRef.current = null
@@ -412,8 +446,12 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
       flushTimerRef.current = null
     }
     pendingLogsRef.current = []
+    pausedRef.current = false
+    setPaused(false)
+    setPausedBufferCount(0)
     setConnected(false)
     setLogs([])
+    resetFullScreen()
     onClose()
   }
 
@@ -421,21 +459,23 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
   const wrapToggleActive = isDark ? '#4d96ff' : '#1565c0'
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth>
+    <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth {...dialogProps}>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Terminal />
         <Typography variant="h6" component="span" sx={{ flex: 1 }}>
           {t('containers.logs.title', { name: containerName })}
         </Typography>
         <Chip
-          label={connected ? t('containers.logs.connected') : t('containers.logs.disconnected')}
-          color={connected ? 'success' : 'default'}
+          label={paused
+            ? t('containers.logs.paused', { count: pausedBufferCount })
+            : connected ? t('containers.logs.connected') : t('containers.logs.disconnected')}
+          color={paused ? 'warning' : connected ? 'success' : 'default'}
           size="small"
           variant="outlined"
         />
       </DialogTitle>
 
-      <DialogContent dividers sx={{ p: 0, position: 'relative' }}>
+      <DialogContent dividers sx={{ p: 0, position: 'relative', ...contentSx }}>
         {/* Toolbar */}
         <Box
           sx={{
@@ -447,6 +487,7 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
             gap: 0.75,
             alignItems: 'center',
             borderBottom: `1px solid ${lt.toolbarBorder}`,
+            flexShrink: 0,
           }}
         >
           {/* Search */}
@@ -607,6 +648,25 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
 
           <Box sx={{ flex: 1 }} />
 
+          {/* Pause/Resume */}
+          <Tooltip title={paused
+            ? t('containers.logs.resume', { count: pausedBufferCount })
+            : t('containers.logs.pause')}
+          >
+            <IconButton
+              onClick={togglePaused}
+              disabled={!connected}
+              size="small"
+              sx={{
+                color: paused ? lt.levelColors.WARN : lt.iconColor,
+                bgcolor: paused ? lt.levelColors.WARN + '22' : 'transparent',
+                '&.Mui-disabled': { color: lt.iconDisabled },
+              }}
+            >
+              {paused ? <PlayArrow sx={{ fontSize: 18 }} /> : <Pause sx={{ fontSize: 18 }} />}
+            </IconButton>
+          </Tooltip>
+
           {/* Wrap toggle */}
           <Tooltip title={wordWrap ? t('containers.logs.nowrapLines') : t('containers.logs.wrapLines')}>
             <IconButton
@@ -620,6 +680,9 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
               <WrapText sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
+
+          {/* Fullscreen toggle */}
+          <FullscreenToggleButton fullScreen={fullScreen} onToggle={toggleFullScreen} color={lt.iconColor} />
 
           {/* Copy */}
           <Tooltip title={hasActiveFilters
@@ -640,7 +703,7 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
         </Box>
 
         {/* Log viewer */}
-        <Box sx={{ position: 'relative', height: CONTAINER_HEIGHT }}>
+        <Box sx={{ position: 'relative', ...viewerSx(CONTAINER_HEIGHT) }}>
           {displayedLogs.length === 0 ? (
             <Box sx={{ bgcolor: lt.logViewerBg, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Typography sx={{ color: lt.emptyText, fontFamily: 'monospace', fontSize: '0.85rem' }}>
@@ -696,7 +759,7 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
               rowHeight={ROW_HEIGHT}
               rowProps={rowProps}
               overscanCount={20}
-              style={{ backgroundColor: lt.logViewerBg, height: CONTAINER_HEIGHT }}
+              style={{ backgroundColor: lt.logViewerBg, height: '100%' }}
             />
           )}
 

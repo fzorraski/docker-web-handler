@@ -148,6 +148,9 @@ const es: typeof en = {
       copyFiltered: 'Copiar filtrado ({{count}})',
       copied: 'Copiado al portapapeles',
       filteredLineCount: '{{filtered}} de {{total}} lineas',
+      pause: 'Pausar',
+      resume: 'Reanudar ({{count}} en buffer)',
+      paused: 'Pausado ({{count}} en buffer)',
     },
     columns: {
       containerId: 'ID del Contenedor',

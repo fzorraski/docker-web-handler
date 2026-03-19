@@ -146,6 +146,9 @@ const en = {
       copyFiltered: 'Copy filtered ({{count}})',
       copied: 'Copied to clipboard',
       filteredLineCount: '{{filtered}} of {{total}} lines',
+      pause: 'Pause',
+      resume: 'Resume ({{count}} buffered)',
+      paused: 'Paused ({{count}} buffered)',
     },
     columns: {
       containerId: 'Container ID',

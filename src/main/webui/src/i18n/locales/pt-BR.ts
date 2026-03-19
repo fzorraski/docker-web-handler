@@ -148,6 +148,9 @@ const ptBR: typeof en = {
       copyFiltered: 'Copiar filtrado ({{count}})',
       copied: 'Copiado para a area de transferencia',
       filteredLineCount: '{{filtered}} de {{total}} linhas',
+      pause: 'Pausar',
+      resume: 'Retomar ({{count}} em buffer)',
+      paused: 'Pausado ({{count}} em buffer)',
     },
     columns: {
       containerId: 'ID do Container',
