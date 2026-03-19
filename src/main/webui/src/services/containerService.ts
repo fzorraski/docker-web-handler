@@ -90,6 +90,50 @@ export async function getRepositoryDatabases(repository: string): Promise<ApiRes
   return handleResponse(res)
 }
 
+export async function isMigrationEnabled(): Promise<boolean> {
+  const res = await fetch(API + 'migration-enabled')
+  return handleResponse(res)
+}
+
+export async function isMigrationApiAvailable(repository: string): Promise<boolean> {
+  const res = await fetch(API + 'migration-api-available?repository=' + encodeURIComponent(repository))
+  return handleResponse(res)
+}
+
+export interface MigratedDatabase {
+  databaseName: string
+  repository: string
+  sourceVersion?: string
+  targetVersion?: string
+  versionsIncluded?: string[]
+  totalStatements?: number
+  mode: string
+  migratedAt: string
+}
+
+export async function getMigratedDatabases(): Promise<MigratedDatabase[]> {
+  const res = await fetch(API + 'migrated-databases')
+  return handleResponse(res)
+}
+
+export interface MigrationPreview {
+  sql: string
+  sourceVersion?: string
+  targetVersion?: string
+  totalStatements?: number
+  versionsIncluded?: string[]
+}
+
+export async function previewMigration(repository: string, sourceVersion: string, targetVersion: string): Promise<MigrationPreview> {
+  const params = new URLSearchParams({ repository, sourceVersion, targetVersion })
+  const res = await fetch(API + 'migration-preview?' + params)
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || res.statusText)
+  }
+  return res.json()
+}
+
 export async function extendExpiration(id: string, minutes: number = 10): Promise<boolean> {
   const res = await postJson(API + 'extend-expiration?minutes=' + minutes, { containerId: id })
   return handleResponse(res)

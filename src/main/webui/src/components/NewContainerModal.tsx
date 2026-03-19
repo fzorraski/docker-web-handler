@@ -35,15 +35,20 @@ import {
   getRepositoryTags,
   isDeletionOnExpirationEnabled,
   isMemoryLimitEnabled,
+  isMigrationEnabled,
+  isMigrationApiAvailable,
   repositoryHasDatabases,
 } from '../services/containerService'
 import { isDumpEnabled, listDumps, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
 import type { DatabaseConflict, DatabaseDump, DatabaseSnapshot } from '../types'
-import { buildTargetDbName, buildSnapshotTargetDbName, formatBytes } from '../utils/format'
-import { prepareRunContainer, streamRunContainer } from '../services/sseService'
+import { buildTargetDbName, buildSnapshotTargetDbName, formatBytes, formatScriptSize, formatMigrationSummary } from '../utils/format'
+import { prepareRunContainer, streamRunContainer, cancelRunContainer } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
-import OperationProgress, { RUN_WITH_RESTORE_STEPS, RUN_WITH_RESTORE_AND_SCRIPTS_STEPS } from './OperationProgress'
+import { useMigrationPreview } from '../hooks/useMigrationPreview'
+import OperationProgress, { RUN_STEPS, RUN_WITH_RESTORE_STEPS, RUN_WITH_RESTORE_AND_SCRIPTS_STEPS, RUN_WITH_RESTORE_AND_MIGRATION_STEPS, RUN_WITH_RESTORE_SCRIPTS_AND_MIGRATION_STEPS, RUN_WITH_MIGRATION_STEPS } from './OperationProgress'
 import DumpBrowserModal from './DumpBrowserModal'
+import MigrationConfigModal, { type MigrationConfig } from './MigrationConfigModal'
+import MigrationPreviewModal from './MigrationPreviewModal'
 
 interface Props {
   open: boolean
@@ -54,12 +59,6 @@ interface Props {
 interface EnvVar {
   key: string
   value: string
-}
-
-function formatScriptSize(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
 function compareTagsDesc(a: string, b: string): number {
@@ -113,6 +112,16 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [confirmNameInput, setConfirmNameInput] = useState('')
   const [confirmOverrideOpen, setConfirmOverrideOpen] = useState(false)
+  const [migrationFeatureEnabled, setMigrationFeatureEnabled] = useState(false)
+  const [migrationApiAvail, setMigrationApiAvail] = useState(false)
+  const [migrationEnabled, setMigrationEnabled] = useState(false)
+  const [migrationConfig, setMigrationConfig] = useState<MigrationConfig | null>(null)
+  const [migrationModalOpen, setMigrationModalOpen] = useState(false)
+  const [operationsPassword, setOperationsPassword] = useState('')
+  const [operationsPasswordOpen, setOperationsPasswordOpen] = useState(false)
+  const migrationPreview = useMigrationPreview()
+  const [runTicket, setRunTicket] = useState<string | null>(null)
+  const [cancelling, setCancelling] = useState(false)
   const activeDbName = dbMode === 'restore' ? restoreTargetDb.trim() || null : selectedDb
   const hasDbUsageConflict = (dbConflict?.inUseByContainers?.length ?? 0) > 0
   const restoreDbExists = !!(dbMode === 'restore' && restoreTargetDb.trim() && databases.includes(restoreTargetDb.trim()))
@@ -150,6 +159,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         }
       })
       .catch(() => setDumpFeatureEnabled(false))
+    isMigrationEnabled().then(setMigrationFeatureEnabled).catch(() => setMigrationFeatureEnabled(false))
   }, [open])
 
   useEffect(() => {
@@ -163,7 +173,11 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       setDbEnvVar(null)
       setScriptsResponse(null)
       setSelectedOptionalScripts([])
+      setMigrationApiAvail(false)
       return
+    }
+    if (migrationFeatureEnabled) {
+      isMigrationApiAvailable(selectedRepo).then(setMigrationApiAvail).catch(() => setMigrationApiAvail(false))
     }
     getPostRestoreScripts(selectedRepo)
       .then((res) => {
@@ -273,6 +287,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setDbMode(mode)
     setDeleteDbOnExpiration(false)
     setDbConflict(null)
+    setMigrationEnabled(false)
+    setMigrationConfig(null)
     if (mode === 'existing') {
       setSelectedDump(null)
       setSelectedSnapshot(null)
@@ -342,6 +358,14 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setConfirmDialogOpen(false)
     setConfirmNameInput('')
     setConfirmOverrideOpen(false)
+    setMigrationEnabled(false)
+    setMigrationConfig(null)
+    setMigrationModalOpen(false)
+    setOperationsPassword('')
+    setOperationsPasswordOpen(false)
+    migrationPreview.reset()
+    setRunTicket(null)
+    setCancelling(false)
   }
 
   async function handleRun() {
@@ -351,6 +375,14 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     if (dbMode === 'restore') {
       if (!selectedDump && !selectedSnapshot) return notify(t('newContainer.selectDumpWarning'), 'warning')
       if (!restoreTargetDb.trim()) return notify(t('newContainer.enterTargetDbWarning'), 'warning')
+    }
+
+    const needsPassword = dbMode === 'existing' && (
+      (migrationEnabled && migrationConfig) || deleteDbOnExpiration
+    )
+    if (needsPassword && !operationsPassword) {
+      setOperationsPasswordOpen(true)
+      return
     }
 
     if (restoreDbExists) {
@@ -373,6 +405,15 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     const name = containerName ? t('newContainer.confirmRunAs', { containerName }) : ''
     const accepted = await confirm(t('newContainer.confirmRun', { repo: selectedRepo, tag: selectedTag, name }))
     if (!accepted) return
+
+    await proceedToMigrationPreviewOrRun()
+  }
+
+  async function proceedToMigrationPreviewOrRun() {
+    if (migrationEnabled && migrationConfig) {
+      const shown = await migrationPreview.showPreview(migrationConfig, selectedRepo)
+      if (shown) return
+    }
 
     executeRun()
   }
@@ -399,7 +440,14 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         snapshotId: dbMode === 'restore' && selectedSnapshot ? selectedSnapshot.id : null,
         createDatabase: dbMode === 'restore' ? createDatabase : false,
         selectedOptionalScripts: dbMode === 'restore' && scriptsResponse?.enabled ? selectedOptionalScripts : undefined,
+        operationsPassword: operationsPassword || null,
+        migrationMode: migrationEnabled && migrationConfig ? migrationConfig.mode : null,
+        migrationSql: migrationEnabled && migrationConfig?.mode === 'MANUAL' ? migrationConfig.sql : null,
+        migrationSourceVersion: migrationEnabled && migrationConfig ? migrationConfig.sourceVersion : null,
+        migrationTargetVersion: migrationEnabled && migrationConfig ? migrationConfig.targetVersion : null,
       })
+
+      setRunTicket(ticket)
 
       sse.start(
         (onEvent, onDone, onError) => streamRunContainer(ticket, onEvent, onDone, onError),
@@ -419,7 +467,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
 
   function handleConfirmRun() {
     setConfirmDialogOpen(false)
-    executeRun()
+    proceedToMigrationPreviewOrRun()
   }
 
   function handleClose() {
@@ -453,8 +501,10 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         {sse.isRunning || sse.events.length > 0 ? (
           <OperationProgress events={sse.events} steps={
             dbMode === 'restore' && (selectedDump || selectedSnapshot)
-              ? (scriptsResponse?.enabled ? RUN_WITH_RESTORE_AND_SCRIPTS_STEPS : RUN_WITH_RESTORE_STEPS)
-              : undefined
+              ? (scriptsResponse?.enabled
+                  ? (migrationEnabled && migrationConfig ? RUN_WITH_RESTORE_SCRIPTS_AND_MIGRATION_STEPS : RUN_WITH_RESTORE_AND_SCRIPTS_STEPS)
+                  : (migrationEnabled && migrationConfig ? RUN_WITH_RESTORE_AND_MIGRATION_STEPS : RUN_WITH_RESTORE_STEPS))
+              : (migrationEnabled && migrationConfig ? RUN_WITH_MIGRATION_STEPS : undefined)
           } />
         ) : (
           <>
@@ -633,6 +683,40 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                         <Alert severity="warning" variant="outlined">
                           <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbWillBeDeleted', { database: selectedDb }) }} />
                         </Alert>
+                      </Grid>
+                    )}
+                    {migrationFeatureEnabled && selectedDb && (
+                      <Grid size={{ xs: 12 }}>
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={migrationEnabled}
+                              disabled={hasDbUsageConflict}
+                              onChange={(e) => {
+                                setMigrationEnabled(e.target.checked)
+                                if (e.target.checked && !migrationConfig) {
+                                  setMigrationModalOpen(true)
+                                }
+                              }}
+                            />
+                          }
+                          label={t('newContainer.migration')}
+                        />
+                        {hasDbUsageConflict && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4 }}>
+                            {t('newContainer.migrationDisabledInUse', { containers: dbConflict!.inUseByContainers.join(', ') })}
+                          </Typography>
+                        )}
+                        {migrationEnabled && migrationConfig && (
+                          <Chip
+                            label={formatMigrationSummary(migrationConfig, t, 'newContainer')}
+                            size="small"
+                            variant="outlined"
+                            color="info"
+                            onClick={() => setMigrationModalOpen(true)}
+                            sx={{ ml: 4, mt: 0.5 }}
+                          />
+                        )}
                       </Grid>
                     )}
                   </>
@@ -839,6 +923,35 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                         </Typography>
                       </Grid>
                     )}
+
+                    {migrationFeatureEnabled && (selectedDump || selectedSnapshot) && (
+                      <Grid size={{ xs: 12 }}>
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={migrationEnabled}
+                              onChange={(e) => {
+                                setMigrationEnabled(e.target.checked)
+                                if (e.target.checked && !migrationConfig) {
+                                  setMigrationModalOpen(true)
+                                }
+                              }}
+                            />
+                          }
+                          label={t('newContainer.migration')}
+                        />
+                        {migrationEnabled && migrationConfig && (
+                          <Chip
+                            label={formatMigrationSummary(migrationConfig, t, 'newContainer')}
+                            size="small"
+                            variant="outlined"
+                            color="info"
+                            onClick={() => setMigrationModalOpen(true)}
+                            sx={{ ml: 1 }}
+                          />
+                        )}
+                      </Grid>
+                    )}
                   </>
                 )}
               </Grid>
@@ -955,7 +1068,20 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
             </Button>
           </>
         ) : sse.isRunning ? (
-          <Button onClick={handleClose} color="inherit">{t('common.cancel')}</Button>
+          <Button
+            onClick={async () => {
+              if (runTicket) {
+                setCancelling(true)
+                await cancelRunContainer(runTicket)
+              }
+            }}
+            color="error"
+            variant="contained"
+            disabled={cancelling}
+            startIcon={cancelling ? <CircularProgress size={20} /> : undefined}
+          >
+            {cancelling ? t('common.cancelling') : t('common.cancel')}
+          </Button>
         ) : (
           <>
             <Button onClick={handleClose} color="inherit">{t('common.cancel')}</Button>
@@ -1042,6 +1168,72 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
             startIcon={<PlayArrow />}
           >
             {t('newContainer.confirmAndRun')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <MigrationConfigModal
+        open={migrationModalOpen}
+        config={migrationConfig}
+        apiModeAvailable={migrationApiAvail}
+        suggestedSourceVersion={selectedDump?.version || undefined}
+        suggestedTargetVersion={selectedTag || undefined}
+
+        onSave={(cfg) => {
+          setMigrationConfig(cfg)
+          setMigrationEnabled(true)
+          setMigrationModalOpen(false)
+        }}
+        onClose={() => {
+          setMigrationModalOpen(false)
+          if (!migrationConfig) setMigrationEnabled(false)
+        }}
+      />
+
+      <MigrationPreviewModal
+        open={migrationPreview.previewOpen}
+        preview={migrationPreview.previewData}
+        loading={migrationPreview.previewLoading}
+        error={migrationPreview.previewError}
+        onApprove={() => {
+          migrationPreview.closePreview()
+          executeRun()
+        }}
+        onDecline={migrationPreview.closePreview}
+      />
+
+      <Dialog open={operationsPasswordOpen} onClose={() => setOperationsPasswordOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>{t('common.operationsPassword')}</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <TextField
+            fullWidth
+            type="password"
+            label={t('common.operationsPassword')}
+            value={operationsPassword}
+            onChange={(e) => setOperationsPassword(e.target.value)}
+            size="small"
+            variant="filled"
+            autoFocus
+            autoComplete="off"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && operationsPassword) {
+                setOperationsPasswordOpen(false)
+                handleRun()
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOperationsPasswordOpen(false)} color="inherit">{t('common.cancel')}</Button>
+          <Button
+            onClick={() => {
+              setOperationsPasswordOpen(false)
+              handleRun()
+            }}
+            variant="contained"
+            disabled={!operationsPassword}
+          >
+            {t('common.confirm')}
           </Button>
         </DialogActions>
       </Dialog>

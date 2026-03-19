@@ -19,6 +19,12 @@ const RESTORE_STEPS = ['Validating', 'Preparing', 'Creating Database', 'Restorin
 const RUN_WITH_RESTORE_STEPS = ['Validating', 'Pulling', 'Creating', 'Preparing', 'Creating Database', 'Restoring', 'Starting']
 const RESTORE_WITH_SCRIPTS_STEPS = ['Validating', 'Preparing', 'Creating Database', 'Restoring', 'Running Scripts']
 const RUN_WITH_RESTORE_AND_SCRIPTS_STEPS = ['Validating', 'Pulling', 'Creating', 'Preparing', 'Creating Database', 'Restoring', 'Running Scripts', 'Starting']
+const RESTORE_WITH_MIGRATION_STEPS = ['Validating', 'Preparing', 'Creating Database', 'Restoring', 'Running Migration']
+const RESTORE_WITH_SCRIPTS_AND_MIGRATION_STEPS = ['Validating', 'Preparing', 'Creating Database', 'Restoring', 'Running Scripts', 'Running Migration']
+const RUN_WITH_RESTORE_AND_MIGRATION_STEPS = ['Validating', 'Pulling', 'Creating', 'Preparing', 'Creating Database', 'Restoring', 'Running Migration', 'Starting']
+const RUN_WITH_RESTORE_SCRIPTS_AND_MIGRATION_STEPS = ['Validating', 'Pulling', 'Creating', 'Preparing', 'Creating Database', 'Restoring', 'Running Scripts', 'Running Migration', 'Starting']
+const RUN_WITH_MIGRATION_STEPS = ['Validating', 'Pulling', 'Creating', 'Running Migration', 'Starting']
+const MIGRATION_STEPS = ['Validating', 'Running Migration']
 const SNAPSHOT_STEPS = ['Validating', 'Pulling Image', 'Creating Snapshot', 'Saving']
 
 interface Props {
@@ -26,7 +32,7 @@ interface Props {
   steps?: string[]
 }
 
-export { RUN_STEPS, REMOVE_STEPS, REMOVE_IMAGE_STEPS, PRUNE_IMAGES_STEPS, RESTORE_STEPS, RUN_WITH_RESTORE_STEPS, RESTORE_WITH_SCRIPTS_STEPS, RUN_WITH_RESTORE_AND_SCRIPTS_STEPS, SNAPSHOT_STEPS }
+export { RUN_STEPS, REMOVE_STEPS, REMOVE_IMAGE_STEPS, PRUNE_IMAGES_STEPS, RESTORE_STEPS, RUN_WITH_RESTORE_STEPS, RESTORE_WITH_SCRIPTS_STEPS, RUN_WITH_RESTORE_AND_SCRIPTS_STEPS, RESTORE_WITH_MIGRATION_STEPS, RESTORE_WITH_SCRIPTS_AND_MIGRATION_STEPS, RUN_WITH_RESTORE_AND_MIGRATION_STEPS, RUN_WITH_RESTORE_SCRIPTS_AND_MIGRATION_STEPS, RUN_WITH_MIGRATION_STEPS, MIGRATION_STEPS, SNAPSHOT_STEPS }
 
 export default function OperationProgress({ events, steps = RUN_STEPS }: Props) {
   const { t } = useTranslation()

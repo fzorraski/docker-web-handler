@@ -9,10 +9,14 @@ import {
   cancelExpiration,
   extendExpiration,
   isDatabaseListingEnabled,
+  isMigrationEnabled as checkMigrationEnabled,
+  getMigratedDatabases,
+  type MigratedDatabase,
 } from '../services/containerService'
 import { isDumpEnabled, getActiveRestores, type ActiveRestore } from '../services/dumpService'
 import { streamRemoveContainer } from  '../services/sseService'
 import NewContainerModal from '../components/NewContainerModal'
+import RunMigrationModal from '../components/RunMigrationModal'
 import CreateSnapshotModal from '../components/CreateSnapshotModal'
 import ContainerLogsDialog from '../components/ContainerLogsDialog'
 import OperationProgress, { REMOVE_STEPS } from '../components/OperationProgress'
@@ -51,7 +55,7 @@ import {
   Alert,
   AlertTitle,
 } from '@mui/material'
-import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule } from '@mui/icons-material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz } from '@mui/icons-material'
 
 interface ColumnDef {
   key: string
@@ -92,6 +96,12 @@ export default function ContainersPage() {
   const [snapshotContainerName, setSnapshotContainerName] = useState<string | undefined>(undefined)
   const [logsContainerId, setLogsContainerId] = useState<string | null>(null)
   const [logsContainerName, setLogsContainerName] = useState('')
+  const [migratedDatabases, setMigratedDatabases] = useState<MigratedDatabase[]>([])
+  const [migrationFeatureEnabled, setMigrationFeatureEnabled] = useState(false)
+  const [migrationRepo, setMigrationRepo] = useState('')
+  const [migrationDb, setMigrationDb] = useState('')
+  const [migrationOpen, setMigrationOpen] = useState(false)
+
 
   const machineIp = window.location.hostname
 
@@ -138,6 +148,8 @@ export default function ContainersPage() {
     getAllowedRepositories().then((repos) => setHasRepos(repos.length > 0)).catch(() => {})
     isDatabaseListingEnabled().then(setDbListingEnabled).catch(() => {})
     isDumpEnabled().then(setDumpEnabled).catch(() => {})
+    getMigratedDatabases().then(setMigratedDatabases).catch(() => setMigratedDatabases([]))
+    checkMigrationEnabled().then(setMigrationFeatureEnabled).catch(() => setMigrationFeatureEnabled(false))
   }, [loadContainers])
 
   useEffect(() => {
@@ -497,9 +509,25 @@ export default function ContainersPage() {
                   {columnVisibility.names && <TableCell sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{c.names}</TableCell>}
                   {columnVisibility.database && (
                     <TableCell>
-                      {c.databaseName ? (
-                        <Typography variant="body2">{c.databaseName}</Typography>
-                      ) : (
+                      {c.databaseName ? (() => {
+                        const migration = migratedDatabases.find(
+                          (m) => m.databaseName === c.databaseName
+                        )
+                        return (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Typography variant="body2">{c.databaseName}</Typography>
+                            {migration && (
+                              <Tooltip title={
+                                migration.mode === 'API' && migration.sourceVersion && migration.targetVersion
+                                  ? t('containers.dbMigrated') + ` (${migration.sourceVersion} \u2192 ${migration.targetVersion})`
+                                  : t('containers.dbMigrated')
+                              }>
+                                <SwapHoriz sx={{ fontSize: 16, color: 'info.main' }} />
+                              </Tooltip>
+                            )}
+                          </Box>
+                        )
+                      })() : (
                         <Typography variant="body2" color="text.secondary">-</Typography>
                       )}
                     </TableCell>
@@ -592,6 +620,21 @@ export default function ContainersPage() {
                             </IconButton>
                           </Tooltip>
                         )}
+                        {migrationFeatureEnabled && c.repository && c.databaseName && (
+                          <Tooltip title={t('containers.runMigration')}>
+                            <IconButton
+                              size="small"
+                              color="warning"
+                              onClick={() => {
+                                setMigrationRepo(c.repository!)
+                                setMigrationDb(c.databaseName!)
+                                setMigrationOpen(true)
+                              }}
+                            >
+                              <SwapHoriz />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         <Tooltip title={t('common.remove')}>
                           <IconButton
                             size="small"
@@ -650,6 +693,21 @@ export default function ContainersPage() {
         containerId={logsContainerId ?? ''}
         containerName={logsContainerName}
         onClose={handleLogsClose}
+      />
+
+      <RunMigrationModal
+        open={migrationOpen}
+        repository={migrationRepo}
+        databaseName={migrationDb}
+        onClose={() => {
+          setMigrationOpen(false)
+          setMigrationRepo('')
+          setMigrationDb('')
+        }}
+        onCompleted={() => {
+          loadContainers()
+          getMigratedDatabases().then(setMigratedDatabases).catch(() => {})
+        }}
       />
     </>
   )

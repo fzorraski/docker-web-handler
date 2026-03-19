@@ -23,18 +23,15 @@ import {
 import { Close, Restore, Warning } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import type { DatabaseDump, DatabaseSnapshot } from '../types'
-import { buildTargetDbName, buildSnapshotTargetDbName } from '../utils/format'
+import { buildTargetDbName, buildSnapshotTargetDbName, formatScriptSize, formatMigrationSummary } from '../utils/format'
 import { getDumpRepositories, cancelRestore, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
-import { getDatabaseConflicts, getRepositoryDatabases } from '../services/containerService'
+import { getDatabaseConflicts, getRepositoryDatabases, isMigrationEnabled, isMigrationApiAvailable } from '../services/containerService'
 import { prepareRestoreDump, streamRestoreDump } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
-import OperationProgress, { RESTORE_STEPS, RESTORE_WITH_SCRIPTS_STEPS } from './OperationProgress'
-
-function formatScriptSize(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-}
+import { useMigrationPreview } from '../hooks/useMigrationPreview'
+import OperationProgress, { RESTORE_STEPS, RESTORE_WITH_SCRIPTS_STEPS, RESTORE_WITH_MIGRATION_STEPS, RESTORE_WITH_SCRIPTS_AND_MIGRATION_STEPS } from './OperationProgress'
+import MigrationConfigModal, { type MigrationConfig } from './MigrationConfigModal'
+import MigrationPreviewModal from './MigrationPreviewModal'
 
 interface Props {
   open: boolean
@@ -62,12 +59,19 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
   const [selectedOptionalScripts, setSelectedOptionalScripts] = useState<string[]>([])
   const [confirmOverrideOpen, setConfirmOverrideOpen] = useState(false)
   const [inUseBy, setInUseBy] = useState<string[]>([])
+  const [migrationFeatureEnabled, setMigrationFeatureEnabled] = useState(false)
+  const [migrationApiAvail, setMigrationApiAvail] = useState(false)
+  const [migrationEnabled, setMigrationEnabled] = useState(false)
+  const [migrationConfig, setMigrationConfig] = useState<MigrationConfig | null>(null)
+  const [migrationModalOpen, setMigrationModalOpen] = useState(false)
+  const migrationPreview = useMigrationPreview()
 
   const dbExists = !!(targetDb.trim() && databases.includes(targetDb.trim()))
 
   useEffect(() => {
     if (open) {
       getDumpRepositories().then(setRepositories).catch(() => setRepositories([]))
+      isMigrationEnabled().then(setMigrationFeatureEnabled).catch(() => setMigrationFeatureEnabled(false))
     }
   }, [open])
 
@@ -76,7 +80,11 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
       setDatabases([])
       setScriptsResponse(null)
       setSelectedOptionalScripts([])
+      setMigrationApiAvail(false)
       return
+    }
+    if (migrationFeatureEnabled) {
+      isMigrationApiAvailable(selectedRepo).then(setMigrationApiAvail).catch(() => setMigrationApiAvail(false))
     }
     setDbLoading(true)
     getRepositoryDatabases(selectedRepo)
@@ -94,7 +102,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
         }
       })
       .catch(() => setScriptsResponse(null))
-  }, [selectedRepo])
+  }, [selectedRepo, migrationFeatureEnabled])
 
   useEffect(() => {
     if (!open) return
@@ -129,6 +137,10 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
     setSelectedOptionalScripts([])
     setConfirmOverrideOpen(false)
     setInUseBy([])
+    setMigrationEnabled(false)
+    setMigrationConfig(null)
+    setMigrationModalOpen(false)
+    migrationPreview.reset()
   }
 
   function handleClose() {
@@ -154,11 +166,22 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
       return
     }
 
+    proceedToRestore()
+  }
+
+  async function proceedToRestore() {
+    setConfirmOverrideOpen(false)
+
+    // If migration validation is enabled, show preview first
+    if (migrationEnabled && migrationConfig) {
+      const shown = await migrationPreview.showPreview(migrationConfig, selectedRepo)
+      if (shown) return
+    }
+
     executeRestore()
   }
 
   async function executeRestore() {
-    setConfirmOverrideOpen(false)
 
     try {
       const isNew = !databases.includes(targetDb.trim())
@@ -171,6 +194,10 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
         createDatabase: createDb || isNew,
         password,
         selectedOptionalScripts: scriptsResponse?.enabled ? selectedOptionalScripts : undefined,
+        migrationMode: migrationEnabled && migrationConfig ? migrationConfig.mode : null,
+        migrationSql: migrationEnabled && migrationConfig?.mode === 'MANUAL' ? migrationConfig.sql : null,
+        migrationSourceVersion: migrationEnabled && migrationConfig ? migrationConfig.sourceVersion : null,
+        migrationTargetVersion: migrationEnabled && migrationConfig ? migrationConfig.targetVersion : null,
       })
 
       sse.start(
@@ -213,7 +240,11 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
       </DialogTitle>
       <DialogContent dividers sx={{ pt: 3 }}>
         {sse.isRunning || sse.events.length > 0 ? (
-          <OperationProgress events={sse.events} steps={scriptsResponse?.enabled ? RESTORE_WITH_SCRIPTS_STEPS : RESTORE_STEPS} />
+          <OperationProgress events={sse.events} steps={
+            scriptsResponse?.enabled
+              ? (migrationEnabled && migrationConfig ? RESTORE_WITH_SCRIPTS_AND_MIGRATION_STEPS : RESTORE_WITH_SCRIPTS_STEPS)
+              : (migrationEnabled && migrationConfig ? RESTORE_WITH_MIGRATION_STEPS : RESTORE_STEPS)
+          } />
         ) : (
           <>
             <TextField
@@ -356,6 +387,35 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
                 </Typography>
               </Box>
             )}
+
+            {migrationFeatureEnabled && (
+              <Box sx={{ mt: 3 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={migrationEnabled}
+                      onChange={(e) => {
+                        setMigrationEnabled(e.target.checked)
+                        if (e.target.checked && !migrationConfig) {
+                          setMigrationModalOpen(true)
+                        }
+                      }}
+                    />
+                  }
+                  label={t('restoreDump.migration')}
+                />
+                {migrationEnabled && migrationConfig && (
+                  <Chip
+                    label={formatMigrationSummary(migrationConfig, t, 'restoreDump')}
+                    size="small"
+                    variant="outlined"
+                    color="info"
+                    onClick={() => setMigrationModalOpen(true)}
+                    sx={{ ml: 1 }}
+                  />
+                )}
+              </Box>
+            )}
           </>
         )}
       </DialogContent>
@@ -419,13 +479,42 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
           <Button
             variant="contained"
             color="warning"
-            onClick={executeRestore}
+            onClick={proceedToRestore}
             startIcon={<Restore />}
           >
             {t('restoreDump.overrideAndRestore')}
           </Button>
         </DialogActions>
       </Dialog>
+
+      <MigrationConfigModal
+        open={migrationModalOpen}
+        config={migrationConfig}
+        apiModeAvailable={migrationApiAvail}
+        suggestedSourceVersion={dump?.version || undefined}
+
+        onSave={(cfg) => {
+          setMigrationConfig(cfg)
+          setMigrationEnabled(true)
+          setMigrationModalOpen(false)
+        }}
+        onClose={() => {
+          setMigrationModalOpen(false)
+          if (!migrationConfig) setMigrationEnabled(false)
+        }}
+      />
+
+      <MigrationPreviewModal
+        open={migrationPreview.previewOpen}
+        preview={migrationPreview.previewData}
+        loading={migrationPreview.previewLoading}
+        error={migrationPreview.previewError}
+        onApprove={() => {
+          migrationPreview.closePreview()
+          executeRestore()
+        }}
+        onDecline={migrationPreview.closePreview}
+      />
     </Dialog>
   )
 }

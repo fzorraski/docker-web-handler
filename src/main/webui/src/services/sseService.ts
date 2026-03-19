@@ -51,13 +51,21 @@ export async function prepareRunContainer(body: {
   snapshotId?: string | null
   createDatabase?: boolean
   selectedOptionalScripts?: string[]
+  operationsPassword?: string | null
+  migrationMode?: string | null
+  migrationSql?: string | null
+  migrationSourceVersion?: string | null
+  migrationTargetVersion?: string | null
 }): Promise<string> {
   const res = await fetch('/api/containers/sse/run/prepare', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(res.statusText)
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || res.statusText)
+  }
   const data = await res.json()
   return data.ticket
 }
@@ -69,6 +77,51 @@ export function streamRunContainer(
   onError: (message: string) => void,
 ): () => void {
   return streamSse(`/api/containers/sse/run/${ticket}`, onEvent, onDone, onError)
+}
+
+export async function cancelRunContainer(ticket: string): Promise<boolean> {
+  const res = await fetch(`/api/containers/sse/run/cancel/${ticket}`, { method: 'POST' })
+  if (!res.ok) return false
+  const data = await res.json()
+  return data.cancelled
+}
+
+export async function prepareRunMigration(body: {
+  repository: string
+  targetDatabase: string
+  password: string
+  migrationMode: string
+  migrationSql?: string | null
+  migrationSourceVersion?: string | null
+  migrationTargetVersion?: string | null
+}): Promise<string> {
+  const res = await fetch('/api/containers/sse/migration/prepare', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || res.statusText)
+  }
+  const data = await res.json()
+  return data.ticket
+}
+
+export function streamRunMigration(
+  ticket: string,
+  onEvent: (event: ContainerEvent) => void,
+  onDone: () => void,
+  onError: (message: string) => void,
+): () => void {
+  return streamSse(`/api/containers/sse/migration/${ticket}`, onEvent, onDone, onError)
+}
+
+export async function cancelRunMigration(ticket: string): Promise<boolean> {
+  const res = await fetch(`/api/containers/sse/migration/cancel/${ticket}`, { method: 'POST' })
+  if (!res.ok) return false
+  const data = await res.json()
+  return data.cancelled
 }
 
 export async function preparePruneImages(body: {
@@ -132,6 +185,10 @@ export async function prepareRestoreDump(body: {
   createDatabase: boolean
   password: string
   selectedOptionalScripts?: string[]
+  migrationMode?: string | null
+  migrationSql?: string | null
+  migrationSourceVersion?: string | null
+  migrationTargetVersion?: string | null
 }): Promise<string> {
   const res = await fetch('/api/database/dumps/sse/restore/prepare', {
     method: 'POST',

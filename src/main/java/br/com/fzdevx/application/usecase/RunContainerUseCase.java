@@ -5,7 +5,11 @@ import br.com.fzdevx.application.dto.RestoreDumpRequest;
 import br.com.fzdevx.application.dto.RunContainerRequest;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver; // ✦ CLEAN — using shared allowed-repos resolver
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.MigrationService;
+import br.com.fzdevx.infrastructure.persistence.DatabaseService;
+import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
 import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
+import br.com.fzdevx.application.port.DatabasePort;
 import br.com.fzdevx.infrastructure.docker.PortFinder;
 import br.com.fzdevx.infrastructure.registry.RegistryService;
 import br.com.fzdevx.domain.shared.InputValidator;
@@ -34,6 +38,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
@@ -66,139 +72,248 @@ public class RunContainerUseCase {
     Config config;
 
     @Inject
+    MigrationService migrationService;
+
+    @Inject
+    DatabaseService databaseService;
+
+    @Inject
+    DumpStorageService dumpStorageService;
+
+    @Inject
     ResourceCounterService resourceCounterService;
 
+    private final ConcurrentHashMap<String, AtomicBoolean> activeRuns = new ConcurrentHashMap<>();
+
+    public boolean cancel(String ticket) {
+        AtomicBoolean flag = activeRuns.get(ticket);
+        if (flag == null) return false;
+        flag.set(true);
+        return true;
+    }
+
     public void execute(RunContainerRequest request, Consumer<ContainerEvent> eventSink) {
-        // Step 1: Validate inputs
-        eventSink.accept(ContainerEvent.info("Validating", "Validating input parameters..."));
+        execute(request, eventSink, null);
+    }
 
-        Optional<String> repoError = InputValidator.validateRepository(request.getRepository());
-        if (repoError.isPresent()) {
-            eventSink.accept(ContainerEvent.error("Validating", repoError.get()));
-            return;
+    public void execute(RunContainerRequest request, Consumer<ContainerEvent> eventSink, String ticket) {
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        if (ticket != null) {
+            activeRuns.put(ticket, cancelled);
         }
 
-        Optional<String> tagError = InputValidator.validateTag(request.getTag());
-        if (tagError.isPresent()) {
-            eventSink.accept(ContainerEvent.error("Validating", tagError.get()));
-            return;
-        }
+        String createdContainerId = null;
+        try {
+            // Step 1: Validate inputs
+            eventSink.accept(ContainerEvent.info("Validating", "Validating input parameters..."));
 
-        Optional<String> nameError = InputValidator.validateContainerName(request.getContainerName());
-        if (nameError.isPresent()) {
-            eventSink.accept(ContainerEvent.error("Validating", nameError.get()));
-            return;
-        }
-
-        Optional<String> envError = InputValidator.validateEnvVars(request.getEnvVars());
-        if (envError.isPresent()) {
-            eventSink.accept(ContainerEvent.error("Validating", envError.get()));
-            return;
-        }
-
-        Optional<String> memError = InputValidator.validateMemoryMb(request.getMemoryMb());
-        if (memError.isPresent()) {
-            eventSink.accept(ContainerEvent.error("Validating", memError.get()));
-            return;
-        }
-
-        if (request.getDatabaseName() != null && !request.getDatabaseName().isBlank()) {
-            Optional<String> dbError = InputValidator.validateDatabaseName(request.getDatabaseName());
-            if (dbError.isPresent()) {
-                eventSink.accept(ContainerEvent.error("Validating", dbError.get()));
+            Optional<String> repoError = InputValidator.validateRepository(request.getRepository());
+            if (repoError.isPresent()) {
+                eventSink.accept(ContainerEvent.error("Validating", repoError.get()));
                 return;
             }
-        }
 
-        if (request.getDumpId() != null && !request.getDumpId().isBlank()) {
-            Optional<String> dumpIdError = InputValidator.validateUuid(request.getDumpId());
-            if (dumpIdError.isPresent()) {
-                eventSink.accept(ContainerEvent.error("Validating", dumpIdError.get()));
+            Optional<String> tagError = InputValidator.validateTag(request.getTag());
+            if (tagError.isPresent()) {
+                eventSink.accept(ContainerEvent.error("Validating", tagError.get()));
                 return;
             }
-        }
 
-        // Step 2: Check whitelist
-        eventSink.accept(ContainerEvent.info("Validating", "Checking repository permissions..."));
-
-        List<String> allowed = allowedRepositoryResolver.getAllowed(); // ✦ CLEAN — delegated to shared resolver
-
-        if (allowed.isEmpty()) {
-            eventSink.accept(ContainerEvent.error("Validating",
-                    "No repositories are allowed to run. Configure ALLOWED_RUN_REPOSITORIES."));
-            return;
-        }
-
-        if (!allowed.contains(request.getRepository())) {
-            eventSink.accept(ContainerEvent.error("Validating",
-                    "Repository '" + request.getRepository() + "' is not in the allowed list."));
-            return;
-        }
-
-        String imageRef = registryService.buildFullImageRef(request.getRepository(), request.getTag());
-        eventSink.accept(ContainerEvent.info("Validating", "All validations passed."));
-
-        // Step 2: Pull image
-        eventSink.accept(ContainerEvent.info("Pulling", "Pulling image " + imageRef + "..."));
-
-        try {
-            pullImage(imageRef, request.getRepository(), request.getTag(), eventSink);
-        } catch (Exception e) {
-            eventSink.accept(ContainerEvent.error("Pulling", "Failed to pull image: " + e.getMessage()));
-            return;
-        }
-
-        eventSink.accept(ContainerEvent.info("Pulling", "Image pulled successfully."));
-
-        // Step 3: Create container
-        eventSink.accept(ContainerEvent.info("Creating", "Creating container..."));
-
-        CreateContainerResponse container;
-        try {
-            container = createContainer(imageRef, request, eventSink);
-        } catch (Exception e) {
-            eventSink.accept(ContainerEvent.error("Creating", "Failed to create container: " + e.getMessage()));
-            return;
-        }
-
-        eventSink.accept(ContainerEvent.info("Creating", "Container created."));
-
-        // Step 4: Restore dump/snapshot if specified (before starting the container so the DB is ready)
-        boolean hasDump = request.getDumpId() != null && !request.getDumpId().isBlank();
-        boolean hasSnapshot = request.getSnapshotId() != null && !request.getSnapshotId().isBlank();
-        if (hasDump || hasSnapshot) {
-            eventSink.accept(ContainerEvent.info("Restoring", "Starting restore..."));
-            RestoreDumpRequest restoreReq = new RestoreDumpRequest();
-            restoreReq.setDumpId(hasDump ? request.getDumpId() : null);
-            restoreReq.setSnapshotId(hasSnapshot ? request.getSnapshotId() : null);
-            restoreReq.setRepository(request.getRepository());
-            restoreReq.setTargetDatabase(request.getDatabaseName());
-            restoreReq.setCreateDatabase(request.isCreateDatabase());
-            restoreReq.setSelectedOptionalScripts(request.getSelectedOptionalScripts());
-            boolean restoreSuccess = restoreDumpUseCase.execute(restoreReq, eventSink);
-            if (!restoreSuccess) {
+            Optional<String> nameError = InputValidator.validateContainerName(request.getContainerName());
+            if (nameError.isPresent()) {
+                eventSink.accept(ContainerEvent.error("Validating", nameError.get()));
                 return;
             }
+
+            Optional<String> envError = InputValidator.validateEnvVars(request.getEnvVars());
+            if (envError.isPresent()) {
+                eventSink.accept(ContainerEvent.error("Validating", envError.get()));
+                return;
+            }
+
+            Optional<String> memError = InputValidator.validateMemoryMb(request.getMemoryMb());
+            if (memError.isPresent()) {
+                eventSink.accept(ContainerEvent.error("Validating", memError.get()));
+                return;
+            }
+
+            if (request.getDatabaseName() != null && !request.getDatabaseName().isBlank()) {
+                Optional<String> dbError = InputValidator.validateDatabaseName(request.getDatabaseName());
+                if (dbError.isPresent()) {
+                    eventSink.accept(ContainerEvent.error("Validating", dbError.get()));
+                    return;
+                }
+            }
+
+            if (request.getDumpId() != null && !request.getDumpId().isBlank()) {
+                Optional<String> dumpIdError = InputValidator.validateUuid(request.getDumpId());
+                if (dumpIdError.isPresent()) {
+                    eventSink.accept(ContainerEvent.error("Validating", dumpIdError.get()));
+                    return;
+                }
+            }
+
+            // Validate operations password when destructive operations are requested
+            if (request.isDeleteDatabaseOnExpiration() && !request.isOperationsPasswordValidated()) {
+                eventSink.accept(ContainerEvent.error("Validating", "Invalid operations password."));
+                return;
+            }
+
+            if (cancelled.get()) {
+                eventSink.accept(ContainerEvent.error("Validating", "Operation cancelled."));
+                return;
+            }
+
+            // Step 2: Check whitelist
+            eventSink.accept(ContainerEvent.info("Validating", "Checking repository permissions..."));
+
+            List<String> allowed = allowedRepositoryResolver.getAllowed();
+
+            if (allowed.isEmpty()) {
+                eventSink.accept(ContainerEvent.error("Validating",
+                        "No repositories are allowed to run. Configure ALLOWED_RUN_REPOSITORIES."));
+                return;
+            }
+
+            if (!allowed.contains(request.getRepository())) {
+                eventSink.accept(ContainerEvent.error("Validating",
+                        "Repository '" + request.getRepository() + "' is not in the allowed list."));
+                return;
+            }
+
+            String imageRef = registryService.buildFullImageRef(request.getRepository(), request.getTag());
+            eventSink.accept(ContainerEvent.info("Validating", "All validations passed."));
+
+            if (cancelled.get()) {
+                eventSink.accept(ContainerEvent.error("Pulling", "Operation cancelled."));
+                return;
+            }
+
+            // Step 2: Pull image
+            eventSink.accept(ContainerEvent.info("Pulling", "Pulling image " + imageRef + "..."));
+
+            try {
+                pullImage(imageRef, request.getRepository(), request.getTag(), eventSink);
+            } catch (Exception e) {
+                eventSink.accept(ContainerEvent.error("Pulling", "Failed to pull image: " + e.getMessage()));
+                return;
+            }
+
+            if (cancelled.get()) {
+                eventSink.accept(ContainerEvent.error("Pulling", "Operation cancelled."));
+                return;
+            }
+
+            eventSink.accept(ContainerEvent.info("Pulling", "Image pulled successfully."));
+
+            // Step 3: Create container
+            eventSink.accept(ContainerEvent.info("Creating", "Creating container..."));
+
+            CreateContainerResponse container;
+            try {
+                container = createContainer(imageRef, request, eventSink);
+                createdContainerId = container.getId();
+            } catch (Exception e) {
+                eventSink.accept(ContainerEvent.error("Creating", "Failed to create container: " + e.getMessage()));
+                return;
+            }
+
+            if (cancelled.get()) {
+                eventSink.accept(ContainerEvent.error("Creating", "Operation cancelled. Removing created container..."));
+                return;
+            }
+
+            eventSink.accept(ContainerEvent.info("Creating", "Container created."));
+
+            // Step 4: Restore dump/snapshot if specified (before starting the container so the DB is ready)
+            boolean hasDump = request.getDumpId() != null && !request.getDumpId().isBlank();
+            boolean hasSnapshot = request.getSnapshotId() != null && !request.getSnapshotId().isBlank();
+            if (hasDump || hasSnapshot) {
+                if (cancelled.get()) {
+                    eventSink.accept(ContainerEvent.error("Restoring", "Operation cancelled."));
+                    return;
+                }
+                eventSink.accept(ContainerEvent.info("Restoring", "Starting restore..."));
+                RestoreDumpRequest restoreReq = new RestoreDumpRequest();
+                restoreReq.setDumpId(hasDump ? request.getDumpId() : null);
+                restoreReq.setSnapshotId(hasSnapshot ? request.getSnapshotId() : null);
+                restoreReq.setRepository(request.getRepository());
+                restoreReq.setTargetDatabase(request.getDatabaseName());
+                restoreReq.setCreateDatabase(request.isCreateDatabase());
+                restoreReq.setSelectedOptionalScripts(request.getSelectedOptionalScripts());
+                restoreReq.setMigrationMode(request.getMigrationMode());
+                restoreReq.setMigrationSql(request.getMigrationSql());
+                restoreReq.setMigrationSourceVersion(request.getMigrationSourceVersion());
+                restoreReq.setMigrationTargetVersion(request.getMigrationTargetVersion());
+                boolean restoreSuccess = restoreDumpUseCase.execute(restoreReq, eventSink);
+                if (!restoreSuccess) {
+                    return;
+                }
+            } else if (request.getMigrationMode() != null && !request.getMigrationMode().isBlank()
+                    && migrationService.isEnabled()
+                    && request.getDatabaseName() != null && !request.getDatabaseName().isBlank()) {
+                // Standalone migration on existing database (no restore)
+                if (!request.isOperationsPasswordValidated()) {
+                    eventSink.accept(ContainerEvent.error("Running Migration", "Invalid operations password."));
+                    return;
+                }
+                if (cancelled.get()) {
+                    eventSink.accept(ContainerEvent.error("Running Migration", "Operation cancelled."));
+                    return;
+                }
+
+                String pgImage = databaseService.getContainerImage(request.getRepository());
+                DatabasePort.PgConnectionInfo pgInfo = databaseService.getConnectionInfo(request.getRepository());
+
+                boolean migrationOk = migrationService.orchestrateMigration(
+                        request.getMigrationMode(), request.getMigrationSql(),
+                        request.getMigrationSourceVersion(), request.getMigrationTargetVersion(),
+                        request.getRepository(), request.getDatabaseName(), pgImage,
+                        pgInfo, eventSink, cancelled);
+                if (!migrationOk) {
+                    return;
+                }
+            }
+
+            if (cancelled.get()) {
+                eventSink.accept(ContainerEvent.error("Starting", "Operation cancelled."));
+                return;
+            }
+
+            // Step 5: Start container
+            eventSink.accept(ContainerEvent.info("Starting", "Starting container..."));
+
+            try {
+                dockerClient.startContainerCmd(container.getId()).exec();
+            } catch (Exception e) {
+                eventSink.accept(ContainerEvent.error("Starting", "Failed to start container: " + e.getMessage()));
+                return;
+            }
+
+            // Step 6: Schedule expiration if configured
+            String expirationMessage = scheduleExpiration(request, container.getId());
+
+            resourceCounterService.increment(ResourceCounterService.CONTAINERS);
+            resourceCounterService.increment(ResourceCounterService.IMAGES);
+
+            createdContainerId = null; // success — don't clean up
+            eventSink.accept(ContainerEvent.success("Complete",
+                    "Container started successfully from " + imageRef + expirationMessage));
+        } finally {
+            if (ticket != null) {
+                activeRuns.remove(ticket);
+            }
+            // Clean up container if it was created but the operation was cancelled or failed after creation
+            if (createdContainerId != null && cancelled.get()) {
+                try {
+                    dockerClient.removeContainerCmd(createdContainerId).withForce(true).exec();
+                    eventSink.accept(ContainerEvent.info("Creating",
+                            "Container removed due to cancellation."));
+                } catch (Exception e) {
+                    io.quarkus.logging.Log.warnf("Failed to remove container after cancellation: %s", e.getMessage());
+                }
+            }
         }
-
-        // Step 5: Start container
-        eventSink.accept(ContainerEvent.info("Starting", "Starting container..."));
-
-        try {
-            dockerClient.startContainerCmd(container.getId()).exec();
-        } catch (Exception e) {
-            eventSink.accept(ContainerEvent.error("Starting", "Failed to start container: " + e.getMessage()));
-            return;
-        }
-
-        // Step 6: Schedule expiration if configured
-        String expirationMessage = scheduleExpiration(request, container.getId());
-
-        resourceCounterService.increment(ResourceCounterService.CONTAINERS);
-        resourceCounterService.increment(ResourceCounterService.IMAGES);
-
-        eventSink.accept(ContainerEvent.success("Complete",
-                "Container started successfully from " + imageRef + expirationMessage));
     }
 
     private void pullImage(String imageRef, String repository, String tag, Consumer<ContainerEvent> eventSink) throws InterruptedException {

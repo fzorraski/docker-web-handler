@@ -1,6 +1,8 @@
 package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
+import br.com.fzdevx.domain.model.DatabaseMigrationRecord;
+import br.com.fzdevx.infrastructure.docker.MigrationService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.infrastructure.registry.RegistryService;
 import br.com.fzdevx.interfaces.rest.dto.Response;
@@ -31,6 +33,9 @@ public class ContainerConfigController {
 
     @Inject
     DatabaseService databaseService;
+
+    @Inject
+    MigrationService migrationService;
 
     @Inject
     @ConfigProperty(name = "container.default-expiration-minutes", defaultValue = "480")
@@ -163,6 +168,83 @@ public class ContainerConfigController {
             return false;
         }
         return databaseService.hasDatabaseConfig(repository);
+    }
+
+    @GET
+    @Path("/migration-enabled")
+    @Produces(MediaType.APPLICATION_JSON)
+    public boolean isMigrationEnabled() {
+        return migrationService.isEnabled();
+    }
+
+    @GET
+    @Path("/migration-preview")
+    @Produces(MediaType.APPLICATION_JSON)
+    public jakarta.ws.rs.core.Response previewMigration(
+            @QueryParam("repository") String repository,
+            @QueryParam("sourceVersion") String sourceVersion,
+            @QueryParam("targetVersion") String targetVersion) {
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return jakarta.ws.rs.core.Response.status(400)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+        if (!allowedRepositoryResolver.isAllowed(repository)) {
+            return jakarta.ws.rs.core.Response.status(403)
+                    .entity(Map.of("error", "Repository '" + repository + "' is not in the allowed list.")).build();
+        }
+        Optional<String> srcError = InputValidator.validateVersion(sourceVersion);
+        if (srcError.isPresent()) {
+            return jakarta.ws.rs.core.Response.status(400)
+                    .entity(Map.of("error", srcError.get())).build();
+        }
+        Optional<String> tgtError = InputValidator.validateVersion(targetVersion);
+        if (tgtError.isPresent()) {
+            return jakarta.ws.rs.core.Response.status(400)
+                    .entity(Map.of("error", tgtError.get())).build();
+        }
+
+        MigrationService.MigrationResult result = migrationService.previewMigration(
+                repository, sourceVersion, targetVersion);
+
+        if (result == null) {
+            return jakarta.ws.rs.core.Response.status(502)
+                    .entity(Map.of("error", "Failed to fetch migration SQL from API.")).build();
+        }
+
+        long statementCount = result.sql().lines()
+                .filter(l -> !l.isBlank() && !l.startsWith("--")).count();
+
+        Map<String, Object> response = new java.util.LinkedHashMap<>();
+        response.put("sql", result.sql());
+        response.put("sourceVersion", result.sourceVersion());
+        response.put("targetVersion", result.targetVersion());
+        response.put("totalStatements", result.totalStatements() != null ? result.totalStatements() : statementCount);
+        response.put("versionsIncluded", result.versionsIncluded());
+
+        return jakarta.ws.rs.core.Response.ok(response).build();
+    }
+
+    @GET
+    @Path("/migrated-databases")
+    @Produces(MediaType.APPLICATION_JSON)
+    public List<DatabaseMigrationRecord> getMigratedDatabases() {
+        return migrationService.getMigratedDatabases();
+    }
+
+    @GET
+    @Path("/migration-api-available")
+    @Produces(MediaType.APPLICATION_JSON)
+    public boolean isMigrationApiAvailable(@QueryParam("repository") String repository) {
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return false;
+        }
+        if (!allowedRepositoryResolver.isAllowed(repository)) {
+            return false;
+        }
+        return migrationService.isApiAvailable(repository);
     }
 
     @GET

@@ -8,6 +8,7 @@ import br.com.fzdevx.application.dto.RestoreDumpRequest;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.application.port.DatabasePort;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
+import br.com.fzdevx.infrastructure.docker.MigrationService;
 import br.com.fzdevx.infrastructure.docker.PostRestoreScriptService;
 import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import br.com.fzdevx.infrastructure.persistence.SnapshotStorageService;
@@ -53,6 +54,9 @@ public class RestoreDumpUseCase {
 
     @Inject
     PostRestoreScriptService postRestoreScriptService;
+
+    @Inject
+    MigrationService migrationService;
 
     @Inject
     SnapshotStorageService snapshotStorageService;
@@ -139,6 +143,42 @@ public class RestoreDumpUseCase {
             eventSink.accept(ContainerEvent.error("Validating",
                     "No database configuration found for repository: " + request.getRepository()));
             return false;
+        }
+
+        // Validate migration parameters if provided
+        if (request.getMigrationMode() != null && !request.getMigrationMode().isBlank()) {
+            Optional<String> modeError = InputValidator.validateMigrationMode(request.getMigrationMode());
+            if (modeError.isPresent()) {
+                eventSink.accept(ContainerEvent.error("Validating", modeError.get()));
+                return false;
+            }
+            if (!migrationService.isEnabled()) {
+                eventSink.accept(ContainerEvent.error("Validating", "Database migration feature is not enabled."));
+                return false;
+            }
+            if ("MANUAL".equals(request.getMigrationMode())) {
+                Optional<String> sqlError = InputValidator.validateMigrationSql(request.getMigrationSql());
+                if (sqlError.isPresent()) {
+                    eventSink.accept(ContainerEvent.error("Validating", sqlError.get()));
+                    return false;
+                }
+            } else if ("API".equals(request.getMigrationMode())) {
+                Optional<String> srcError = InputValidator.validateVersion(request.getMigrationSourceVersion());
+                if (srcError.isPresent()) {
+                    eventSink.accept(ContainerEvent.error("Validating", "Source version: " + srcError.get()));
+                    return false;
+                }
+                Optional<String> tgtError = InputValidator.validateVersion(request.getMigrationTargetVersion());
+                if (tgtError.isPresent()) {
+                    eventSink.accept(ContainerEvent.error("Validating", "Target version: " + tgtError.get()));
+                    return false;
+                }
+                if (!migrationService.isApiAvailable(request.getRepository())) {
+                    eventSink.accept(ContainerEvent.error("Validating",
+                            "No migration API URL configured for repository: " + request.getRepository()));
+                    return false;
+                }
+            }
         }
 
         // Resolve source: dump or snapshot
@@ -279,6 +319,24 @@ public class RestoreDumpUseCase {
                     if (!scriptsOk && "stop".equalsIgnoreCase(postRestoreScriptService.getOnFailure())) {
                         return false;
                     }
+                }
+            }
+
+            // Step 6: Run migration if requested
+            if (request.getMigrationMode() != null && !request.getMigrationMode().isBlank()
+                    && migrationService.isEnabled()) {
+                if (ctx.cancelled.get()) {
+                    eventSink.accept(ContainerEvent.error("Running Migration", "Restore cancelled by user."));
+                    return false;
+                }
+
+                boolean migrationOk = migrationService.orchestrateMigration(
+                        request.getMigrationMode(), request.getMigrationSql(),
+                        request.getMigrationSourceVersion(), request.getMigrationTargetVersion(),
+                        request.getRepository(), request.getTargetDatabase(), pgImage,
+                        pgInfo, eventSink, ctx.cancelled);
+                if (!migrationOk) {
+                    return false;
                 }
             }
 

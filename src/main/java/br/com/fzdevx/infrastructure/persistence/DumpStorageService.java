@@ -177,6 +177,20 @@ public class DumpStorageService {
         scheduledExpirations.put(dump.getId(), future);
     }
 
+    public boolean updateMetadata(String id, String version, String databaseName) {
+        Optional<DatabaseDump> opt = dumpRepository.findById(id);
+        if (opt.isEmpty()) return false;
+
+        DatabaseDump dump = opt.get();
+        dump.setVersion(version);
+        dump.setDatabaseName(databaseName);
+        dumpRepository.save(dump);
+
+        Log.infof("Updated metadata for dump '%s': version=%s, database=%s",
+                dump.getOriginalFilename(), version, databaseName);
+        return true;
+    }
+
     public boolean updateExpiration(String id, Instant expiresAt) {
         Optional<DatabaseDump> opt = dumpRepository.findById(id);
         if (opt.isEmpty()) return false;

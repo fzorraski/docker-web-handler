@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { DatabaseDump, DatabaseSnapshot } from '../types'
-import { listDumps, deleteDump, deleteDumpsBulk, getStorageInfo, getActiveRestores, updateDumpExpiration, cleanupIdleDumps, type ActiveRestore } from '../services/dumpService'
+import { listDumps, deleteDump, deleteDumpsBulk, getStorageInfo, getActiveRestores, updateDumpExpiration, updateDumpMetadata, cleanupIdleDumps, type ActiveRestore } from '../services/dumpService'
 import { listSnapshots, deleteSnapshot, deleteSnapshotsBulk, getSnapshotStorageInfo, getActiveSnapshots, updateSnapshotExpiration, cleanupIdleSnapshots, type ActiveSnapshot } from '../services/snapshotService'
 import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
@@ -46,7 +46,7 @@ import {
   Switch,
   FormControlLabel,
 } from '@mui/material'
-import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile, CameraAlt, InfoOutlined, CleaningServices, Warning } from '@mui/icons-material'
+import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile, CameraAlt, InfoOutlined, CleaningServices, Warning, Edit, Check, Close } from '@mui/icons-material'
 
 type PendingDelete =
   | { kind: 'dump'; dump: DatabaseDump }
@@ -72,6 +72,50 @@ export default function DatabasePage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [storageInfo, setStorageInfo] = useState<{ totalBytes: number; fileCount: number; maxBytes: number } | null>(null)
   const [activeRestores, setActiveRestores] = useState<ActiveRestore[]>([])
+  const [editingDumpId, setEditingDumpId] = useState<string | null>(null)
+  const [editVersion, setEditVersion] = useState('')
+  const [editDatabase, setEditDatabase] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
+  const [metadataPassword, setMetadataPassword] = useState('')
+  const [metadataPasswordOpen, setMetadataPasswordOpen] = useState(false)
+
+  function startEditDump(dump: DatabaseDump) {
+    setEditingDumpId(dump.id)
+    setEditVersion(dump.version || '')
+    setEditDatabase(dump.databaseName || '')
+  }
+
+  function cancelEditDump() {
+    setEditingDumpId(null)
+    setEditVersion('')
+    setEditDatabase('')
+  }
+
+  async function saveEditDump() {
+    if (!editingDumpId) return
+    if (!metadataPassword) {
+      setMetadataPasswordOpen(true)
+      return
+    }
+    setEditSaving(true)
+    const result = await updateDumpMetadata(editingDumpId, editVersion, editDatabase, metadataPassword)
+    setEditSaving(false)
+    if (result.success) {
+      setEditingDumpId(null)
+      loadDumps()
+    } else {
+      if (result.error?.includes('password') || result.error?.includes('Password')) {
+        setMetadataPassword('')
+        setMetadataPasswordOpen(true)
+      }
+      notify(result.error || 'Failed to update.', 'error')
+    }
+  }
+
+  function handleMetadataPasswordSubmit() {
+    setMetadataPasswordOpen(false)
+    saveEditDump()
+  }
 
   // --- Snapshots state ---
   const [snapshots, setSnapshots] = useState<DatabaseSnapshot[]>([])
@@ -618,8 +662,57 @@ export default function DatabasePage() {
                           {dump.description && <InfoOutlined sx={{ fontSize: 16, color: 'text.disabled' }} />}
                         </Box>
                       </TableCell>
-                      <TableCell>{dump.version || '-'}</TableCell>
-                      <TableCell>{dump.databaseName || '-'}</TableCell>
+                      <TableCell>
+                        {editingDumpId === dump.id ? (
+                          <TextField
+                            value={editVersion}
+                            onChange={(e) => setEditVersion(e.target.value)}
+                            size="small"
+                            variant="standard"
+                            placeholder="-"
+                            autoFocus
+                            sx={{ width: 100 }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') saveEditDump(); if (e.key === 'Escape') cancelEditDump() }}
+                          />
+                        ) : (
+                          <Box
+                            onClick={() => startEditDump(dump)}
+                            sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 0.5, '&:hover .edit-icon': { opacity: 1 } }}
+                          >
+                            {dump.version || '-'}
+                            <Edit className="edit-icon" sx={{ fontSize: 14, opacity: 0, color: 'text.secondary', transition: 'opacity 0.2s' }} />
+                          </Box>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {editingDumpId === dump.id ? (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <TextField
+                              value={editDatabase}
+                              onChange={(e) => setEditDatabase(e.target.value)}
+                              size="small"
+                              variant="standard"
+                              placeholder="-"
+                              sx={{ width: 100 }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') saveEditDump(); if (e.key === 'Escape') cancelEditDump() }}
+                            />
+                            <IconButton size="small" onClick={saveEditDump} disabled={editSaving} color="success">
+                              {editSaving ? <CircularProgress size={14} /> : <Check sx={{ fontSize: 16 }} />}
+                            </IconButton>
+                            <IconButton size="small" onClick={cancelEditDump} disabled={editSaving}>
+                              <Close sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Box>
+                        ) : (
+                          <Box
+                            onClick={() => startEditDump(dump)}
+                            sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 0.5, '&:hover .edit-icon': { opacity: 1 } }}
+                          >
+                            {dump.databaseName || '-'}
+                            <Edit className="edit-icon" sx={{ fontSize: 14, opacity: 0, color: 'text.secondary', transition: 'opacity 0.2s' }} />
+                          </Box>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Chip label={dump.format} size="small" color={dump.format === 'SQL' ? 'primary' : dump.format === 'CUSTOM' ? 'secondary' : 'default'} variant="outlined" />
                       </TableCell>
@@ -965,6 +1058,29 @@ export default function DatabasePage() {
           >
             {cleanupLoading ? t('common.deleting') : t('common.confirm')}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Metadata edit password dialog */}
+      <Dialog open={metadataPasswordOpen} onClose={() => setMetadataPasswordOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>{t('common.operationsPassword')}</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <TextField
+            fullWidth
+            type="password"
+            label={t('common.operationsPassword')}
+            value={metadataPassword}
+            onChange={(e) => setMetadataPassword(e.target.value)}
+            size="small"
+            variant="filled"
+            autoFocus
+            autoComplete="off"
+            onKeyDown={(e) => { if (e.key === 'Enter' && metadataPassword) handleMetadataPasswordSubmit() }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setMetadataPasswordOpen(false); cancelEditDump() }} color="inherit">{t('common.cancel')}</Button>
+          <Button onClick={handleMetadataPasswordSubmit} variant="contained" disabled={!metadataPassword}>{t('common.confirm')}</Button>
         </DialogActions>
       </Dialog>
     </>

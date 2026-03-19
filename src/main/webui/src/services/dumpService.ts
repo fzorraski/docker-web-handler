@@ -168,6 +168,27 @@ export async function updateDumpExpiration(
   return { success: true }
 }
 
+export async function updateDumpMetadata(
+  id: string,
+  version: string,
+  databaseName: string,
+  operationsPassword: string,
+): Promise<{ success: boolean; error?: string }> {
+  const res = await fetch(API + 'metadata/' + encodeURIComponent(id), {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Dump-Password': operationsPassword,
+    },
+    body: JSON.stringify({ version, databaseName }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.error || res.statusText }
+  }
+  return { success: true }
+}
+
 export async function cleanupIdleDumps(password: string, minDays: number): Promise<{ success: boolean; deleted?: number; error?: string }> {
   const res = await fetch(API + 'cleanup-idle', {
     method: 'POST',

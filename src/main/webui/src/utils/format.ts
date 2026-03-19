@@ -50,3 +50,22 @@ export function buildSnapshotTargetDbName(snapshot: DatabaseSnapshot): string {
   const base = snapshot.sourceDatabaseName.replace(/[^a-zA-Z0-9_-]/g, '_')
   return `${base}_restore_${suffix}`
 }
+
+export function formatScriptSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function formatMigrationSummary(
+  config: { mode: string; sql?: string; sourceVersion?: string; targetVersion?: string },
+  t: (...args: any[]) => string,
+  section: string,
+): string {
+  const versionInfo = config.sourceVersion && config.targetVersion
+    ? ` (${config.sourceVersion} \u2192 ${config.targetVersion})` : ''
+  return config.mode === 'MANUAL'
+    ? t(`${section}.migrationManualMode`, { chars: (config.sql?.length ?? 0).toString() }) + versionInfo
+    : t(`${section}.migrationApiMode`) + versionInfo
+}

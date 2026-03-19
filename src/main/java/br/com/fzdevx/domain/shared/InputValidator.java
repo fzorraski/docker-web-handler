@@ -197,6 +197,43 @@ public final class InputValidator {
         return Optional.empty();
     }
 
+    private static final Pattern VERSION_PATTERN =
+            Pattern.compile("^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$");
+
+    public static Optional<String> validateMigrationMode(String mode) {
+        if (mode == null || mode.isBlank()) {
+            return Optional.empty();
+        }
+        if (!"MANUAL".equals(mode) && !"API".equals(mode)) {
+            return Optional.of("Migration mode must be 'MANUAL' or 'API'.");
+        }
+        return Optional.empty();
+    }
+
+    public static Optional<String> validateVersion(String version) {
+        if (version == null || version.isBlank()) {
+            return Optional.of("Version is required.");
+        }
+        if (version.length() > 128) {
+            return Optional.of("Version exceeds maximum length of 128 characters.");
+        }
+        if (!VERSION_PATTERN.matcher(version).matches()) {
+            return Optional.of("Version contains invalid characters. "
+                    + "Only letters, digits, hyphens, underscores, and dots are allowed.");
+        }
+        return Optional.empty();
+    }
+
+    public static Optional<String> validateMigrationSql(String sql) {
+        if (sql == null || sql.isBlank()) {
+            return Optional.of("Migration SQL is required.");
+        }
+        if (sql.length() > 10_000_000) {
+            return Optional.of("Migration SQL exceeds maximum size of 10 MB.");
+        }
+        return Optional.empty();
+    }
+
     public static Optional<String> validateScriptFilename(String filename) {
         if (filename == null || filename.isBlank()) {
             return Optional.of("Script filename is required.");
