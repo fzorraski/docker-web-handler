@@ -30,6 +30,8 @@ import {
 } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import type { MigrationPreview } from '../services/containerService'
+import useFullScreenDialog from '../hooks/useFullScreenDialog'
+import FullscreenToggleButton from './FullscreenToggleButton'
 
 const SQL_TYPES = ['ALTER', 'CREATE', 'INSERT', 'UPDATE', 'DELETE', 'DROP'] as const
 type SqlType = typeof SQL_TYPES[number]
@@ -76,6 +78,7 @@ export default function MigrationPreviewModal({ open, preview, loading, error, o
     () => new Set([...SQL_TYPES, 'COMMENT', 'OTHER'])
   )
   const [wordWrap, setWordWrap] = useState(false)
+  const { fullScreen, toggleFullScreen, resetFullScreen, dialogProps, contentSx, viewerSx } = useFullScreenDialog()
   const [copySnackbar, setCopySnackbar] = useState(false)
   const [currentNavType, setCurrentNavType] = useState<SqlType | null>(null)
   const [currentNavIdx, setCurrentNavIdx] = useState(-1)
@@ -87,6 +90,7 @@ export default function MigrationPreviewModal({ open, preview, loading, error, o
       setSearchTerm('')
       setVisibleTypes(new Set([...SQL_TYPES, 'COMMENT', 'OTHER']))
       setWordWrap(false)
+      resetFullScreen()
       setCurrentNavType(null)
       setCurrentNavIdx(-1)
     }
@@ -206,14 +210,14 @@ export default function MigrationPreviewModal({ open, preview, loading, error, o
   }
 
   return (
-    <Dialog open={open} onClose={onDecline} maxWidth="lg" fullWidth>
+    <Dialog open={open} onClose={onDecline} maxWidth="lg" fullWidth {...dialogProps}>
       <DialogTitle sx={{ bgcolor: 'primary.dark', color: 'white', display: 'flex', alignItems: 'center' }}>
         <SwapHoriz sx={{ mr: 1 }} /> {t('migrationPreview.title')}
         <Button onClick={onDecline} sx={{ ml: 'auto', color: 'white', minWidth: 'auto' }}>
           <Close />
         </Button>
       </DialogTitle>
-      <DialogContent dividers sx={{ p: 0 }}>
+      <DialogContent dividers sx={{ p: 0, ...contentSx }}>
         {loading && (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 6 }}>
             <CircularProgress sx={{ mr: 2 }} />
@@ -230,7 +234,7 @@ export default function MigrationPreviewModal({ open, preview, loading, error, o
         {!loading && !error && preview && (
           <>
             {/* Overview */}
-            <Box sx={{ px: 2, pt: 2, pb: 1, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            <Box sx={{ px: 2, pt: 2, pb: 1, display: 'flex', flexWrap: 'wrap', gap: 1, flexShrink: 0 }}>
               {preview.sourceVersion && preview.targetVersion && (
                 <Chip
                   label={`${preview.sourceVersion} \u2192 ${preview.targetVersion}`}
@@ -275,6 +279,7 @@ export default function MigrationPreviewModal({ open, preview, loading, error, o
                 alignItems: 'center',
                 borderTop: `1px solid ${toolbarBorder}`,
                 borderBottom: `1px solid ${toolbarBorder}`,
+                flexShrink: 0,
               }}
             >
               {/* Search */}
@@ -390,6 +395,9 @@ export default function MigrationPreviewModal({ open, preview, loading, error, o
                 </IconButton>
               </Tooltip>
 
+              {/* Fullscreen toggle */}
+              <FullscreenToggleButton fullScreen={fullScreen} onToggle={toggleFullScreen} color={iconColor} />
+
               {/* Copy */}
               <Tooltip title={t('migrationPreview.copyScript')}>
                 <span>
@@ -406,7 +414,7 @@ export default function MigrationPreviewModal({ open, preview, loading, error, o
             </Box>
 
             {/* SQL viewer */}
-            <Box sx={{ position: 'relative', height: 400 }}>
+            <Box sx={{ position: 'relative', ...viewerSx(400) }}>
               {displayedLines.length === 0 ? (
                 <Box sx={{ bgcolor: logBg, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Typography sx={{ color: chipInactive, fontFamily: 'monospace', fontSize: '0.85rem' }}>

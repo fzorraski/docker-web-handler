@@ -26,6 +26,8 @@ const es: typeof en = {
     noExpiration: 'Sin expiracion',
     preparing: 'Preparando...',
     cancelling: 'Cancelando...',
+    fullscreen: 'Pantalla completa',
+    exitFullscreen: 'Salir de pantalla completa',
   },
 
   navbar: {

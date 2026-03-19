@@ -26,6 +26,8 @@ const ptBR: typeof en = {
     noExpiration: 'Sem expiracao',
     preparing: 'Preparando...',
     cancelling: 'Cancelando...',
+    fullscreen: 'Tela cheia',
+    exitFullscreen: 'Sair da tela cheia',
   },
 
   navbar: {

@@ -24,6 +24,8 @@ const en = {
     noExpiration: 'No expiration',
     preparing: 'Preparing...',
     cancelling: 'Cancelling...',
+    fullscreen: 'Fullscreen',
+    exitFullscreen: 'Exit fullscreen',
   },
 
   navbar: {
