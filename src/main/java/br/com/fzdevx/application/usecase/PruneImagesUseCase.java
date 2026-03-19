@@ -5,6 +5,7 @@ import br.com.fzdevx.application.port.DockerImagePort;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.shared.Constants;
 import br.com.fzdevx.infrastructure.persistence.ImageUsageTracker;
+import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import br.com.fzdevx.infrastructure.util.BytesConverter;
 import com.github.dockerjava.api.model.Container;
 import com.github.dockerjava.api.model.Image;
@@ -28,6 +29,9 @@ public class PruneImagesUseCase {
 
     @Inject
     ImageUsageTracker imageUsageTracker;
+
+    @Inject
+    ResourceCounterService resourceCounterService;
 
     public void execute(int minDays, Consumer<ContainerEvent> eventSink) {
         eventSink.accept(ContainerEvent.info("Validating", "Analyzing images..."));
@@ -93,6 +97,7 @@ public class PruneImagesUseCase {
                 String displayId = img.getId().length() > 20 ? img.getId().substring(0, 20) : img.getId();
                 try {
                     dockerImagePort.removeImage(img.getId());
+                    resourceCounterService.increment(ResourceCounterService.IMAGES_DELETED);
                     removed++;
                     totalSize += img.getSize();
                     eventSink.accept(ContainerEvent.progress("Pruning",

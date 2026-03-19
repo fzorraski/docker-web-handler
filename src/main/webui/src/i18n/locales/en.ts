@@ -42,7 +42,7 @@ const en = {
     soFar: 'So far:',
     startedAt: 'Total managed resources since {{date}}',
     containers: 'Containers',
-    images: 'Images',
+    imagesDeleted: 'Images Deleted',
     dumps: 'Dumps',
     snapshots: 'Snapshots',
     restores: 'Restores',

@@ -44,7 +44,7 @@ const es: typeof en = {
     soFar: 'Hasta ahora:',
     startedAt: 'Total de recursos gestionados desde {{date}}',
     containers: 'Contenedores',
-    images: 'Imagenes',
+    imagesDeleted: 'Imagenes Eliminadas',
     dumps: 'Dumps',
     snapshots: 'Snapshots',
     restores: 'Restauraciones',

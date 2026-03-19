@@ -294,7 +294,6 @@ public class RunContainerUseCase {
             String expirationMessage = scheduleExpiration(request, container.getId());
 
             resourceCounterService.increment(ResourceCounterService.CONTAINERS);
-            resourceCounterService.increment(ResourceCounterService.IMAGES);
 
             createdContainerId = null; // success — don't clean up
             eventSink.accept(ContainerEvent.success("Complete",

@@ -33,7 +33,7 @@ public class ResourceCounterService {
     private final Jsonb jsonb = JsonbBuilder.create();
 
     public static final String CONTAINERS = "containers";
-    public static final String IMAGES = "images";
+    public static final String IMAGES_DELETED = "imagesDeleted";
     public static final String DUMPS = "dumps";
     public static final String SNAPSHOTS = "snapshots";
     public static final String RESTORES = "restores";
@@ -56,7 +56,7 @@ public class ResourceCounterService {
     public Map<String, Long> getAll() {
         Map<String, Long> result = new java.util.LinkedHashMap<>();
         result.put(CONTAINERS, get(CONTAINERS));
-        result.put(IMAGES, get(IMAGES));
+        result.put(IMAGES_DELETED, get(IMAGES_DELETED));
         result.put(DUMPS, get(DUMPS));
         result.put(SNAPSHOTS, get(SNAPSHOTS));
         result.put(RESTORES, get(RESTORES));

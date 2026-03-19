@@ -44,7 +44,7 @@ const ptBR: typeof en = {
     soFar: 'Ate agora:',
     startedAt: 'Total de recursos gerenciados desde {{date}}',
     containers: 'Containers',
-    images: 'Imagens',
+    imagesDeleted: 'Imagens Removidas',
     dumps: 'Dumps',
     snapshots: 'Snapshots',
     restores: 'Restauracoes',

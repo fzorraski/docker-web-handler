@@ -3,12 +3,12 @@
 
 import { useState, useEffect } from 'react'
 import { Box, Typography, Tooltip, useTheme } from '@mui/material'
-import { Dns, PhotoLibrary, Storage, CameraAlt, SettingsBackupRestore } from '@mui/icons-material'
+import { Dns, DeleteSweep, Storage, CameraAlt, SettingsBackupRestore } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 
 interface Stats {
   containers: number
-  images: number
+  imagesDeleted: number
   dumps: number
   snapshots: number
   restores: number
@@ -75,7 +75,7 @@ export default function Footer() {
             </Tooltip>
             <Box sx={{ display: 'flex', gap: 1.5 }}>
               <StatItem icon={<Dns />} label={t('footer.containers')} value={stats.containers} isDark={isDark} />
-              <StatItem icon={<PhotoLibrary />} label={t('footer.images')} value={stats.images} isDark={isDark} />
+              <StatItem icon={<DeleteSweep />} label={t('footer.imagesDeleted')} value={stats.imagesDeleted} isDark={isDark} />
               {(stats.dumps > 0 || stats.snapshots > 0) && (
                 <>
                   <StatItem icon={<Storage />} label={t('footer.dumps')} value={stats.dumps} isDark={isDark} />

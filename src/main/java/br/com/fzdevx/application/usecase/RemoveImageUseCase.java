@@ -3,6 +3,7 @@ package br.com.fzdevx.application.usecase;
 import br.com.fzdevx.application.port.DockerImagePort; // ⚠ SOLID — DIP: depends on port, not DockerClient
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.shared.InputValidator;
+import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -14,6 +15,9 @@ public class RemoveImageUseCase {
 
     @Inject
     DockerImagePort dockerImagePort; // ⚠ SOLID — DIP: injecting port interface
+
+    @Inject
+    ResourceCounterService resourceCounterService;
 
     public void execute(String imageId, Consumer<ContainerEvent> eventSink) {
         Optional<String> idError = InputValidator.validateImageId(imageId);
@@ -41,6 +45,7 @@ public class RemoveImageUseCase {
             return;
         }
 
+        resourceCounterService.increment(ResourceCounterService.IMAGES_DELETED);
         eventSink.accept(ContainerEvent.success("Complete", "Image " + imageId + " removed successfully."));
     }
 }
