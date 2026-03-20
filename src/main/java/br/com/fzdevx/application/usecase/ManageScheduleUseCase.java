@@ -11,6 +11,7 @@ import br.com.fzdevx.domain.model.ScheduleType;
 import br.com.fzdevx.domain.shared.CronParser;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.ContainerSchedulingService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -29,6 +30,50 @@ public class ManageScheduleUseCase {
 
     @Inject
     ContainerExpirationService expirationService;
+
+    @Inject
+    ContainerSchedulingService schedulingService;
+
+    public ContainerSchedule createAndSchedule(CreateScheduleRequest request) {
+        ContainerSchedule schedule = create(request);
+        schedulingService.scheduleNext(schedule);
+        return schedule;
+    }
+
+    public ContainerSchedule updateAndReschedule(String id, UpdateScheduleRequest request) {
+        ContainerSchedule schedule = update(id, request);
+        schedulingService.cancel(id);
+        if (schedule.isEnabled()) {
+            schedulingService.scheduleNext(schedule);
+        }
+        return schedule;
+    }
+
+    public ContainerSchedule toggleAndReschedule(String id) {
+        ContainerSchedule schedule = toggleEnabled(id);
+        if (schedule.isEnabled()) {
+            schedulingService.scheduleNext(schedule);
+        } else {
+            schedulingService.cancel(id);
+        }
+        return schedule;
+    }
+
+    public void deleteAndCancel(String id) {
+        schedulingService.cancel(id);
+        delete(id);
+    }
+
+    public void executeNow(String id) {
+        var schedule = scheduleRepository.findById(id);
+        if (schedule.isEmpty()) {
+            throw new EntityNotFoundException("Schedule not found: " + id);
+        }
+        if (!schedule.get().isEnabled()) {
+            throw new InvalidInputException("Cannot execute a disabled schedule.");
+        }
+        schedulingService.executeNow(id);
+    }
 
     public ContainerSchedule create(CreateScheduleRequest request) {
         // Validate name
@@ -70,6 +115,9 @@ public class ManageScheduleUseCase {
                 throw new InvalidInputException("Scheduled time is required for one-time schedules.");
             }
             Instant scheduledAt = parseInstant(request.getScheduledAt());
+            if (scheduledAt.isBefore(Instant.now())) {
+                throw new InvalidInputException("Scheduled time must be in the future.");
+            }
             schedule.setScheduledAt(scheduledAt);
             schedule.setNextExecutionAt(scheduledAt);
         }
@@ -203,19 +251,37 @@ public class ManageScheduleUseCase {
 
         if (schedule.getScheduleType() == ScheduleType.ONE_TIME && request.getScheduledAt() != null) {
             Instant scheduledAt = parseInstant(request.getScheduledAt());
+            if (scheduledAt.isBefore(Instant.now())) {
+                throw new InvalidInputException("Scheduled time must be in the future.");
+            }
             schedule.setScheduledAt(scheduledAt);
             schedule.setNextExecutionAt(scheduledAt);
         }
 
         if (request.getContainerId() != null) {
+            Optional<String> containerIdError = InputValidator.validateContainerId(request.getContainerId());
+            if (containerIdError.isPresent()) {
+                throw new InvalidInputException(containerIdError.get());
+            }
             schedule.setContainerId(request.getContainerId());
         }
-        if (request.getContainerName() != null) {
+        if (request.getContainerName() != null && !request.getContainerName().isBlank()) {
+            Optional<String> containerNameError = InputValidator.validateContainerName(request.getContainerName());
+            if (containerNameError.isPresent()) {
+                throw new InvalidInputException(containerNameError.get());
+            }
             schedule.setContainerName(request.getContainerName());
         }
         if (request.getCreateConfig() != null) {
             request.getCreateConfig().setOperationsPassword(null);
             request.getCreateConfig().setOperationsPasswordValidated(false);
+            if (schedule.getScheduleType() == ScheduleType.RECURRING) {
+                if (request.getCreateConfig().isDeleteDatabaseOnExpiration()) {
+                    throw new InvalidInputException(
+                            "Recurring CREATE schedules cannot enable 'delete database on expiration'.");
+                }
+                request.getCreateConfig().setExpiresAt(null);
+            }
             schedule.setCreateConfig(request.getCreateConfig());
         }
 

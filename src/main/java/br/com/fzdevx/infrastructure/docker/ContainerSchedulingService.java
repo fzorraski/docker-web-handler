@@ -27,7 +27,7 @@ import java.util.concurrent.*;
 public class ContainerSchedulingService {
 
     private final ConcurrentHashMap<String, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
-    private ScheduledExecutorService scheduler;
+    private volatile ScheduledExecutorService scheduler;
 
     @Inject
     DockerClient dockerClient;

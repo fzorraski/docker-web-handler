@@ -40,6 +40,7 @@ public class JsonFileScheduleRepository
 
     @Override
     public List<ContainerSchedule> findByContainerId(String containerId) {
+        if (containerId == null) return List.of();
         return findAllMatching(s -> containerId.equals(s.getContainerId()));
     }
 

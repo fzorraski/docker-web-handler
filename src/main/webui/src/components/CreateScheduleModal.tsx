@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button,
   TextField, Box, Typography, IconButton, Chip, Grid, Alert,
@@ -55,7 +55,7 @@ export default function CreateScheduleModal({ open, onClose, onCreated, containe
   // START/STOP fields
   const [selectedContainer, setSelectedContainer] = useState<DockerContainer | null>(null)
   const [pendingRequest, setPendingRequest] = useState<Parameters<typeof createSchedule>[0] | null>(null)
-  const [conflictWarning, setConflictWarning] = useState<string | null>(null)
+  const [containerSchedules, setContainerSchedules] = useState<import('../types').ContainerSchedule[]>([])
 
   // CREATE fields
   const [repositories, setRepositories] = useState<string[]>([])
@@ -74,31 +74,27 @@ export default function CreateScheduleModal({ open, onClose, onCreated, containe
 
   useEffect(() => {
     if (!selectedContainer || action === 'CREATE') {
-      setConflictWarning(null)
+      setContainerSchedules([])
       return
     }
     getSchedulesByContainer(selectedContainer.containerId)
-      .then((existing) => {
-        const enabled = existing.filter(s => s.enabled)
-        const hasRemove = enabled.some(s => s.action === 'REMOVE')
-        if (hasRemove) {
-          setConflictWarning(t('schedules.conflict.removeExists'))
-          return
-        }
-        if (action === 'REMOVE' && enabled.length > 0) {
-          const names = enabled.map(s => `${s.name} (${s.action})`).join(', ')
-          setConflictWarning(t('schedules.conflict.removeBlocked', { schedules: names }))
-          return
-        }
-        const hasSame = enabled.some(s => s.action === action)
-        if (hasSame) {
-          setConflictWarning(t('schedules.conflict.duplicateAction', { action: t(`schedules.action${action.charAt(0) + action.slice(1).toLowerCase()}` as never) }))
-          return
-        }
-        setConflictWarning(null)
-      })
-      .catch(() => setConflictWarning(null))
-  }, [selectedContainer, action, t])
+      .then(setContainerSchedules)
+      .catch(() => setContainerSchedules([]))
+  }, [selectedContainer])
+
+  const conflictWarning = useMemo(() => {
+    if (action === 'CREATE' || containerSchedules.length === 0) return null
+    const enabled = containerSchedules.filter(s => s.enabled)
+    if (enabled.some(s => s.action === 'REMOVE')) return t('schedules.conflict.removeExists')
+    if (action === 'REMOVE' && enabled.length > 0) {
+      const names = enabled.map(s => `${s.name} (${s.action})`).join(', ')
+      return t('schedules.conflict.removeBlocked', { schedules: names })
+    }
+    if (enabled.some(s => s.action === action)) {
+      return t('schedules.conflict.duplicateAction', { action: t(`schedules.action${action.charAt(0) + action.slice(1).toLowerCase()}` as never) })
+    }
+    return null
+  }, [containerSchedules, action, t])
 
   useEffect(() => {
     if (!selectedRepo) { setAllTags([]); setSelectedTag(null); return }
@@ -128,7 +124,7 @@ export default function CreateScheduleModal({ open, onClose, onCreated, containe
     setContainerName('')
     setEnvVars([])
     setPendingRequest(null)
-    setConflictWarning(null)
+    setContainerSchedules([])
   }
 
   function handleCreate() {

@@ -3,7 +3,7 @@ package br.com.fzdevx.application.dto;
 public class CreateScheduleRequest {
 
     private String name;
-    private String action;       // START, STOP, CREATE
+    private String action;       // START, STOP, CREATE, REMOVE
     private String scheduleType; // ONE_TIME, RECURRING
     private String cronExpression;
     private String scheduledAt;  // ISO instant for ONE_TIME
