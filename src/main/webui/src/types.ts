@@ -55,6 +55,44 @@ export interface DatabaseDump {
   lastUsedAt?: string
 }
 
+export interface ContainerSchedule {
+  id: string
+  name: string
+  action: 'START' | 'STOP' | 'CREATE' | 'REMOVE'
+  scheduleType: 'ONE_TIME' | 'RECURRING'
+  enabled: boolean
+  createdAt: string
+  cronExpression?: string
+  scheduledAt?: string
+  containerId?: string
+  containerName?: string
+  createConfig?: RunContainerConfig
+  nextExecutionAt?: string
+  lastExecutedAt?: string
+  lastExecutionStatus?: string
+  lastExecutionMessage?: string
+}
+
+export interface RunContainerConfig {
+  repository: string
+  tag: string
+  containerName?: string
+  envVars?: string[]
+  expiresAt?: string
+  memoryMb?: number
+  databaseName?: string
+  deleteDatabaseOnExpiration?: boolean
+  dumpId?: string
+  snapshotId?: string
+  createDatabase?: boolean
+  selectedOptionalScripts?: string[]
+  operationsPassword?: string
+  migrationMode?: string
+  migrationSql?: string
+  migrationSourceVersion?: string
+  migrationTargetVersion?: string
+}
+
 export interface DatabaseSnapshot {
   id: string
   storedFilename: string

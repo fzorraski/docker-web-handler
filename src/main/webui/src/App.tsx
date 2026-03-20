@@ -6,6 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import ContainersPage from './pages/ContainersPage'
 import ImagesPage from './pages/ImagesPage'
 import DatabasePage from './pages/DatabasePage'
+import SchedulesPage from './pages/SchedulesPage'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
             <Route path="/" element={<ContainersPage />} />
             <Route path="/images" element={<ImagesPage />} />
             <Route path="/database" element={<DatabasePage />} />
+            <Route path="/schedules" element={<SchedulesPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </ErrorBoundary>

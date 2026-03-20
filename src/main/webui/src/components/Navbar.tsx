@@ -11,6 +11,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { DarkMode, LightMode, Menu as MenuIcon } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { isDumpEnabled } from '../services/dumpService'
+import { isSchedulingEnabled } from '../services/scheduleService'
 import { useThemeMode } from './ThemeModeProvider'
 import LanguageSwitcher from './LanguageSwitcher'
 
@@ -19,6 +20,7 @@ export default function Navbar() {
   const { mode, toggleMode } = useThemeMode()
   const { t } = useTranslation()
   const [dumpEnabled, setDumpEnabled] = useState(false)
+  const [schedulingEnabled, setSchedulingEnabled] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const theme = useTheme()
@@ -27,12 +29,14 @@ export default function Navbar() {
 
   useEffect(() => {
     isDumpEnabled().then(setDumpEnabled).catch(() => setDumpEnabled(false))
+    isSchedulingEnabled().then(setSchedulingEnabled).catch(() => setSchedulingEnabled(false))
   }, [])
 
   const navItems = [
     { label: t('navbar.containers'), path: '/' },
     { label: t('navbar.images'), path: '/images' },
     ...(dumpEnabled ? [{ label: t('navbar.database'), path: '/database' }] : []),
+    ...(schedulingEnabled ? [{ label: t('navbar.schedules'), path: '/schedules' }] : []),
   ]
 
   const handleDrawerToggle = () => {

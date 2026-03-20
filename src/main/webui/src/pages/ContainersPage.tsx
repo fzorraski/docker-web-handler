@@ -17,6 +17,7 @@ import { isDumpEnabled, getActiveRestores, type ActiveRestore } from '../service
 import { streamRemoveContainer } from  '../services/sseService'
 import NewContainerModal from '../components/NewContainerModal'
 import RunMigrationModal from '../components/RunMigrationModal'
+import QuickScheduleDialog from '../components/QuickScheduleDialog'
 import CreateSnapshotModal from '../components/CreateSnapshotModal'
 import ContainerLogsDialog from '../components/ContainerLogsDialog'
 import OperationProgress, { REMOVE_STEPS } from '../components/OperationProgress'
@@ -55,7 +56,9 @@ import {
   Alert,
   AlertTitle,
 } from '@mui/material'
-import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz } from '@mui/icons-material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime } from '@mui/icons-material'
+import { isSchedulingEnabled, listSchedules } from '../services/scheduleService'
+import type { ContainerSchedule } from '../types'
 
 interface ColumnDef {
   key: string
@@ -101,6 +104,12 @@ export default function ContainersPage() {
   const [migrationRepo, setMigrationRepo] = useState('')
   const [migrationDb, setMigrationDb] = useState('')
   const [migrationOpen, setMigrationOpen] = useState(false)
+  const [schedulingFeatureEnabled, setSchedulingFeatureEnabled] = useState(false)
+  const [containerSchedules, setContainerSchedules] = useState<Map<string, ContainerSchedule[]>>(new Map())
+  const [scheduleContainerId, setScheduleContainerId] = useState('')
+  const [scheduleContainerName, setScheduleContainerName] = useState('')
+  const [scheduleExpiresAt, setScheduleExpiresAt] = useState<string | undefined>(undefined)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
 
 
   const machineIp = window.location.hostname
@@ -143,6 +152,20 @@ export default function ContainersPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  function loadContainerSchedules() {
+    listSchedules().then((all) => {
+      const map = new Map<string, ContainerSchedule[]>()
+      for (const s of all) {
+        if (s.containerId && s.enabled) {
+          const list = map.get(s.containerId) || []
+          list.push(s)
+          map.set(s.containerId, list)
+        }
+      }
+      setContainerSchedules(map)
+    }).catch(() => setContainerSchedules(new Map()))
+  }
+
   useEffect(() => {
     loadContainers()
     getAllowedRepositories().then((repos) => setHasRepos(repos.length > 0)).catch(() => {})
@@ -150,6 +173,10 @@ export default function ContainersPage() {
     isDumpEnabled().then(setDumpEnabled).catch(() => {})
     getMigratedDatabases().then(setMigratedDatabases).catch(() => setMigratedDatabases([]))
     checkMigrationEnabled().then(setMigrationFeatureEnabled).catch(() => setMigrationFeatureEnabled(false))
+    isSchedulingEnabled().then((enabled) => {
+      setSchedulingFeatureEnabled(enabled)
+      if (enabled) loadContainerSchedules()
+    }).catch(() => setSchedulingFeatureEnabled(false))
   }, [loadContainers])
 
   useEffect(() => {
@@ -506,7 +533,35 @@ export default function ContainersPage() {
                         : '-'}
                     </TableCell>
                   )}
-                  {columnVisibility.names && <TableCell sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{c.names}</TableCell>}
+                  {columnVisibility.names && (
+                    <TableCell sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        {c.names}
+                        {schedulingFeatureEnabled && containerSchedules.has(c.containerId) && (() => {
+                          const schedules = containerSchedules.get(c.containerId)!
+                          const summary = schedules.map(s => `${s.name} (${s.action})`).join(', ')
+                          return (
+                            <Tooltip title={t('containers.activeSchedules', { count: schedules.length, summary })}>
+                              <Chip
+                                icon={<AccessTime />}
+                                label={schedules.length}
+                                size="small"
+                                color="info"
+                                variant="outlined"
+                                sx={{ height: 20, fontSize: '0.7rem', '& .MuiChip-icon': { fontSize: 14 } }}
+                                onClick={() => {
+                                  setScheduleContainerId(c.containerId)
+                                  setScheduleContainerName(c.names)
+                                  setScheduleExpiresAt(c.expiresAt)
+                                  setScheduleOpen(true)
+                                }}
+                              />
+                            </Tooltip>
+                          )
+                        })()}
+                      </Box>
+                    </TableCell>
+                  )}
                   {columnVisibility.database && (
                     <TableCell>
                       {c.databaseName ? (() => {
@@ -635,6 +690,22 @@ export default function ContainersPage() {
                             </IconButton>
                           </Tooltip>
                         )}
+                        {schedulingFeatureEnabled && (
+                          <Tooltip title={t('schedules.quickTitle', { name: '' })}>
+                            <IconButton
+                              size="small"
+                              color="default"
+                              onClick={() => {
+                                setScheduleContainerId(c.containerId)
+                                setScheduleContainerName(c.names)
+                                setScheduleExpiresAt(c.expiresAt)
+                                setScheduleOpen(true)
+                              }}
+                            >
+                              <AccessTime />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         <Tooltip title={t('common.remove')}>
                           <IconButton
                             size="small"
@@ -707,6 +778,20 @@ export default function ContainersPage() {
         onCompleted={() => {
           loadContainers()
           getMigratedDatabases().then(setMigratedDatabases).catch(() => {})
+        }}
+      />
+
+      <QuickScheduleDialog
+        open={scheduleOpen}
+        containerId={scheduleContainerId}
+        containerName={scheduleContainerName}
+        expiresAt={scheduleExpiresAt}
+        onClose={() => {
+          setScheduleOpen(false)
+          setScheduleContainerId('')
+          setScheduleContainerName('')
+          setScheduleExpiresAt(undefined)
+          if (schedulingFeatureEnabled) loadContainerSchedules()
         }}
       />
     </>
