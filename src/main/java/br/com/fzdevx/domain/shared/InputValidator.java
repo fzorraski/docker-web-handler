@@ -234,6 +234,33 @@ public final class InputValidator {
         return Optional.empty();
     }
 
+    private static final Pattern SCHEDULE_NAME_PATTERN =
+            Pattern.compile("^[a-zA-Z0-9][a-zA-Z0-9 _.-]{0,99}$");
+
+    public static Optional<String> validateScheduleName(String name) {
+        if (name == null || name.isBlank()) {
+            return Optional.of("Schedule name is required.");
+        }
+        if (name.length() > 100) {
+            return Optional.of("Schedule name exceeds maximum length of 100 characters.");
+        }
+        if (!SCHEDULE_NAME_PATTERN.matcher(name).matches()) {
+            return Optional.of("Schedule name contains invalid characters. "
+                    + "Only letters, digits, spaces, hyphens, underscores, and dots are allowed.");
+        }
+        return Optional.empty();
+    }
+
+    public static Optional<String> validateCronExpression(String cron) {
+        if (cron == null || cron.isBlank()) {
+            return Optional.of("Cron expression is required.");
+        }
+        if (!CronParser.isValid(cron)) {
+            return Optional.of("Invalid cron expression. Expected 5 fields: minute hour day-of-month month day-of-week.");
+        }
+        return Optional.empty();
+    }
+
     public static Optional<String> validateScriptFilename(String filename) {
         if (filename == null || filename.isBlank()) {
             return Optional.of("Script filename is required.");
