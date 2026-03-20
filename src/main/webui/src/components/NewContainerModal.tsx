@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSseOperation } from '../hooks/useSseOperation'
 import {
   Autocomplete,
@@ -49,6 +49,7 @@ import OperationProgress, { RUN_STEPS, RUN_WITH_RESTORE_STEPS, RUN_WITH_RESTORE_
 import DumpBrowserModal from './DumpBrowserModal'
 import MigrationConfigModal, { type MigrationConfig } from './MigrationConfigModal'
 import MigrationPreviewModal from './MigrationPreviewModal'
+import PasswordConfirmDialog from './PasswordConfirmDialog'
 
 interface Props {
   open: boolean
@@ -127,6 +128,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const [migrationConfig, setMigrationConfig] = useState<MigrationConfig | null>(null)
   const [migrationModalOpen, setMigrationModalOpen] = useState(false)
   const [operationsPassword, setOperationsPassword] = useState('')
+  const operationsPasswordRef = useRef('')
   const [operationsPasswordOpen, setOperationsPasswordOpen] = useState(false)
   const migrationPreview = useMigrationPreview()
   const [runTicket, setRunTicket] = useState<string | null>(null)
@@ -371,6 +373,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setMigrationConfig(null)
     setMigrationModalOpen(false)
     setOperationsPassword('')
+    operationsPasswordRef.current = ''
     setOperationsPasswordOpen(false)
     migrationPreview.reset()
     setRunTicket(null)
@@ -389,11 +392,15 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     const needsPassword = dbMode === 'existing' && (
       (migrationEnabled && migrationConfig) || deleteDbOnExpiration
     )
-    if (needsPassword && !operationsPassword) {
+    if (needsPassword && !operationsPasswordRef.current) {
       setOperationsPasswordOpen(true)
       return
     }
 
+    await continueAfterPassword()
+  }
+
+  async function continueAfterPassword() {
     if (restoreDbExists) {
       setConfirmOverrideOpen(true)
       return
@@ -449,7 +456,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         snapshotId: dbMode === 'restore' && selectedSnapshot ? selectedSnapshot.id : null,
         createDatabase: dbMode === 'restore' ? createDatabase : false,
         selectedOptionalScripts: dbMode === 'restore' && scriptsResponse?.enabled ? selectedOptionalScripts : undefined,
-        operationsPassword: operationsPassword || null,
+        operationsPassword: operationsPasswordRef.current || null,
         migrationMode: migrationEnabled && migrationConfig ? migrationConfig.mode : null,
         migrationSql: migrationEnabled && migrationConfig?.mode === 'MANUAL' ? migrationConfig.sql : null,
         migrationSourceVersion: migrationEnabled && migrationConfig ? migrationConfig.sourceVersion : null,
@@ -1215,41 +1222,22 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         onDecline={migrationPreview.closePreview}
       />
 
-      <Dialog open={operationsPasswordOpen} onClose={() => setOperationsPasswordOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>{t('common.operationsPassword')}</DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          <TextField
-            fullWidth
-            type="password"
-            label={t('common.operationsPassword')}
-            value={operationsPassword}
-            onChange={(e) => setOperationsPassword(e.target.value)}
-            size="small"
-            variant="filled"
-            autoFocus
-            autoComplete="off"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && operationsPassword) {
-                setOperationsPasswordOpen(false)
-                handleRun()
-              }
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOperationsPasswordOpen(false)} color="inherit">{t('common.cancel')}</Button>
-          <Button
-            onClick={() => {
-              setOperationsPasswordOpen(false)
-              handleRun()
-            }}
-            variant="contained"
-            disabled={!operationsPassword}
-          >
-            {t('common.confirm')}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <PasswordConfirmDialog
+        open={operationsPasswordOpen}
+        title={t('newContainer.confirmRunTitle')}
+        message={t('newContainer.confirmRunPasswordMessage')}
+        confirmLabel={t('newContainer.runContainer')}
+        loadingLabel={t('common.preparing')}
+        confirmColor="primary"
+        icon={<PlayArrow />}
+        onConfirm={async (password) => {
+          operationsPasswordRef.current = password
+          setOperationsPassword(password)
+          setOperationsPasswordOpen(false)
+          await continueAfterPassword()
+        }}
+        onClose={() => setOperationsPasswordOpen(false)}
+      />
     </>
   )
 }

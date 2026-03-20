@@ -91,17 +91,19 @@ export default function DatabasePage() {
     setEditDatabase('')
   }
 
-  async function saveEditDump() {
+  async function saveEditDump(password?: string) {
     if (!editingDumpId) return
-    if (!metadataPassword) {
+    const pw = password ?? metadataPassword
+    if (!pw) {
       setMetadataPasswordOpen(true)
       return
     }
     setEditSaving(true)
-    const result = await updateDumpMetadata(editingDumpId, editVersion, editDatabase, metadataPassword)
+    const result = await updateDumpMetadata(editingDumpId, editVersion, editDatabase, pw)
     setEditSaving(false)
     if (result.success) {
       setEditingDumpId(null)
+      setMetadataPassword('')
       loadDumps()
     } else {
       if (result.error?.includes('password') || result.error?.includes('Password')) {
@@ -110,11 +112,6 @@ export default function DatabasePage() {
       }
       notify(result.error || 'Failed to update.', 'error')
     }
-  }
-
-  function handleMetadataPasswordSubmit() {
-    setMetadataPasswordOpen(false)
-    saveEditDump()
   }
 
   // --- Snapshots state ---
@@ -696,7 +693,7 @@ export default function DatabasePage() {
                               sx={{ width: 100 }}
                               onKeyDown={(e) => { if (e.key === 'Enter') saveEditDump(); if (e.key === 'Escape') cancelEditDump() }}
                             />
-                            <IconButton size="small" onClick={saveEditDump} disabled={editSaving} color="success">
+                            <IconButton size="small" onClick={() => saveEditDump()} disabled={editSaving} color="success">
                               {editSaving ? <CircularProgress size={14} /> : <Check sx={{ fontSize: 16 }} />}
                             </IconButton>
                             <IconButton size="small" onClick={cancelEditDump} disabled={editSaving}>
@@ -1061,28 +1058,21 @@ export default function DatabasePage() {
         </DialogActions>
       </Dialog>
 
-      {/* Metadata edit password dialog */}
-      <Dialog open={metadataPasswordOpen} onClose={() => setMetadataPasswordOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>{t('common.operationsPassword')}</DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          <TextField
-            fullWidth
-            type="password"
-            label={t('common.operationsPassword')}
-            value={metadataPassword}
-            onChange={(e) => setMetadataPassword(e.target.value)}
-            size="small"
-            variant="filled"
-            autoFocus
-            autoComplete="off"
-            onKeyDown={(e) => { if (e.key === 'Enter' && metadataPassword) handleMetadataPasswordSubmit() }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => { setMetadataPasswordOpen(false); cancelEditDump() }} color="inherit">{t('common.cancel')}</Button>
-          <Button onClick={handleMetadataPasswordSubmit} variant="contained" disabled={!metadataPassword}>{t('common.confirm')}</Button>
-        </DialogActions>
-      </Dialog>
+      <PasswordConfirmDialog
+        open={metadataPasswordOpen}
+        title={t('database.editMetadataTitle')}
+        message={t('database.editMetadataPasswordMessage')}
+        confirmLabel={t('common.save')}
+        loadingLabel={t('common.saving')}
+        confirmColor="primary"
+        icon={<Edit />}
+        onConfirm={async (password) => {
+          setMetadataPassword(password)
+          setMetadataPasswordOpen(false)
+          await saveEditDump(password)
+        }}
+        onClose={() => { setMetadataPasswordOpen(false); cancelEditDump() }}
+      />
     </>
   )
 }

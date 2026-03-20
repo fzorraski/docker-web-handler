@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactElement } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -12,6 +12,10 @@ import {
 import { Delete } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 
+function sanitizeHtml(html: string): string {
+  return html.replace(/<(?!\/?(?:strong|b|em|br)\b)[^>]*>/gi, '')
+}
+
 interface Props {
   open: boolean
   onClose: () => void
@@ -19,7 +23,9 @@ interface Props {
   title: string
   message: string
   confirmLabel?: string
-  confirmColor?: 'error' | 'warning'
+  loadingLabel?: string
+  confirmColor?: 'error' | 'warning' | 'primary' | 'success'
+  icon?: ReactElement
 }
 
 export default function PasswordConfirmDialog({
@@ -29,11 +35,15 @@ export default function PasswordConfirmDialog({
   title,
   message,
   confirmLabel,
+  loadingLabel,
   confirmColor = 'error',
+  icon,
 }: Props) {
   const { t } = useTranslation()
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const resolvedIcon = icon ?? <Delete />
 
   function handleClose() {
     if (!loading) {
@@ -56,11 +66,12 @@ export default function PasswordConfirmDialog({
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ bgcolor: `${confirmColor}.main`, color: 'white' }}>
-        <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> {title}
+        {resolvedIcon && <span style={{ marginRight: 8, verticalAlign: 'middle' }}>{resolvedIcon}</span>}
+        {title}
       </DialogTitle>
       <DialogContent dividers sx={{ pt: 3 }}>
         <Typography sx={{ mb: 2 }}>
-          <span dangerouslySetInnerHTML={{ __html: message }} />
+          <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(message) }} />
         </Typography>
         <TextField
           fullWidth
@@ -81,9 +92,11 @@ export default function PasswordConfirmDialog({
           color={confirmColor}
           onClick={handleConfirm}
           disabled={loading || !password}
-          startIcon={loading ? <CircularProgress size={20} /> : <Delete />}
+          startIcon={loading ? <CircularProgress size={20} /> : resolvedIcon}
         >
-          {loading ? t('common.deleting') : (confirmLabel ?? t('common.delete'))}
+          {loading
+            ? (loadingLabel ?? t('common.deleting'))
+            : (confirmLabel ?? t('common.delete'))}
         </Button>
       </DialogActions>
     </Dialog>
