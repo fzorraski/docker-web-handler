@@ -94,8 +94,7 @@ public class ScheduleController {
                     .entity(Map.of("error", "Invalid operations password.")).build();
         }
 
-        ContainerSchedule schedule = manageScheduleUseCase.create(request);
-        schedulingService.scheduleNext(schedule);
+        ContainerSchedule schedule = manageScheduleUseCase.createAndSchedule(request);
         return Response.status(Response.Status.CREATED).entity(schedule).build();
     }
 
@@ -103,10 +102,17 @@ public class ScheduleController {
     @Path("/{id}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response update(@PathParam("id") String id, UpdateScheduleRequest request) {
+    public Response update(@PathParam("id") String id,
+                           @HeaderParam("X-Schedule-Password") String password,
+                           UpdateScheduleRequest request) {
         if (!schedulingService.isEnabled()) {
             return Response.status(Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "Scheduling is disabled.")).build();
+        }
+
+        if (!passwordValidationService.validateOperationsPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
         }
 
         Optional<String> uuidError = InputValidator.validateUuid(id);
@@ -115,21 +121,23 @@ public class ScheduleController {
                     .entity(Map.of("error", uuidError.get())).build();
         }
 
-        ContainerSchedule schedule = manageScheduleUseCase.update(id, request);
-        schedulingService.cancel(id);
-        if (schedule.isEnabled()) {
-            schedulingService.scheduleNext(schedule);
-        }
+        ContainerSchedule schedule = manageScheduleUseCase.updateAndReschedule(id, request);
         return Response.ok(schedule).build();
     }
 
     @POST
     @Path("/{id}/toggle")
     @Produces(MediaType.APPLICATION_JSON)
-    public Response toggle(@PathParam("id") String id) {
+    public Response toggle(@PathParam("id") String id,
+                           @HeaderParam("X-Schedule-Password") String password) {
         if (!schedulingService.isEnabled()) {
             return Response.status(Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "Scheduling is disabled.")).build();
+        }
+
+        if (!passwordValidationService.validateOperationsPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
         }
 
         Optional<String> uuidError = InputValidator.validateUuid(id);
@@ -138,12 +146,7 @@ public class ScheduleController {
                     .entity(Map.of("error", uuidError.get())).build();
         }
 
-        ContainerSchedule schedule = manageScheduleUseCase.toggleEnabled(id);
-        if (schedule.isEnabled()) {
-            schedulingService.scheduleNext(schedule);
-        } else {
-            schedulingService.cancel(id);
-        }
+        ContainerSchedule schedule = manageScheduleUseCase.toggleAndReschedule(id);
         return Response.ok(schedule).build();
     }
 
@@ -168,18 +171,23 @@ public class ScheduleController {
                     .entity(Map.of("error", uuidError.get())).build();
         }
 
-        schedulingService.cancel(id);
-        manageScheduleUseCase.delete(id);
+        manageScheduleUseCase.deleteAndCancel(id);
         return Response.ok(Map.of("success", true)).build();
     }
 
     @POST
     @Path("/{id}/execute-now")
     @Produces(MediaType.APPLICATION_JSON)
-    public Response executeNow(@PathParam("id") String id) {
+    public Response executeNow(@PathParam("id") String id,
+                               @HeaderParam("X-Schedule-Password") String password) {
         if (!schedulingService.isEnabled()) {
             return Response.status(Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "Scheduling is disabled.")).build();
+        }
+
+        if (!passwordValidationService.validateOperationsPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
         }
 
         Optional<String> uuidError = InputValidator.validateUuid(id);
@@ -188,18 +196,7 @@ public class ScheduleController {
                     .entity(Map.of("error", uuidError.get())).build();
         }
 
-        var schedule = manageScheduleUseCase.findById(id);
-        if (schedule.isEmpty()) {
-            return Response.status(Response.Status.NOT_FOUND)
-                    .entity(Map.of("error", "Schedule not found.")).build();
-        }
-
-        if (!schedule.get().isEnabled()) {
-            return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", "Cannot execute a disabled schedule.")).build();
-        }
-
-        schedulingService.executeNow(id);
+        manageScheduleUseCase.executeNow(id);
         return Response.status(Response.Status.ACCEPTED)
                 .entity(Map.of("message", "Execution triggered.")).build();
     }

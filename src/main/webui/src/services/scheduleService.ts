@@ -73,8 +73,12 @@ export async function updateSchedule(id: string, request: {
   return handleResponse(res)
 }
 
-export async function toggleSchedule(id: string): Promise<ContainerSchedule> {
-  const res = await postJson(API + encodeURIComponent(id) + '/toggle', {})
+export async function toggleSchedule(id: string, password: string): Promise<ContainerSchedule> {
+  const res = await fetch(API + encodeURIComponent(id) + '/toggle', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Schedule-Password': password },
+    body: '{}',
+  })
   return handleResponse(res)
 }
 
@@ -86,7 +90,11 @@ export async function deleteSchedule(id: string, password: string): Promise<{ su
   return handleResponse(res)
 }
 
-export async function executeScheduleNow(id: string): Promise<{ message: string }> {
-  const res = await postJson(API + encodeURIComponent(id) + '/execute-now', {})
+export async function executeScheduleNow(id: string, password: string): Promise<{ message: string }> {
+  const res = await fetch(API + encodeURIComponent(id) + '/execute-now', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Schedule-Password': password },
+    body: '{}',
+  })
   return handleResponse(res)
 }

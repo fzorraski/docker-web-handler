@@ -8,7 +8,7 @@ import {
 import {
   Search, AddCircleOutline, Delete, PlayArrow, Stop, Add,
   Schedule, EventRepeat, EventAvailable, CheckCircle, Cancel, Pending,
-  FilterList, Clear, Science,
+  FilterList, Clear, Science, Lock,
 } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useNotification } from '../components/NotificationProvider'
@@ -26,6 +26,10 @@ import type { ContainerSchedule, DockerContainer } from '../types'
 type PendingDelete =
   | { kind: 'single'; id: string; name: string }
   | { kind: 'bulk'; ids: string[] }
+
+type PendingAction =
+  | { kind: 'toggle'; id: string; name: string }
+  | { kind: 'executeNow'; id: string; name: string }
 
 export default function SchedulesPage() {
   const { t } = useTranslation()
@@ -45,6 +49,7 @@ export default function SchedulesPage() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
 
   const loadSchedules = useCallback(() => {
     setLoading(true)
@@ -102,13 +107,8 @@ export default function SchedulesPage() {
     setSortKey(key)
   }
 
-  async function handleToggle(id: string) {
-    try {
-      const updated = await toggleSchedule(id)
-      setSchedules(prev => prev.map(s => s.id === id ? updated : s))
-    } catch {
-      notify(t('common.unexpectedError'), 'error')
-    }
+  function handleToggleClick(id: string, name: string) {
+    setPendingAction({ kind: 'toggle', id, name })
   }
 
   function handleDeleteClick(id: string, name: string) {
@@ -171,13 +171,25 @@ export default function SchedulesPage() {
     }
   }
 
-  async function handleExecuteNow(id: string) {
+  function handleExecuteNowClick(id: string, name: string) {
+    setPendingAction({ kind: 'executeNow', id, name })
+  }
+
+  async function handleActionConfirm(password: string) {
+    if (!pendingAction) return
     try {
-      await executeScheduleNow(id)
-      notify(t('schedules.executionTriggered'), 'success')
-      setTimeout(loadSchedules, 2000)
+      if (pendingAction.kind === 'toggle') {
+        const updated = await toggleSchedule(pendingAction.id, password)
+        setSchedules(prev => prev.map(s => s.id === pendingAction.id ? updated : s))
+      } else {
+        await executeScheduleNow(pendingAction.id, password)
+        notify(t('schedules.executionTriggered'), 'success')
+        setTimeout(loadSchedules, 2000)
+      }
     } catch {
       notify(t('common.unexpectedError'), 'error')
+    } finally {
+      setPendingAction(null)
     }
   }
 
@@ -500,7 +512,7 @@ export default function SchedulesPage() {
                         <Switch
                           checked={s.enabled}
                           size="small"
-                          onChange={() => handleToggle(s.id)}
+                          onChange={() => handleToggleClick(s.id, s.name)}
                           disabled={!s.enabled && s.scheduleType === 'ONE_TIME' && !!s.lastExecutedAt}
                         />
                       </span>
@@ -531,7 +543,7 @@ export default function SchedulesPage() {
                     <Box sx={{ display: 'flex', gap: 0.25 }}>
                       {s.enabled && (
                         <Tooltip title={t('schedules.executeNow')}>
-                          <IconButton size="small" color="primary" onClick={() => handleExecuteNow(s.id)}>
+                          <IconButton size="small" color="primary" onClick={() => handleExecuteNowClick(s.id, s.name)}>
                             <PlayArrow />
                           </IconButton>
                         </Tooltip>
@@ -563,6 +575,20 @@ export default function SchedulesPage() {
         message={getDeleteDialogMessage()}
         onConfirm={handleDeleteConfirm}
         onClose={() => setPendingDelete(null)}
+      />
+
+      <PasswordConfirmDialog
+        open={pendingAction !== null}
+        title={pendingAction?.kind === 'toggle' ? t('schedules.confirmToggle') : t('schedules.confirmExecuteNow')}
+        message={pendingAction?.kind === 'toggle'
+          ? t('schedules.confirmToggleMessage', { name: pendingAction?.name ?? '' })
+          : t('schedules.confirmExecuteNowMessage', { name: pendingAction?.name ?? '' })}
+        confirmLabel={t('common.confirm')}
+        loadingLabel={t('common.preparing')}
+        confirmColor="primary"
+        icon={<Lock />}
+        onConfirm={handleActionConfirm}
+        onClose={() => setPendingAction(null)}
       />
     </>
   )

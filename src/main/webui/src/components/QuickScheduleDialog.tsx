@@ -8,7 +8,7 @@ import {
 } from '@mui/material'
 import { MobileDateTimePicker } from '@mui/x-date-pickers/MobileDateTimePicker'
 import dayjs, { type Dayjs } from 'dayjs'
-import { Close, Delete, PlayArrow, Stop, Schedule, Timer, Warning } from '@mui/icons-material'
+import { Close, Delete, PlayArrow, Stop, Schedule, Timer, Warning, Lock } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useNotification } from './NotificationProvider'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
@@ -103,12 +103,18 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
     }
   }
 
-  async function handleToggle(id: string) {
+  const [pendingToggleId, setPendingToggleId] = useState<string | null>(null)
+  const pendingToggleSchedule = pendingToggleId ? schedules.find(s => s.id === pendingToggleId) : null
+
+  async function handleToggleConfirm(password: string) {
+    if (!pendingToggleId) return
     try {
-      const updated = await toggleSchedule(id)
-      setSchedules(prev => prev.map(s => s.id === id ? updated : s))
+      const updated = await toggleSchedule(pendingToggleId, password)
+      setSchedules(prev => prev.map(s => s.id === pendingToggleId ? updated : s))
     } catch {
       notify(t('common.unexpectedError'), 'error')
+    } finally {
+      setPendingToggleId(null)
     }
   }
 
@@ -125,12 +131,18 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
     }
   }
 
-  async function handleExecuteNow(id: string) {
+  const [pendingExecId, setPendingExecId] = useState<string | null>(null)
+  const pendingExecSchedule = pendingExecId ? schedules.find(s => s.id === pendingExecId) : null
+
+  async function handleExecuteNowConfirm(password: string) {
+    if (!pendingExecId) return
     try {
-      await executeScheduleNow(id)
+      await executeScheduleNow(pendingExecId, password)
       notify(t('schedules.executionTriggered'), 'success')
     } catch {
       notify(t('common.unexpectedError'), 'error')
+    } finally {
+      setPendingExecId(null)
     }
   }
 
@@ -259,7 +271,7 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
                           <Switch
                             checked={s.enabled}
                             size="small"
-                            onChange={() => handleToggle(s.id)}
+                            onChange={() => setPendingToggleId(s.id)}
                             disabled={!s.enabled && s.scheduleType === 'ONE_TIME' && !!s.lastExecutedAt}
                           />
                         </span>
@@ -279,7 +291,7 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
                         {s.enabled && (
                           <Tooltip title={t('schedules.executeNow')}>
-                            <IconButton size="small" onClick={() => handleExecuteNow(s.id)}>
+                            <IconButton size="small" onClick={() => setPendingExecId(s.id)}>
                               <PlayArrow fontSize="small" />
                             </IconButton>
                           </Tooltip>
@@ -325,6 +337,30 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
         icon={<Schedule />}
         onConfirm={handleCreateConfirm}
         onClose={() => setPendingCreate(false)}
+      />
+
+      <PasswordConfirmDialog
+        open={pendingToggleId !== null}
+        title={t('schedules.confirmToggle')}
+        message={t('schedules.confirmToggleMessage', { name: pendingToggleSchedule?.name ?? '' })}
+        confirmLabel={t('common.confirm')}
+        loadingLabel={t('common.preparing')}
+        confirmColor="primary"
+        icon={<Lock />}
+        onConfirm={handleToggleConfirm}
+        onClose={() => setPendingToggleId(null)}
+      />
+
+      <PasswordConfirmDialog
+        open={pendingExecId !== null}
+        title={t('schedules.confirmExecuteNow')}
+        message={t('schedules.confirmExecuteNowMessage', { name: pendingExecSchedule?.name ?? '' })}
+        confirmLabel={t('common.confirm')}
+        loadingLabel={t('common.preparing')}
+        confirmColor="primary"
+        icon={<Lock />}
+        onConfirm={handleExecuteNowConfirm}
+        onClose={() => setPendingExecId(null)}
       />
     </Dialog>
   )
