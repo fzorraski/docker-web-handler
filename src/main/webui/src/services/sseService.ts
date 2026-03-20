@@ -168,6 +168,34 @@ export function streamContainerLogs(
   return streamSse(`/api/containers/sse/logs/${encodeURIComponent(containerId)}`, onEvent, onDone, onError)
 }
 
+export interface ContainerStats {
+  cpuPercent: number
+  memoryUsage: number
+  memoryLimit: number
+  memoryPercent: number
+  networkRxBytes: number
+  networkTxBytes: number
+  networkRxRate: number
+  networkTxRate: number
+  blockReadBytes: number
+  blockWriteBytes: number
+  pids: number
+  timestamp: string
+}
+
+export function streamContainerStats(
+  containerId: string,
+  onStats: (stats: ContainerStats) => void,
+  onError: (message: string) => void,
+): () => void {
+  const es = new EventSource(`/api/containers/sse/stats/${encodeURIComponent(containerId)}`)
+  es.onmessage = (e) => {
+    try { onStats(JSON.parse(e.data)) } catch { /* ignore parse errors */ }
+  }
+  es.onerror = () => { es.close(); onError('Connection lost') }
+  return () => es.close()
+}
+
 export function streamRemoveContainer(
   containerId: string,
   onEvent: (event: ContainerEvent) => void,

@@ -1,6 +1,7 @@
 package br.com.fzdevx.application.port;
 
 import br.com.fzdevx.domain.model.ContainerEvent;
+import br.com.fzdevx.domain.model.ContainerStats;
 import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.model.Container;
@@ -25,4 +26,6 @@ public interface DockerContainerPort {
     void pullImage(String imageRef, String repository, String tag, Consumer<ContainerEvent> eventSink) throws InterruptedException;
 
     void streamLogs(String containerId, int tail, Consumer<ContainerEvent> eventSink, Supplier<Boolean> isActive);
+
+    void streamStats(String containerId, Consumer<ContainerStats> statsSink, Supplier<Boolean> isActive);
 }

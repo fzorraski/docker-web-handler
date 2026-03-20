@@ -10,6 +10,8 @@ import br.com.fzdevx.application.usecase.RemoveContainerUseCase;
 import br.com.fzdevx.application.usecase.RunContainerUseCase;
 import br.com.fzdevx.application.usecase.RunMigrationUseCase;
 import br.com.fzdevx.application.usecase.StreamContainerLogsUseCase;
+import br.com.fzdevx.application.usecase.StreamContainerStatsUseCase;
+import br.com.fzdevx.domain.model.ContainerStats;
 import br.com.fzdevx.interfaces.rest.util.SseHelper; // ✦ CLEAN — extracted duplicated SSE logic into shared helper
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -40,6 +42,9 @@ public class ContainerSseController {
 
     @Inject
     StreamContainerLogsUseCase streamContainerLogsUseCase;
+
+    @Inject
+    StreamContainerStatsUseCase streamContainerStatsUseCase;
 
     @POST
     @Path("/run/prepare")
@@ -159,6 +164,32 @@ public class ContainerSseController {
         try {
             streamContainerLogsUseCase.execute(containerId,
                     event -> SseHelper.sendEvent(sink, sse, event),
+                    () -> !sink.isClosed());
+        } finally {
+            SseHelper.closeSink(sink);
+        }
+    }
+
+    @GET
+    @Path("/stats/{containerId}")
+    @Produces(MediaType.SERVER_SENT_EVENTS)
+    public void streamStats(@PathParam("containerId") String containerId,
+                            @Context SseEventSink sink,
+                            @Context Sse sse) {
+        if (InputValidator.validateContainerId(containerId).isPresent()) {
+            SseHelper.closeSink(sink);
+            return;
+        }
+        try {
+            streamContainerStatsUseCase.execute(containerId,
+                    stats -> {
+                        if (!sink.isClosed()) {
+                            sink.send(sse.newEventBuilder()
+                                    .data(ContainerStats.class, stats)
+                                    .mediaType(MediaType.APPLICATION_JSON_TYPE)
+                                    .build());
+                        }
+                    },
                     () -> !sink.isClosed());
         } finally {
             SseHelper.closeSink(sink);

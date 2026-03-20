@@ -5,7 +5,12 @@ import type { DatabaseDump, DatabaseSnapshot } from '../types'
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  return (bytes / (1024 * 1024)).toFixed(2) + ' MB'
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(2) + ' MB'
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
+}
+
+export function formatBytesRate(bytesPerSec: number): string {
+  return formatBytes(bytesPerSec) + '/s'
 }
 
 const dateTimeFormat = (locale: string) =>

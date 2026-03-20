@@ -20,6 +20,7 @@ import RunMigrationModal from '../components/RunMigrationModal'
 import QuickScheduleDialog from '../components/QuickScheduleDialog'
 import CreateSnapshotModal from '../components/CreateSnapshotModal'
 import ContainerLogsDialog from '../components/ContainerLogsDialog'
+import ContainerStatsDialog from '../components/ContainerStatsDialog'
 import OperationProgress, { REMOVE_STEPS } from '../components/OperationProgress'
 import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
@@ -56,7 +57,7 @@ import {
   Alert,
   AlertTitle,
 } from '@mui/material'
-import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime } from '@mui/icons-material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor } from '@mui/icons-material'
 import { isSchedulingEnabled, listSchedules } from '../services/scheduleService'
 import type { ContainerSchedule } from '../types'
 
@@ -99,6 +100,8 @@ export default function ContainersPage() {
   const [snapshotContainerName, setSnapshotContainerName] = useState<string | undefined>(undefined)
   const [logsContainerId, setLogsContainerId] = useState<string | null>(null)
   const [logsContainerName, setLogsContainerName] = useState('')
+  const [statsContainerId, setStatsContainerId] = useState<string | null>(null)
+  const [statsContainerName, setStatsContainerName] = useState('')
   const [migratedDatabases, setMigratedDatabases] = useState<MigratedDatabase[]>([])
   const [migrationFeatureEnabled, setMigrationFeatureEnabled] = useState(false)
   const [migrationRepo, setMigrationRepo] = useState('')
@@ -664,6 +667,20 @@ export default function ContainersPage() {
                             <Terminal />
                           </IconButton>
                         </Tooltip>
+                        {isUp(c.status) && (
+                          <Tooltip title={t('containers.stats.viewStats')}>
+                            <IconButton
+                              size="small"
+                              color="info"
+                              onClick={() => {
+                                setStatsContainerId(c.containerId)
+                                setStatsContainerName(c.names)
+                              }}
+                            >
+                              <Monitor />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         {dumpEnabled && c.repository && c.databaseName && (
                           <Tooltip title={t('containers.snapshotDatabase', { database: c.databaseName })}>
                             <IconButton
@@ -764,6 +781,16 @@ export default function ContainersPage() {
         containerId={logsContainerId ?? ''}
         containerName={logsContainerName}
         onClose={handleLogsClose}
+      />
+
+      <ContainerStatsDialog
+        open={statsContainerId !== null}
+        containerId={statsContainerId ?? ''}
+        containerName={statsContainerName}
+        onClose={() => {
+          setStatsContainerId(null)
+          setStatsContainerName('')
+        }}
       />
 
       <RunMigrationModal
