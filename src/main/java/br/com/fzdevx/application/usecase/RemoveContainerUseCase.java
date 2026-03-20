@@ -3,6 +3,7 @@ package br.com.fzdevx.application.usecase;
 import br.com.fzdevx.application.port.DockerContainerPort; // ⚠ SOLID — DIP: depends on port, not DockerClient
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.ContainerSchedulingService;
 import br.com.fzdevx.domain.shared.InputValidator;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -18,6 +19,9 @@ public class RemoveContainerUseCase {
 
     @Inject
     ContainerExpirationService expirationService;
+
+    @Inject
+    ContainerSchedulingService schedulingService;
 
     public void execute(String containerId, Consumer<ContainerEvent> eventSink) {
         Optional<String> idError = InputValidator.validateContainerId(containerId);
@@ -48,6 +52,9 @@ public class RemoveContainerUseCase {
             eventSink.accept(ContainerEvent.error("Removing", "Failed to remove container: " + e.getMessage()));
             return;
         }
+
+        // Step 4: Clean up schedules targeting this container
+        schedulingService.removeSchedulesByContainer(containerId);
 
         eventSink.accept(ContainerEvent.success("Complete", "Container " + containerId + " removed successfully."));
     }

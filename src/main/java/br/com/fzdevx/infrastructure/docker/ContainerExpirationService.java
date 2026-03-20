@@ -30,6 +30,9 @@ public class ContainerExpirationService {
     @Inject
     DatabaseService databaseService;
 
+    @Inject
+    ContainerSchedulingService schedulingService;
+
     void onStartup(@Observes StartupEvent event) {
         reloadExpirations();
     }
@@ -152,6 +155,7 @@ public class ContainerExpirationService {
             Log.errorf("Failed to expire container %s: %s", expiration.getShortId(), e.getMessage());
         } finally {
             dropDatabaseIfConfigured(expiration);
+            schedulingService.removeSchedulesByContainer(expiration.getShortId());
             scheduledTasks.remove(expiration.getShortId());
             expirationRepository.delete(expiration.getShortId());
         }
