@@ -148,4 +148,27 @@ public class RunContainerRequest {
 
     public String getMigrationTargetVersion() { return migrationTargetVersion; }
     public void setMigrationTargetVersion(String migrationTargetVersion) { this.migrationTargetVersion = migrationTargetVersion; }
+
+    public RunContainerRequest copy() {
+        RunContainerRequest c = new RunContainerRequest();
+        c.repository = this.repository;
+        c.tag = this.tag;
+        c.containerName = this.containerName;
+        c.envVars = this.envVars != null ? List.copyOf(this.envVars) : null;
+        c.expiresAt = this.expiresAt;
+        c.memoryMb = this.memoryMb;
+        c.databaseName = this.databaseName;
+        c.deleteDatabaseOnExpiration = this.deleteDatabaseOnExpiration;
+        c.dumpId = this.dumpId;
+        c.createDatabase = this.createDatabase;
+        c.selectedOptionalScripts = this.selectedOptionalScripts != null ? List.copyOf(this.selectedOptionalScripts) : null;
+        c.snapshotId = this.snapshotId;
+        c.operationsPassword = this.operationsPassword;
+        c.operationsPasswordValidated = this.operationsPasswordValidated;
+        c.migrationMode = this.migrationMode;
+        c.migrationSql = this.migrationSql;
+        c.migrationSourceVersion = this.migrationSourceVersion;
+        c.migrationTargetVersion = this.migrationTargetVersion;
+        return c;
+    }
 }
