@@ -128,6 +128,7 @@ export default function ContainersPage() {
   const [terminalTicket, setTerminalTicket] = useState('')
   const [terminalContainerName, setTerminalContainerName] = useState('')
   const [terminalFeatureEnabled, setTerminalFeatureEnabled] = useState(false)
+  const [terminalPasswordRequired, setTerminalPasswordRequired] = useState(true)
   const [terminalAuthOpen, setTerminalAuthOpen] = useState(false)
   const [terminalPendingContainerId, setTerminalPendingContainerId] = useState('')
   const [terminalPendingContainerName, setTerminalPendingContainerName] = useState('')
@@ -213,7 +214,10 @@ export default function ContainersPage() {
     isDumpEnabled().then(setDumpEnabled).catch(() => {})
     getMigratedDatabases().then(setMigratedDatabases).catch(() => setMigratedDatabases([]))
     checkMigrationEnabled().then(setMigrationFeatureEnabled).catch(() => setMigrationFeatureEnabled(false))
-    getFeatures().then((f) => setTerminalFeatureEnabled(f.terminal)).catch(() => setTerminalFeatureEnabled(false))
+    getFeatures().then((f) => {
+      setTerminalFeatureEnabled(f.terminal)
+      setTerminalPasswordRequired(f.terminalPasswordRequired)
+    }).catch(() => setTerminalFeatureEnabled(false))
     isSchedulingEnabled().then((enabled) => {
       setSchedulingFeatureEnabled(enabled)
       if (enabled) loadContainerSchedules()
@@ -884,10 +888,23 @@ export default function ContainersPage() {
               <MenuItem
                 key="terminal"
                 onClick={() => {
-                  setTerminalPendingContainerId(actionMenuContainer.containerId)
-                  setTerminalPendingContainerName(actionMenuContainer.names)
-                  setTerminalAuthOpen(true)
+                  const cId = actionMenuContainer.containerId
+                  const cName = actionMenuContainer.names
                   setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+                  if (terminalPasswordRequired) {
+                    setTerminalPendingContainerId(cId)
+                    setTerminalPendingContainerName(cName)
+                    setTerminalAuthOpen(true)
+                  } else {
+                    authorizeTerminal(cId, '').then((result) => {
+                      if (result.ticket) {
+                        setTerminalTicket(result.ticket)
+                        setTerminalContainerName(cName)
+                      } else {
+                        notify(result.error || 'Authorization failed.', 'error')
+                      }
+                    })
+                  }
                 }}
               >
                 <ListItemIcon><Code fontSize="small" /></ListItemIcon>

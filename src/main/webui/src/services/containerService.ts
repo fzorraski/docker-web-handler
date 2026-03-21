@@ -99,6 +99,9 @@ export interface FeatureFlags {
   webhook: boolean
   terminal: boolean
   defaultExpirationMinutes: number
+  uploadPasswordRequired: boolean
+  operationsPasswordRequired: boolean
+  terminalPasswordRequired: boolean
 }
 
 export async function getFeatures(): Promise<FeatureFlags> {
