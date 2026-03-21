@@ -81,6 +81,8 @@ export default function PasswordConfirmDialog({
           onChange={(e) => setPassword(e.target.value)}
           size="small"
           autoComplete="off"
+          autoFocus
+          onKeyDown={(e) => { if (e.key === 'Enter' && password && !loading) handleConfirm() }}
         />
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
