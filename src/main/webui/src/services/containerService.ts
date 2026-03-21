@@ -97,6 +97,7 @@ export interface FeatureFlags {
   dump: boolean
   migration: boolean
   webhook: boolean
+  terminal: boolean
   defaultExpirationMinutes: number
 }
 

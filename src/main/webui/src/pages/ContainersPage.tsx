@@ -14,18 +14,22 @@ import {
   isDatabaseListingEnabled,
   isMigrationEnabled as checkMigrationEnabled,
   getMigratedDatabases,
+  getFeatures,
   type MigratedDatabase,
 } from '../services/containerService'
 
 dayjs.extend(customParseFormat)
 import { isDumpEnabled, getActiveRestores, type ActiveRestore } from '../services/dumpService'
 import { streamRemoveContainer } from  '../services/sseService'
+import { authorizeTerminal } from '../services/terminalService'
 import NewContainerModal from '../components/NewContainerModal'
 import RunMigrationModal from '../components/RunMigrationModal'
 import QuickScheduleDialog from '../components/QuickScheduleDialog'
 import CreateSnapshotModal from '../components/CreateSnapshotModal'
 import ContainerLogsDialog from '../components/ContainerLogsDialog'
 import ContainerStatsDialog from '../components/ContainerStatsDialog'
+import ContainerTerminalDialog from '../components/ContainerTerminalDialog'
+import PasswordConfirmDialog from '../components/PasswordConfirmDialog'
 import OperationProgress, { REMOVE_STEPS } from '../components/OperationProgress'
 import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
@@ -67,7 +71,7 @@ import {
   Alert,
   AlertTitle,
 } from '@mui/material'
-import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord } from '@mui/icons-material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord, Code } from '@mui/icons-material'
 import { isSchedulingEnabled, listSchedules } from '../services/scheduleService'
 import type { ContainerSchedule } from '../types'
 
@@ -121,6 +125,12 @@ export default function ContainersPage() {
   const [logsContainerName, setLogsContainerName] = useState('')
   const [statsContainerId, setStatsContainerId] = useState<string | null>(null)
   const [statsContainerName, setStatsContainerName] = useState('')
+  const [terminalTicket, setTerminalTicket] = useState('')
+  const [terminalContainerName, setTerminalContainerName] = useState('')
+  const [terminalFeatureEnabled, setTerminalFeatureEnabled] = useState(false)
+  const [terminalAuthOpen, setTerminalAuthOpen] = useState(false)
+  const [terminalPendingContainerId, setTerminalPendingContainerId] = useState('')
+  const [terminalPendingContainerName, setTerminalPendingContainerName] = useState('')
   const [migratedDatabases, setMigratedDatabases] = useState<MigratedDatabase[]>([])
   const [migrationFeatureEnabled, setMigrationFeatureEnabled] = useState(false)
   const [migrationRepo, setMigrationRepo] = useState('')
@@ -203,6 +213,7 @@ export default function ContainersPage() {
     isDumpEnabled().then(setDumpEnabled).catch(() => {})
     getMigratedDatabases().then(setMigratedDatabases).catch(() => setMigratedDatabases([]))
     checkMigrationEnabled().then(setMigrationFeatureEnabled).catch(() => setMigrationFeatureEnabled(false))
+    getFeatures().then((f) => setTerminalFeatureEnabled(f.terminal)).catch(() => setTerminalFeatureEnabled(false))
     isSchedulingEnabled().then((enabled) => {
       setSchedulingFeatureEnabled(enabled)
       if (enabled) loadContainerSchedules()
@@ -869,6 +880,21 @@ export default function ContainersPage() {
               </MenuItem>
             ),
 
+            terminalFeatureEnabled && isUp(actionMenuContainer.status) && (
+              <MenuItem
+                key="terminal"
+                onClick={() => {
+                  setTerminalPendingContainerId(actionMenuContainer.containerId)
+                  setTerminalPendingContainerName(actionMenuContainer.names)
+                  setTerminalAuthOpen(true)
+                  setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+                }}
+              >
+                <ListItemIcon><Code fontSize="small" /></ListItemIcon>
+                <ListItemText>{t('containers.terminal.openTerminal')}</ListItemText>
+              </MenuItem>
+            ),
+
             (dumpEnabled && actionMenuContainer.repository && actionMenuContainer.databaseName) || (migrationFeatureEnabled && actionMenuContainer.repository && actionMenuContainer.databaseName)
               ? <Divider key="db-divider" />
               : null,
@@ -982,6 +1008,41 @@ export default function ContainersPage() {
         onClose={() => {
           setStatsContainerId(null)
           setStatsContainerName('')
+        }}
+      />
+
+      <PasswordConfirmDialog
+        open={terminalAuthOpen}
+        title={t('containers.terminal.openTerminal')}
+        message={t('containers.terminal.enterPassword')}
+        confirmLabel={t('containers.terminal.connect')}
+        loadingLabel={t('containers.terminal.connecting')}
+        confirmColor="primary"
+        icon={<Code />}
+        onConfirm={async (password) => {
+          const result = await authorizeTerminal(terminalPendingContainerId, password)
+          if (result.ticket) {
+            setTerminalTicket(result.ticket)
+            setTerminalContainerName(terminalPendingContainerName)
+            setTerminalAuthOpen(false)
+          } else {
+            notify(result.error || 'Authorization failed.', 'error')
+          }
+        }}
+        onClose={() => {
+          setTerminalAuthOpen(false)
+          setTerminalPendingContainerId('')
+          setTerminalPendingContainerName('')
+        }}
+      />
+
+      <ContainerTerminalDialog
+        open={!!terminalTicket}
+        ticket={terminalTicket}
+        containerName={terminalContainerName}
+        onClose={() => {
+          setTerminalTicket('')
+          setTerminalContainerName('')
         }}
       />
 
