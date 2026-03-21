@@ -646,6 +646,10 @@ const en = {
     },
   },
 
+  webhook: {
+    notifyOnCompletion: 'Notify via webhook on completion',
+  },
+
   language: {
     en: 'English',
     'pt-BR': 'Portugues',

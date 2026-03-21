@@ -25,7 +25,7 @@ import { useTranslation } from 'react-i18next'
 import type { DatabaseDump, DatabaseSnapshot } from '../types'
 import { buildTargetDbName, buildSnapshotTargetDbName, formatScriptSize, formatMigrationSummary } from '../utils/format'
 import { getDumpRepositories, cancelRestore, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
-import { getDatabaseConflicts, getRepositoryDatabases, isMigrationEnabled, isMigrationApiAvailable } from '../services/containerService'
+import { getDatabaseConflicts, getRepositoryDatabases, isMigrationEnabled, isMigrationApiAvailable, isWebhookEnabled } from '../services/containerService'
 import { prepareRestoreDump, streamRestoreDump } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
 import { useMigrationPreview } from '../hooks/useMigrationPreview'
@@ -65,6 +65,8 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
   const [migrationConfig, setMigrationConfig] = useState<MigrationConfig | null>(null)
   const [migrationModalOpen, setMigrationModalOpen] = useState(false)
   const migrationPreview = useMigrationPreview()
+  const [webhookFeatureEnabled, setWebhookFeatureEnabled] = useState(false)
+  const [webhookNotify, setWebhookNotify] = useState(false)
 
   const dbExists = !!(targetDb.trim() && databases.includes(targetDb.trim()))
 
@@ -72,6 +74,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
     if (open) {
       getDumpRepositories().then(setRepositories).catch(() => setRepositories([]))
       isMigrationEnabled().then(setMigrationFeatureEnabled).catch(() => setMigrationFeatureEnabled(false))
+      isWebhookEnabled().then(setWebhookFeatureEnabled).catch(() => setWebhookFeatureEnabled(false))
     }
   }, [open])
 
@@ -198,6 +201,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
         migrationSql: migrationEnabled && migrationConfig?.mode === 'MANUAL' ? migrationConfig.sql : null,
         migrationSourceVersion: migrationEnabled && migrationConfig ? migrationConfig.sourceVersion : null,
         migrationTargetVersion: migrationEnabled && migrationConfig ? migrationConfig.targetVersion : null,
+        webhookNotify: webhookFeatureEnabled ? webhookNotify : undefined,
       })
 
       sse.start(
@@ -417,6 +421,19 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
               </Box>
             )}
           </>
+        )}
+
+        {webhookFeatureEnabled && !sse.isRunning && !sse.isDone && !sse.hasError && (
+          <FormControlLabel
+            control={
+              <Switch
+                checked={webhookNotify}
+                onChange={(e) => setWebhookNotify(e.target.checked)}
+              />
+            }
+            label={t('webhook.notifyOnCompletion')}
+            sx={{ mt: 2 }}
+          />
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>

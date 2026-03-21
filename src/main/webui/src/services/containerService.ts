@@ -55,11 +55,6 @@ export async function getDefaultExpirationMinutes(): Promise<number> {
   return handleResponse(res)
 }
 
-export async function isMemoryLimitEnabled(): Promise<boolean> {
-  const res = await fetch(API + 'memory-limit-enabled')
-  return handleResponse(res)
-}
-
 export async function getLocale(): Promise<string> {
   const res = await fetch(API + 'locale')
   return res.text()
@@ -75,11 +70,6 @@ export async function isDatabaseListingEnabled(): Promise<boolean> {
   return handleResponse(res)
 }
 
-export async function isDeletionOnExpirationEnabled(): Promise<boolean> {
-  const res = await fetch(API + 'deletion-on-expiration-enabled')
-  return handleResponse(res)
-}
-
 export async function repositoryHasDatabases(repository: string): Promise<boolean> {
   const res = await fetch(API + 'repository-has-databases?repository=' + encodeURIComponent(repository))
   return handleResponse(res)
@@ -92,6 +82,26 @@ export async function getRepositoryDatabases(repository: string): Promise<ApiRes
 
 export async function isMigrationEnabled(): Promise<boolean> {
   const res = await fetch(API + 'migration-enabled')
+  return handleResponse(res)
+}
+
+export async function isWebhookEnabled(): Promise<boolean> {
+  const res = await fetch(API + 'webhook-enabled')
+  return handleResponse(res)
+}
+
+export interface FeatureFlags {
+  memoryLimit: boolean
+  deletionOnExpiration: boolean
+  databaseListing: boolean
+  dump: boolean
+  migration: boolean
+  webhook: boolean
+  defaultExpirationMinutes: number
+}
+
+export async function getFeatures(): Promise<FeatureFlags> {
+  const res = await fetch(API + 'features')
   return handleResponse(res)
 }
 

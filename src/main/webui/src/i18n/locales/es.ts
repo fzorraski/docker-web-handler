@@ -648,6 +648,10 @@ const es: typeof en = {
     },
   },
 
+  webhook: {
+    notifyOnCompletion: 'Notificar via webhook al completar',
+  },
+
   language: {
     en: 'English',
     'pt-BR': 'Portugues',

@@ -648,6 +648,10 @@ const ptBR: typeof en = {
     },
   },
 
+  webhook: {
+    notifyOnCompletion: 'Notificar via webhook ao concluir',
+  },
+
   language: {
     en: 'English',
     'pt-BR': 'Portugues',

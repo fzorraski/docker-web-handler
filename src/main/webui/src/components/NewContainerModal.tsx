@@ -29,13 +29,10 @@ import { useTranslation } from 'react-i18next'
 import {
   getAllowedRepositories,
   getDatabaseConflicts,
-  getDefaultExpirationMinutes,
+  getFeatures,
   getRepositoryDatabases,
   getRepositoryEnvKeys,
   getRepositoryTags,
-  isDeletionOnExpirationEnabled,
-  isMemoryLimitEnabled,
-  isMigrationEnabled,
   isMigrationApiAvailable,
   repositoryHasDatabases,
 } from '../services/containerService'
@@ -127,6 +124,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const [migrationEnabled, setMigrationEnabled] = useState(false)
   const [migrationConfig, setMigrationConfig] = useState<MigrationConfig | null>(null)
   const [migrationModalOpen, setMigrationModalOpen] = useState(false)
+  const [webhookFeatureEnabled, setWebhookFeatureEnabled] = useState(false)
+  const [webhookNotify, setWebhookNotify] = useState(false)
   const [operationsPassword, setOperationsPassword] = useState('')
   const operationsPasswordRef = useRef('')
   const [operationsPasswordOpen, setOperationsPasswordOpen] = useState(false)
@@ -150,27 +149,20 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         if (repos.length > 0) setSelectedRepo(repos[0])
       })
       .catch(() => {})
-    getDefaultExpirationMinutes()
-      .then((m) => {
-        setDefaultExpMinutes(m)
-        setExpiresAt(dayjs().add(m, 'minute'))
-      })
-      .catch(() => {})
-    isMemoryLimitEnabled()
-      .then(setMemoryEnabled)
-      .catch(() => {})
-    isDeletionOnExpirationEnabled()
-      .then(setDbDeletionEnabled)
-      .catch(() => {})
-    isDumpEnabled()
-      .then((enabled) => {
-        setDumpFeatureEnabled(enabled)
-        if (enabled) {
+    getFeatures()
+      .then((f) => {
+        setDefaultExpMinutes(f.defaultExpirationMinutes)
+        setExpiresAt(dayjs().add(f.defaultExpirationMinutes, 'minute'))
+        setMemoryEnabled(f.memoryLimit)
+        setDbDeletionEnabled(f.deletionOnExpiration)
+        setDumpFeatureEnabled(f.dump)
+        setMigrationFeatureEnabled(f.migration)
+        setWebhookFeatureEnabled(f.webhook)
+        if (f.dump) {
           listDumps().then(setAllDumps).catch(() => setAllDumps([]))
         }
       })
-      .catch(() => setDumpFeatureEnabled(false))
-    isMigrationEnabled().then(setMigrationFeatureEnabled).catch(() => setMigrationFeatureEnabled(false))
+      .catch(() => {})
   }, [open])
 
   useEffect(() => {
@@ -372,6 +364,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setMigrationEnabled(false)
     setMigrationConfig(null)
     setMigrationModalOpen(false)
+    setWebhookNotify(true)
     setOperationsPassword('')
     operationsPasswordRef.current = ''
     setOperationsPasswordOpen(false)
@@ -461,6 +454,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         migrationSql: migrationEnabled && migrationConfig?.mode === 'MANUAL' ? migrationConfig.sql : null,
         migrationSourceVersion: migrationEnabled && migrationConfig ? migrationConfig.sourceVersion : null,
         migrationTargetVersion: migrationEnabled && migrationConfig ? migrationConfig.targetVersion : null,
+        webhookNotify: webhookFeatureEnabled ? webhookNotify : undefined,
       })
 
       setRunTicket(ticket)
@@ -1073,6 +1067,19 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
             </Button>
             </Box>
           </>
+        )}
+
+        {webhookFeatureEnabled && !sse.isRunning && !sse.isDone && !sse.hasError && (
+          <FormControlLabel
+            control={
+              <Switch
+                checked={webhookNotify}
+                onChange={(e) => setWebhookNotify(e.target.checked)}
+              />
+            }
+            label={t('webhook.notifyOnCompletion')}
+            sx={{ mt: 2 }}
+          />
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>

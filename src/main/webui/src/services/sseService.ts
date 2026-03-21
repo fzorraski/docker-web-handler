@@ -56,6 +56,7 @@ export async function prepareRunContainer(body: {
   migrationSql?: string | null
   migrationSourceVersion?: string | null
   migrationTargetVersion?: string | null
+  webhookNotify?: boolean
 }): Promise<string> {
   const res = await fetch('/api/containers/sse/run/prepare', {
     method: 'POST',
@@ -217,6 +218,7 @@ export async function prepareRestoreDump(body: {
   migrationSql?: string | null
   migrationSourceVersion?: string | null
   migrationTargetVersion?: string | null
+  webhookNotify?: boolean
 }): Promise<string> {
   const res = await fetch('/api/database/dumps/sse/restore/prepare', {
     method: 'POST',
