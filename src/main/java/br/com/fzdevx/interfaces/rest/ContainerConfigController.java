@@ -217,6 +217,9 @@ public class ContainerConfigController {
         features.put("webhook", webhookService.isEnabled());
         features.put("terminal", terminalEnabled);
         features.put("defaultExpirationMinutes", defaultExpirationMinutes);
+        features.put("uploadPasswordRequired", passwordValidationService.isUploadPasswordRequired());
+        features.put("operationsPasswordRequired", passwordValidationService.isOperationsPasswordRequired());
+        features.put("terminalPasswordRequired", passwordValidationService.isTerminalPasswordRequired());
         return features;
     }
 

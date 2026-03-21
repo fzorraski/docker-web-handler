@@ -16,31 +16,50 @@ public class PasswordValidationService {
     Optional<String> uploadPassword;
 
     @Inject
+    @ConfigProperty(name = "database.dump.upload-password.required", defaultValue = "true")
+    boolean uploadPasswordRequired;
+
+    @Inject
     @ConfigProperty(name = "database.dump.operations-password")
     Optional<String> operationsPassword;
+
+    @Inject
+    @ConfigProperty(name = "database.dump.operations-password.required", defaultValue = "true")
+    boolean operationsPasswordRequired;
 
     @Inject
     @ConfigProperty(name = "container.terminal.password")
     Optional<String> terminalPassword;
 
+    @Inject
+    @ConfigProperty(name = "container.terminal.password.required", defaultValue = "true")
+    boolean terminalPasswordRequired;
+
     public boolean validateUploadPassword(String password) {
-        if (uploadPassword.isEmpty() || uploadPassword.get().isBlank()) return false;
-        return MessageDigest.isEqual(
-                uploadPassword.get().getBytes(),
-                (password != null ? password : "").getBytes());
+        return validate(uploadPassword, uploadPasswordRequired, password);
     }
 
     public boolean validateOperationsPassword(String password) {
-        if (operationsPassword.isEmpty() || operationsPassword.get().isBlank()) return false;
-        return MessageDigest.isEqual(
-                operationsPassword.get().getBytes(),
-                (password != null ? password : "").getBytes());
+        return validate(operationsPassword, operationsPasswordRequired, password);
     }
 
     public boolean validateTerminalPassword(String password) {
-        if (terminalPassword.isEmpty() || terminalPassword.get().isBlank()) return false;
+        return validate(terminalPassword, terminalPasswordRequired, password);
+    }
+
+    public boolean isUploadPasswordRequired() { return uploadPasswordRequired && hasPassword(uploadPassword); }
+    public boolean isOperationsPasswordRequired() { return operationsPasswordRequired && hasPassword(operationsPassword); }
+    public boolean isTerminalPasswordRequired() { return terminalPasswordRequired && hasPassword(terminalPassword); }
+
+    private boolean validate(Optional<String> configured, boolean required, String input) {
+        if (!required) return true;
+        if (!hasPassword(configured)) return true;
         return MessageDigest.isEqual(
-                terminalPassword.get().getBytes(),
-                (password != null ? password : "").getBytes());
+                configured.get().getBytes(),
+                (input != null ? input : "").getBytes());
+    }
+
+    private boolean hasPassword(Optional<String> password) {
+        return password.isPresent() && !password.get().isBlank();
     }
 }
