@@ -34,6 +34,11 @@ public class RestoreDumpRequest {
     public String getSnapshotId() { return snapshotId; }
     public void setSnapshotId(String snapshotId) { this.snapshotId = snapshotId; }
 
+    private boolean webhookNotify;
+
+    public boolean isWebhookNotify() { return webhookNotify; }
+    public void setWebhookNotify(boolean webhookNotify) { this.webhookNotify = webhookNotify; }
+
     private String migrationMode;
     private String migrationSql;
     private String migrationSourceVersion;

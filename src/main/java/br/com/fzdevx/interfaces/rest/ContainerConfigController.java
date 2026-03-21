@@ -3,6 +3,8 @@ package br.com.fzdevx.interfaces.rest;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.domain.model.DatabaseMigrationRecord;
 import br.com.fzdevx.infrastructure.docker.MigrationService;
+import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
+import br.com.fzdevx.infrastructure.webhook.WebhookService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.infrastructure.registry.RegistryService;
 import br.com.fzdevx.interfaces.rest.dto.Response;
@@ -36,6 +38,12 @@ public class ContainerConfigController {
 
     @Inject
     MigrationService migrationService;
+
+    @Inject
+    DumpStorageService dumpStorageService;
+
+    @Inject
+    WebhookService webhookService;
 
     @Inject
     @ConfigProperty(name = "container.default-expiration-minutes", defaultValue = "480")
@@ -175,6 +183,28 @@ public class ContainerConfigController {
     @Produces(MediaType.APPLICATION_JSON)
     public boolean isMigrationEnabled() {
         return migrationService.isEnabled();
+    }
+
+    @GET
+    @Path("/webhook-enabled")
+    @Produces(MediaType.APPLICATION_JSON)
+    public boolean isWebhookEnabled() {
+        return webhookService.isEnabled();
+    }
+
+    @GET
+    @Path("/features")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Map<String, Object> getFeatures() {
+        Map<String, Object> features = new LinkedHashMap<>();
+        features.put("memoryLimit", memoryLimitEnabled);
+        features.put("deletionOnExpiration", databaseService.isDeletionOnExpirationEnabled());
+        features.put("databaseListing", databaseService.isListingEnabled());
+        features.put("dump", dumpStorageService.isEnabled());
+        features.put("migration", migrationService.isEnabled());
+        features.put("webhook", webhookService.isEnabled());
+        features.put("defaultExpirationMinutes", defaultExpirationMinutes);
+        return features;
     }
 
     @GET

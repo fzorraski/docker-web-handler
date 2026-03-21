@@ -124,12 +124,16 @@ public class RunContainerRequest {
         this.snapshotId = snapshotId;
     }
 
+    private boolean webhookNotify;
     private String operationsPassword;
     private boolean operationsPasswordValidated;
     private String migrationMode;
     private String migrationSql;
     private String migrationSourceVersion;
     private String migrationTargetVersion;
+
+    public boolean isWebhookNotify() { return webhookNotify; }
+    public void setWebhookNotify(boolean webhookNotify) { this.webhookNotify = webhookNotify; }
 
     public String getOperationsPassword() { return operationsPassword; }
     public void setOperationsPassword(String operationsPassword) { this.operationsPassword = operationsPassword; }
@@ -163,6 +167,7 @@ public class RunContainerRequest {
         c.createDatabase = this.createDatabase;
         c.selectedOptionalScripts = this.selectedOptionalScripts != null ? List.copyOf(this.selectedOptionalScripts) : null;
         c.snapshotId = this.snapshotId;
+        c.webhookNotify = this.webhookNotify;
         c.operationsPassword = this.operationsPassword;
         c.operationsPasswordValidated = this.operationsPasswordValidated;
         c.migrationMode = this.migrationMode;

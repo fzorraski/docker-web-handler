@@ -3,9 +3,12 @@ package br.com.fzdevx.interfaces.rest;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.application.dto.RestoreDumpRequest;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
+import br.com.fzdevx.infrastructure.persistence.SnapshotStorageService;
 import br.com.fzdevx.infrastructure.config.RequestStash;
 import br.com.fzdevx.application.usecase.RestoreDumpUseCase;
-import br.com.fzdevx.interfaces.rest.util.SseHelper; // ✦ CLEAN — extracted duplicated SSE logic into shared helper
+import br.com.fzdevx.application.dto.WebhookPayload;
+import br.com.fzdevx.infrastructure.webhook.WebhookService;
+import br.com.fzdevx.interfaces.rest.util.SseHelper;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Context;
@@ -26,6 +29,12 @@ public class DatabaseDumpSseController {
 
     @Inject
     DumpStorageService dumpStorageService;
+
+    @Inject
+    SnapshotStorageService snapshotStorageService;
+
+    @Inject
+    WebhookService webhookService;
 
     @POST
     @Path("/restore/prepare")
@@ -63,14 +72,38 @@ public class DatabaseDumpSseController {
             return;
         }
 
+        String[] lastError = {null};
         try {
-            boolean success = restoreDumpUseCase.execute(request, event -> SseHelper.sendEvent(sink, sse, event));
+            boolean success = restoreDumpUseCase.execute(request, event -> {
+                SseHelper.sendEvent(sink, sse, event);
+                if (event.getType() == ContainerEvent.EventType.ERROR) lastError[0] = event.getMessage();
+            });
             if (success) {
                 SseHelper.sendEvent(sink, sse, ContainerEvent.success("Complete",
                         "Dump restored successfully into '" + request.getTargetDatabase() + "'."));
             }
+            if (request.isWebhookNotify()) {
+                String filename = resolveDumpFilename(request);
+                webhookService.fireAsync(webhookService.buildRestorePayload(
+                        success ? WebhookPayload.Status.SUCCESS : WebhookPayload.Status.FAILURE,
+                        request.getRepository(), request.getTargetDatabase(), filename, lastError[0]));
+            }
         } finally {
             SseHelper.closeSink(sink);
         }
+    }
+
+    private String resolveDumpFilename(RestoreDumpRequest request) {
+        if (request.getDumpId() != null) {
+            return dumpStorageService.findById(request.getDumpId())
+                    .map(d -> d.getOriginalFilename())
+                    .orElse(request.getDumpId());
+        }
+        if (request.getSnapshotId() != null) {
+            return snapshotStorageService.findById(request.getSnapshotId())
+                    .map(s -> s.getLabel() != null ? s.getLabel() : s.getStoredFilename())
+                    .orElse(request.getSnapshotId());
+        }
+        return "";
     }
 }

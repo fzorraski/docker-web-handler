@@ -12,7 +12,9 @@ import br.com.fzdevx.application.usecase.RunMigrationUseCase;
 import br.com.fzdevx.application.usecase.StreamContainerLogsUseCase;
 import br.com.fzdevx.application.usecase.StreamContainerStatsUseCase;
 import br.com.fzdevx.domain.model.ContainerStats;
-import br.com.fzdevx.interfaces.rest.util.SseHelper; // ✦ CLEAN — extracted duplicated SSE logic into shared helper
+import br.com.fzdevx.application.dto.WebhookPayload;
+import br.com.fzdevx.infrastructure.webhook.WebhookService;
+import br.com.fzdevx.interfaces.rest.util.SseHelper;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Context;
@@ -20,6 +22,8 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.sse.Sse;
 import jakarta.ws.rs.sse.SseEventSink;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 @Path("/containers/sse")
@@ -45,6 +49,9 @@ public class ContainerSseController {
 
     @Inject
     StreamContainerStatsUseCase streamContainerStatsUseCase;
+
+    @Inject
+    WebhookService webhookService;
 
     @POST
     @Path("/run/prepare")
@@ -76,9 +83,28 @@ public class ContainerSseController {
             return;
         }
 
+        String[] lastError = {null};
+        boolean[] succeeded = {false};
+        List<String> ports = new ArrayList<>();
         try {
-            runContainerUseCase.execute(request, event -> SseHelper.sendEvent(sink, sse, event), ticket);
+            runContainerUseCase.execute(request, event -> {
+                SseHelper.sendEvent(sink, sse, event);
+                if (event.getType() == ContainerEvent.EventType.ERROR) lastError[0] = event.getMessage();
+                if (event.getType() == ContainerEvent.EventType.SUCCESS) succeeded[0] = true;
+                if (event.getMessage() != null && event.getMessage().startsWith("Port mapped:")) {
+                    // Extract host port (left side of "hostPort → containerPort")
+                    String mapping = event.getMessage().replace("Port mapped: ", "").trim();
+                    String hostPort = mapping.split("\\s*\u2192\\s*")[0].trim();
+                    ports.add(hostPort);
+                }
+            }, ticket);
         } finally {
+            if (request.isWebhookNotify()) {
+                webhookService.fireAsync(webhookService.buildContainerPayload(
+                        succeeded[0] ? WebhookPayload.Status.SUCCESS : WebhookPayload.Status.FAILURE,
+                        request.getRepository(), request.getTag(), request.getContainerName(),
+                        String.join(", ", ports), lastError[0]));
+            }
             SseHelper.closeSink(sink);
         }
     }
