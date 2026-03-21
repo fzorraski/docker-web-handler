@@ -3,7 +3,7 @@ import {
   Box, Typography, Button, TextField, InputAdornment,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel,
   Paper, Chip, IconButton, Tooltip, Switch, CircularProgress, Divider, Checkbox,
-  Alert, AlertTitle,
+  Alert, AlertTitle, Menu, MenuItem, ListItemIcon, ListItemText,
 } from '@mui/material'
 import {
   Search, AddCircleOutline, Delete, PlayArrow, Stop, Add,
@@ -50,6 +50,8 @@ export default function SchedulesPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
+  const [contextMenuPos, setContextMenuPos] = useState<{ top: number; left: number } | null>(null)
+  const [contextSchedule, setContextSchedule] = useState<ContainerSchedule | null>(null)
 
   const loadSchedules = useCallback(() => {
     setLoading(true)
@@ -474,7 +476,17 @@ export default function SchedulesPage() {
                 </TableRow>
               )}
               {filtered.map((s) => (
-                <TableRow key={s.id} hover selected={selected.has(s.id)} sx={{ opacity: s.enabled ? 1 : 0.5 }}>
+                <TableRow
+                  key={s.id}
+                  hover
+                  selected={selected.has(s.id)}
+                  sx={{ opacity: s.enabled ? 1 : 0.5 }}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    setContextMenuPos({ top: e.clientY, left: e.clientX })
+                    setContextSchedule(s)
+                  }}
+                >
                   <TableCell padding="checkbox">
                     <Checkbox size="small" checked={selected.has(s.id)} onChange={() => toggleSelect(s.id)} />
                   </TableCell>
@@ -561,6 +573,41 @@ export default function SchedulesPage() {
           </Table>
         </TableContainer>
       </Box>
+
+      <Menu
+        open={Boolean(contextMenuPos) && contextSchedule !== null}
+        onClose={() => { setContextMenuPos(null); setContextSchedule(null) }}
+        anchorReference="anchorPosition"
+        anchorPosition={contextMenuPos ?? undefined}
+        slotProps={{ paper: { sx: { minWidth: 200 } } }}
+      >
+        {contextSchedule && [
+          contextSchedule.enabled && (
+            <MenuItem
+              key="execute"
+              onClick={() => {
+                handleExecuteNowClick(contextSchedule.id, contextSchedule.name)
+                setContextMenuPos(null); setContextSchedule(null)
+              }}
+            >
+              <ListItemIcon><PlayArrow fontSize="small" color="primary" /></ListItemIcon>
+              <ListItemText>{t('schedules.executeNow')}</ListItemText>
+            </MenuItem>
+          ),
+          contextSchedule.enabled && <Divider key="divider" />,
+          <MenuItem
+            key="delete"
+            onClick={() => {
+              handleDeleteClick(contextSchedule.id, contextSchedule.name)
+              setContextMenuPos(null); setContextSchedule(null)
+            }}
+            sx={{ color: 'error.main' }}
+          >
+            <ListItemIcon><Delete fontSize="small" color="error" /></ListItemIcon>
+            <ListItemText>{t('common.delete')}</ListItemText>
+          </MenuItem>,
+        ]}
+      </Menu>
 
       <CreateScheduleModal
         open={modalOpen}

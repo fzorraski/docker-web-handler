@@ -36,6 +36,10 @@ import {
   Switch,
   Slider,
   Alert,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material'
 import { Search, Delete, DeleteSweep, CleaningServices, AccountTree, Info, Warning, PhotoLibrary, CheckCircle, RemoveCircleOutline, DataUsage } from '@mui/icons-material'
 import { getLastUsedColor, getLastUsedLabel } from '../utils/lastUsedColor'
@@ -81,6 +85,8 @@ export default function ImagesPage() {
   const [pruneMinDays, setPruneMinDays] = useState(5)
   const [prunePreparing, setPrunePreparing] = useState(false)
   const [pruneError, setPruneError] = useState('')
+  const [contextMenuPos, setContextMenuPos] = useState<{ top: number; left: number } | null>(null)
+  const [contextImage, setContextImage] = useState<DockerImage | null>(null)
 
   const filteredByUsage = useMemo(
     () => showUnusedOnly ? images.filter(img => !img.inUse) : images,
@@ -336,7 +342,15 @@ export default function ImagesPage() {
                 </TableRow>
               )}
               {filtered.map((img) => (
-                <TableRow key={img.imageId} hover>
+                <TableRow
+                  key={img.imageId}
+                  hover
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    setContextMenuPos({ top: e.clientY, left: e.clientX })
+                    setContextImage(img)
+                  }}
+                >
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                       <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{img.repository}</Typography>
@@ -391,6 +405,27 @@ export default function ImagesPage() {
           </Table>
         </TableContainer>
       </Box>
+
+      <Menu
+        open={Boolean(contextMenuPos) && contextImage !== null}
+        onClose={() => { setContextMenuPos(null); setContextImage(null) }}
+        anchorReference="anchorPosition"
+        anchorPosition={contextMenuPos ?? undefined}
+        slotProps={{ paper: { sx: { minWidth: 200 } } }}
+      >
+        {contextImage && (
+          <MenuItem
+            onClick={() => {
+              handleRemove(contextImage.imageId)
+              setContextMenuPos(null); setContextImage(null)
+            }}
+            sx={{ color: 'error.main' }}
+          >
+            <ListItemIcon><Delete fontSize="small" color="error" /></ListItemIcon>
+            <ListItemText>{t('common.remove')}</ListItemText>
+          </MenuItem>
+        )}
+      </Menu>
 
       {/* Remove Image SSE Dialog */}
       <Dialog open={removeSse.events.length > 0} onClose={handleRemoveDialogClose} maxWidth="sm" fullWidth>
