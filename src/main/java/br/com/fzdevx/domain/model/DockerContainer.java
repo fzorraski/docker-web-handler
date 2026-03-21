@@ -34,6 +34,8 @@ public class DockerContainer {
 
     private String repository;
 
+    private String ipAddress;
+
     public String getContainerId() {
         return containerId;
     }
@@ -152,6 +154,14 @@ public class DockerContainer {
 
     public void setRepository(String repository) {
         this.repository = repository;
+    }
+
+    public String getIpAddress() {
+        return ipAddress;
+    }
+
+    public void setIpAddress(String ipAddress) {
+        this.ipAddress = ipAddress;
     }
 
     @Override

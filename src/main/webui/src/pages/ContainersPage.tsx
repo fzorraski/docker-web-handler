@@ -1,9 +1,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import dayjs from 'dayjs'
+import customParseFormat from 'dayjs/plugin/customParseFormat'
 import type { DockerContainer } from '../types'
 import {
   getContainers,
   stopContainer,
   startContainer,
+  removeContainer,
   getAllowedRepositories,
   cancelDatabaseDeletion,
   cancelExpiration,
@@ -13,6 +16,8 @@ import {
   getMigratedDatabases,
   type MigratedDatabase,
 } from '../services/containerService'
+
+dayjs.extend(customParseFormat)
 import { isDumpEnabled, getActiveRestores, type ActiveRestore } from '../services/dumpService'
 import { streamRemoveContainer } from  '../services/sseService'
 import NewContainerModal from '../components/NewContainerModal'
@@ -44,7 +49,6 @@ import {
   Paper,
   Chip,
   CircularProgress,
-  Link as MuiLink,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -52,12 +56,18 @@ import {
   IconButton,
   Tooltip,
   Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  Divider,
   FormControlLabel,
   Checkbox,
+  Switch,
+  Slider,
   Alert,
   AlertTitle,
 } from '@mui/material'
-import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor } from '@mui/icons-material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord } from '@mui/icons-material'
 import { isSchedulingEnabled, listSchedules } from '../services/scheduleService'
 import type { ContainerSchedule } from '../types'
 
@@ -68,6 +78,15 @@ interface ColumnDef {
 }
 
 const STORAGE_KEY = 'containerColumnsVisibility'
+
+const DAY_MARKS = [
+  { value: 1, label: '1' },
+  { value: 7, label: '7' },
+  { value: 14, label: '14' },
+  { value: 30, label: '30' },
+  { value: 60, label: '60' },
+  { value: 90, label: '90' },
+]
 
 function loadVisibility(columns: ColumnDef[]): Record<string, boolean> {
   try {
@@ -113,21 +132,29 @@ export default function ContainersPage() {
   const [scheduleContainerName, setScheduleContainerName] = useState('')
   const [scheduleExpiresAt, setScheduleExpiresAt] = useState<string | undefined>(undefined)
   const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [actionMenuAnchor, setActionMenuAnchor] = useState<null | HTMLElement>(null)
+  const [contextMenuPos, setContextMenuPos] = useState<{ top: number; left: number } | null>(null)
+  const [actionMenuContainer, setActionMenuContainer] = useState<DockerContainer | null>(null)
+  const [showStoppedOnly, setShowStoppedOnly] = useState(false)
+  const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false)
+  const [cleanupMinDays, setCleanupMinDays] = useState(7)
+  const [cleanupRunning, setCleanupRunning] = useState(false)
 
-
+  const isUp = (status: string) => status.includes('Up')
   const machineIp = window.location.hostname
 
   const BASE_COLUMNS: ColumnDef[] = useMemo(() => [
-    { key: 'containerId', label: t('containers.columns.containerId'), defaultVisible: false },
+    { key: 'names', label: t('containers.columns.name'), defaultVisible: true },
+    { key: 'status', label: t('containers.columns.status'), defaultVisible: true },
     { key: 'image', label: t('containers.columns.image'), defaultVisible: true },
     { key: 'tag', label: t('containers.columns.tag'), defaultVisible: true },
-    { key: 'command', label: t('containers.columns.command'), defaultVisible: false },
-    { key: 'created', label: t('containers.columns.created'), defaultVisible: true },
-    { key: 'status', label: t('containers.columns.status'), defaultVisible: true },
     { key: 'ports', label: t('containers.columns.ports'), defaultVisible: true },
-    { key: 'names', label: t('containers.columns.name'), defaultVisible: true },
+    { key: 'ipAddress', label: t('containers.columns.ipAddress'), defaultVisible: false },
     { key: 'database', label: t('containers.columns.database'), defaultVisible: true },
     { key: 'expires', label: t('containers.columns.expires'), defaultVisible: true },
+    { key: 'created', label: t('containers.columns.created'), defaultVisible: true },
+    { key: 'containerId', label: t('containers.columns.containerId'), defaultVisible: false },
+    { key: 'command', label: t('containers.columns.command'), defaultVisible: false },
     { key: 'actions', label: t('containers.columns.actions'), defaultVisible: true },
   ], [t])
 
@@ -287,6 +314,33 @@ export default function ContainersPage() {
     loadContainers()
   }
 
+  const cleanupCandidates = useMemo(
+    () => containers.filter(c => !isUp(c.status) && getContainerAgeDays(c) >= cleanupMinDays),
+    [containers, cleanupMinDays]
+  )
+
+  async function handleCleanup() {
+    if (cleanupCandidates.length === 0) return
+    setCleanupRunning(true)
+    let removed = 0
+    let failed = 0
+    for (const c of cleanupCandidates) {
+      try {
+        const ok = await removeContainer(c.containerId)
+        if (ok) removed++; else failed++
+      } catch {
+        failed++
+      }
+    }
+    setCleanupRunning(false)
+    setCleanupDialogOpen(false)
+    notify(
+      t('containers.cleanup.result', { removed, failed }),
+      failed > 0 ? 'warning' : 'success'
+    )
+    loadContainers()
+  }
+
   function handleSnapshot(c: DockerContainer) {
     setSnapshotRepo(c.repository ?? undefined)
     setSnapshotDb(c.databaseName ?? undefined)
@@ -310,8 +364,6 @@ export default function ContainersPage() {
     setSortKey(key)
   }
 
-  const isUp = (status: string) => status.includes('Up')
-
   function getContainerValue(c: DockerContainer, key: string): string {
     switch (key) {
       case 'containerId': return c.containerId
@@ -321,6 +373,7 @@ export default function ContainersPage() {
       case 'created': return c.created
       case 'status': return c.status
       case 'ports': return c.ports
+      case 'ipAddress': return c.ipAddress ?? ''
       case 'names': return c.names
       case 'database': return c.databaseName ?? ''
       case 'expires': return c.expiresAt ?? ''
@@ -328,8 +381,19 @@ export default function ContainersPage() {
     }
   }
 
+  function getContainerAgeDays(c: DockerContainer): number {
+    const created = dayjs(c.created, 'DD/MM/YYYY HH:mm:ss')
+    if (!created.isValid()) return 0
+    return dayjs().diff(created, 'day')
+  }
+
+  const filteredByStatus = useMemo(
+    () => showStoppedOnly ? containers.filter(c => !isUp(c.status)) : containers,
+    [containers, showStoppedOnly]
+  )
+
   const filtered = useMemo(() => {
-    const result = containers.filter((c) =>
+    const result = filteredByStatus.filter((c) =>
       Object.values(c).some((v) => String(v ?? '').toLowerCase().includes(filter.toLowerCase()))
     )
     if (!sortKey) return result
@@ -339,7 +403,7 @@ export default function ContainersPage() {
       const cmp = va.localeCompare(vb)
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [containers, filter, sortKey, sortDir])
+  }, [filteredByStatus, filter, sortKey, sortDir])
 
   const dbsScheduledForDeletion = useMemo(() => {
     const map = new Map<string, string>()
@@ -420,13 +484,14 @@ export default function ContainersPage() {
           </Alert>
         )}
 
-        <Box sx={{ display: 'flex', gap: 1, mb: 3, alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
           <TextField
-            fullWidth
             placeholder={t('containers.searchPlaceholder')}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             size="small"
+            variant="outlined"
+            sx={{ flex: 1, minWidth: 200 }}
             slotProps={{
               input: {
                 startAdornment: (
@@ -437,8 +502,36 @@ export default function ContainersPage() {
               },
             }}
           />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={showStoppedOnly}
+                onChange={(e) => setShowStoppedOnly(e.target.checked)}
+                size="small"
+              />
+            }
+            label={
+              <Typography variant="body2">
+                {t('containers.showStoppedOnly')} ({stoppedCount})
+              </Typography>
+            }
+          />
+          <Tooltip title={t('containers.cleanup.description')}>
+            <span>
+              <Button
+                variant="contained"
+                color="warning"
+                startIcon={<CleaningServices />}
+                onClick={() => setCleanupDialogOpen(true)}
+                disabled={stoppedCount === 0}
+                size="small"
+              >
+                {t('containers.cleanup.button')}
+              </Button>
+            </span>
+          </Tooltip>
           <Tooltip title={t('containers.toggleColumns')}>
-            <IconButton onClick={(e) => setColumnMenuAnchor(e.currentTarget)}>
+            <IconButton onClick={(e) => setColumnMenuAnchor(e.currentTarget)} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
               <ViewColumn />
             </IconButton>
           </Tooltip>
@@ -466,8 +559,8 @@ export default function ContainersPage() {
           </Menu>
         </Box>
 
-        <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2, overflowX: 'auto' }}>
-          <Table aria-label="Containers">
+        <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 2, overflowX: 'auto', border: '1px solid', borderColor: 'divider' }}>
+          <Table aria-label="Containers" size="small">
             <TableHead>
               <TableRow sx={{ bgcolor: theadBg }}>
                 {visibleColumns.map((col) => (
@@ -502,40 +595,16 @@ export default function ContainersPage() {
                 </TableRow>
               )}
               {filtered.map((c) => (
-                <TableRow key={c.containerId} hover>
-                  {columnVisibility.containerId && <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem' }}>{c.containerId}</TableCell>}
-                  {columnVisibility.image && <TableCell>{c.image}</TableCell>}
-                  {columnVisibility.tag && <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{c.image.split(':')[1] ?? '-'}</TableCell>}
-                  {columnVisibility.command && <TableCell>{c.command}</TableCell>}
-                  {columnVisibility.created && <TableCell>{formatBackendDate(c.created)}</TableCell>}
-                  {columnVisibility.status && (
-                    <TableCell>
-                      <Chip
-                        label={c.status}
-                        size="small"
-                        color={isUp(c.status) ? 'success' : 'default'}
-                        variant="outlined"
-                        sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem' }}
-                      />
-                    </TableCell>
-                  )}
-                  {columnVisibility.ports && (
-                    <TableCell>
-                      {c.ports !== '-'
-                        ? c.ports.split(',').map((port, i) => (
-                            <MuiLink
-                              key={i}
-                              href={`http://${machineIp}:${port.trim()}${c.portPaths?.[port.trim()] ?? ''}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              sx={{ mr: 1, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}
-                            >
-                              {port.trim()}
-                            </MuiLink>
-                          ))
-                        : '-'}
-                    </TableCell>
-                  )}
+                <TableRow
+                  key={c.containerId}
+                  hover
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    setActionMenuAnchor(null)
+                    setContextMenuPos({ top: e.clientY, left: e.clientX })
+                    setActionMenuContainer(c)
+                  }}
+                >
                   {columnVisibility.names && (
                     <TableCell sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -563,6 +632,61 @@ export default function ContainersPage() {
                           )
                         })()}
                       </Box>
+                    </TableCell>
+                  )}
+                  {columnVisibility.status && (
+                    <TableCell>
+                      <Chip
+                        icon={
+                          <FiberManualRecord
+                            sx={{
+                              fontSize: 10,
+                              ...(isUp(c.status) && {
+                                animation: 'pulse 2s ease-in-out infinite',
+                                '@keyframes pulse': {
+                                  '0%, 100%': { opacity: 1 },
+                                  '50%': { opacity: 0.4 },
+                                },
+                              }),
+                            }}
+                          />
+                        }
+                        label={c.status}
+                        size="small"
+                        color={isUp(c.status) ? 'success' : 'error'}
+                        variant="outlined"
+                        sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', height: 24 }}
+                      />
+                    </TableCell>
+                  )}
+                  {columnVisibility.image && <TableCell sx={{ fontSize: '0.85rem' }}>{c.image.split(':')[0]}</TableCell>}
+                  {columnVisibility.tag && <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{c.image.split(':')[1] ?? '-'}</TableCell>}
+                  {columnVisibility.ports && (
+                    <TableCell>
+                      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                        {c.ports !== '-'
+                          ? c.ports.split(',').map((port, i) => (
+                              <Chip
+                                key={i}
+                                label={port.trim()}
+                                size="small"
+                                variant="outlined"
+                                color="primary"
+                                component="a"
+                                href={`http://${machineIp}:${port.trim()}${c.portPaths?.[port.trim()] ?? ''}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                clickable
+                                sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', height: 24 }}
+                              />
+                            ))
+                          : <Typography variant="body2" color="text.secondary">-</Typography>}
+                      </Box>
+                    </TableCell>
+                  )}
+                  {columnVisibility.ipAddress && (
+                    <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem' }}>
+                      {c.ipAddress || <Typography variant="body2" color="text.secondary">-</Typography>}
                     </TableCell>
                   )}
                   {columnVisibility.database && (
@@ -631,9 +755,12 @@ export default function ContainersPage() {
                       )}
                     </TableCell>
                   )}
+                  {columnVisibility.created && <TableCell sx={{ fontSize: '0.85rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>{formatBackendDate(c.created)}</TableCell>}
+                  {columnVisibility.containerId && <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem' }}>{c.containerId}</TableCell>}
+                  {columnVisibility.command && <TableCell>{c.command}</TableCell>}
                   {columnVisibility.actions && (
                     <TableCell>
-                      <Box sx={{ display: 'flex', gap: 0.25 }}>
+                      <Box sx={{ display: 'flex', gap: 0.25, alignItems: 'center' }}>
                         {isUp(c.status) ? (
                           <Tooltip title={stoppingId === c.containerId ? t('containers.stopping') : t('containers.stop')}>
                             <span>
@@ -658,80 +785,15 @@ export default function ContainersPage() {
                             </IconButton>
                           </Tooltip>
                         )}
-                        <Tooltip title={t('containers.logs.viewLogs')}>
-                          <IconButton
-                            size="small"
-                            color="secondary"
-                            onClick={() => handleViewLogs(c)}
-                          >
-                            <Terminal />
-                          </IconButton>
-                        </Tooltip>
-                        {isUp(c.status) && (
-                          <Tooltip title={t('containers.stats.viewStats')}>
-                            <IconButton
-                              size="small"
-                              color="info"
-                              onClick={() => {
-                                setStatsContainerId(c.containerId)
-                                setStatsContainerName(c.names)
-                              }}
-                            >
-                              <Monitor />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                        {dumpEnabled && c.repository && c.databaseName && (
-                          <Tooltip title={t('containers.snapshotDatabase', { database: c.databaseName })}>
-                            <IconButton
-                              size="small"
-                              color="info"
-                              onClick={() => handleSnapshot(c)}
-                            >
-                              <CameraAlt />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                        {migrationFeatureEnabled && c.repository && c.databaseName && (
-                          <Tooltip title={t('containers.runMigration')}>
-                            <IconButton
-                              size="small"
-                              color="warning"
-                              onClick={() => {
-                                setMigrationRepo(c.repository!)
-                                setMigrationDb(c.databaseName!)
-                                setMigrationOpen(true)
-                              }}
-                            >
-                              <SwapHoriz />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                        {schedulingFeatureEnabled && (
-                          <Tooltip title={t('schedules.quickTitle', { name: '' })}>
-                            <IconButton
-                              size="small"
-                              color="default"
-                              onClick={() => {
-                                setScheduleContainerId(c.containerId)
-                                setScheduleContainerName(c.names)
-                                setScheduleExpiresAt(c.expiresAt)
-                                setScheduleOpen(true)
-                              }}
-                            >
-                              <AccessTime />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                        <Tooltip title={t('common.remove')}>
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => handleRemove(c.containerId, c.names)}
-                          >
-                            <Delete />
-                          </IconButton>
-                        </Tooltip>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            setActionMenuAnchor(e.currentTarget)
+                            setActionMenuContainer(c)
+                          }}
+                        >
+                          <MoreVert />
+                        </IconButton>
                       </Box>
                     </TableCell>
                   )}
@@ -740,6 +802,136 @@ export default function ContainersPage() {
             </TableBody>
           </Table>
         </TableContainer>
+
+        <Menu
+          anchorEl={actionMenuAnchor}
+          open={(Boolean(actionMenuAnchor) || Boolean(contextMenuPos)) && actionMenuContainer !== null}
+          onClose={() => { setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null) }}
+          {...(contextMenuPos && !actionMenuAnchor ? {
+            anchorReference: 'anchorPosition' as const,
+            anchorPosition: contextMenuPos,
+          } : {
+            transformOrigin: { horizontal: 'right', vertical: 'top' },
+            anchorOrigin: { horizontal: 'right', vertical: 'bottom' },
+          })}
+          slotProps={{ paper: { sx: { minWidth: 200 } } }}
+        >
+          {actionMenuContainer && [
+            isUp(actionMenuContainer.status) ? (
+              <MenuItem
+                key="stop"
+                onClick={() => {
+                  handleStop(actionMenuContainer.containerId, actionMenuContainer.names)
+                  setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+                }}
+                disabled={stoppingId === actionMenuContainer.containerId}
+              >
+                <ListItemIcon><Stop fontSize="small" color="warning" /></ListItemIcon>
+                <ListItemText>{t('containers.stop')}</ListItemText>
+              </MenuItem>
+            ) : (
+              <MenuItem
+                key="start"
+                onClick={() => {
+                  handleStart(actionMenuContainer.containerId, actionMenuContainer.names)
+                  setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+                }}
+              >
+                <ListItemIcon><PlayArrow fontSize="small" color="primary" /></ListItemIcon>
+                <ListItemText>{t('containers.start')}</ListItemText>
+              </MenuItem>
+            ),
+
+            <Divider key="action-divider" />,
+
+            <MenuItem
+              key="logs"
+              onClick={() => {
+                handleViewLogs(actionMenuContainer)
+                setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+              }}
+            >
+              <ListItemIcon><Terminal fontSize="small" /></ListItemIcon>
+              <ListItemText>{t('containers.logs.viewLogs')}</ListItemText>
+            </MenuItem>,
+
+            isUp(actionMenuContainer.status) && (
+              <MenuItem
+                key="stats"
+                onClick={() => {
+                  setStatsContainerId(actionMenuContainer.containerId)
+                  setStatsContainerName(actionMenuContainer.names)
+                  setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+                }}
+              >
+                <ListItemIcon><Monitor fontSize="small" /></ListItemIcon>
+                <ListItemText>{t('containers.stats.viewStats')}</ListItemText>
+              </MenuItem>
+            ),
+
+            (dumpEnabled && actionMenuContainer.repository && actionMenuContainer.databaseName) || (migrationFeatureEnabled && actionMenuContainer.repository && actionMenuContainer.databaseName)
+              ? <Divider key="db-divider" />
+              : null,
+
+            dumpEnabled && actionMenuContainer.repository && actionMenuContainer.databaseName && (
+              <MenuItem
+                key="snapshot"
+                onClick={() => {
+                  handleSnapshot(actionMenuContainer)
+                  setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+                }}
+              >
+                <ListItemIcon><CameraAlt fontSize="small" /></ListItemIcon>
+                <ListItemText>{t('containers.snapshotDatabase', { database: actionMenuContainer.databaseName })}</ListItemText>
+              </MenuItem>
+            ),
+
+            migrationFeatureEnabled && actionMenuContainer.repository && actionMenuContainer.databaseName && (
+              <MenuItem
+                key="migration"
+                onClick={() => {
+                  setMigrationRepo(actionMenuContainer.repository!)
+                  setMigrationDb(actionMenuContainer.databaseName!)
+                  setMigrationOpen(true)
+                  setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+                }}
+              >
+                <ListItemIcon><SwapHoriz fontSize="small" /></ListItemIcon>
+                <ListItemText>{t('containers.runMigration')}</ListItemText>
+              </MenuItem>
+            ),
+
+            schedulingFeatureEnabled && (
+              <MenuItem
+                key="schedule"
+                onClick={() => {
+                  setScheduleContainerId(actionMenuContainer.containerId)
+                  setScheduleContainerName(actionMenuContainer.names)
+                  setScheduleExpiresAt(actionMenuContainer.expiresAt)
+                  setScheduleOpen(true)
+                  setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+                }}
+              >
+                <ListItemIcon><AccessTime fontSize="small" /></ListItemIcon>
+                <ListItemText>{t('schedules.title')}</ListItemText>
+              </MenuItem>
+            ),
+
+            <Divider key="delete-divider" />,
+
+            <MenuItem
+              key="delete"
+              onClick={() => {
+                handleRemove(actionMenuContainer.containerId, actionMenuContainer.names)
+                setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+              }}
+              sx={{ color: 'error.main' }}
+            >
+              <ListItemIcon><Delete fontSize="small" color="error" /></ListItemIcon>
+              <ListItemText>{t('common.remove')}</ListItemText>
+            </MenuItem>,
+          ]}
+        </Menu>
       </Box>
 
       <NewContainerModal
@@ -807,6 +999,61 @@ export default function ContainersPage() {
           getMigratedDatabases().then(setMigratedDatabases).catch(() => {})
         }}
       />
+
+      <Dialog open={cleanupDialogOpen} onClose={() => !cleanupRunning && setCleanupDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: 'warning.main', color: 'white' }}>
+          <CleaningServices sx={{ mr: 1, verticalAlign: 'middle' }} /> {t('containers.cleanup.title')}
+        </DialogTitle>
+        <DialogContent dividers sx={{ pt: 3 }}>
+          <Typography sx={{ mb: 2 }}>
+            {t('containers.cleanup.description')}
+          </Typography>
+
+          <Typography variant="body2" fontWeight={600} sx={{ mb: 1 }}>
+            {t('containers.cleanup.minDaysLabel')}
+          </Typography>
+          <Box sx={{ px: 2, mb: 3 }}>
+            <Slider
+              value={cleanupMinDays}
+              onChange={(_, v) => setCleanupMinDays(v as number)}
+              min={1}
+              max={90}
+              step={1}
+              marks={DAY_MARKS}
+              valueLabelDisplay="auto"
+              valueLabelFormat={(v) => t('containers.cleanup.daysValue', { count: v })}
+            />
+          </Box>
+
+          <Alert severity="info" sx={{ mb: 2 }}>
+            {t('containers.cleanup.matchCount', { count: cleanupCandidates.length })}
+          </Alert>
+
+          {cleanupCandidates.length > 0 && (
+            <Box sx={{ maxHeight: 150, overflowY: 'auto', mb: 1 }}>
+              {cleanupCandidates.map(c => (
+                <Typography key={c.containerId} variant="body2" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem', py: 0.25 }}>
+                  {c.names} — {getContainerAgeDays(c)}d
+                </Typography>
+              ))}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setCleanupDialogOpen(false)} color="inherit" disabled={cleanupRunning}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={handleCleanup}
+            disabled={cleanupRunning || cleanupCandidates.length === 0}
+            startIcon={cleanupRunning ? <CircularProgress size={20} /> : <CleaningServices />}
+          >
+            {cleanupRunning ? t('containers.cleanup.running') : t('containers.cleanup.confirm', { count: cleanupCandidates.length })}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <QuickScheduleDialog
         open={scheduleOpen}

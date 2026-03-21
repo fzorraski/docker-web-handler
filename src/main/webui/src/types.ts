@@ -11,6 +11,7 @@ export interface DockerContainer {
   databaseName?: string
   deleteDatabaseOnExpiration?: boolean
   repository?: string
+  ipAddress?: string
 }
 
 export interface DockerImage {

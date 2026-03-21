@@ -8,6 +8,8 @@ import br.com.fzdevx.infrastructure.util.DateFormatter;
 import br.com.fzdevx.domain.shared.InputValidator;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.model.Container;
+import com.github.dockerjava.api.model.ContainerNetwork;
+import com.github.dockerjava.api.model.ContainerNetworkSettings;
 import com.github.dockerjava.api.model.ContainerPort;
 import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
@@ -63,6 +65,15 @@ public class ContainerController {
                 if (!portPaths.isEmpty()) {
                     dockerContainer.setPortPaths(portPaths);
                 }
+            }
+
+            ContainerNetworkSettings netSettings = dc.getNetworkSettings();
+            if (netSettings != null && netSettings.getNetworks() != null) {
+                netSettings.getNetworks().values().stream()
+                        .map(ContainerNetwork::getIpAddress)
+                        .filter(ip -> ip != null && !ip.isEmpty())
+                        .findFirst()
+                        .ifPresent(dockerContainer::setIpAddress);
             }
 
             if (dc.getLabels() != null && dc.getLabels().containsKey(Constants.REPOSITORY_LABEL)) {
