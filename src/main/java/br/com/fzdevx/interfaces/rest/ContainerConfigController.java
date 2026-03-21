@@ -1,6 +1,8 @@
 package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
+import br.com.fzdevx.infrastructure.config.PasswordValidationService;
+import br.com.fzdevx.infrastructure.config.RequestStash;
 import br.com.fzdevx.domain.model.DatabaseMigrationRecord;
 import br.com.fzdevx.infrastructure.docker.MigrationService;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
@@ -46,6 +48,12 @@ public class ContainerConfigController {
     WebhookService webhookService;
 
     @Inject
+    PasswordValidationService passwordValidationService;
+
+    @Inject
+    RequestStash requestStash;
+
+    @Inject
     @ConfigProperty(name = "container.default-expiration-minutes", defaultValue = "480")
     int defaultExpirationMinutes;
 
@@ -56,6 +64,10 @@ public class ContainerConfigController {
     @Inject
     @ConfigProperty(name = "ui.locale")
     Optional<String> uiLocale;
+
+    @Inject
+    @ConfigProperty(name = "container.terminal.enabled", defaultValue = "false")
+    boolean terminalEnabled;
 
     @Inject
     Config config;
@@ -203,8 +215,36 @@ public class ContainerConfigController {
         features.put("dump", dumpStorageService.isEnabled());
         features.put("migration", migrationService.isEnabled());
         features.put("webhook", webhookService.isEnabled());
+        features.put("terminal", terminalEnabled);
         features.put("defaultExpirationMinutes", defaultExpirationMinutes);
         return features;
+    }
+
+    @POST
+    @Path("/terminal/authorize")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public jakarta.ws.rs.core.Response authorizeTerminal(Map<String, String> body) {
+        if (!terminalEnabled) {
+            return jakarta.ws.rs.core.Response.status(jakarta.ws.rs.core.Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Terminal feature is disabled.")).build();
+        }
+        String password = body.get("password");
+        String containerId = body.get("containerId");
+        if (containerId == null || containerId.isBlank()) {
+            return jakarta.ws.rs.core.Response.status(jakarta.ws.rs.core.Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Container ID is required.")).build();
+        }
+        if (InputValidator.validateContainerId(containerId).isPresent()) {
+            return jakarta.ws.rs.core.Response.status(jakarta.ws.rs.core.Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Invalid container ID.")).build();
+        }
+        if (!passwordValidationService.validateTerminalPassword(password)) {
+            return jakarta.ws.rs.core.Response.status(jakarta.ws.rs.core.Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid terminal password.")).build();
+        }
+        String ticket = requestStash.stashTerminal(containerId);
+        return jakarta.ws.rs.core.Response.ok(Map.of("ticket", ticket)).build();
     }
 
     @GET

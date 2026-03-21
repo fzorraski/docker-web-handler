@@ -19,6 +19,10 @@ public class PasswordValidationService {
     @ConfigProperty(name = "database.dump.operations-password")
     Optional<String> operationsPassword;
 
+    @Inject
+    @ConfigProperty(name = "container.terminal.password")
+    Optional<String> terminalPassword;
+
     public boolean validateUploadPassword(String password) {
         if (uploadPassword.isEmpty() || uploadPassword.get().isBlank()) return false;
         return MessageDigest.isEqual(
@@ -30,6 +34,13 @@ public class PasswordValidationService {
         if (operationsPassword.isEmpty() || operationsPassword.get().isBlank()) return false;
         return MessageDigest.isEqual(
                 operationsPassword.get().getBytes(),
+                (password != null ? password : "").getBytes());
+    }
+
+    public boolean validateTerminalPassword(String password) {
+        if (terminalPassword.isEmpty() || terminalPassword.get().isBlank()) return false;
+        return MessageDigest.isEqual(
+                terminalPassword.get().getBytes(),
                 (password != null ? password : "").getBytes());
     }
 }

@@ -56,7 +56,8 @@ public class RequestStash {
                 + evictMap(restoreStash, cutoff)
                 + evictMap(snapshotStash, cutoff)
                 + evictMap(pruneStash, cutoff)
-                + evictMap(migrationStash, cutoff);
+                + evictMap(migrationStash, cutoff)
+                + evictMap(terminalStash, cutoff);
         if (evicted > 0) {
             Log.infof("RequestStash: evicted %d expired ticket(s).", evicted);
         }
@@ -122,5 +123,16 @@ public class RequestStash {
 
     public RunMigrationRequest retrieveMigration(String ticket) {
         return take(migrationStash, ticket);
+    }
+
+    // Terminal tickets store the containerId that was authorized
+    private final ConcurrentHashMap<String, StashedEntry<String>> terminalStash = new ConcurrentHashMap<>();
+
+    public String stashTerminal(String containerId) {
+        return put(terminalStash, containerId);
+    }
+
+    public String retrieveTerminal(String ticket) {
+        return take(terminalStash, ticket);
     }
 }
