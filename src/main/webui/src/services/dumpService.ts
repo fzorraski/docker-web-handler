@@ -173,6 +173,7 @@ export async function updateDumpMetadata(
   version: string,
   databaseName: string,
   operationsPassword: string,
+  description?: string,
 ): Promise<{ success: boolean; error?: string }> {
   const res = await fetch(API + 'metadata/' + encodeURIComponent(id), {
     method: 'PUT',
@@ -180,7 +181,7 @@ export async function updateDumpMetadata(
       'Content-Type': 'application/json',
       'X-Dump-Password': operationsPassword,
     },
-    body: JSON.stringify({ version, databaseName }),
+    body: JSON.stringify({ version, databaseName, description }),
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))

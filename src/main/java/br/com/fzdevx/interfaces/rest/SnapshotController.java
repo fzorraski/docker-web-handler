@@ -207,6 +207,36 @@ public class SnapshotController {
     }
 
     @PUT
+    @Path("/metadata/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response updateMetadata(@PathParam("id") String id,
+                                    @HeaderParam("X-Dump-Password") String password,
+                                    Map<String, String> body) {
+        if (!dumpStorageService.isEnabled()) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Dump feature is disabled.")).build();
+        }
+        Optional<String> uuidError = InputValidator.validateUuid(id);
+        if (uuidError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", uuidError.get())).build();
+        }
+        if (!dumpStorageService.validateOperationsPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
+        }
+        String label = body.get("label");
+        String description = body.get("description");
+        boolean updated = snapshotStorageService.updateMetadata(id, label, description);
+        if (!updated) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", "Snapshot not found.")).build();
+        }
+        return Response.ok(Map.of("success", true)).build();
+    }
+
+    @PUT
     @Path("/expiration/{id}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)

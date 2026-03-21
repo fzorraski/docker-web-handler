@@ -79,6 +79,27 @@ export async function cancelSnapshot(repository: string, sourceDatabaseName: str
   return res.ok
 }
 
+export async function updateSnapshotMetadata(
+  id: string,
+  label: string,
+  operationsPassword: string,
+  description?: string,
+): Promise<{ success: boolean; error?: string }> {
+  const res = await fetch(API + 'metadata/' + encodeURIComponent(id), {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Dump-Password': operationsPassword,
+    },
+    body: JSON.stringify({ label, description }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.error || res.statusText }
+  }
+  return { success: true }
+}
+
 export async function updateSnapshotExpiration(
   id: string,
   expiresAt: string | null,

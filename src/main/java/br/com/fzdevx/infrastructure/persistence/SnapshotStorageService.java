@@ -110,6 +110,18 @@ public class SnapshotStorageService {
                 snapshot.getFileSize(), snapshot.getMd5Hash());
     }
 
+    public boolean updateMetadata(String id, String label, String description) {
+        Optional<DatabaseSnapshot> opt = snapshotRepository.findById(id);
+        if (opt.isEmpty()) return false;
+
+        DatabaseSnapshot snapshot = opt.get();
+        snapshot.setLabel(label);
+        snapshot.setDescription(description);
+        snapshotRepository.save(snapshot);
+        Log.infof("Updated metadata for snapshot '%s': label=%s", id, label);
+        return true;
+    }
+
     public boolean updateExpiration(String id, Instant expiresAt) {
         Optional<DatabaseSnapshot> opt = snapshotRepository.findById(id);
         if (opt.isEmpty()) return false;

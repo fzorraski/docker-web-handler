@@ -282,7 +282,8 @@ public class DatabaseDumpController {
                         .entity(Map.of("error", dbError.get())).build();
             }
         }
-        boolean updated = dumpStorageService.updateMetadata(id, version, databaseName);
+        String description = body.get("description");
+        boolean updated = dumpStorageService.updateMetadata(id, version, databaseName, description);
         if (!updated) {
             return Response.status(Response.Status.NOT_FOUND)
                     .entity(Map.of("error", "Dump not found.")).build();

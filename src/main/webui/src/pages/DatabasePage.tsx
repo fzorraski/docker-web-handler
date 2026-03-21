@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { DatabaseDump, DatabaseSnapshot } from '../types'
 import { listDumps, deleteDump, deleteDumpsBulk, getStorageInfo, getActiveRestores, updateDumpExpiration, updateDumpMetadata, cleanupIdleDumps, type ActiveRestore } from '../services/dumpService'
-import { listSnapshots, deleteSnapshot, deleteSnapshotsBulk, getSnapshotStorageInfo, getActiveSnapshots, updateSnapshotExpiration, cleanupIdleSnapshots, type ActiveSnapshot } from '../services/snapshotService'
+import { listSnapshots, deleteSnapshot, deleteSnapshotsBulk, getSnapshotStorageInfo, getActiveSnapshots, updateSnapshotExpiration, updateSnapshotMetadata, cleanupIdleSnapshots, type ActiveSnapshot } from '../services/snapshotService'
 import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
 import UploadDumpModal from '../components/UploadDumpModal'
@@ -45,6 +45,11 @@ import {
   Slider,
   Switch,
   FormControlLabel,
+  Divider,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material'
 import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile, CameraAlt, InfoOutlined, CleaningServices, Warning, Edit, Check, Close } from '@mui/icons-material'
 
@@ -79,16 +84,20 @@ export default function DatabasePage() {
   const [metadataPassword, setMetadataPassword] = useState('')
   const [metadataPasswordOpen, setMetadataPasswordOpen] = useState(false)
 
+  const [editDescription, setEditDescription] = useState('')
+
   function startEditDump(dump: DatabaseDump) {
     setEditingDumpId(dump.id)
     setEditVersion(dump.version || '')
     setEditDatabase(dump.databaseName || '')
+    setEditDescription(dump.description || '')
   }
 
   function cancelEditDump() {
     setEditingDumpId(null)
     setEditVersion('')
     setEditDatabase('')
+    setEditDescription('')
   }
 
   async function saveEditDump(password?: string) {
@@ -99,12 +108,12 @@ export default function DatabasePage() {
       return
     }
     setEditSaving(true)
-    const result = await updateDumpMetadata(editingDumpId, editVersion, editDatabase, pw)
+    const result = await updateDumpMetadata(editingDumpId, editVersion, editDatabase, pw, editDescription)
     setEditSaving(false)
     if (result.success) {
+      setDumps(prev => prev.map(d => d.id === editingDumpId ? { ...d, version: editVersion, databaseName: editDatabase, description: editDescription || undefined } : d))
       setEditingDumpId(null)
       setMetadataPassword('')
-      loadDumps()
     } else {
       if (result.error?.includes('password') || result.error?.includes('Password')) {
         setMetadataPassword('')
@@ -126,6 +135,47 @@ export default function DatabasePage() {
   const [snapshotOpen, setSnapshotOpen] = useState(false)
   const [restoreSnapOpen, setRestoreSnapOpen] = useState(false)
   const [restoreSnapshot, setRestoreSnapshot] = useState<DatabaseSnapshot | null>(null)
+  const [editingSnapId, setEditingSnapId] = useState<string | null>(null)
+  const [editSnapLabel, setEditSnapLabel] = useState('')
+  const [editSnapDescription, setEditSnapDescription] = useState('')
+  const [editSnapSaving, setEditSnapSaving] = useState(false)
+  const [snapMetadataPassword, setSnapMetadataPassword] = useState('')
+  const [snapMetadataPasswordOpen, setSnapMetadataPasswordOpen] = useState(false)
+
+  function startEditSnap(snap: DatabaseSnapshot) {
+    setEditingSnapId(snap.id)
+    setEditSnapLabel(snap.label || '')
+    setEditSnapDescription(snap.description || '')
+  }
+
+  function cancelEditSnap() {
+    setEditingSnapId(null)
+    setEditSnapLabel('')
+    setEditSnapDescription('')
+  }
+
+  async function saveEditSnap(password?: string) {
+    if (!editingSnapId) return
+    const pw = password ?? snapMetadataPassword
+    if (!pw) {
+      setSnapMetadataPasswordOpen(true)
+      return
+    }
+    setEditSnapSaving(true)
+    const result = await updateSnapshotMetadata(editingSnapId, editSnapLabel, pw, editSnapDescription)
+    setEditSnapSaving(false)
+    if (result.success) {
+      setSnapshots(prev => prev.map(s => s.id === editingSnapId ? { ...s, label: editSnapLabel, description: editSnapDescription || undefined } : s))
+      setEditingSnapId(null)
+      setSnapMetadataPassword('')
+    } else {
+      if (result.error?.includes('password') || result.error?.includes('Password')) {
+        setSnapMetadataPassword('')
+        setSnapMetadataPasswordOpen(true)
+      }
+      notify(result.error || 'Failed to update.', 'error')
+    }
+  }
 
   // --- Delete dialog state (unified) ---
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
@@ -148,6 +198,12 @@ export default function DatabasePage() {
   const [cleanupMinDays, setCleanupMinDays] = useState(30)
   const [cleanupLoading, setCleanupLoading] = useState(false)
   const [cleanupError, setCleanupError] = useState('')
+
+  // --- Context menu state ---
+  const [dumpContextPos, setDumpContextPos] = useState<{ top: number; left: number } | null>(null)
+  const [dumpContextItem, setDumpContextItem] = useState<DatabaseDump | null>(null)
+  const [snapContextPos, setSnapContextPos] = useState<{ top: number; left: number } | null>(null)
+  const [snapContextItem, setSnapContextItem] = useState<DatabaseSnapshot | null>(null)
 
   const DUMP_COLUMNS: { key: string; label: string }[] = useMemo(() => [
     { key: 'originalFilename', label: t('database.dumpColumns.originalFilename') },
@@ -649,7 +705,15 @@ export default function DatabasePage() {
                         },
                       }}
                     >
-                    <TableRow hover selected={selected.has(dump.id)}>
+                    <TableRow
+                      hover
+                      selected={selected.has(dump.id)}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        setDumpContextPos({ top: e.clientY, left: e.clientX })
+                        setDumpContextItem(dump)
+                      }}
+                    >
                       <TableCell padding="checkbox">
                         <Checkbox checked={selected.has(dump.id)} onChange={() => toggleSelect(dump.id)} />
                       </TableCell>
@@ -658,6 +722,20 @@ export default function DatabasePage() {
                           {dump.originalFilename}
                           {dump.description && <InfoOutlined sx={{ fontSize: 16, color: 'text.disabled' }} />}
                         </Box>
+                        {editingDumpId === dump.id && (
+                          <TextField
+                            value={editDescription}
+                            onChange={(e) => setEditDescription(e.target.value)}
+                            size="small"
+                            variant="standard"
+                            placeholder={t('common.description')}
+                            multiline
+                            maxRows={3}
+                            fullWidth
+                            sx={{ mt: 0.5 }}
+                            onKeyDown={(e) => { if (e.key === 'Escape') cancelEditDump() }}
+                          />
+                        )}
                       </TableCell>
                       <TableCell>
                         {editingDumpId === dump.id ? (
@@ -691,7 +769,7 @@ export default function DatabasePage() {
                               variant="standard"
                               placeholder="-"
                               sx={{ width: 100 }}
-                              onKeyDown={(e) => { if (e.key === 'Enter') saveEditDump(); if (e.key === 'Escape') cancelEditDump() }}
+                              onKeyDown={(e) => { if (e.key === 'Escape') cancelEditDump() }}
                             />
                             <IconButton size="small" onClick={() => saveEditDump()} disabled={editSaving} color="success">
                               {editSaving ? <CircularProgress size={14} /> : <Check sx={{ fontSize: 16 }} />}
@@ -869,15 +947,61 @@ export default function DatabasePage() {
                         },
                       }}
                     >
-                    <TableRow hover selected={snapSelected.has(snap.id)}>
+                    <TableRow
+                      hover
+                      selected={snapSelected.has(snap.id)}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        setSnapContextPos({ top: e.clientY, left: e.clientX })
+                        setSnapContextItem(snap)
+                      }}
+                    >
                       <TableCell padding="checkbox">
                         <Checkbox checked={snapSelected.has(snap.id)} onChange={() => toggleSnapSelect(snap.id)} />
                       </TableCell>
                       <TableCell sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          {snap.label || '-'}
-                          {snap.description && <InfoOutlined sx={{ fontSize: 16, color: 'text.disabled' }} />}
-                        </Box>
+                        {editingSnapId === snap.id ? (
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <TextField
+                                value={editSnapLabel}
+                                onChange={(e) => setEditSnapLabel(e.target.value)}
+                                size="small"
+                                variant="standard"
+                                placeholder="-"
+                                autoFocus
+                                sx={{ width: 140 }}
+                                onKeyDown={(e) => { if (e.key === 'Escape') cancelEditSnap() }}
+                              />
+                              <IconButton size="small" onClick={() => saveEditSnap()} disabled={editSnapSaving} color="success">
+                                {editSnapSaving ? <CircularProgress size={14} /> : <Check sx={{ fontSize: 16 }} />}
+                              </IconButton>
+                              <IconButton size="small" onClick={cancelEditSnap} disabled={editSnapSaving}>
+                                <Close sx={{ fontSize: 16 }} />
+                              </IconButton>
+                            </Box>
+                            <TextField
+                              value={editSnapDescription}
+                              onChange={(e) => setEditSnapDescription(e.target.value)}
+                              size="small"
+                              variant="standard"
+                              placeholder={t('common.description')}
+                              multiline
+                              maxRows={3}
+                              fullWidth
+                              onKeyDown={(e) => { if (e.key === 'Escape') cancelEditSnap() }}
+                            />
+                          </Box>
+                        ) : (
+                          <Box
+                            onClick={() => startEditSnap(snap)}
+                            sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', '&:hover .edit-icon': { opacity: 1 } }}
+                          >
+                            {snap.label || '-'}
+                            {snap.description && <InfoOutlined sx={{ fontSize: 16, color: 'text.disabled' }} />}
+                            <Edit className="edit-icon" sx={{ fontSize: 14, opacity: 0, color: 'text.secondary', transition: 'opacity 0.2s' }} />
+                          </Box>
+                        )}
                       </TableCell>
                       <TableCell>{snap.repository}</TableCell>
                       <TableCell>{snap.sourceDatabaseName}</TableCell>
@@ -939,6 +1063,93 @@ export default function DatabasePage() {
           </>
         )}
       </Box>
+
+      {/* Dump context menu */}
+      <Menu
+        open={Boolean(dumpContextPos) && dumpContextItem !== null}
+        onClose={() => { setDumpContextPos(null); setDumpContextItem(null) }}
+        anchorReference="anchorPosition"
+        anchorPosition={dumpContextPos ?? undefined}
+        slotProps={{ paper: { sx: { minWidth: 200 } } }}
+      >
+        {dumpContextItem && [
+          <MenuItem
+            key="download"
+            component="a"
+            href={`/api/database/dumps/download/${dumpContextItem.id}`}
+            onClick={() => { setDumpContextPos(null); setDumpContextItem(null) }}
+          >
+            <ListItemIcon><Download fontSize="small" color="primary" /></ListItemIcon>
+            <ListItemText>{t('common.download')}</ListItemText>
+          </MenuItem>,
+          <MenuItem
+            key="restore"
+            onClick={() => {
+              handleRestoreClick(dumpContextItem)
+              setDumpContextPos(null); setDumpContextItem(null)
+            }}
+          >
+            <ListItemIcon><Restore fontSize="small" color="success" /></ListItemIcon>
+            <ListItemText>{t('common.restore')}</ListItemText>
+          </MenuItem>,
+          <Divider key="divider" />,
+          <MenuItem
+            key="delete"
+            onClick={() => {
+              handleDeleteClick(dumpContextItem)
+              setDumpContextPos(null); setDumpContextItem(null)
+            }}
+            sx={{ color: 'error.main' }}
+          >
+            <ListItemIcon><Delete fontSize="small" color="error" /></ListItemIcon>
+            <ListItemText>{t('common.delete')}</ListItemText>
+          </MenuItem>,
+        ]}
+      </Menu>
+
+      {/* Snapshot context menu */}
+      <Menu
+        open={Boolean(snapContextPos) && snapContextItem !== null}
+        onClose={() => { setSnapContextPos(null); setSnapContextItem(null) }}
+        anchorReference="anchorPosition"
+        anchorPosition={snapContextPos ?? undefined}
+        slotProps={{ paper: { sx: { minWidth: 200 } } }}
+      >
+        {snapContextItem && [
+          <MenuItem
+            key="download"
+            component="a"
+            href={`/api/database/snapshots/download/${snapContextItem.id}`}
+            onClick={() => { setSnapContextPos(null); setSnapContextItem(null) }}
+          >
+            <ListItemIcon><Download fontSize="small" color="primary" /></ListItemIcon>
+            <ListItemText>{t('common.download')}</ListItemText>
+          </MenuItem>,
+          <MenuItem
+            key="restore"
+            onClick={() => {
+              setRestoreSnapshot(snapContextItem)
+              setRestoreSnapOpen(true)
+              setSnapContextPos(null); setSnapContextItem(null)
+            }}
+          >
+            <ListItemIcon><Restore fontSize="small" color="success" /></ListItemIcon>
+            <ListItemText>{t('common.restore')}</ListItemText>
+          </MenuItem>,
+          <Divider key="divider" />,
+          <MenuItem
+            key="delete"
+            onClick={() => {
+              handleSnapDeleteClick(snapContextItem)
+              setSnapContextPos(null); setSnapContextItem(null)
+            }}
+            sx={{ color: 'error.main' }}
+          >
+            <ListItemIcon><Delete fontSize="small" color="error" /></ListItemIcon>
+            <ListItemText>{t('common.delete')}</ListItemText>
+          </MenuItem>,
+        ]}
+      </Menu>
 
       {/* ==================== MODALS ==================== */}
       <EditExpirationDialog
@@ -1072,6 +1283,22 @@ export default function DatabasePage() {
           await saveEditDump(password)
         }}
         onClose={() => { setMetadataPasswordOpen(false); cancelEditDump() }}
+      />
+
+      <PasswordConfirmDialog
+        open={snapMetadataPasswordOpen}
+        title={t('database.editMetadataTitle')}
+        message={t('database.editMetadataPasswordMessage')}
+        confirmLabel={t('common.save')}
+        loadingLabel={t('common.saving')}
+        confirmColor="primary"
+        icon={<Edit />}
+        onConfirm={async (password) => {
+          setSnapMetadataPassword(password)
+          setSnapMetadataPasswordOpen(false)
+          await saveEditSnap(password)
+        }}
+        onClose={() => { setSnapMetadataPasswordOpen(false); cancelEditSnap() }}
       />
     </>
   )
