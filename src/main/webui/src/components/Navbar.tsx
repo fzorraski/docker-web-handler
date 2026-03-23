@@ -58,25 +58,32 @@ export default function Navbar() {
           {/* Brand mark: 4-square grid icon + monospace title */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexGrow: 1 }}>
             <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '2px',
-                flexShrink: 0,
-              }}
+              component="svg"
+              viewBox="0 0 64 64"
+              sx={{ width: 22, height: 22, flexShrink: 0 }}
             >
-              {[1, 0.6, 0.6, 0.3].map((opacity, i) => (
-                <Box
-                  key={i}
-                  sx={{
-                    width: 7,
-                    height: 7,
-                    borderRadius: '2px',
-                    bgcolor: isDark ? 'primary.main' : 'primary.light',
-                    opacity,
-                  }}
-                />
-              ))}
+              <defs>
+                <linearGradient id="nav-a" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#FFAB40" />
+                  <stop offset="100%" stopColor="#FF8F33" />
+                </linearGradient>
+                <linearGradient id="nav-b" x1="1" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#FF6D00" />
+                  <stop offset="100%" stopColor="#BF360C" />
+                </linearGradient>
+                <linearGradient id="nav-c" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#FF8F33" />
+                  <stop offset="100%" stopColor="#E65100" />
+                </linearGradient>
+              </defs>
+              <g opacity={0.8}>
+                <path d="M50 2L55 5L50 8L45 5Z" fill="#FFAB40" />
+                <path d="M45 5L50 8L50 13L45 10Z" fill="#BF360C" />
+                <path d="M55 5L50 8L50 13L55 10Z" fill="#E65100" />
+              </g>
+              <path d="M32 14L54 26L32 38L10 26Z" fill="url(#nav-a)" />
+              <path d="M10 26L32 38L32 56L10 44Z" fill="url(#nav-b)" />
+              <path d="M54 26L32 38L32 56L54 44Z" fill="url(#nav-c)" />
             </Box>
             <Typography
               variant="h6"

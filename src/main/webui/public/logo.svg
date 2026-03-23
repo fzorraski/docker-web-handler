@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="a" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFAB40"/>
+      <stop offset="100%" stop-color="#FF8F33"/>
+    </linearGradient>
+    <linearGradient id="b" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FF6D00"/>
+      <stop offset="100%" stop-color="#BF360C"/>
+    </linearGradient>
+    <linearGradient id="c" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FF8F33"/>
+      <stop offset="100%" stop-color="#E65100"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="64" height="64" rx="14" fill="#0D0F14"/>
+
+  <!-- Floating mini container cube -->
+  <g opacity="0.8">
+    <path d="M50 2 L55 5 L50 8 L45 5Z" fill="#FFAB40"/>
+    <path d="M45 5 L50 8 L50 13 L45 10Z" fill="#BF360C"/>
+    <path d="M55 5 L50 8 L50 13 L55 10Z" fill="#E65100"/>
+  </g>
+
+  <!-- Main isometric cube -->
+  <path d="M32 14 L54 26 L32 38 L10 26Z" fill="url(#a)"/>
+  <path d="M10 26 L32 38 L32 56 L10 44Z" fill="url(#b)"/>
+  <path d="M54 26 L32 38 L32 56 L54 44Z" fill="url(#c)"/>
+
+  <!-- Top edge highlights -->
+  <line x1="32" y1="14" x2="54" y2="26" stroke="white" stroke-width="0.5" opacity="0.12"/>
+  <line x1="32" y1="14" x2="10" y2="26" stroke="white" stroke-width="0.5" opacity="0.12"/>
+
+  <!-- Container grid — top face -->
+  <line x1="21" y1="20" x2="43" y2="32" stroke="#0D0F14" stroke-width="0.8" opacity="0.25"/>
+  <line x1="43" y1="20" x2="21" y2="32" stroke="#0D0F14" stroke-width="0.8" opacity="0.25"/>
+
+  <!-- Container grid — left face -->
+  <line x1="21" y1="32" x2="21" y2="50" stroke="#0D0F14" stroke-width="0.8" opacity="0.2"/>
+  <line x1="10" y1="35" x2="32" y2="47" stroke="#0D0F14" stroke-width="0.8" opacity="0.2"/>
+
+  <!-- Container grid — right face -->
+  <line x1="43" y1="32" x2="43" y2="50" stroke="#0D0F14" stroke-width="0.8" opacity="0.2"/>
+  <line x1="54" y1="35" x2="32" y2="47" stroke="#0D0F14" stroke-width="0.8" opacity="0.2"/>
+</svg>

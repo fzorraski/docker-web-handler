@@ -71,24 +71,32 @@ export default function LoginPage() {
         {/* Brand */}
         <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
           <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '3px',
-            }}
+            component="svg"
+            viewBox="0 0 64 64"
+            sx={{ width: 40, height: 40 }}
           >
-            {[1, 0.6, 0.6, 0.3].map((opacity, i) => (
-              <Box
-                key={i}
-                sx={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: '2px',
-                  bgcolor: 'primary.main',
-                  opacity,
-                }}
-              />
-            ))}
+            <defs>
+              <linearGradient id="login-a" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#FFAB40" />
+                <stop offset="100%" stopColor="#FF8F33" />
+              </linearGradient>
+              <linearGradient id="login-b" x1="1" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#FF6D00" />
+                <stop offset="100%" stopColor="#BF360C" />
+              </linearGradient>
+              <linearGradient id="login-c" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#FF8F33" />
+                <stop offset="100%" stopColor="#E65100" />
+              </linearGradient>
+            </defs>
+            <g opacity={0.8}>
+              <path d="M50 2L55 5L50 8L45 5Z" fill="#FFAB40" />
+              <path d="M45 5L50 8L50 13L45 10Z" fill="#BF360C" />
+              <path d="M55 5L50 8L50 13L55 10Z" fill="#E65100" />
+            </g>
+            <path d="M32 14L54 26L32 38L10 26Z" fill="url(#login-a)" />
+            <path d="M10 26L32 38L32 56L10 44Z" fill="url(#login-b)" />
+            <path d="M54 26L32 38L32 56L54 44Z" fill="url(#login-c)" />
           </Box>
         </Box>
         <Typography
