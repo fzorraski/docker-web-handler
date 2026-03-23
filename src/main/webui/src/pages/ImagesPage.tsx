@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { DockerImage } from '../types'
 import { getImages } from '../services/imageService'
-import { streamRemoveImage, preparePruneImages, streamPruneImages } from '../services/sseService'
+import { streamRemoveImage } from '../services/sseService'
 import OperationProgress, { REMOVE_IMAGE_STEPS, PRUNE_IMAGES_STEPS } from '../components/OperationProgress'
 import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
@@ -10,6 +10,8 @@ import { formatBackendDate } from '../utils/format'
 import { useTableSort } from '../hooks/useTableSort'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
 import { useSseOperation } from '../hooks/useSseOperation'
+import { usePruneDialog } from '../hooks/usePruneDialog'
+import { useActionMenu } from '../hooks/useActionMenu'
 import {
   Box,
   Typography,
@@ -60,8 +62,6 @@ const sortImageValue = (img: DockerImage, key: string) => {
 
 import { DAY_MARKS } from '../utils/constants'
 
-type PruneMode = 'byDate' | 'all'
-
 export default function ImagesPage() {
   const { theadBg, theadColor, theadSortSx } = useTableHeaderTheme()
   const { notify, confirm } = useNotification()
@@ -70,16 +70,7 @@ export default function ImagesPage() {
   const [loading, setLoading] = useState(true)
   const [showUnusedOnly, setShowUnusedOnly] = useState(false)
   const removeSse = useSseOperation()
-  const pruneSse = useSseOperation()
-
-  // Prune dialog state
-  const [pruneMode, setPruneMode] = useState<PruneMode | null>(null)
-  const [prunePassword, setPrunePassword] = useState('')
-  const [pruneMinDays, setPruneMinDays] = useState(5)
-  const [prunePreparing, setPrunePreparing] = useState(false)
-  const [pruneError, setPruneError] = useState('')
-  const [contextMenuPos, setContextMenuPos] = useState<{ top: number; left: number } | null>(null)
-  const [contextImage, setContextImage] = useState<DockerImage | null>(null)
+  const imageMenu = useActionMenu<DockerImage>()
 
   const filteredByUsage = useMemo(
     () => showUnusedOnly ? images.filter(img => !img.inUse) : images,
@@ -124,6 +115,8 @@ export default function ImagesPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  const prune = usePruneDialog({ notify, t, loadImages })
+
   useEffect(() => {
     loadImages()
   }, [loadImages])
@@ -147,54 +140,6 @@ export default function ImagesPage() {
   function handleRemoveDialogClose() {
     removeSse.cleanup()
     removeSse.reset()
-    loadImages()
-  }
-
-  function openPruneDialog(mode: PruneMode) {
-    setPruneMode(mode)
-    setPrunePassword('')
-    setPruneMinDays(5)
-    setPruneError('')
-  }
-
-  function closePruneDialog() {
-    if (!prunePreparing) {
-      setPruneMode(null)
-      setPrunePassword('')
-      setPruneError('')
-    }
-  }
-
-  async function handlePruneConfirm() {
-    setPrunePreparing(true)
-    setPruneError('')
-    try {
-      const minDays = pruneMode === 'all' ? 0 : pruneMinDays
-      const ticket = await preparePruneImages({ password: prunePassword, minDays })
-      setPruneMode(null)
-      setPrunePassword('')
-
-      pruneSse.start(
-        (onEvent, onDone, onError) => streamPruneImages(ticket, onEvent, onDone, onError),
-        () => {
-          setTimeout(() => {
-            pruneSse.reset()
-            notify(t('images.pruneComplete'), 'success')
-            loadImages()
-          }, 1500)
-        },
-        () => loadImages(),
-      )
-    } catch (e) {
-      setPruneError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setPrunePreparing(false)
-    }
-  }
-
-  function handlePruneProgressClose() {
-    pruneSse.cleanup()
-    pruneSse.reset()
     loadImages()
   }
 
@@ -278,7 +223,7 @@ export default function ImagesPage() {
               variant="contained"
               color="warning"
               startIcon={<CleaningServices />}
-              onClick={() => openPruneDialog('byDate')}
+              onClick={() => prune.open('byDate')}
               disabled={unusedCount === 0}
               size="small"
             >
@@ -290,7 +235,7 @@ export default function ImagesPage() {
               variant="contained"
               color="error"
               startIcon={<DeleteSweep />}
-              onClick={() => openPruneDialog('all')}
+              onClick={() => prune.open('all')}
               disabled={unusedCount === 0}
               size="small"
             >
@@ -340,8 +285,7 @@ export default function ImagesPage() {
                   hover
                   onContextMenu={(e) => {
                     e.preventDefault()
-                    setContextMenuPos({ top: e.clientY, left: e.clientX })
-                    setContextImage(img)
+                    imageMenu.openByPosition({ top: e.clientY, left: e.clientX }, img)
                   }}
                 >
                   <TableCell>
@@ -400,17 +344,17 @@ export default function ImagesPage() {
       </Box>
 
       <Menu
-        open={Boolean(contextMenuPos) && contextImage !== null}
-        onClose={() => { setContextMenuPos(null); setContextImage(null) }}
+        open={imageMenu.menuOpen && imageMenu.target !== null}
+        onClose={imageMenu.close}
         anchorReference="anchorPosition"
-        anchorPosition={contextMenuPos ?? undefined}
+        anchorPosition={imageMenu.contextMenuPos ?? undefined}
         slotProps={{ paper: { sx: { minWidth: 200 } } }}
       >
-        {contextImage && (
+        {imageMenu.target && (
           <MenuItem
             onClick={() => {
-              handleRemove(contextImage.imageId)
-              setContextMenuPos(null); setContextImage(null)
+              handleRemove(imageMenu.target!.imageId)
+              imageMenu.close()
             }}
             sx={{ color: 'error.main' }}
           >
@@ -436,15 +380,15 @@ export default function ImagesPage() {
       </Dialog>
 
       {/* Prune Confirmation Dialog */}
-      <Dialog open={pruneMode !== null} onClose={closePruneDialog} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ bgcolor: pruneMode === 'all' ? 'error.main' : 'warning.main', color: 'white' }}>
-          {pruneMode === 'all'
+      <Dialog open={prune.mode !== null} onClose={prune.close} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: prune.mode === 'all' ? 'error.main' : 'warning.main', color: 'white' }}>
+          {prune.mode === 'all'
             ? <><DeleteSweep sx={{ mr: 1, verticalAlign: 'middle' }} /> {t('images.removeAllUnused')}</>
             : <><CleaningServices sx={{ mr: 1, verticalAlign: 'middle' }} /> {t('images.cleanUpByIdle')}</>
           }
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 3 }}>
-          {pruneMode === 'all' ? (
+          {prune.mode === 'all' ? (
             <Typography sx={{ mb: 3 }}>
               {t('images.confirmPruneAll')}
             </Typography>
@@ -463,8 +407,8 @@ export default function ImagesPage() {
               </Typography>
               <Box sx={{ px: 2, mb: 3 }}>
                 <Slider
-                  value={pruneMinDays}
-                  onChange={(_, v) => setPruneMinDays(v as number)}
+                  value={prune.minDays}
+                  onChange={(_, v) => prune.setMinDays(v as number)}
                   min={1}
                   max={90}
                   step={1}
@@ -480,41 +424,41 @@ export default function ImagesPage() {
             fullWidth
             type="password"
             label={t('common.operationsPassword')}
-            value={prunePassword}
-            onChange={(e) => { setPrunePassword(e.target.value); setPruneError('') }}
+            value={prune.password}
+            onChange={(e) => prune.setPassword(e.target.value)}
             size="small"
             autoComplete="off"
-            error={!!pruneError}
-            helperText={pruneError}
+            error={!!prune.error}
+            helperText={prune.error}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={closePruneDialog} color="inherit" disabled={prunePreparing}>
+          <Button onClick={prune.close} color="inherit" disabled={prune.preparing}>
             {t('common.cancel')}
           </Button>
           <Button
             variant="contained"
-            color={pruneMode === 'all' ? 'error' : 'warning'}
-            onClick={handlePruneConfirm}
-            disabled={prunePreparing || !prunePassword}
-            startIcon={prunePreparing ? <CircularProgress size={20} /> : (pruneMode === 'all' ? <DeleteSweep /> : <CleaningServices />)}
+            color={prune.mode === 'all' ? 'error' : 'warning'}
+            onClick={prune.confirm}
+            disabled={prune.preparing || !prune.password}
+            startIcon={prune.preparing ? <CircularProgress size={20} /> : (prune.mode === 'all' ? <DeleteSweep /> : <CleaningServices />)}
           >
-            {prunePreparing ? t('common.preparing') : t('common.confirm')}
+            {prune.preparing ? t('common.preparing') : t('common.confirm')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Prune SSE Progress Dialog */}
-      <Dialog open={pruneSse.events.length > 0} onClose={handlePruneProgressClose} maxWidth="sm" fullWidth>
+      <Dialog open={prune.pruneSse.events.length > 0} onClose={prune.closeProgress} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: 'warning.main', color: 'white' }}>
           <DeleteSweep sx={{ mr: 1, verticalAlign: 'middle' }} /> {t('images.pruningImages')}
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 3 }}>
-          <OperationProgress events={pruneSse.events} steps={PRUNE_IMAGES_STEPS} />
+          <OperationProgress events={prune.pruneSse.events} steps={PRUNE_IMAGES_STEPS} />
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          {(pruneSse.hasError || pruneSse.isDone) && (
-            <Button onClick={handlePruneProgressClose} color="inherit">{t('common.close')}</Button>
+          {(prune.pruneSse.hasError || prune.pruneSse.isDone) && (
+            <Button onClick={prune.closeProgress} color="inherit">{t('common.close')}</Button>
           )}
         </DialogActions>
       </Dialog>
