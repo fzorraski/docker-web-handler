@@ -21,7 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Optional;
 
-@ServerEndpoint("/api/containers/terminal/{ticket}")
+@ServerEndpoint(value = "/api/containers/terminal/{ticket}", configurator = AuthWebSocketConfigurator.class)
 public class ContainerTerminalEndpoint {
 
     @Inject
@@ -43,6 +43,12 @@ public class ContainerTerminalEndpoint {
 
     @OnOpen
     public void onOpen(Session session, @PathParam("ticket") String ticket) {
+        Boolean authenticated = (Boolean) session.getUserProperties().get(AuthWebSocketConfigurator.AUTH_RESULT_KEY);
+        if (authenticated != null && !authenticated) {
+            sendAndClose(session, errorMsg("Authentication required."));
+            return;
+        }
+
         if (!terminalEnabled) {
             sendAndClose(session, errorMsg("Terminal feature is disabled."));
             return;
