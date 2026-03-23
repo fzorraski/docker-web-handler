@@ -33,6 +33,8 @@ class AuthenticationFilterTest {
     @BeforeEach
     void setUp() {
         setField("authEnabled", true);
+        setField("ciEnabled", false);
+        setField("ciApiKey", java.util.Optional.empty());
         lenient().when(requestContext.getUriInfo()).thenReturn(uriInfo);
     }
 
@@ -51,6 +53,7 @@ class AuthenticationFilterTest {
     @Test
     void filter_authDisabled_passesThrough() {
         setField("authEnabled", false);
+        when(uriInfo.getPath()).thenReturn("/containers/list");
         filter.filter(requestContext);
         verify(requestContext, never()).abortWith(any());
     }
@@ -183,5 +186,84 @@ class AuthenticationFilterTest {
         Map<String, String> body = (Map<String, String>) response.getEntity();
         assertEquals("UNAUTHORIZED", body.get("code"));
         assertEquals("Authentication required.", body.get("message"));
+    }
+
+    // ---- CI API key auth ----
+
+    @Test
+    void filter_ciPath_disabled_returns404() {
+        setField("ciEnabled", false);
+        when(uriInfo.getPath()).thenReturn("/ci/environments");
+
+        filter.filter(requestContext);
+
+        ArgumentCaptor<Response> captor = ArgumentCaptor.forClass(Response.class);
+        verify(requestContext).abortWith(captor.capture());
+        assertEquals(404, captor.getValue().getStatus());
+    }
+
+    @Test
+    void filter_ciPath_noApiKey_returns401() {
+        setField("ciEnabled", true);
+        setField("ciApiKey", java.util.Optional.of("secret"));
+        when(uriInfo.getPath()).thenReturn("/ci/environments");
+        when(requestContext.getHeaderString("X-API-Key")).thenReturn(null);
+
+        filter.filter(requestContext);
+
+        ArgumentCaptor<Response> captor = ArgumentCaptor.forClass(Response.class);
+        verify(requestContext).abortWith(captor.capture());
+        assertEquals(401, captor.getValue().getStatus());
+    }
+
+    @Test
+    void filter_ciPath_wrongApiKey_returns401() {
+        setField("ciEnabled", true);
+        setField("ciApiKey", java.util.Optional.of("secret"));
+        when(uriInfo.getPath()).thenReturn("/ci/environments");
+        when(requestContext.getHeaderString("X-API-Key")).thenReturn("wrong");
+
+        filter.filter(requestContext);
+
+        verify(requestContext).abortWith(any());
+    }
+
+    @Test
+    void filter_ciPath_validApiKey_passesThrough() {
+        setField("ciEnabled", true);
+        setField("ciApiKey", java.util.Optional.of("secret"));
+        when(uriInfo.getPath()).thenReturn("/ci/environments");
+        when(requestContext.getHeaderString("X-API-Key")).thenReturn("secret");
+
+        filter.filter(requestContext);
+
+        verify(requestContext, never()).abortWith(any());
+    }
+
+    @Test
+    void filter_ciPath_authIndependentOfAppAuth() {
+        // CI auth should work even when app.auth.enabled=false
+        setField("authEnabled", false);
+        setField("ciEnabled", true);
+        setField("ciApiKey", java.util.Optional.of("secret"));
+        when(uriInfo.getPath()).thenReturn("/ci/environments");
+        when(requestContext.getHeaderString("X-API-Key")).thenReturn("secret");
+
+        filter.filter(requestContext);
+
+        verify(requestContext, never()).abortWith(any());
+    }
+
+    @Test
+    void filter_ciPath_requiresKeyEvenWhenAppAuthDisabled() {
+        setField("authEnabled", false);
+        setField("ciEnabled", true);
+        setField("ciApiKey", java.util.Optional.of("secret"));
+        when(uriInfo.getPath()).thenReturn("/ci/environments");
+        when(requestContext.getHeaderString("X-API-Key")).thenReturn(null);
+
+        filter.filter(requestContext);
+
+        verify(requestContext).abortWith(any());
     }
 }
