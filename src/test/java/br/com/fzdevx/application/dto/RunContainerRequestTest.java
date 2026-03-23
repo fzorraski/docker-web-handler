@@ -1,5 +1,6 @@
 package br.com.fzdevx.application.dto;
 
+import br.com.fzdevx.domain.model.RunContainerConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -31,7 +32,7 @@ class RunContainerRequestTest {
         req.setMigrationSourceVersion("1.0");
         req.setMigrationTargetVersion("2.0");
 
-        RunContainerRequest copy = req.copy();
+        RunContainerConfig copy = req.copy();
 
         assertEquals("postgres", copy.getRepository());
         assertEquals("16", copy.getTag());
@@ -60,7 +61,7 @@ class RunContainerRequestTest {
         req.setRepository("postgres");
         req.setEnvVars(List.of("A=1"));
 
-        RunContainerRequest copy = req.copy();
+        RunContainerConfig copy = req.copy();
         req.setRepository("redis");
 
         assertEquals("postgres", copy.getRepository());
@@ -71,7 +72,7 @@ class RunContainerRequestTest {
         RunContainerRequest req = new RunContainerRequest();
         req.setEnvVars(null);
 
-        RunContainerRequest copy = req.copy();
+        RunContainerConfig copy = req.copy();
         assertNull(copy.getEnvVars());
     }
 
@@ -80,7 +81,7 @@ class RunContainerRequestTest {
         RunContainerRequest req = new RunContainerRequest();
         req.setSelectedOptionalScripts(null);
 
-        RunContainerRequest copy = req.copy();
+        RunContainerConfig copy = req.copy();
         assertNull(copy.getSelectedOptionalScripts());
     }
 }

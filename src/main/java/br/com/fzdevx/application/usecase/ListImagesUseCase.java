@@ -7,6 +7,7 @@ import br.com.fzdevx.domain.shared.Constants;
 import br.com.fzdevx.infrastructure.persistence.ImageUsageTracker;
 import br.com.fzdevx.infrastructure.util.BytesConverter;
 import br.com.fzdevx.infrastructure.util.DateFormatter;
+import br.com.fzdevx.infrastructure.util.SanitizeHtml;
 import com.github.dockerjava.api.model.Container;
 import com.github.dockerjava.api.model.Image;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -96,7 +97,7 @@ public class ListImagesUseCase {
 
             DockerImage dockerImage = new DockerImage();
             dockerImage.setRepository(repo);
-            dockerImage.setTag(parts.length > 1 ? parts[1] : "-");
+            dockerImage.setTag(parts.length > 1 ? SanitizeHtml.html2text(parts[1]) : "-");
             dockerImage.setImageId(fullId.length() > 20 ? fullId.substring(0, 20) : fullId);
             dockerImage.setCreated(DateFormatter.convertSecondsToDate(img.getCreated()));
             dockerImage.setSize(BytesConverter.bytesToMegabytesFormatted(img.getSize(), 2));

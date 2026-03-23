@@ -1,7 +1,5 @@
 package br.com.fzdevx.domain.model;
 
-import br.com.fzdevx.application.dto.RunContainerRequest;
-
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
@@ -26,7 +24,7 @@ public class ContainerSchedule {
     private String containerName;
 
     // For CREATE action — embedded container creation config
-    private RunContainerRequest createConfig;
+    private RunContainerConfig createConfig;
 
     // Execution tracking
     private Instant nextExecutionAt;
@@ -76,8 +74,8 @@ public class ContainerSchedule {
     public String getContainerName() { return containerName; }
     public void setContainerName(String containerName) { this.containerName = containerName; }
 
-    public RunContainerRequest getCreateConfig() { return createConfig; }
-    public void setCreateConfig(RunContainerRequest createConfig) { this.createConfig = createConfig; }
+    public RunContainerConfig getCreateConfig() { return createConfig; }
+    public void setCreateConfig(RunContainerConfig createConfig) { this.createConfig = createConfig; }
 
     public Instant getNextExecutionAt() { return nextExecutionAt; }
     public void setNextExecutionAt(Instant nextExecutionAt) { this.nextExecutionAt = nextExecutionAt; }

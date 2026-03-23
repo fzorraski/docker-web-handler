@@ -1,7 +1,5 @@
 package br.com.fzdevx.domain.model;
 
-import br.com.fzdevx.infrastructure.util.SanitizeHtml;
-
 import java.util.List;
 
 public class DockerImage {
@@ -30,7 +28,7 @@ public class DockerImage {
     }
 
     public void setTag(String tag) {
-        this.tag = SanitizeHtml.html2text(tag);
+        this.tag = tag;
     }
 
     public String getImageId() {

@@ -1,9 +1,10 @@
 package br.com.fzdevx.application.usecase;
 
+import br.com.fzdevx.application.port.DockerContainerPort;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.application.dto.RestoreDumpRequest;
-import br.com.fzdevx.application.dto.RunContainerRequest;
-import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver; // ✦ CLEAN — using shared allowed-repos resolver
+import br.com.fzdevx.domain.model.RunContainerConfig;
+import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.infrastructure.docker.MigrationService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
@@ -16,13 +17,9 @@ import br.com.fzdevx.domain.shared.InputValidator;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
-import com.github.dockerjava.api.command.PullImageCmd;
-import com.github.dockerjava.api.model.AuthConfig;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.api.model.Ports;
-import com.github.dockerjava.api.model.PullResponseItem;
-import com.github.dockerjava.core.command.PullImageResultCallback;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.Config;
@@ -40,18 +37,21 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
+
 import java.util.function.Consumer;
 
 @ApplicationScoped
 public class RunContainerUseCase {
 
-    // ✦ CLEAN — replaced magic 0.75/0.25 heap ratios with named constants
+
     private static final double XMX_MEMORY_RATIO = 0.75;
     private static final double XMS_MEMORY_RATIO = 0.25;
 
     @Inject
     DockerClient dockerClient;
+
+    @Inject
+    DockerContainerPort dockerContainerPort;
 
     @Inject
     RegistryService registryService;
@@ -92,11 +92,11 @@ public class RunContainerUseCase {
         return true;
     }
 
-    public void execute(RunContainerRequest request, Consumer<ContainerEvent> eventSink) {
+    public void execute(RunContainerConfig request, Consumer<ContainerEvent> eventSink) {
         execute(request, eventSink, null);
     }
 
-    public void execute(RunContainerRequest request, Consumer<ContainerEvent> eventSink, String ticket) {
+    public void execute(RunContainerConfig request, Consumer<ContainerEvent> eventSink, String ticket) {
         AtomicBoolean cancelled = new AtomicBoolean(false);
         if (ticket != null) {
             activeRuns.put(ticket, cancelled);
@@ -104,7 +104,6 @@ public class RunContainerUseCase {
 
         String createdContainerId = null;
         try {
-            // Step 1: Validate inputs
             eventSink.accept(ContainerEvent.info("Validating", "Validating input parameters..."));
 
             Optional<String> repoError = InputValidator.validateRepository(request.getRepository());
@@ -164,7 +163,6 @@ public class RunContainerUseCase {
                 return;
             }
 
-            // Step 2: Check whitelist
             eventSink.accept(ContainerEvent.info("Validating", "Checking repository permissions..."));
 
             List<String> allowed = allowedRepositoryResolver.getAllowed();
@@ -189,11 +187,10 @@ public class RunContainerUseCase {
                 return;
             }
 
-            // Step 2: Pull image
             eventSink.accept(ContainerEvent.info("Pulling", "Pulling image " + imageRef + "..."));
 
             try {
-                pullImage(imageRef, request.getRepository(), request.getTag(), eventSink);
+                dockerContainerPort.pullImage(imageRef, request.getRepository(), request.getTag(), eventSink);
             } catch (Exception e) {
                 eventSink.accept(ContainerEvent.error("Pulling", "Failed to pull image: " + e.getMessage()));
                 return;
@@ -206,7 +203,6 @@ public class RunContainerUseCase {
 
             eventSink.accept(ContainerEvent.info("Pulling", "Image pulled successfully."));
 
-            // Step 3: Create container
             eventSink.accept(ContainerEvent.info("Creating", "Creating container..."));
 
             CreateContainerResponse container;
@@ -225,7 +221,6 @@ public class RunContainerUseCase {
 
             eventSink.accept(ContainerEvent.info("Creating", "Container created."));
 
-            // Step 4: Restore dump/snapshot if specified (before starting the container so the DB is ready)
             boolean hasDump = request.getDumpId() != null && !request.getDumpId().isBlank();
             boolean hasSnapshot = request.getSnapshotId() != null && !request.getSnapshotId().isBlank();
             if (hasDump || hasSnapshot) {
@@ -280,7 +275,6 @@ public class RunContainerUseCase {
                 return;
             }
 
-            // Step 5: Start container
             eventSink.accept(ContainerEvent.info("Starting", "Starting container..."));
 
             try {
@@ -290,7 +284,6 @@ public class RunContainerUseCase {
                 return;
             }
 
-            // Step 6: Schedule expiration if configured
             String expirationMessage = scheduleExpiration(request, container.getId());
 
             resourceCounterService.increment(ResourceCounterService.CONTAINERS);
@@ -315,38 +308,7 @@ public class RunContainerUseCase {
         }
     }
 
-    private void pullImage(String imageRef, String repository, String tag, Consumer<ContainerEvent> eventSink) throws InterruptedException {
-        PullImageCmd pullCmd = dockerClient.pullImageCmd(imageRef);
-        AuthConfig authConfig = registryService.buildAuthConfig(repository, tag);
-        if (authConfig != null) {
-            pullCmd.withAuthConfig(authConfig);
-        }
-
-        AtomicLong lastProgressSent = new AtomicLong(0);
-
-        pullCmd.exec(new PullImageResultCallback() {
-            @Override
-            public void onNext(PullResponseItem item) {
-                super.onNext(item);
-                if (item.getStatus() == null) return;
-
-                long now = System.currentTimeMillis();
-                boolean isCompletionEvent = item.getStatus().contains("complete")
-                        || item.getStatus().contains("Downloaded")
-                        || item.getStatus().contains("Already exists");
-
-                if (isCompletionEvent || now - lastProgressSent.get() > 500) {
-                    lastProgressSent.set(now);
-                    String msg = item.getId() != null
-                            ? item.getId() + ": " + item.getStatus()
-                            : item.getStatus();
-                    eventSink.accept(ContainerEvent.progress("Pulling", msg, -1));
-                }
-            }
-        }).awaitCompletion();
-    }
-
-    private CreateContainerResponse createContainer(String imageRef, RunContainerRequest request,
+    private CreateContainerResponse createContainer(String imageRef, RunContainerConfig request,
                                                      Consumer<ContainerEvent> eventSink) {
         CreateContainerCmd createCmd = dockerClient.createContainerCmd(imageRef);
 
@@ -380,7 +342,7 @@ public class RunContainerUseCase {
         return createCmd.exec();
     }
 
-    private HostConfig buildHostConfig(RunContainerRequest request, Consumer<ContainerEvent> eventSink) {
+    private HostConfig buildHostConfig(RunContainerConfig request, Consumer<ContainerEvent> eventSink) {
         List<Integer> containerPorts = portFinder.getContainerPorts(request.getRepository());
         boolean hasMemory = request.getMemoryMb() != null;
         boolean hasPorts = !containerPorts.isEmpty();
@@ -441,8 +403,8 @@ public class RunContainerUseCase {
             String javaOptsVar = config.getOptionalValue("repository.java-opts-var." + repository, String.class)
                     .orElse(null);
             if (javaOptsVar != null) {
-                long xmx = (long) (memoryMb * XMX_MEMORY_RATIO); // ✦ CLEAN — named constant
-                long xms = (long) (memoryMb * XMS_MEMORY_RATIO); // ✦ CLEAN — named constant
+                long xmx = (long) (memoryMb * XMX_MEMORY_RATIO);
+                long xms = (long) (memoryMb * XMS_MEMORY_RATIO);
                 envMap.put(javaOptsVar, "-Xmx" + xmx + "m -Xms" + xms + "m");
             }
         }
@@ -454,7 +416,7 @@ public class RunContainerUseCase {
         return result;
     }
 
-    private String scheduleExpiration(RunContainerRequest request, String fullContainerId) {
+    private String scheduleExpiration(RunContainerConfig request, String fullContainerId) {
         Instant expiresInstant = resolveExpiration(request);
         if (expiresInstant == null) {
             return "";
@@ -469,7 +431,7 @@ public class RunContainerUseCase {
         return " (expires at " + ldt.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) + ")";
     }
 
-    private Instant resolveExpiration(RunContainerRequest request) {
+    private Instant resolveExpiration(RunContainerConfig request) {
         Instant maxExpiration = findDbDeletionExpiration(request.getDatabaseName());
 
         if (request.getExpiresAt() == null || request.getExpiresAt().isBlank()) {

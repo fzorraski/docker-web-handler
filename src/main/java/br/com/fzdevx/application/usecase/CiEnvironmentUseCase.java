@@ -4,7 +4,7 @@ import br.com.fzdevx.application.dto.CiCreateEnvironmentRequest;
 import br.com.fzdevx.application.dto.CiDestroyResponse;
 import br.com.fzdevx.application.dto.CiEnvironmentResponse;
 import br.com.fzdevx.application.dto.CiHealthResponse;
-import br.com.fzdevx.application.dto.RunContainerRequest;
+import br.com.fzdevx.domain.model.RunContainerConfig;
 import br.com.fzdevx.application.port.DockerContainerPort;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.ContainerEvent;
@@ -50,7 +50,7 @@ public class CiEnvironmentUseCase {
     // ---- Create ----
 
     public CiEnvironmentResponse createEnvironment(CiCreateEnvironmentRequest request) {
-        RunContainerRequest runRequest = buildRunRequest(request);
+        RunContainerConfig runRequest = buildRunRequest(request);
 
         List<ContainerEvent> events = new ArrayList<>();
         String[] lastError = {null};
@@ -162,11 +162,11 @@ public class CiEnvironmentUseCase {
 
     // ---- Private helpers ----
 
-    private RunContainerRequest buildRunRequest(CiCreateEnvironmentRequest request) {
+    private RunContainerConfig buildRunRequest(CiCreateEnvironmentRequest request) {
         int ttl = request.getTtlMinutes() != null ? request.getTtlMinutes() : defaultTtlMinutes;
         ttl = Math.max(1, Math.min(ttl, maxTtlMinutes));
 
-        RunContainerRequest run = new RunContainerRequest();
+        RunContainerConfig run = new RunContainerConfig();
         run.setRepository(request.getRepository());
         run.setTag(request.getTag());
         run.setContainerName(request.getEnvironmentName());
@@ -191,7 +191,7 @@ public class CiEnvironmentUseCase {
     }
 
     private CiEnvironmentResponse buildCreateResponse(CiCreateEnvironmentRequest request,
-                                                        RunContainerRequest runRequest,
+                                                        RunContainerConfig runRequest,
                                                         String containerId,
                                                         Map<String, String> portMappings) {
         CiEnvironmentResponse response = new CiEnvironmentResponse();

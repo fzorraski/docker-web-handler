@@ -1,6 +1,7 @@
 package br.com.fzdevx.application.usecase;
 
 import br.com.fzdevx.application.dto.RunContainerRequest;
+import br.com.fzdevx.application.port.DockerContainerPort;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.model.ContainerEvent.EventType;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
@@ -47,6 +48,7 @@ class RunContainerUseCaseTest {
     private static final String CONTAINER_ID = "abc123def456";
 
     @Mock DockerClient dockerClient;
+    @Mock DockerContainerPort dockerContainerPort;
     @Mock RegistryService registryService;
     @Mock ContainerExpirationService expirationService;
     @Mock PortFinder portFinder;
@@ -79,30 +81,19 @@ class RunContainerUseCaseTest {
     }
 
     /**
-     * Stubs pull to immediately complete. Must send at least one PullResponseItem
-     * via onNext before onComplete, because PullImageResultCallback.throwFirstError()
-     * throws "Could not pull image" when latestItem is null.
+     * Stubs pull to immediately complete via the DockerContainerPort.
      */
-    private void stubPullSuccess() {
-        PullImageCmd pullCmd = mock(PullImageCmd.class);
-        when(dockerClient.pullImageCmd(IMAGE_REF)).thenReturn(pullCmd);
-        when(pullCmd.exec(any())).thenAnswer(invocation -> {
-            PullImageResultCallback cb = invocation.getArgument(0);
-            PullResponseItem item = mock(PullResponseItem.class);
-            when(item.isPullSuccessIndicated()).thenReturn(true);
-            when(item.getStatus()).thenReturn("Pull complete");
-            cb.onNext(item);
-            cb.onComplete();
-            return cb;
-        });
+    private void stubPullSuccess() throws InterruptedException {
+        // pullImage on the port is void — just don't throw
+        doNothing().when(dockerContainerPort).pullImage(eq(IMAGE_REF), eq(REPO), eq(TAG), any());
     }
 
     private void stubHappyPath() {
         when(allowedRepositoryResolver.getAllowed()).thenReturn(List.of(REPO));
         when(registryService.buildFullImageRef(REPO, TAG)).thenReturn(IMAGE_REF);
-        when(registryService.buildAuthConfig(REPO, TAG)).thenReturn(null);
 
-        stubPullSuccess();
+        try { stubPullSuccess(); } catch (InterruptedException ignored) {}
+
 
         CreateContainerCmd createCmd = mock(CreateContainerCmd.class);
         when(dockerClient.createContainerCmd(IMAGE_REF)).thenReturn(createCmd);
@@ -296,14 +287,12 @@ class RunContainerUseCaseTest {
     // ---- pull failure ----
 
     @Test
-    void execute_pullFails_sendsError() {
+    void execute_pullFails_sendsError() throws Exception {
         when(allowedRepositoryResolver.getAllowed()).thenReturn(List.of(REPO));
         when(registryService.buildFullImageRef(REPO, TAG)).thenReturn(IMAGE_REF);
-        when(registryService.buildAuthConfig(REPO, TAG)).thenReturn(null);
 
-        PullImageCmd pullCmd = mock(PullImageCmd.class);
-        when(dockerClient.pullImageCmd(IMAGE_REF)).thenReturn(pullCmd);
-        when(pullCmd.exec(any())).thenThrow(new RuntimeException("connection refused"));
+        doThrow(new RuntimeException("connection refused"))
+                .when(dockerContainerPort).pullImage(eq(IMAGE_REF), eq(REPO), eq(TAG), any());
 
         useCase.execute(validRequest(), events::add);
 
@@ -313,10 +302,9 @@ class RunContainerUseCaseTest {
     // ---- create failure ----
 
     @Test
-    void execute_createContainerFails_sendsError() {
+    void execute_createContainerFails_sendsError() throws Exception {
         when(allowedRepositoryResolver.getAllowed()).thenReturn(List.of(REPO));
         when(registryService.buildFullImageRef(REPO, TAG)).thenReturn(IMAGE_REF);
-        when(registryService.buildAuthConfig(REPO, TAG)).thenReturn(null);
         stubPullSuccess();
 
         CreateContainerCmd createCmd = mock(CreateContainerCmd.class);
