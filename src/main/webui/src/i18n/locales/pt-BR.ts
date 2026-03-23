@@ -684,6 +684,16 @@ const ptBR: typeof en = {
     'pt-BR': 'Portugues',
     es: 'Espanol',
   },
+  login: {
+    title: 'Docker Handler',
+    subtitle: 'Digite a senha para continuar',
+    password: 'Senha',
+    signIn: 'Entrar',
+    signingIn: 'Entrando...',
+    invalidPassword: 'Senha inválida.',
+    sessionExpired: 'Sessão expirada. Faça login novamente.',
+    logout: 'Sair',
+  },
 }
 
 export default ptBR

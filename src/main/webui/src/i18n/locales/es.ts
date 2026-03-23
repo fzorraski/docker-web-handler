@@ -684,6 +684,16 @@ const es: typeof en = {
     'pt-BR': 'Portugues',
     es: 'Espanol',
   },
+  login: {
+    title: 'Docker Handler',
+    subtitle: 'Ingrese la contraseña para continuar',
+    password: 'Contraseña',
+    signIn: 'Iniciar sesión',
+    signingIn: 'Iniciando sesión...',
+    invalidPassword: 'Contraseña inválida.',
+    sessionExpired: 'Sesión expirada. Inicie sesión nuevamente.',
+    logout: 'Cerrar sesión',
+  },
 }
 
 export default es

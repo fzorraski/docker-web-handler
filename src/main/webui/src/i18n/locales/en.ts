@@ -682,6 +682,16 @@ const en = {
     'pt-BR': 'Portugues',
     es: 'Espanol',
   },
+  login: {
+    title: 'Docker Handler',
+    subtitle: 'Enter password to continue',
+    password: 'Password',
+    signIn: 'Sign In',
+    signingIn: 'Signing in...',
+    invalidPassword: 'Invalid password.',
+    sessionExpired: 'Session expired. Please sign in again.',
+    logout: 'Logout',
+  },
 }
 
 export default en
