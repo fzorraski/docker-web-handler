@@ -1,15 +1,16 @@
 import type { DatabaseDump } from '../types'
+import fetchWithAuth from './fetchWithAuth'
 
 const API = '/api/database/dumps/'
 
 export async function isDumpEnabled(): Promise<boolean> {
-  const res = await fetch(API + 'enabled')
+  const res = await fetchWithAuth(API + 'enabled')
   if (!res.ok) return false
   return res.json()
 }
 
 export async function listDumps(): Promise<DatabaseDump[]> {
-  const res = await fetch(API + 'list')
+  const res = await fetchWithAuth(API + 'list')
   if (!res.ok) return []
   return res.json()
 }
@@ -67,7 +68,7 @@ export async function deleteDump(
   id: string,
   operationsPassword: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const res = await fetch(API + 'delete/' + encodeURIComponent(id), {
+  const res = await fetchWithAuth(API + 'delete/' + encodeURIComponent(id), {
     method: 'DELETE',
     headers: { 'X-Dump-Password': operationsPassword },
   })
@@ -84,7 +85,7 @@ export async function deleteDumpsBulk(
   ids: string[],
   operationsPassword: string,
 ): Promise<{ success: boolean; deleted?: number; error?: string }> {
-  const res = await fetch(API + 'delete/bulk', {
+  const res = await fetchWithAuth(API + 'delete/bulk', {
     method: 'DELETE',
     headers: {
       'Content-Type': 'application/json',
@@ -103,7 +104,7 @@ export async function deleteDumpsBulk(
 }
 
 export async function getStorageInfo(): Promise<{ totalBytes: number; fileCount: number; maxBytes: number }> {
-  const res = await fetch(API + 'storage-info')
+  const res = await fetchWithAuth(API + 'storage-info')
   if (!res.ok) return { totalBytes: 0, fileCount: 0, maxBytes: 0 }
   return res.json()
 }
@@ -115,13 +116,13 @@ export interface ActiveRestore {
 }
 
 export async function getActiveRestores(): Promise<ActiveRestore[]> {
-  const res = await fetch(API + 'restore/active')
+  const res = await fetchWithAuth(API + 'restore/active')
   if (!res.ok) return []
   return res.json()
 }
 
 export async function cancelRestore(repository: string, targetDatabase: string): Promise<boolean> {
-  const res = await fetch(API + 'restore/cancel', {
+  const res = await fetchWithAuth(API + 'restore/cancel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ repository, targetDatabase }),
@@ -130,7 +131,7 @@ export async function cancelRestore(repository: string, targetDatabase: string):
 }
 
 export async function getDumpRepositories(): Promise<string[]> {
-  const res = await fetch(API + 'repositories')
+  const res = await fetchWithAuth(API + 'repositories')
   if (!res.ok) return []
   return res.json()
 }
@@ -153,7 +154,7 @@ export async function updateDumpExpiration(
   expiresAt: string | null,
   operationsPassword: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const res = await fetch(API + 'expiration/' + encodeURIComponent(id), {
+  const res = await fetchWithAuth(API + 'expiration/' + encodeURIComponent(id), {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -175,7 +176,7 @@ export async function updateDumpMetadata(
   operationsPassword: string,
   description?: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const res = await fetch(API + 'metadata/' + encodeURIComponent(id), {
+  const res = await fetchWithAuth(API + 'metadata/' + encodeURIComponent(id), {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -191,7 +192,7 @@ export async function updateDumpMetadata(
 }
 
 export async function cleanupIdleDumps(password: string, minDays: number): Promise<{ success: boolean; deleted?: number; error?: string }> {
-  const res = await fetch(API + 'cleanup-idle', {
+  const res = await fetchWithAuth(API + 'cleanup-idle', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password, minDays }),
@@ -202,7 +203,7 @@ export async function cleanupIdleDumps(password: string, minDays: number): Promi
 }
 
 export async function getPostRestoreScripts(repository: string): Promise<PostRestoreScriptsResponse> {
-  const res = await fetch(API + 'post-restore-scripts?repository=' + encodeURIComponent(repository))
+  const res = await fetchWithAuth(API + 'post-restore-scripts?repository=' + encodeURIComponent(repository))
   if (!res.ok) return { enabled: false, mandatory: [], optional: [], onFailure: 'stop' }
   return res.json()
 }

@@ -1,4 +1,5 @@
 import type { ContainerSchedule } from '../types'
+import fetchWithAuth from './fetchWithAuth'
 
 const API = '/api/schedules/'
 
@@ -11,7 +12,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
 }
 
 function postJson(url: string, body: object) {
-  return fetch(url, {
+  return fetchWithAuth(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -19,7 +20,7 @@ function postJson(url: string, body: object) {
 }
 
 function putJson(url: string, body: object) {
-  return fetch(url, {
+  return fetchWithAuth(url, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -27,22 +28,22 @@ function putJson(url: string, body: object) {
 }
 
 export async function isSchedulingEnabled(): Promise<boolean> {
-  const res = await fetch(API + 'enabled')
+  const res = await fetchWithAuth(API + 'enabled')
   return handleResponse(res)
 }
 
 export async function listSchedules(): Promise<ContainerSchedule[]> {
-  const res = await fetch(API + 'list')
+  const res = await fetchWithAuth(API + 'list')
   return handleResponse(res)
 }
 
 export async function getSchedule(id: string): Promise<ContainerSchedule> {
-  const res = await fetch(API + encodeURIComponent(id))
+  const res = await fetchWithAuth(API + encodeURIComponent(id))
   return handleResponse(res)
 }
 
 export async function getSchedulesByContainer(containerId: string): Promise<ContainerSchedule[]> {
-  const res = await fetch(API + 'container/' + encodeURIComponent(containerId))
+  const res = await fetchWithAuth(API + 'container/' + encodeURIComponent(containerId))
   return handleResponse(res)
 }
 
@@ -74,7 +75,7 @@ export async function updateSchedule(id: string, request: {
 }
 
 export async function toggleSchedule(id: string, password: string): Promise<ContainerSchedule> {
-  const res = await fetch(API + encodeURIComponent(id) + '/toggle', {
+  const res = await fetchWithAuth(API + encodeURIComponent(id) + '/toggle', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Schedule-Password': password },
     body: '{}',
@@ -83,7 +84,7 @@ export async function toggleSchedule(id: string, password: string): Promise<Cont
 }
 
 export async function deleteSchedule(id: string, password: string): Promise<{ success: boolean }> {
-  const res = await fetch(API + encodeURIComponent(id), {
+  const res = await fetchWithAuth(API + encodeURIComponent(id), {
     method: 'DELETE',
     headers: { 'X-Schedule-Password': password },
   })
@@ -91,7 +92,7 @@ export async function deleteSchedule(id: string, password: string): Promise<{ su
 }
 
 export async function executeScheduleNow(id: string, password: string): Promise<{ message: string }> {
-  const res = await fetch(API + encodeURIComponent(id) + '/execute-now', {
+  const res = await fetchWithAuth(API + encodeURIComponent(id) + '/execute-now', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Schedule-Password': password },
     body: '{}',

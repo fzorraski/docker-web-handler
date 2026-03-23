@@ -1,9 +1,10 @@
 import type { DatabaseSnapshot } from '../types'
+import fetchWithAuth from './fetchWithAuth'
 
 const API = '/api/database/snapshots/'
 
 export async function listSnapshots(): Promise<DatabaseSnapshot[]> {
-  const res = await fetch(API + 'list')
+  const res = await fetchWithAuth(API + 'list')
   if (!res.ok) return []
   return res.json()
 }
@@ -12,7 +13,7 @@ export async function deleteSnapshot(
   id: string,
   operationsPassword: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const res = await fetch(API + 'delete/' + encodeURIComponent(id), {
+  const res = await fetchWithAuth(API + 'delete/' + encodeURIComponent(id), {
     method: 'DELETE',
     headers: { 'X-Dump-Password': operationsPassword },
   })
@@ -29,7 +30,7 @@ export async function deleteSnapshotsBulk(
   ids: string[],
   operationsPassword: string,
 ): Promise<{ success: boolean; deleted?: number; error?: string }> {
-  const res = await fetch(API + 'delete/bulk', {
+  const res = await fetchWithAuth(API + 'delete/bulk', {
     method: 'DELETE',
     headers: {
       'Content-Type': 'application/json',
@@ -48,13 +49,13 @@ export async function deleteSnapshotsBulk(
 }
 
 export async function getSnapshotStorageInfo(): Promise<{ totalBytes: number; fileCount: number; maxBytes: number }> {
-  const res = await fetch(API + 'storage-info')
+  const res = await fetchWithAuth(API + 'storage-info')
   if (!res.ok) return { totalBytes: 0, fileCount: 0, maxBytes: 0 }
   return res.json()
 }
 
 export async function getSnapshotRepositories(): Promise<string[]> {
-  const res = await fetch(API + 'repositories')
+  const res = await fetchWithAuth(API + 'repositories')
   if (!res.ok) return []
   return res.json()
 }
@@ -65,13 +66,13 @@ export interface ActiveSnapshot {
 }
 
 export async function getActiveSnapshots(): Promise<ActiveSnapshot[]> {
-  const res = await fetch(API + 'active')
+  const res = await fetchWithAuth(API + 'active')
   if (!res.ok) return []
   return res.json()
 }
 
 export async function cancelSnapshot(repository: string, sourceDatabaseName: string): Promise<boolean> {
-  const res = await fetch(API + 'cancel', {
+  const res = await fetchWithAuth(API + 'cancel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ repository, sourceDatabaseName }),
@@ -85,7 +86,7 @@ export async function updateSnapshotMetadata(
   operationsPassword: string,
   description?: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const res = await fetch(API + 'metadata/' + encodeURIComponent(id), {
+  const res = await fetchWithAuth(API + 'metadata/' + encodeURIComponent(id), {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -105,7 +106,7 @@ export async function updateSnapshotExpiration(
   expiresAt: string | null,
   operationsPassword: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const res = await fetch(API + 'expiration/' + encodeURIComponent(id), {
+  const res = await fetchWithAuth(API + 'expiration/' + encodeURIComponent(id), {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -135,7 +136,7 @@ export function downloadSnapshotDirect(body: {
 
   // We need to use fetch for JSON body, so use a hidden iframe approach
   // Actually, let's use fetch with blob download
-  fetch(API + 'download-direct', {
+  fetchWithAuth(API + 'download-direct', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -166,7 +167,7 @@ export function downloadSnapshotDirect(body: {
 }
 
 export async function cleanupIdleSnapshots(password: string, minDays: number): Promise<{ success: boolean; deleted?: number; error?: string }> {
-  const res = await fetch(API + 'cleanup-idle', {
+  const res = await fetchWithAuth(API + 'cleanup-idle', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password, minDays }),

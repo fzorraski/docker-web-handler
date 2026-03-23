@@ -1,10 +1,12 @@
+import fetchWithAuth from './fetchWithAuth'
+
 const API = '/api/containers/'
 
 export async function authorizeTerminal(
   containerId: string,
   password: string,
 ): Promise<{ ticket?: string; error?: string }> {
-  const res = await fetch(API + 'terminal/authorize', {
+  const res = await fetchWithAuth(API + 'terminal/authorize', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ containerId, password }),

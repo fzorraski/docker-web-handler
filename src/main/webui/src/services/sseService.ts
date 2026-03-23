@@ -1,3 +1,5 @@
+import fetchWithAuth from './fetchWithAuth'
+
 export interface ContainerEvent {
   type: 'INFO' | 'PROGRESS' | 'SUCCESS' | 'ERROR'
   step: string
@@ -58,7 +60,7 @@ export async function prepareRunContainer(body: {
   migrationTargetVersion?: string | null
   webhookNotify?: boolean
 }): Promise<string> {
-  const res = await fetch('/api/containers/sse/run/prepare', {
+  const res = await fetchWithAuth('/api/containers/sse/run/prepare', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -81,7 +83,7 @@ export function streamRunContainer(
 }
 
 export async function cancelRunContainer(ticket: string): Promise<boolean> {
-  const res = await fetch(`/api/containers/sse/run/cancel/${ticket}`, { method: 'POST' })
+  const res = await fetchWithAuth(`/api/containers/sse/run/cancel/${ticket}`, { method: 'POST' })
   if (!res.ok) return false
   const data = await res.json()
   return data.cancelled
@@ -96,7 +98,7 @@ export async function prepareRunMigration(body: {
   migrationSourceVersion?: string | null
   migrationTargetVersion?: string | null
 }): Promise<string> {
-  const res = await fetch('/api/containers/sse/migration/prepare', {
+  const res = await fetchWithAuth('/api/containers/sse/migration/prepare', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -119,7 +121,7 @@ export function streamRunMigration(
 }
 
 export async function cancelRunMigration(ticket: string): Promise<boolean> {
-  const res = await fetch(`/api/containers/sse/migration/cancel/${ticket}`, { method: 'POST' })
+  const res = await fetchWithAuth(`/api/containers/sse/migration/cancel/${ticket}`, { method: 'POST' })
   if (!res.ok) return false
   const data = await res.json()
   return data.cancelled
@@ -129,7 +131,7 @@ export async function preparePruneImages(body: {
   password: string
   minDays: number
 }): Promise<string> {
-  const res = await fetch('/api/images/sse/prune/prepare', {
+  const res = await fetchWithAuth('/api/images/sse/prune/prepare', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -220,7 +222,7 @@ export async function prepareRestoreDump(body: {
   migrationTargetVersion?: string | null
   webhookNotify?: boolean
 }): Promise<string> {
-  const res = await fetch('/api/database/dumps/sse/restore/prepare', {
+  const res = await fetchWithAuth('/api/database/dumps/sse/restore/prepare', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -252,7 +254,7 @@ export async function prepareSnapshot(body: {
   password: string
   containerName?: string
 }): Promise<string> {
-  const res = await fetch('/api/database/snapshots/sse/create/prepare', {
+  const res = await fetchWithAuth('/api/database/snapshots/sse/create/prepare', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

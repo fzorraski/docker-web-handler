@@ -1,4 +1,5 @@
 import type { DockerContainer, ApiResponse, DatabaseConflict } from '../types'
+import fetchWithAuth from './fetchWithAuth'
 
 const API = '/api/containers/'
 
@@ -8,7 +9,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
 }
 
 function postJson(url: string, body: object) {
-  return fetch(url, {
+  return fetchWithAuth(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -16,7 +17,7 @@ function postJson(url: string, body: object) {
 }
 
 export async function getContainers(): Promise<DockerContainer[]> {
-  const res = await fetch(API + 'list')
+  const res = await fetchWithAuth(API + 'list')
   return handleResponse(res)
 }
 
@@ -36,57 +37,57 @@ export async function removeContainer(id: string): Promise<boolean> {
 }
 
 export async function getAllowedRepositories(): Promise<string[]> {
-  const res = await fetch(API + 'allowed-repositories')
+  const res = await fetchWithAuth(API + 'allowed-repositories')
   return handleResponse(res)
 }
 
 export async function getRepositoryTags(repository: string): Promise<ApiResponse> {
-  const res = await fetch(API + 'repository-tags?repository=' + encodeURIComponent(repository))
+  const res = await fetchWithAuth(API + 'repository-tags?repository=' + encodeURIComponent(repository))
   return handleResponse(res)
 }
 
 export async function getRepositoryEnvKeys(repository: string): Promise<{ key: string; value: string }[]> {
-  const res = await fetch(API + 'repository-env-keys?repository=' + encodeURIComponent(repository))
+  const res = await fetchWithAuth(API + 'repository-env-keys?repository=' + encodeURIComponent(repository))
   return handleResponse(res)
 }
 
 export async function getDefaultExpirationMinutes(): Promise<number> {
-  const res = await fetch(API + 'default-expiration-minutes')
+  const res = await fetchWithAuth(API + 'default-expiration-minutes')
   return handleResponse(res)
 }
 
 export async function getLocale(): Promise<string> {
-  const res = await fetch(API + 'locale')
+  const res = await fetchWithAuth(API + 'locale')
   return res.text()
 }
 
 export async function getDatabaseConflicts(databaseName: string): Promise<DatabaseConflict> {
-  const res = await fetch(API + 'database-conflicts?databaseName=' + encodeURIComponent(databaseName))
+  const res = await fetchWithAuth(API + 'database-conflicts?databaseName=' + encodeURIComponent(databaseName))
   return handleResponse(res)
 }
 
 export async function isDatabaseListingEnabled(): Promise<boolean> {
-  const res = await fetch(API + 'database-listing-enabled')
+  const res = await fetchWithAuth(API + 'database-listing-enabled')
   return handleResponse(res)
 }
 
 export async function repositoryHasDatabases(repository: string): Promise<boolean> {
-  const res = await fetch(API + 'repository-has-databases?repository=' + encodeURIComponent(repository))
+  const res = await fetchWithAuth(API + 'repository-has-databases?repository=' + encodeURIComponent(repository))
   return handleResponse(res)
 }
 
 export async function getRepositoryDatabases(repository: string): Promise<ApiResponse> {
-  const res = await fetch(API + 'repository-databases?repository=' + encodeURIComponent(repository))
+  const res = await fetchWithAuth(API + 'repository-databases?repository=' + encodeURIComponent(repository))
   return handleResponse(res)
 }
 
 export async function isMigrationEnabled(): Promise<boolean> {
-  const res = await fetch(API + 'migration-enabled')
+  const res = await fetchWithAuth(API + 'migration-enabled')
   return handleResponse(res)
 }
 
 export async function isWebhookEnabled(): Promise<boolean> {
-  const res = await fetch(API + 'webhook-enabled')
+  const res = await fetchWithAuth(API + 'webhook-enabled')
   return handleResponse(res)
 }
 
@@ -105,12 +106,12 @@ export interface FeatureFlags {
 }
 
 export async function getFeatures(): Promise<FeatureFlags> {
-  const res = await fetch(API + 'features')
+  const res = await fetchWithAuth(API + 'features')
   return handleResponse(res)
 }
 
 export async function isMigrationApiAvailable(repository: string): Promise<boolean> {
-  const res = await fetch(API + 'migration-api-available?repository=' + encodeURIComponent(repository))
+  const res = await fetchWithAuth(API + 'migration-api-available?repository=' + encodeURIComponent(repository))
   return handleResponse(res)
 }
 
@@ -126,7 +127,7 @@ export interface MigratedDatabase {
 }
 
 export async function getMigratedDatabases(): Promise<MigratedDatabase[]> {
-  const res = await fetch(API + 'migrated-databases')
+  const res = await fetchWithAuth(API + 'migrated-databases')
   return handleResponse(res)
 }
 
@@ -140,7 +141,7 @@ export interface MigrationPreview {
 
 export async function previewMigration(repository: string, sourceVersion: string, targetVersion: string): Promise<MigrationPreview> {
   const params = new URLSearchParams({ repository, sourceVersion, targetVersion })
-  const res = await fetch(API + 'migration-preview?' + params)
+  const res = await fetchWithAuth(API + 'migration-preview?' + params)
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
     throw new Error(data.error || res.statusText)
