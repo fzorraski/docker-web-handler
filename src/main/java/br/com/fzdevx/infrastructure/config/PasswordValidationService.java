@@ -51,12 +51,21 @@ public class PasswordValidationService {
     public boolean isOperationsPasswordRequired() { return operationsPasswordRequired && hasPassword(operationsPassword); }
     public boolean isTerminalPasswordRequired() { return terminalPasswordRequired && hasPassword(terminalPassword); }
 
-    private boolean validate(Optional<String> configured, boolean required, String input) {
-        if (!required) return true;
-        if (!hasPassword(configured)) return true;
+    /**
+     * Constant-time password comparison. Returns false if configured is empty/blank.
+     * Shared utility for any password check that doesn't use the required/tier pattern.
+     */
+    public static boolean constantTimeEquals(Optional<String> configured, String input) {
+        if (configured.isEmpty() || configured.get().isBlank()) return false;
         return MessageDigest.isEqual(
                 configured.get().getBytes(),
                 (input != null ? input : "").getBytes());
+    }
+
+    private boolean validate(Optional<String> configured, boolean required, String input) {
+        if (!required) return true;
+        if (!hasPassword(configured)) return true;
+        return constantTimeEquals(configured, input);
     }
 
     private boolean hasPassword(Optional<String> password) {
