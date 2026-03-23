@@ -1,0 +1,394 @@
+package br.com.fzdevx.application.usecase;
+
+import br.com.fzdevx.application.dto.CreateScheduleRequest;
+import br.com.fzdevx.application.dto.UpdateScheduleRequest;
+import br.com.fzdevx.application.port.ScheduleRepository;
+import br.com.fzdevx.domain.exception.EntityNotFoundException;
+import br.com.fzdevx.domain.exception.InvalidInputException;
+import br.com.fzdevx.domain.model.ContainerSchedule;
+import br.com.fzdevx.domain.model.ScheduleAction;
+import br.com.fzdevx.domain.model.ScheduleType;
+import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.ContainerSchedulingService;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
+class ManageScheduleUseCaseTest {
+
+    private static final String VALID_CONTAINER_ID = "abc123def456";
+    private static final String VALID_UUID = "550e8400-e29b-41d4-a716-446655440000";
+
+    @Mock ScheduleRepository scheduleRepository;
+    @Mock ContainerExpirationService expirationService;
+    @Mock ContainerSchedulingService schedulingService;
+
+    @InjectMocks
+    ManageScheduleUseCase useCase;
+
+    private CreateScheduleRequest validOneTimeStopRequest() {
+        CreateScheduleRequest req = new CreateScheduleRequest();
+        req.setName("Stop nightly");
+        req.setAction("STOP");
+        req.setScheduleType("ONE_TIME");
+        req.setScheduledAt(Instant.now().plus(1, ChronoUnit.HOURS).toString());
+        req.setContainerId(VALID_CONTAINER_ID);
+        return req;
+    }
+
+    private CreateScheduleRequest validRecurringStopRequest() {
+        CreateScheduleRequest req = new CreateScheduleRequest();
+        req.setName("Stop nightly");
+        req.setAction("STOP");
+        req.setScheduleType("RECURRING");
+        req.setCronExpression("0 3 * * *"); // daily at 3 AM
+        req.setContainerId(VALID_CONTAINER_ID);
+        return req;
+    }
+
+    // ---- create: validation ----
+
+    @Test
+    void create_invalidName_throws() {
+        CreateScheduleRequest req = validOneTimeStopRequest();
+        req.setName("-bad");
+        assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    @Test
+    void create_invalidAction_throws() {
+        CreateScheduleRequest req = validOneTimeStopRequest();
+        req.setAction("INVALID");
+        assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    @Test
+    void create_invalidScheduleType_throws() {
+        CreateScheduleRequest req = validOneTimeStopRequest();
+        req.setScheduleType("INVALID");
+        assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    @Test
+    void create_oneTime_noScheduledAt_throws() {
+        CreateScheduleRequest req = validOneTimeStopRequest();
+        req.setScheduledAt(null);
+        assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    @Test
+    void create_oneTime_pastScheduledAt_throws() {
+        CreateScheduleRequest req = validOneTimeStopRequest();
+        req.setScheduledAt(Instant.now().minus(1, ChronoUnit.HOURS).toString());
+        assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    @Test
+    void create_recurring_invalidCron_throws() {
+        CreateScheduleRequest req = validRecurringStopRequest();
+        req.setCronExpression("invalid");
+        assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    @Test
+    void create_stopWithoutContainerId_throws() {
+        CreateScheduleRequest req = validOneTimeStopRequest();
+        req.setContainerId(null);
+        assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    @Test
+    void create_stopWithInvalidContainerId_throws() {
+        CreateScheduleRequest req = validOneTimeStopRequest();
+        req.setContainerId("INVALID!");
+        assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    // ---- create: conflict detection ----
+
+    @Test
+    void create_duplicateAction_throws() {
+        CreateScheduleRequest req = validOneTimeStopRequest();
+        when(scheduleRepository.findByContainerId(VALID_CONTAINER_ID))
+                .thenReturn(List.of(new ContainerSchedule("existing", ScheduleAction.STOP, ScheduleType.ONE_TIME)));
+
+        assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    @Test
+    void create_removeWhenOtherSchedulesExist_throws() {
+        CreateScheduleRequest req = validOneTimeStopRequest();
+        req.setAction("REMOVE");
+        when(scheduleRepository.findByContainerId(VALID_CONTAINER_ID))
+                .thenReturn(List.of(new ContainerSchedule("existing", ScheduleAction.STOP, ScheduleType.ONE_TIME)));
+
+        assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    @Test
+    void create_anyActionWhenRemoveExists_throws() {
+        CreateScheduleRequest req = validOneTimeStopRequest();
+        when(scheduleRepository.findByContainerId(VALID_CONTAINER_ID))
+                .thenReturn(List.of(new ContainerSchedule("kill", ScheduleAction.REMOVE, ScheduleType.ONE_TIME)));
+
+        assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    // ---- create: expiration conflict ----
+
+    @Test
+    void create_oneTimeAfterExpiration_throws() {
+        CreateScheduleRequest req = validOneTimeStopRequest();
+        Instant expiresAt = Instant.now().plus(30, ChronoUnit.MINUTES);
+        when(expirationService.getExpiresAt(VALID_CONTAINER_ID.substring(0, 10))).thenReturn(expiresAt);
+        when(scheduleRepository.findByContainerId(VALID_CONTAINER_ID)).thenReturn(Collections.emptyList());
+
+        assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    // ---- create: happy paths ----
+
+    @Test
+    void create_validOneTimeStop_savesAndReturns() {
+        CreateScheduleRequest req = validOneTimeStopRequest();
+        when(scheduleRepository.findByContainerId(VALID_CONTAINER_ID)).thenReturn(Collections.emptyList());
+
+        ContainerSchedule result = useCase.create(req);
+
+        assertNotNull(result.getId());
+        assertEquals("Stop nightly", result.getName());
+        assertEquals(ScheduleAction.STOP, result.getAction());
+        assertEquals(ScheduleType.ONE_TIME, result.getScheduleType());
+        assertTrue(result.isEnabled());
+        assertEquals(VALID_CONTAINER_ID, result.getContainerId());
+        assertNotNull(result.getNextExecutionAt());
+        verify(scheduleRepository).save(result);
+    }
+
+    @Test
+    void create_validRecurring_setsNextExecution() {
+        CreateScheduleRequest req = validRecurringStopRequest();
+        when(scheduleRepository.findByContainerId(VALID_CONTAINER_ID)).thenReturn(Collections.emptyList());
+
+        ContainerSchedule result = useCase.create(req);
+
+        assertEquals(ScheduleType.RECURRING, result.getScheduleType());
+        assertEquals("0 3 * * *", result.getCronExpression());
+        assertNotNull(result.getNextExecutionAt());
+    }
+
+    @Test
+    void createAndSchedule_schedulesAfterCreate() {
+        CreateScheduleRequest req = validOneTimeStopRequest();
+        when(scheduleRepository.findByContainerId(VALID_CONTAINER_ID)).thenReturn(Collections.emptyList());
+
+        ContainerSchedule result = useCase.createAndSchedule(req);
+
+        verify(schedulingService).scheduleNext(result);
+    }
+
+    // ---- create: CREATE action ----
+
+    @Test
+    void create_createActionWithoutConfig_throws() {
+        CreateScheduleRequest req = new CreateScheduleRequest();
+        req.setName("Auto create");
+        req.setAction("CREATE");
+        req.setScheduleType("ONE_TIME");
+        req.setScheduledAt(Instant.now().plus(1, ChronoUnit.HOURS).toString());
+        req.setCreateConfig(null);
+
+        assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    // ---- toggleEnabled ----
+
+    @Test
+    void toggleEnabled_notFound_throws() {
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.empty());
+        assertThrows(EntityNotFoundException.class, () -> useCase.toggleEnabled(VALID_UUID));
+    }
+
+    @Test
+    void toggleEnabled_enabledToDisabled() {
+        ContainerSchedule s = new ContainerSchedule("test", ScheduleAction.STOP, ScheduleType.ONE_TIME);
+        s.setId(VALID_UUID);
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.of(s));
+
+        ContainerSchedule result = useCase.toggleEnabled(VALID_UUID);
+
+        assertFalse(result.isEnabled());
+        verify(scheduleRepository).save(result);
+    }
+
+    @Test
+    void toggleEnabled_disabledToEnabled() {
+        ContainerSchedule s = new ContainerSchedule("test", ScheduleAction.STOP, ScheduleType.RECURRING);
+        s.setId(VALID_UUID);
+        s.setEnabled(false);
+        s.setCronExpression("0 3 * * *");
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.of(s));
+
+        ContainerSchedule result = useCase.toggleEnabled(VALID_UUID);
+
+        assertTrue(result.isEnabled());
+        assertNotNull(result.getNextExecutionAt());
+    }
+
+    @Test
+    void toggleEnabled_reEnableExecutedOneTime_throws() {
+        ContainerSchedule s = new ContainerSchedule("test", ScheduleAction.STOP, ScheduleType.ONE_TIME);
+        s.setId(VALID_UUID);
+        s.setEnabled(false);
+        s.setLastExecutedAt(Instant.now());
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.of(s));
+
+        assertThrows(InvalidInputException.class, () -> useCase.toggleEnabled(VALID_UUID));
+    }
+
+    @Test
+    void toggleAndReschedule_enabled_schedulesNext() {
+        ContainerSchedule s = new ContainerSchedule("test", ScheduleAction.STOP, ScheduleType.RECURRING);
+        s.setId(VALID_UUID);
+        s.setEnabled(false);
+        s.setCronExpression("0 3 * * *");
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.of(s));
+
+        useCase.toggleAndReschedule(VALID_UUID);
+
+        verify(schedulingService).scheduleNext(any());
+    }
+
+    @Test
+    void toggleAndReschedule_disabled_cancels() {
+        ContainerSchedule s = new ContainerSchedule("test", ScheduleAction.STOP, ScheduleType.ONE_TIME);
+        s.setId(VALID_UUID);
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.of(s));
+
+        useCase.toggleAndReschedule(VALID_UUID);
+
+        verify(schedulingService).cancel(VALID_UUID);
+    }
+
+    // ---- delete ----
+
+    @Test
+    void delete_notFound_throws() {
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.empty());
+        assertThrows(EntityNotFoundException.class, () -> useCase.delete(VALID_UUID));
+    }
+
+    @Test
+    void delete_found_deletes() {
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.of(new ContainerSchedule()));
+        useCase.delete(VALID_UUID);
+        verify(scheduleRepository).delete(VALID_UUID);
+    }
+
+    @Test
+    void deleteAndCancel_cancelsFirst() {
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.of(new ContainerSchedule()));
+        useCase.deleteAndCancel(VALID_UUID);
+        var inOrder = inOrder(schedulingService, scheduleRepository);
+        inOrder.verify(schedulingService).cancel(VALID_UUID);
+        inOrder.verify(scheduleRepository).delete(VALID_UUID);
+    }
+
+    // ---- executeNow ----
+
+    @Test
+    void executeNow_notFound_throws() {
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.empty());
+        assertThrows(EntityNotFoundException.class, () -> useCase.executeNow(VALID_UUID));
+    }
+
+    @Test
+    void executeNow_disabled_throws() {
+        ContainerSchedule s = new ContainerSchedule("test", ScheduleAction.STOP, ScheduleType.ONE_TIME);
+        s.setEnabled(false);
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.of(s));
+        assertThrows(InvalidInputException.class, () -> useCase.executeNow(VALID_UUID));
+    }
+
+    @Test
+    void executeNow_valid_delegates() {
+        ContainerSchedule s = new ContainerSchedule("test", ScheduleAction.STOP, ScheduleType.ONE_TIME);
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.of(s));
+        useCase.executeNow(VALID_UUID);
+        verify(schedulingService).executeNow(VALID_UUID);
+    }
+
+    // ---- update ----
+
+    @Test
+    void update_notFound_throws() {
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.empty());
+        assertThrows(EntityNotFoundException.class,
+                () -> useCase.update(VALID_UUID, new UpdateScheduleRequest()));
+    }
+
+    @Test
+    void update_invalidName_throws() {
+        ContainerSchedule s = new ContainerSchedule("test", ScheduleAction.STOP, ScheduleType.ONE_TIME);
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.of(s));
+        UpdateScheduleRequest req = new UpdateScheduleRequest();
+        req.setName("-bad");
+        assertThrows(InvalidInputException.class, () -> useCase.update(VALID_UUID, req));
+    }
+
+    @Test
+    void update_validName_updatesAndSaves() {
+        ContainerSchedule s = new ContainerSchedule("old", ScheduleAction.STOP, ScheduleType.ONE_TIME);
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.of(s));
+        UpdateScheduleRequest req = new UpdateScheduleRequest();
+        req.setName("new name");
+
+        ContainerSchedule result = useCase.update(VALID_UUID, req);
+
+        assertEquals("new name", result.getName());
+        verify(scheduleRepository).save(result);
+    }
+
+    @Test
+    void updateAndReschedule_enabled_reschedules() {
+        ContainerSchedule s = new ContainerSchedule("test", ScheduleAction.STOP, ScheduleType.RECURRING);
+        s.setCronExpression("0 3 * * *");
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.of(s));
+        UpdateScheduleRequest req = new UpdateScheduleRequest();
+
+        useCase.updateAndReschedule(VALID_UUID, req);
+
+        verify(schedulingService).cancel(VALID_UUID);
+        verify(schedulingService).scheduleNext(any());
+    }
+
+    // ---- findAll / findByContainerId ----
+
+    @Test
+    void findAll_delegates() {
+        when(scheduleRepository.findAll()).thenReturn(List.of(new ContainerSchedule()));
+        assertEquals(1, useCase.findAll().size());
+    }
+
+    @Test
+    void findByContainerId_delegates() {
+        when(scheduleRepository.findByContainerId("abc")).thenReturn(List.of(new ContainerSchedule()));
+        assertEquals(1, useCase.findByContainerId("abc").size());
+    }
+}
