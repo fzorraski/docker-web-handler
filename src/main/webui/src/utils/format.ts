@@ -62,9 +62,10 @@ export function formatScriptSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- i18next TFunction has complex overloads that don't match simple callable signatures
 export function formatMigrationSummary(
   config: { mode: string; sql?: string; sourceVersion?: string; targetVersion?: string },
-  t: (key: string, options?: Record<string, string>) => string,
+  t: (...args: any[]) => string,
   section: string,
 ): string {
   const versionInfo = config.sourceVersion && config.targetVersion
