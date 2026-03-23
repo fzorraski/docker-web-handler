@@ -3,7 +3,7 @@ package br.com.fzdevx.infrastructure.persistence;
 import br.com.fzdevx.domain.model.DatabaseDump;
 import br.com.fzdevx.application.port.DumpRepository;
 import br.com.fzdevx.domain.exception.DuplicateDumpException;
-import br.com.fzdevx.infrastructure.config.PasswordValidationService; // ⚠ SOLID — SRP: delegated password validation
+import br.com.fzdevx.infrastructure.config.PasswordValidationService;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -43,7 +43,7 @@ public class DumpStorageService {
     DumpRepository dumpRepository;
 
     @Inject
-    PasswordValidationService passwordValidationService; // ⚠ SOLID — SRP: delegated password validation
+    PasswordValidationService passwordValidationService;
 
     @Inject
     @ConfigProperty(name = "database.dump.enabled", defaultValue = "false")
@@ -85,11 +85,11 @@ public class DumpStorageService {
     }
 
     public boolean validateUploadPassword(String password) {
-        return passwordValidationService.validateUploadPassword(password); // ⚠ SOLID — SRP: delegated
+        return passwordValidationService.validateUploadPassword(password);
     }
 
     public boolean validateOperationsPassword(String password) {
-        return passwordValidationService.validateOperationsPassword(password); // ⚠ SOLID — SRP: delegated
+        return passwordValidationService.validateOperationsPassword(password);
     }
 
     public DatabaseDump storeUpload(InputStream input, String originalFilename,
@@ -107,17 +107,15 @@ public class DumpStorageService {
         DatabaseDump dump = new DatabaseDump(originalFilename, databaseName, version, expiresAt, 0);
         Path storedPath = dir.resolve(dump.getStoredFilename());
 
-        // ⚠ SECURITY — OWASP A02: MD5 is used here for deduplication (not for security/password hashing).
-        // TODO: migrate to SHA-256 for stronger collision resistance.
-        MessageDigest md5;
+        MessageDigest digest;
         try {
-            md5 = MessageDigest.getInstance("MD5");
+            digest = MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
-            throw new IOException("MD5 algorithm not available", e);
+            throw new IOException("SHA-256 algorithm not available", e);
         }
 
         boolean alreadyGzipped = originalFilename.toLowerCase().endsWith(".gz");
-        DigestInputStream digestInput = new DigestInputStream(input, md5);
+        DigestInputStream digestInput = new DigestInputStream(input, digest);
 
         long bytesWritten;
         if (alreadyGzipped) {
@@ -134,7 +132,7 @@ public class DumpStorageService {
             bytesWritten = Files.size(storedPath);
         }
 
-        String hash = HexFormat.of().formatHex(md5.digest());
+        String hash = HexFormat.of().formatHex(digest.digest());
 
         Optional<DatabaseDump> existing = dumpRepository.findByMd5Hash(hash);
         if (existing.isPresent()) {
@@ -157,7 +155,7 @@ public class DumpStorageService {
         if (expiresAt != null) {
             scheduleExpiration(dump);
         }
-        Log.infof("Stored dump '%s' as '%s' (%d bytes, md5: %s, format: %s)",
+        Log.infof("Stored dump '%s' as '%s' (%d bytes, hash: %s, format: %s)",
                 originalFilename, dump.getStoredFilename(), bytesWritten, hash, dump.getFormat());
         return dump;
     }

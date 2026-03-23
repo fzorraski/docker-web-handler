@@ -75,18 +75,16 @@ public class SnapshotStorageService {
 
         Path storedPath = dir.resolve(snapshot.getStoredFilename());
 
-        // ⚠ SECURITY — OWASP A02: MD5 is used here for deduplication (not for security/password hashing).
-        // TODO: migrate to SHA-256 for stronger collision resistance.
-        MessageDigest md5;
+        MessageDigest digest;
         try {
-            md5 = MessageDigest.getInstance("MD5");
+            digest = MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
-            throw new IOException("MD5 algorithm not available", e);
+            throw new IOException("SHA-256 algorithm not available", e);
         }
 
         long bytesWritten;
         try (OutputStream fos = Files.newOutputStream(storedPath);
-             DigestOutputStream digestOut = new DigestOutputStream(fos, md5);
+             DigestOutputStream digestOut = new DigestOutputStream(fos, digest);
              GZIPOutputStream gzos = new GZIPOutputStream(digestOut)) {
             byte[] buffer = new byte[8192];
             int len;
@@ -96,7 +94,7 @@ public class SnapshotStorageService {
         }
         bytesWritten = Files.size(storedPath);
 
-        String hash = HexFormat.of().formatHex(md5.digest());
+        String hash = HexFormat.of().formatHex(digest.digest());
         return new StoreResult(bytesWritten, hash);
     }
 
@@ -105,7 +103,7 @@ public class SnapshotStorageService {
         if (snapshot.getExpiresAt() != null) {
             scheduleExpiration(snapshot);
         }
-        Log.infof("Saved snapshot '%s' for database '%s' (%d bytes, md5: %s)",
+        Log.infof("Saved snapshot '%s' for database '%s' (%d bytes, hash: %s)",
                 snapshot.getId(), snapshot.getSourceDatabaseName(),
                 snapshot.getFileSize(), snapshot.getMd5Hash());
     }
