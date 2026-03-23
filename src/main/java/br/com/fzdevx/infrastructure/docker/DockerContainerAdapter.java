@@ -3,9 +3,11 @@ package br.com.fzdevx.infrastructure.docker;
 import br.com.fzdevx.application.port.DockerContainerPort;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.model.ContainerStats;
+import br.com.fzdevx.infrastructure.registry.RegistryService;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.command.CreateContainerCmd;
+import com.github.dockerjava.api.command.PullImageCmd;
 import com.github.dockerjava.api.model.*;
 import com.github.dockerjava.core.command.PullImageResultCallback;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -19,12 +21,15 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-// ⚠ SOLID — DIP: adapter implementing DockerContainerPort for use cases
+
 @ApplicationScoped
 public class DockerContainerAdapter implements DockerContainerPort {
 
     @Inject
     DockerClient dockerClient;
+
+    @Inject
+    RegistryService registryService;
 
     @Override
     public List<Container> listContainers(boolean showAll) {
@@ -88,10 +93,15 @@ public class DockerContainerAdapter implements DockerContainerPort {
     @Override
     public void pullImage(String imageRef, String repository, String tag,
                           Consumer<ContainerEvent> eventSink) throws InterruptedException {
+        PullImageCmd pullCmd = dockerClient.pullImageCmd(imageRef);
+        AuthConfig authConfig = registryService.buildAuthConfig(repository, tag);
+        if (authConfig != null) {
+            pullCmd.withAuthConfig(authConfig);
+        }
+
         AtomicLong lastProgressSent = new AtomicLong(0);
 
-        dockerClient.pullImageCmd(imageRef)
-                .exec(new PullImageResultCallback() {
+        pullCmd.exec(new PullImageResultCallback() {
                     @Override
                     public void onNext(PullResponseItem item) {
                         super.onNext(item);
