@@ -370,7 +370,12 @@ public class RunContainerUseCase {
             createCmd.withEnv(mergedEnvVars);
         }
 
-        createCmd.withLabels(Map.of(Constants.REPOSITORY_LABEL, request.getRepository()));
+        Map<String, String> labels = new LinkedHashMap<>();
+        labels.put(Constants.REPOSITORY_LABEL, request.getRepository());
+        if (request.getExtraLabels() != null) {
+            labels.putAll(request.getExtraLabels());
+        }
+        createCmd.withLabels(labels);
 
         return createCmd.exec();
     }

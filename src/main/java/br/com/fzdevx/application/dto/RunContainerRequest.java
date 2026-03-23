@@ -1,6 +1,7 @@
 package br.com.fzdevx.application.dto;
 
 import java.util.List;
+import java.util.Map;
 
 public class RunContainerRequest {
 
@@ -153,6 +154,11 @@ public class RunContainerRequest {
     public String getMigrationTargetVersion() { return migrationTargetVersion; }
     public void setMigrationTargetVersion(String migrationTargetVersion) { this.migrationTargetVersion = migrationTargetVersion; }
 
+    private Map<String, String> extraLabels;
+
+    public Map<String, String> getExtraLabels() { return extraLabels; }
+    public void setExtraLabels(Map<String, String> extraLabels) { this.extraLabels = extraLabels; }
+
     public RunContainerRequest copy() {
         RunContainerRequest c = new RunContainerRequest();
         c.repository = this.repository;
@@ -174,6 +180,7 @@ public class RunContainerRequest {
         c.migrationSql = this.migrationSql;
         c.migrationSourceVersion = this.migrationSourceVersion;
         c.migrationTargetVersion = this.migrationTargetVersion;
+        c.extraLabels = this.extraLabels != null ? Map.copyOf(this.extraLabels) : null;
         return c;
     }
 }
