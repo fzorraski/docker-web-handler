@@ -40,7 +40,6 @@ public class RunMigrationUseCase {
         }
 
         try {
-            // Step 1: Validate
             eventSink.accept(ContainerEvent.info("Validating", "Validating migration request..."));
 
             if (!migrationService.isEnabled()) {
@@ -103,7 +102,6 @@ public class RunMigrationUseCase {
                 return;
             }
 
-            // Step 2: Orchestrate migration (fetch/prepare SQL, execute, record)
             String pgImage = databaseService.getContainerImage(request.getRepository());
             DatabasePort.PgConnectionInfo pgInfo = databaseService.getConnectionInfo(request.getRepository());
 

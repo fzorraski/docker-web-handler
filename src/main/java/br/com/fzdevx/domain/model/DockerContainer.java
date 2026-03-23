@@ -1,6 +1,6 @@
 package br.com.fzdevx.domain.model;
 
-import io.quarkus.logging.Log; // ✦ CLEAN — replaced System.err.println with structured logging
+import io.quarkus.logging.Log;
 
 import java.util.HashSet;
 import java.util.Map;
@@ -101,7 +101,7 @@ public class DockerContainer {
                     uniquePublicPorts.add(Integer.parseInt(portStr));
                 }
             } catch (NumberFormatException e) {
-                Log.warnf("Failed to parse port number: %s", portStr); // ✦ CLEAN — replaced Portuguese System.err with English structured log
+                Log.warnf("Failed to parse port number: %s", portStr);
             }
         }
         return uniquePublicPorts;

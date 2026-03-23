@@ -1,6 +1,6 @@
 package br.com.fzdevx.infrastructure.persistence;
 
-import br.com.fzdevx.application.port.DatabasePort; // ⚠ SOLID — DIP: implementing port interface
+import br.com.fzdevx.application.port.DatabasePort;
 import br.com.fzdevx.domain.shared.InputValidator;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Optional;
 
 @ApplicationScoped
-public class DatabaseService implements DatabasePort { // ⚠ SOLID — DIP: implementing port interface
+public class DatabaseService implements DatabasePort {
 
     @Inject
     Config config;
@@ -69,7 +69,7 @@ public class DatabaseService implements DatabasePort { // ⚠ SOLID — DIP: imp
                 stmt.execute();
             }
 
-            // ⚠ SECURITY — OWASP A03: use PG quote_ident() to safely quote the identifier server-side
+
             try (PreparedStatement stmt = conn.prepareStatement(
                     "SELECT quote_ident(?)")) {
                 stmt.setString(1, databaseName);
@@ -115,7 +115,7 @@ public class DatabaseService implements DatabasePort { // ⚠ SOLID — DIP: imp
             throw new IllegalArgumentException(nameError.get());
         }
 
-        // ⚠ SECURITY — OWASP A03: use PG quote_ident() to safely quote the identifier server-side
+
         try (Connection conn = getConnection(repository)) {
             String quoted;
             try (PreparedStatement ps = conn.prepareStatement("SELECT quote_ident(?)")) {

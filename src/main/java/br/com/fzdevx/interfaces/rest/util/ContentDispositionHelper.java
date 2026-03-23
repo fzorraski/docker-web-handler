@@ -1,6 +1,6 @@
 package br.com.fzdevx.interfaces.rest.util;
 
-// ⚠ SECURITY — OWASP A01: sanitize filenames for Content-Disposition headers to prevent header injection
+
 public final class ContentDispositionHelper {
 
     private ContentDispositionHelper() {}
@@ -18,7 +18,6 @@ public final class ContentDispositionHelper {
         if (filename == null || filename.isBlank()) {
             return "download";
         }
-        // Remove path separators, null bytes, newlines, quotes, and non-printable chars
         return filename
                 .replaceAll("[/\\\\\"'\r\n\t\0]", "_")
                 .replaceAll("[^\\x20-\\x7E]", "_")

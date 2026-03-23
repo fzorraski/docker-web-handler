@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-// ⚠ SOLID — SRP: slimmed down to container CRUD only (list, stop, start, remove)
+
 @Path("/containers")
 public class ContainerController {
 

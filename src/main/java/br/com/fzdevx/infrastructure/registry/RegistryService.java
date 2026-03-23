@@ -1,6 +1,6 @@
 package br.com.fzdevx.infrastructure.registry;
 
-import br.com.fzdevx.application.port.RegistryPort; // ⚠ SOLID — DIP: implementing port interface
+import br.com.fzdevx.application.port.RegistryPort;
 import br.com.fzdevx.domain.model.RegistryCredentials;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -27,7 +27,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 @ApplicationScoped
-public class RegistryService implements RegistryPort { // ⚠ SOLID — DIP: implementing port interface
+public class RegistryService implements RegistryPort {
 
     @Inject
     @ConfigProperty(name = "docker.registry.url")

@@ -7,7 +7,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import java.security.MessageDigest;
 import java.util.Optional;
 
-// ⚠ SOLID — SRP: extracted password validation from DumpStorageService into its own class
+
 @ApplicationScoped
 public class PasswordValidationService {
 

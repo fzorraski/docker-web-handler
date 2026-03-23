@@ -5,7 +5,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.sse.Sse;
 import jakarta.ws.rs.sse.SseEventSink;
 
-// ✦ CLEAN — extracted duplicated SSE send/close logic from 3 SSE controllers
+
 public final class SseHelper {
 
     private SseHelper() {}

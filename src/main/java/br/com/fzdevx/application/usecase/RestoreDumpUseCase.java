@@ -118,7 +118,6 @@ public class RestoreDumpUseCase {
         boolean isSnapshot = request.getSnapshotId() != null && !request.getSnapshotId().isBlank();
         String sourceId = isSnapshot ? request.getSnapshotId() : request.getDumpId();
 
-        // Step 1: Validate
         eventSink.accept(ContainerEvent.info("Validating", "Validating restore request..."));
 
         Optional<String> uuidError = InputValidator.validateUuid(sourceId);
@@ -228,7 +227,6 @@ public class RestoreDumpUseCase {
         try {
             eventSink.accept(ContainerEvent.info("Validating", "Validation passed."));
 
-            // Step 2: Prepare
             if (ctx.cancelled.get()) {
                 eventSink.accept(ContainerEvent.error("Preparing", "Restore cancelled by user."));
                 return false;
@@ -241,7 +239,6 @@ public class RestoreDumpUseCase {
             }
             eventSink.accept(ContainerEvent.info("Preparing", "File ready."));
 
-            // Step 3: Create database if needed
             if (ctx.cancelled.get()) {
                 eventSink.accept(ContainerEvent.error("Creating Database", "Restore cancelled by user."));
                 return false;
@@ -261,7 +258,6 @@ public class RestoreDumpUseCase {
                 eventSink.accept(ContainerEvent.info("Creating Database", "Skipping database creation."));
             }
 
-            // Step 4: Restore
             if (ctx.cancelled.get()) {
                 eventSink.accept(ContainerEvent.error("Restoring", "Restore cancelled by user."));
                 return false;
@@ -304,7 +300,6 @@ public class RestoreDumpUseCase {
                     "Dump '" + dump.getOriginalFilename() + "' restored into '"
                             + request.getTargetDatabase() + "'."));
 
-            // Step 5: Run post-restore scripts if enabled
             if (postRestoreScriptService.isEnabled()) {
                 List<PostRestoreScriptInfo> scripts = postRestoreScriptService.resolveScriptsToExecute(
                         request.getRepository(), request.getSelectedOptionalScripts());
@@ -322,7 +317,6 @@ public class RestoreDumpUseCase {
                 }
             }
 
-            // Step 6: Run migration if requested
             if (request.getMigrationMode() != null && !request.getMigrationMode().isBlank()
                     && migrationService.isEnabled()) {
                 if (ctx.cancelled.get()) {

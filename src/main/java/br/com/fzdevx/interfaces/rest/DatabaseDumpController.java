@@ -2,7 +2,7 @@ package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.domain.model.DatabaseDump;
 import br.com.fzdevx.domain.model.PostRestoreScriptInfo;
-import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver; // ✦ CLEAN — using shared allowed-repos resolver
+import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.domain.exception.DuplicateDumpException;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
@@ -10,7 +10,7 @@ import br.com.fzdevx.infrastructure.docker.PostRestoreScriptService;
 import br.com.fzdevx.application.usecase.RestoreDumpUseCase;
 import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import br.com.fzdevx.interfaces.rest.util.ContentDispositionHelper;
-import br.com.fzdevx.domain.shared.DateTimeParser; // ✦ CLEAN — using shared date parser
+import br.com.fzdevx.domain.shared.DateTimeParser;
 import br.com.fzdevx.domain.shared.InputValidator;
 import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
@@ -140,7 +140,7 @@ public class DatabaseDumpController {
                     .build();
         } catch (Exception e) {
             Log.errorf("Upload failed: %s", e.getMessage());
-            // ⚠ SECURITY — OWASP A05: do not expose internal exception details to client
+
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Upload failed. Please try again or contact an administrator."))
                     .build();
@@ -177,7 +177,7 @@ public class DatabaseDumpController {
                 ? dump.getOriginalFilename()
                 : dump.getOriginalFilename() + ".gz";
 
-        // ⚠ SECURITY — OWASP A01: sanitize filename in Content-Disposition header
+
         return Response.ok(file, MediaType.APPLICATION_OCTET_STREAM)
                 .header("Content-Disposition", ContentDispositionHelper.buildAttachmentHeader(downloadName))
                 .header("Content-Length", file.length())
@@ -375,7 +375,7 @@ public class DatabaseDumpController {
         if (!dumpStorageService.isEnabled()) {
             return Collections.emptyList();
         }
-        return allowedRepositoryResolver.getAllowed().stream() // ✦ CLEAN — delegated to shared resolver
+        return allowedRepositoryResolver.getAllowed().stream()
                 .filter(databaseService::hasDatabaseConfig)
                 .toList();
     }
@@ -460,7 +460,7 @@ public class DatabaseDumpController {
         }
     }
 
-    // ✦ CLEAN — removed duplicated parseExpiresAt() — now using DateTimeParser.parseExpiresAt()
+
 
     private String extractFilename(InputPart part) {
         String[] contentDisposition = part.getHeaders()

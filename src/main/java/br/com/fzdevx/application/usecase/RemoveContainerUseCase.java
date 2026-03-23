@@ -1,6 +1,6 @@
 package br.com.fzdevx.application.usecase;
 
-import br.com.fzdevx.application.port.DockerContainerPort; // ⚠ SOLID — DIP: depends on port, not DockerClient
+import br.com.fzdevx.application.port.DockerContainerPort;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.infrastructure.docker.ContainerSchedulingService;
@@ -15,7 +15,7 @@ import java.util.function.Consumer;
 public class RemoveContainerUseCase {
 
     @Inject
-    DockerContainerPort dockerContainerPort; // ⚠ SOLID — DIP: injecting port interface
+    DockerContainerPort dockerContainerPort;
 
     @Inject
     ContainerExpirationService expirationService;
@@ -30,12 +30,10 @@ public class RemoveContainerUseCase {
             return;
         }
 
-        // Step 1: Cancel expiration
         eventSink.accept(ContainerEvent.info("Cancelling", "Cancelling scheduled expiration..."));
         expirationService.cancel(containerId);
         eventSink.accept(ContainerEvent.info("Cancelling", "Expiration cancelled."));
 
-        // Step 2: Stop container
         eventSink.accept(ContainerEvent.info("Stopping", "Stopping container " + containerId + "..."));
         try {
             dockerContainerPort.stopContainer(containerId);
@@ -44,7 +42,6 @@ public class RemoveContainerUseCase {
             eventSink.accept(ContainerEvent.info("Stopping", "Container was not running, skipping stop."));
         }
 
-        // Step 3: Remove container
         eventSink.accept(ContainerEvent.info("Removing", "Removing container " + containerId + "..."));
         try {
             dockerContainerPort.removeContainer(containerId);
@@ -53,7 +50,6 @@ public class RemoveContainerUseCase {
             return;
         }
 
-        // Step 4: Clean up schedules targeting this container
         schedulingService.removeSchedulesByContainer(containerId);
 
         eventSink.accept(ContainerEvent.success("Complete", "Container " + containerId + " removed successfully."));

@@ -9,7 +9,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
-// ✦ CLEAN — extracted duplicated allowed-repositories parsing from 4 classes
+
 @ApplicationScoped
 public class AllowedRepositoryResolver {
 

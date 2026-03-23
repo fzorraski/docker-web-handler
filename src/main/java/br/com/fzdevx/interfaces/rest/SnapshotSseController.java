@@ -5,7 +5,7 @@ import br.com.fzdevx.application.dto.CreateSnapshotRequest;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
 import br.com.fzdevx.infrastructure.config.RequestStash;
 import br.com.fzdevx.application.usecase.CreateSnapshotUseCase;
-import br.com.fzdevx.interfaces.rest.util.SseHelper; // ✦ CLEAN — extracted duplicated SSE logic into shared helper
+import br.com.fzdevx.interfaces.rest.util.SseHelper;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Context;

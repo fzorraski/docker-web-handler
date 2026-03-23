@@ -1,6 +1,6 @@
 package br.com.fzdevx.domain.exception;
 
-// ✦ ARCH — sealed domain exception hierarchy for consistent error handling
+
 public sealed class DomainException extends RuntimeException
         permits EntityNotFoundException, DuplicateEntityException,
                 InvalidInputException, OperationInProgressException {

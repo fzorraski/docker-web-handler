@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-// ⚠ SOLID — SRP: extracted expiration management endpoints from ContainerController
+
 @Path("/containers")
 public class ContainerExpirationController {
 

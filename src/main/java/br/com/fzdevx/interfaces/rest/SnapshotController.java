@@ -2,13 +2,13 @@ package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.application.dto.CreateSnapshotRequest;
 import br.com.fzdevx.domain.model.DatabaseSnapshot;
-import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver; // ✦ CLEAN — using shared allowed-repos resolver
+import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
 import br.com.fzdevx.infrastructure.persistence.SnapshotStorageService;
 import br.com.fzdevx.application.usecase.CreateSnapshotUseCase;
 import br.com.fzdevx.interfaces.rest.util.ContentDispositionHelper;
-import br.com.fzdevx.domain.shared.DateTimeParser; // ✦ CLEAN — using shared date parser
+import br.com.fzdevx.domain.shared.DateTimeParser;
 import br.com.fzdevx.domain.shared.InputValidator;
 import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
@@ -81,7 +81,7 @@ public class SnapshotController {
 
         String downloadName = buildDownloadFilename(snapshot) + ".gz";
 
-        // ⚠ SECURITY — OWASP A01: sanitize filename in Content-Disposition header
+
         return Response.ok(file, MediaType.APPLICATION_OCTET_STREAM)
                 .header("Content-Disposition", ContentDispositionHelper.buildAttachmentHeader(downloadName))
                 .header("Content-Length", file.length())
@@ -131,7 +131,7 @@ public class SnapshotController {
             }
         };
 
-        // ⚠ SECURITY — OWASP A01: sanitize filename in Content-Disposition header
+
         return Response.ok(stream, MediaType.APPLICATION_OCTET_STREAM)
                 .header("Content-Disposition", ContentDispositionHelper.buildAttachmentHeader(filename))
                 .build();
@@ -256,7 +256,7 @@ public class SnapshotController {
             return Response.status(Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "Invalid operations password.")).build();
         }
-        // ✦ CLEAN — using shared DateTimeParser instead of inline parsing
+
         Instant expiresAt = DateTimeParser.parseExpiresAt(body.get("expiresAt"));
         boolean updated = snapshotStorageService.updateExpiration(id, expiresAt);
         if (!updated) {
@@ -322,7 +322,7 @@ public class SnapshotController {
         if (!dumpStorageService.isEnabled()) {
             return Collections.emptyList();
         }
-        return allowedRepositoryResolver.getAllowed().stream() // ✦ CLEAN — delegated to shared resolver
+        return allowedRepositoryResolver.getAllowed().stream()
                 .filter(databaseService::hasDatabaseConfig)
                 .toList();
     }

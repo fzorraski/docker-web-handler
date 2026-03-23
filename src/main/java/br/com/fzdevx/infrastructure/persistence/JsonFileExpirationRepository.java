@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-// ✦ CLEAN — refactored to extend AbstractJsonFileRepository, eliminating duplicated read/write/lock code
+
 @ApplicationScoped
 public class JsonFileExpirationRepository
         extends AbstractJsonFileRepository<ContainerExpiration>

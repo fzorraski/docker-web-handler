@@ -15,8 +15,8 @@ import jakarta.ws.rs.ext.Provider;
 
 import java.util.Map;
 
-// ⚠ SECURITY — OWASP A05: centralized exception handler prevents stack trace leakage
-// ✦ ARCH — maps domain exceptions to HTTP status codes in a single place
+
+
 @Provider
 public class GlobalExceptionMapper implements ExceptionMapper<Exception> {
 
@@ -41,7 +41,6 @@ public class GlobalExceptionMapper implements ExceptionMapper<Exception> {
             return buildResponse(409, "DUPLICATE", dde.getMessage());
         }
 
-        // Log the full exception server-side, return sanitized response to client
         Log.errorf(exception, "Unhandled exception: %s", exception.getMessage());
 
         return buildResponse(500, "INTERNAL_ERROR", "An unexpected error occurred.");

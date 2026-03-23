@@ -6,7 +6,7 @@ import java.util.List;
 
 public class ResponseWrapper {
 
-    // ✦ CLEAN — extracted magic state codes into named enum
+
     public enum ResponseState {
         SUCCESS(1),
         IMAGE_IN_USE(100),

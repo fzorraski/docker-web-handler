@@ -197,7 +197,6 @@ public class WebhookService {
         for (Map.Entry<String, String> entry : details.entrySet()) {
             result = result.replace("{" + entry.getKey() + "}", entry.getValue() != null ? entry.getValue() : "");
         }
-        // Remove any unresolved placeholders
         result = result.replaceAll("\\{[a-zA-Z]+}", "");
         return result.trim();
     }

@@ -3,7 +3,7 @@ package br.com.fzdevx.application.port;
 import java.util.List;
 import java.util.Optional;
 
-// ⚠ SOLID — DIP: port interface abstracting database operations for use cases
+
 public interface DatabasePort {
 
     boolean hasDatabaseConfig(String repository);

@@ -1,6 +1,6 @@
 package br.com.fzdevx.application.usecase;
 
-import br.com.fzdevx.application.port.DockerImagePort; // ⚠ SOLID — DIP: depends on port, not DockerClient
+import br.com.fzdevx.application.port.DockerImagePort;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
@@ -14,7 +14,7 @@ import java.util.function.Consumer;
 public class RemoveImageUseCase {
 
     @Inject
-    DockerImagePort dockerImagePort; // ⚠ SOLID — DIP: injecting port interface
+    DockerImagePort dockerImagePort;
 
     @Inject
     ResourceCounterService resourceCounterService;

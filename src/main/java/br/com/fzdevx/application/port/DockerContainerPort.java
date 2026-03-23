@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-// ⚠ SOLID — DIP: port interface abstracting Docker container operations for use cases
+
 public interface DockerContainerPort {
 
     List<Container> listContainers(boolean showAll);

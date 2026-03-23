@@ -14,7 +14,7 @@ import java.util.Optional;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Predicate;
 
-// ✦ CLEAN — extracted duplicated JSON file read/write/lock pattern from 3 repository implementations
+
 public abstract class AbstractJsonFileRepository<T> {
 
     private Path filePath;

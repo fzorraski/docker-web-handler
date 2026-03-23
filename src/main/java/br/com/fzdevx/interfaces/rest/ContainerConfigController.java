@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-// ⚠ SOLID — SRP: extracted configuration/settings endpoints from ContainerController
+
 @Path("/containers")
 public class ContainerConfigController {
 

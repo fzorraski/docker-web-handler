@@ -84,7 +84,6 @@ public class TerminalSessionManager {
     private void checkIdleSessions() {
         long now = System.currentTimeMillis();
         long timeoutMs = idleTimeoutMinutes * 60_000L;
-        // Collect expired keys first, then remove — avoids ConcurrentModificationException
         List<String> expired = new ArrayList<>();
         for (var entry : sessions.entrySet()) {
             if (now - entry.getValue().getLastActivityAt() > timeoutMs) {
