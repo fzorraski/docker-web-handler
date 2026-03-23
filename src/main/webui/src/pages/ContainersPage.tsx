@@ -1,16 +1,10 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import dayjs from 'dayjs'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import type { DockerContainer } from '../types'
 import {
   getContainers,
-  stopContainer,
-  startContainer,
-  removeContainer,
   getAllowedRepositories,
-  cancelDatabaseDeletion,
-  cancelExpiration,
-  extendExpiration,
   isDatabaseListingEnabled,
   isMigrationEnabled as checkMigrationEnabled,
   getMigratedDatabases,
@@ -20,8 +14,6 @@ import {
 
 dayjs.extend(customParseFormat)
 import { isDumpEnabled, getActiveRestores, type ActiveRestore } from '../services/dumpService'
-import { streamRemoveContainer } from  '../services/sseService'
-import { authorizeTerminal } from '../services/terminalService'
 import NewContainerModal from '../components/NewContainerModal'
 import RunMigrationModal from '../components/RunMigrationModal'
 import QuickScheduleDialog from '../components/QuickScheduleDialog'
@@ -30,13 +22,17 @@ import ContainerLogsDialog from '../components/ContainerLogsDialog'
 import ContainerStatsDialog from '../components/ContainerStatsDialog'
 import ContainerTerminalDialog from '../components/ContainerTerminalDialog'
 import PasswordConfirmDialog from '../components/PasswordConfirmDialog'
+import ExpirationChip from '../components/ExpirationChip'
 import OperationProgress, { REMOVE_STEPS } from '../components/OperationProgress'
 import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
 import { useTranslation } from 'react-i18next'
 import { formatBackendDate } from '../utils/format'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
-import { useSseOperation } from '../hooks/useSseOperation'
+import { useContainerActions } from '../hooks/useContainerActions'
+import { useContainerDialogs } from '../hooks/useContainerDialogs'
+import { useTerminalAuth } from '../hooks/useTerminalAuth'
+import { useActionMenu } from '../hooks/useActionMenu'
 import {
   Box,
   Typography,
@@ -71,7 +67,7 @@ import {
   Alert,
   AlertTitle,
 } from '@mui/material'
-import { Search, AddCircleOutline, Stop, PlayArrow, Delete, Timer, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord, Code } from '@mui/icons-material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord, Code } from '@mui/icons-material'
 import { isSchedulingEnabled, listSchedules } from '../services/scheduleService'
 import type { ContainerSchedule } from '../types'
 
@@ -97,7 +93,7 @@ export default function ContainersPage() {
   const { notify, confirm } = useNotification()
   const { t } = useTranslation()
   const { theadBg, theadColor, theadSortSx } = useTableHeaderTheme()
-  const removeSse = useSseOperation()
+
   const [containers, setContainers] = useState<DockerContainer[]>([])
   const [filter, setFilter] = useState('')
   const [loading, setLoading] = useState(true)
@@ -108,41 +104,28 @@ export default function ContainersPage() {
   const [sortKey, setSortKey] = useState<string>('')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [activeRestores, setActiveRestores] = useState<ActiveRestore[]>([])
-  const [stoppingId, setStoppingId] = useState<string | null>(null)
   const [dumpEnabled, setDumpEnabled] = useState(false)
-  const [snapshotOpen, setSnapshotOpen] = useState(false)
-  const [snapshotRepo, setSnapshotRepo] = useState<string | undefined>(undefined)
-  const [snapshotDb, setSnapshotDb] = useState<string | undefined>(undefined)
-  const [snapshotContainerName, setSnapshotContainerName] = useState<string | undefined>(undefined)
-  const [logsContainerId, setLogsContainerId] = useState<string | null>(null)
-  const [logsContainerName, setLogsContainerName] = useState('')
-  const [statsContainerId, setStatsContainerId] = useState<string | null>(null)
-  const [statsContainerName, setStatsContainerName] = useState('')
-  const [terminalTicket, setTerminalTicket] = useState('')
-  const [terminalContainerName, setTerminalContainerName] = useState('')
-  const [terminalFeatureEnabled, setTerminalFeatureEnabled] = useState(false)
-  const [terminalPasswordRequired, setTerminalPasswordRequired] = useState(true)
-  const [terminalAuthOpen, setTerminalAuthOpen] = useState(false)
-  const [terminalPendingContainerId, setTerminalPendingContainerId] = useState('')
-  const [terminalPendingContainerName, setTerminalPendingContainerName] = useState('')
   const [migratedDatabases, setMigratedDatabases] = useState<MigratedDatabase[]>([])
   const [migrationFeatureEnabled, setMigrationFeatureEnabled] = useState(false)
-  const [migrationRepo, setMigrationRepo] = useState('')
-  const [migrationDb, setMigrationDb] = useState('')
-  const [migrationOpen, setMigrationOpen] = useState(false)
+  const [terminalFeatureEnabled, setTerminalFeatureEnabled] = useState(false)
+  const [terminalPasswordRequired, setTerminalPasswordRequired] = useState(true)
   const [schedulingFeatureEnabled, setSchedulingFeatureEnabled] = useState(false)
   const [containerSchedules, setContainerSchedules] = useState<Map<string, ContainerSchedule[]>>(new Map())
-  const [scheduleContainerId, setScheduleContainerId] = useState('')
-  const [scheduleContainerName, setScheduleContainerName] = useState('')
-  const [scheduleExpiresAt, setScheduleExpiresAt] = useState<string | undefined>(undefined)
-  const [scheduleOpen, setScheduleOpen] = useState(false)
-  const [actionMenuAnchor, setActionMenuAnchor] = useState<null | HTMLElement>(null)
-  const [contextMenuPos, setContextMenuPos] = useState<{ top: number; left: number } | null>(null)
-  const [actionMenuContainer, setActionMenuContainer] = useState<DockerContainer | null>(null)
   const [showStoppedOnly, setShowStoppedOnly] = useState(false)
-  const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false)
-  const [cleanupMinDays, setCleanupMinDays] = useState(7)
-  const [cleanupRunning, setCleanupRunning] = useState(false)
+
+  // Extracted hooks
+  const loadContainers = useCallback(() => {
+    setLoading(true)
+    getContainers()
+      .then(setContainers)
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const actions = useContainerActions({ notify, confirm, t, loadContainers })
+  const dialogs = useContainerDialogs()
+  const terminal = useTerminalAuth({ notify, t })
+  const actionMenu = useActionMenu<DockerContainer>()
 
   const isUp = (status: string) => status.includes('Up')
   const machineIp = window.location.hostname
@@ -177,14 +160,6 @@ export default function ContainersPage() {
       return updated
     })
   }
-
-  const loadContainers = useCallback(() => {
-    setLoading(true)
-    getContainers()
-      .then(setContainers)
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
 
   function loadContainerSchedules() {
     listSchedules().then((all) => {
@@ -243,128 +218,10 @@ export default function ContainersPage() {
     return () => clearTimeout(timer)
   }, [containers])
 
-  async function handleStop(id: string, name: string) {
-    if (!(await confirm(t('containers.confirmStop', { name })))) return
-    setStoppingId(id)
-    try {
-      const ok = await stopContainer(id)
-      notify(ok ? t('containers.containerStopped') : t('containers.failedToStop'), ok ? 'success' : 'error')
-    } catch {
-      notify(t('containers.stopError'), 'error')
-    } finally {
-      setStoppingId(null)
-    }
-    loadContainers()
-  }
-
-  async function handleStart(id: string, name: string) {
-    if (!(await confirm(t('containers.confirmStart', { name })))) return
-    try {
-      const ok = await startContainer(id)
-      notify(ok ? t('containers.containerStarted') : t('containers.failedToStart'), ok ? 'success' : 'error')
-    } catch {
-      notify(t('containers.startError'), 'error')
-    }
-    loadContainers()
-  }
-
-  async function handleRemove(id: string, name: string) {
-    if (!(await confirm(t('containers.confirmRemove', { name })))) return
-
-    removeSse.start(
-      (onEvent, onDone, onError) => streamRemoveContainer(id, onEvent, onDone, onError),
-      () => {
-        setTimeout(() => {
-          removeSse.reset()
-          notify(t('containers.containerRemoved'), 'success')
-          loadContainers()
-        }, 1500)
-      },
-      () => loadContainers(),
-    )
-  }
-
-  function handleRemoveDialogClose() {
-    removeSse.cleanup()
-    removeSse.reset()
-    loadContainers()
-  }
-
-  async function handleExtendExpiration(id: string) {
-    try {
-      const ok = await extendExpiration(id, 10)
-      notify(ok ? t('containers.expirationExtended') : t('containers.failedToExtend'), ok ? 'success' : 'error')
-    } catch {
-      notify(t('common.unexpectedError'), 'error')
-    }
-    loadContainers()
-  }
-
-  async function handleCancelExpiration(id: string, name: string) {
-    if (!(await confirm(t('containers.cancelExpiration', { name })))) return
-    try {
-      const ok = await cancelExpiration(id)
-      notify(ok ? t('containers.expirationCancelled') : t('containers.failedToCancelExpiration'), ok ? 'success' : 'error')
-    } catch {
-      notify(t('common.unexpectedError'), 'error')
-    }
-    loadContainers()
-  }
-
-  async function handleCancelDbDeletion(id: string, name: string) {
-    if (!(await confirm(t('containers.cancelDbDeletion', { name })))) return
-    try {
-      const ok = await cancelDatabaseDeletion(id)
-      notify(ok ? t('containers.dbDeletionCancelled') : t('containers.failedToCancelDbDeletion'), ok ? 'success' : 'error')
-    } catch {
-      notify(t('common.unexpectedError'), 'error')
-    }
-    loadContainers()
-  }
-
   const cleanupCandidates = useMemo(
-    () => containers.filter(c => !isUp(c.status) && getContainerAgeDays(c) >= cleanupMinDays),
-    [containers, cleanupMinDays]
+    () => containers.filter(c => !isUp(c.status) && getContainerAgeDays(c) >= dialogs.cleanup.minDays),
+    [containers, dialogs.cleanup.minDays]
   )
-
-  async function handleCleanup() {
-    if (cleanupCandidates.length === 0) return
-    setCleanupRunning(true)
-    let removed = 0
-    let failed = 0
-    for (const c of cleanupCandidates) {
-      try {
-        const ok = await removeContainer(c.containerId)
-        if (ok) removed++; else failed++
-      } catch {
-        failed++
-      }
-    }
-    setCleanupRunning(false)
-    setCleanupDialogOpen(false)
-    notify(
-      t('containers.cleanup.result', { removed, failed }),
-      failed > 0 ? 'warning' : 'success'
-    )
-    loadContainers()
-  }
-
-  function handleSnapshot(c: DockerContainer) {
-    setSnapshotRepo(c.repository ?? undefined)
-    setSnapshotDb(c.databaseName ?? undefined)
-    setSnapshotContainerName(c.names)
-    setSnapshotOpen(true)
-  }
-
-  function handleViewLogs(c: DockerContainer) {
-    setLogsContainerId(c.containerId)
-    setLogsContainerName(c.names)
-  }
-
-  function handleLogsClose() {
-    setLogsContainerId(null)
-    setLogsContainerName('')
-  }
 
   function handleSort(key: string) {
     if (key === 'actions') return
@@ -530,7 +387,7 @@ export default function ContainersPage() {
                 variant="contained"
                 color="warning"
                 startIcon={<CleaningServices />}
-                onClick={() => setCleanupDialogOpen(true)}
+                onClick={dialogs.openCleanup}
                 disabled={stoppedCount === 0}
                 size="small"
               >
@@ -608,9 +465,7 @@ export default function ContainersPage() {
                   hover
                   onContextMenu={(e) => {
                     e.preventDefault()
-                    setActionMenuAnchor(null)
-                    setContextMenuPos({ top: e.clientY, left: e.clientX })
-                    setActionMenuContainer(c)
+                    actionMenu.openByPosition({ top: e.clientY, left: e.clientX }, c)
                   }}
                 >
                   {columnVisibility.names && (
@@ -629,12 +484,7 @@ export default function ContainersPage() {
                                 color="info"
                                 variant="outlined"
                                 sx={{ height: 20, fontSize: '0.7rem', '& .MuiChip-icon': { fontSize: 14 } }}
-                                onClick={() => {
-                                  setScheduleContainerId(c.containerId)
-                                  setScheduleContainerName(c.names)
-                                  setScheduleExpiresAt(c.expiresAt)
-                                  setScheduleOpen(true)
-                                }}
+                                onClick={() => dialogs.openSchedule(c)}
                               />
                             </Tooltip>
                           )
@@ -727,9 +577,9 @@ export default function ContainersPage() {
                       {c.expiresAt ? (
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <ExpirationChip expiresAt={c.expiresAt} onCancel={() => handleCancelExpiration(c.containerId, c.names)} onExpired={loadContainers} />
+                            <ExpirationChip expiresAt={c.expiresAt} onCancel={() => actions.handleCancelExpiration(c.containerId, c.names)} onExpired={loadContainers} />
                             <Tooltip title={t('containers.extendBy10')}>
-                              <IconButton size="small" onClick={() => handleExtendExpiration(c.containerId)} sx={{ p: 0.25 }}>
+                              <IconButton size="small" onClick={() => actions.handleExtendExpiration(c.containerId)} sx={{ p: 0.25 }}>
                                 <MoreTime fontSize="small" />
                               </IconButton>
                             </Tooltip>
@@ -742,7 +592,7 @@ export default function ContainersPage() {
                                 color="warning"
                                 icon={<Warning />}
                                 variant="filled"
-                                onDelete={() => handleCancelDbDeletion(c.containerId, c.names)}
+                                onDelete={() => actions.handleCancelDbDeletion(c.containerId, c.names)}
                               />
                             </Tooltip>
                           )}
@@ -770,15 +620,15 @@ export default function ContainersPage() {
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.25, alignItems: 'center' }}>
                         {isUp(c.status) ? (
-                          <Tooltip title={stoppingId === c.containerId ? t('containers.stopping') : t('containers.stop')}>
+                          <Tooltip title={actions.stoppingId === c.containerId ? t('containers.stopping') : t('containers.stop')}>
                             <span>
                               <IconButton
                                 size="small"
                                 color="warning"
-                                onClick={() => handleStop(c.containerId, c.names)}
-                                disabled={stoppingId === c.containerId}
+                                onClick={() => actions.handleStop(c.containerId, c.names)}
+                                disabled={actions.stoppingId === c.containerId}
                               >
-                                {stoppingId === c.containerId ? <CircularProgress size={18} color="inherit" /> : <Stop />}
+                                {actions.stoppingId === c.containerId ? <CircularProgress size={18} color="inherit" /> : <Stop />}
                               </IconButton>
                             </span>
                           </Tooltip>
@@ -787,7 +637,7 @@ export default function ContainersPage() {
                             <IconButton
                               size="small"
                               color="primary"
-                              onClick={() => handleStart(c.containerId, c.names)}
+                              onClick={() => actions.handleStart(c.containerId, c.names)}
                             >
                               <PlayArrow />
                             </IconButton>
@@ -795,10 +645,7 @@ export default function ContainersPage() {
                         )}
                         <IconButton
                           size="small"
-                          onClick={(e) => {
-                            setActionMenuAnchor(e.currentTarget)
-                            setActionMenuContainer(c)
-                          }}
+                          onClick={(e) => actionMenu.openByAnchor(e.currentTarget, c)}
                         >
                           <MoreVert />
                         </IconButton>
@@ -812,27 +659,27 @@ export default function ContainersPage() {
         </TableContainer>
 
         <Menu
-          anchorEl={actionMenuAnchor}
-          open={(Boolean(actionMenuAnchor) || Boolean(contextMenuPos)) && actionMenuContainer !== null}
-          onClose={() => { setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null) }}
-          {...(contextMenuPos && !actionMenuAnchor ? {
+          anchorEl={actionMenu.anchorEl}
+          open={actionMenu.menuOpen && actionMenu.target !== null}
+          onClose={actionMenu.close}
+          {...(actionMenu.contextMenuPos && !actionMenu.anchorEl ? {
             anchorReference: 'anchorPosition' as const,
-            anchorPosition: contextMenuPos,
+            anchorPosition: actionMenu.contextMenuPos,
           } : {
             transformOrigin: { horizontal: 'right', vertical: 'top' },
             anchorOrigin: { horizontal: 'right', vertical: 'bottom' },
           })}
           slotProps={{ paper: { sx: { minWidth: 200 } } }}
         >
-          {actionMenuContainer && [
-            isUp(actionMenuContainer.status) ? (
+          {actionMenu.target && [
+            isUp(actionMenu.target.status) ? (
               <MenuItem
                 key="stop"
                 onClick={() => {
-                  handleStop(actionMenuContainer.containerId, actionMenuContainer.names)
-                  setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+                  actions.handleStop(actionMenu.target.containerId, actionMenu.target.names)
+                  actionMenu.close()
                 }}
-                disabled={stoppingId === actionMenuContainer.containerId}
+                disabled={actions.stoppingId === actionMenu.target.containerId}
               >
                 <ListItemIcon><Stop fontSize="small" color="warning" /></ListItemIcon>
                 <ListItemText>{t('containers.stop')}</ListItemText>
@@ -841,8 +688,8 @@ export default function ContainersPage() {
               <MenuItem
                 key="start"
                 onClick={() => {
-                  handleStart(actionMenuContainer.containerId, actionMenuContainer.names)
-                  setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+                  actions.handleStart(actionMenu.target.containerId, actionMenu.target.names)
+                  actionMenu.close()
                 }}
               >
                 <ListItemIcon><PlayArrow fontSize="small" color="primary" /></ListItemIcon>
@@ -855,21 +702,20 @@ export default function ContainersPage() {
             <MenuItem
               key="logs"
               onClick={() => {
-                handleViewLogs(actionMenuContainer)
-                setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+                dialogs.openLogs(actionMenu.target)
+                actionMenu.close()
               }}
             >
               <ListItemIcon><Terminal fontSize="small" /></ListItemIcon>
               <ListItemText>{t('containers.logs.viewLogs')}</ListItemText>
             </MenuItem>,
 
-            isUp(actionMenuContainer.status) && (
+            isUp(actionMenu.target.status) && (
               <MenuItem
                 key="stats"
                 onClick={() => {
-                  setStatsContainerId(actionMenuContainer.containerId)
-                  setStatsContainerName(actionMenuContainer.names)
-                  setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+                  dialogs.openStats(actionMenu.target!)
+                  actionMenu.close()
                 }}
               >
                 <ListItemIcon><Monitor fontSize="small" /></ListItemIcon>
@@ -877,27 +723,14 @@ export default function ContainersPage() {
               </MenuItem>
             ),
 
-            terminalFeatureEnabled && isUp(actionMenuContainer.status) && (
+            terminalFeatureEnabled && isUp(actionMenu.target.status) && (
               <MenuItem
                 key="terminal"
                 onClick={() => {
-                  const cId = actionMenuContainer.containerId
-                  const cName = actionMenuContainer.names
-                  setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
-                  if (terminalPasswordRequired) {
-                    setTerminalPendingContainerId(cId)
-                    setTerminalPendingContainerName(cName)
-                    setTerminalAuthOpen(true)
-                  } else {
-                    authorizeTerminal(cId, '').then((result) => {
-                      if (result.ticket) {
-                        setTerminalTicket(result.ticket)
-                        setTerminalContainerName(cName)
-                      } else {
-                        notify(result.error || 'Authorization failed.', 'error')
-                      }
-                    })
-                  }
+                  const cId = actionMenu.target!.containerId
+                  const cName = actionMenu.target!.names
+                  actionMenu.close()
+                  terminal.requestTerminal(cId, cName, terminalPasswordRequired)
                 }}
               >
                 <ListItemIcon><Code fontSize="small" /></ListItemIcon>
@@ -905,31 +738,29 @@ export default function ContainersPage() {
               </MenuItem>
             ),
 
-            (dumpEnabled && actionMenuContainer.repository && actionMenuContainer.databaseName) || (migrationFeatureEnabled && actionMenuContainer.repository && actionMenuContainer.databaseName)
+            (dumpEnabled && actionMenu.target.repository && actionMenu.target.databaseName) || (migrationFeatureEnabled && actionMenu.target.repository && actionMenu.target.databaseName)
               ? <Divider key="db-divider" />
               : null,
 
-            dumpEnabled && actionMenuContainer.repository && actionMenuContainer.databaseName && (
+            dumpEnabled && actionMenu.target.repository && actionMenu.target.databaseName && (
               <MenuItem
                 key="snapshot"
                 onClick={() => {
-                  handleSnapshot(actionMenuContainer)
-                  setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+                  dialogs.openSnapshot(actionMenu.target)
+                  actionMenu.close()
                 }}
               >
                 <ListItemIcon><CameraAlt fontSize="small" /></ListItemIcon>
-                <ListItemText>{t('containers.snapshotDatabase', { database: actionMenuContainer.databaseName })}</ListItemText>
+                <ListItemText>{t('containers.snapshotDatabase', { database: actionMenu.target.databaseName })}</ListItemText>
               </MenuItem>
             ),
 
-            migrationFeatureEnabled && actionMenuContainer.repository && actionMenuContainer.databaseName && (
+            migrationFeatureEnabled && actionMenu.target.repository && actionMenu.target.databaseName && (
               <MenuItem
                 key="migration"
                 onClick={() => {
-                  setMigrationRepo(actionMenuContainer.repository!)
-                  setMigrationDb(actionMenuContainer.databaseName!)
-                  setMigrationOpen(true)
-                  setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+                  dialogs.openMigration(actionMenu.target!)
+                  actionMenu.close()
                 }}
               >
                 <ListItemIcon><SwapHoriz fontSize="small" /></ListItemIcon>
@@ -941,11 +772,8 @@ export default function ContainersPage() {
               <MenuItem
                 key="schedule"
                 onClick={() => {
-                  setScheduleContainerId(actionMenuContainer.containerId)
-                  setScheduleContainerName(actionMenuContainer.names)
-                  setScheduleExpiresAt(actionMenuContainer.expiresAt)
-                  setScheduleOpen(true)
-                  setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+                  dialogs.openSchedule(actionMenu.target!)
+                  actionMenu.close()
                 }}
               >
                 <ListItemIcon><AccessTime fontSize="small" /></ListItemIcon>
@@ -958,8 +786,8 @@ export default function ContainersPage() {
             <MenuItem
               key="delete"
               onClick={() => {
-                handleRemove(actionMenuContainer.containerId, actionMenuContainer.names)
-                setActionMenuAnchor(null); setContextMenuPos(null); setActionMenuContainer(null)
+                actions.handleRemove(actionMenu.target.containerId, actionMenu.target.names)
+                actionMenu.close()
               }}
               sx={{ color: 'error.main' }}
             >
@@ -976,102 +804,74 @@ export default function ContainersPage() {
         onCreated={loadContainers}
       />
 
-      <Dialog open={removeSse.events.length > 0} onClose={handleRemoveDialogClose} maxWidth="sm" fullWidth>
+      <Dialog open={actions.removeSse.events.length > 0} onClose={actions.handleRemoveDialogClose} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
           <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> {t('containers.removingContainer')}
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 3 }}>
-          <OperationProgress events={removeSse.events} steps={REMOVE_STEPS} />
+          <OperationProgress events={actions.removeSse.events} steps={REMOVE_STEPS} />
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          {(removeSse.hasError || removeSse.isDone) && (
-            <Button onClick={handleRemoveDialogClose} color="inherit">{t('common.close')}</Button>
+          {(actions.removeSse.hasError || actions.removeSse.isDone) && (
+            <Button onClick={actions.handleRemoveDialogClose} color="inherit">{t('common.close')}</Button>
           )}
         </DialogActions>
       </Dialog>
 
       <CreateSnapshotModal
-        open={snapshotOpen}
-        onClose={() => {
-          setSnapshotOpen(false)
-          setSnapshotRepo(undefined)
-          setSnapshotDb(undefined)
-          setSnapshotContainerName(undefined)
-        }}
+        open={dialogs.snapshot.open}
+        onClose={dialogs.closeSnapshot}
         onCreated={() => {}}
-        initialRepository={snapshotRepo}
-        initialDatabase={snapshotDb}
-        containerName={snapshotContainerName}
+        initialRepository={dialogs.snapshot.repo}
+        initialDatabase={dialogs.snapshot.db}
+        containerName={dialogs.snapshot.containerName}
       />
 
       <ContainerLogsDialog
-        open={logsContainerId !== null}
-        containerId={logsContainerId ?? ''}
-        containerName={logsContainerName}
-        onClose={handleLogsClose}
+        open={dialogs.logs.containerId !== null}
+        containerId={dialogs.logs.containerId ?? ''}
+        containerName={dialogs.logs.containerName}
+        onClose={dialogs.closeLogs}
       />
 
       <ContainerStatsDialog
-        open={statsContainerId !== null}
-        containerId={statsContainerId ?? ''}
-        containerName={statsContainerName}
-        onClose={() => {
-          setStatsContainerId(null)
-          setStatsContainerName('')
-        }}
+        open={dialogs.stats.containerId !== null}
+        containerId={dialogs.stats.containerId ?? ''}
+        containerName={dialogs.stats.containerName}
+        onClose={dialogs.closeStats}
       />
 
       <PasswordConfirmDialog
-        open={terminalAuthOpen}
+        open={terminal.authDialogOpen}
         title={t('containers.terminal.openTerminal')}
         message={t('containers.terminal.enterPassword')}
         confirmLabel={t('containers.terminal.connect')}
         loadingLabel={t('containers.terminal.connecting')}
         confirmColor="primary"
         icon={<Code />}
-        onConfirm={async (password) => {
-          const result = await authorizeTerminal(terminalPendingContainerId, password)
-          if (result.ticket) {
-            setTerminalTicket(result.ticket)
-            setTerminalContainerName(terminalPendingContainerName)
-            setTerminalAuthOpen(false)
-          } else {
-            notify(result.error || 'Authorization failed.', 'error')
-          }
-        }}
-        onClose={() => {
-          setTerminalAuthOpen(false)
-          setTerminalPendingContainerId('')
-          setTerminalPendingContainerName('')
-        }}
+        onConfirm={terminal.confirmAuth}
+        onClose={terminal.cancelAuth}
       />
 
       <ContainerTerminalDialog
-        open={!!terminalTicket}
-        ticket={terminalTicket}
-        containerName={terminalContainerName}
-        onClose={() => {
-          setTerminalTicket('')
-          setTerminalContainerName('')
-        }}
+        open={!!terminal.ticket}
+        ticket={terminal.ticket}
+        containerName={terminal.containerName}
+        onClose={terminal.closeTerminal}
       />
 
       <RunMigrationModal
-        open={migrationOpen}
-        repository={migrationRepo}
-        databaseName={migrationDb}
-        onClose={() => {
-          setMigrationOpen(false)
-          setMigrationRepo('')
-          setMigrationDb('')
-        }}
+        open={dialogs.migration.open}
+        repository={dialogs.migration.repo}
+        databaseName={dialogs.migration.db}
+        onClose={dialogs.closeMigration}
         onCompleted={() => {
           loadContainers()
           getMigratedDatabases().then(setMigratedDatabases).catch(() => {})
         }}
       />
 
-      <Dialog open={cleanupDialogOpen} onClose={() => !cleanupRunning && setCleanupDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={dialogs.cleanup.open} onClose={() => !dialogs.cleanup.running && dialogs.closeCleanup()} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: 'warning.main', color: 'white' }}>
           <CleaningServices sx={{ mr: 1, verticalAlign: 'middle' }} /> {t('containers.cleanup.title')}
         </DialogTitle>
@@ -1085,8 +885,8 @@ export default function ContainersPage() {
           </Typography>
           <Box sx={{ px: 2, mb: 3 }}>
             <Slider
-              value={cleanupMinDays}
-              onChange={(_, v) => setCleanupMinDays(v as number)}
+              value={dialogs.cleanup.minDays}
+              onChange={(_, v) => dialogs.setCleanupMinDays(v as number)}
               min={1}
               max={90}
               step={1}
@@ -1111,81 +911,36 @@ export default function ContainersPage() {
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setCleanupDialogOpen(false)} color="inherit" disabled={cleanupRunning}>
+          <Button onClick={dialogs.closeCleanup} color="inherit" disabled={dialogs.cleanup.running}>
             {t('common.cancel')}
           </Button>
           <Button
             variant="contained"
             color="warning"
-            onClick={handleCleanup}
-            disabled={cleanupRunning || cleanupCandidates.length === 0}
-            startIcon={cleanupRunning ? <CircularProgress size={20} /> : <CleaningServices />}
+            onClick={async () => {
+              dialogs.setCleanupRunning(true)
+              await actions.handleCleanup(cleanupCandidates)
+              dialogs.setCleanupRunning(false)
+              dialogs.closeCleanup()
+            }}
+            disabled={dialogs.cleanup.running || cleanupCandidates.length === 0}
+            startIcon={dialogs.cleanup.running ? <CircularProgress size={20} /> : <CleaningServices />}
           >
-            {cleanupRunning ? t('containers.cleanup.running') : t('containers.cleanup.confirm', { count: cleanupCandidates.length })}
+            {dialogs.cleanup.running ? t('containers.cleanup.running') : t('containers.cleanup.confirm', { count: cleanupCandidates.length })}
           </Button>
         </DialogActions>
       </Dialog>
 
       <QuickScheduleDialog
-        open={scheduleOpen}
-        containerId={scheduleContainerId}
-        containerName={scheduleContainerName}
-        expiresAt={scheduleExpiresAt}
+        open={dialogs.schedule.open}
+        containerId={dialogs.schedule.containerId}
+        containerName={dialogs.schedule.containerName}
+        expiresAt={dialogs.schedule.expiresAt}
         onClose={() => {
-          setScheduleOpen(false)
-          setScheduleContainerId('')
-          setScheduleContainerName('')
-          setScheduleExpiresAt(undefined)
+          dialogs.closeSchedule()
           if (schedulingFeatureEnabled) loadContainerSchedules()
         }}
       />
     </>
-  )
-}
-
-function ExpirationChip({ expiresAt, onCancel, onExpired }: { expiresAt: string; onCancel: () => void; onExpired: () => void }) {
-  const { t } = useTranslation()
-  const expiresMs = useMemo(() => new Date(expiresAt).getTime(), [expiresAt])
-  const [remaining, setRemaining] = useState('')
-  const expiredFired = useRef(false)
-  const expiredTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    expiredFired.current = false
-  }, [expiresMs])
-
-  useEffect(() => {
-    function update() {
-      const diff = expiresMs - Date.now()
-      if (diff <= 0) {
-        setRemaining(t('containers.expiring'))
-        if (!expiredFired.current) {
-          expiredFired.current = true
-          expiredTimerRef.current = setTimeout(onExpired, 6000)
-        }
-        return
-      }
-      const h = Math.floor(diff / 3600000)
-      const m = Math.floor((diff % 3600000) / 60000)
-      const s = Math.floor((diff % 60000) / 1000)
-      setRemaining(h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`)
-    }
-    update()
-    const id = setInterval(update, 1000)
-    return () => {
-      clearInterval(id)
-      if (expiredTimerRef.current) clearTimeout(expiredTimerRef.current)
-    }
-  }, [expiresMs, onExpired, t])
-
-  return (
-    <Chip
-      label={remaining}
-      size="small"
-      color="warning"
-      icon={<Timer />}
-      variant="outlined"
-      onDelete={onCancel}
-    />
   )
 }
