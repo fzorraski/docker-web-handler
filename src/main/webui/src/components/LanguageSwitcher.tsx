@@ -10,7 +10,7 @@ const LANGUAGES = [
 ]
 
 export default function LanguageSwitcher() {
-  const { i18n } = useTranslation()
+  const { i18n, t } = useTranslation()
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
 
   function handleSelect(code: string) {
@@ -20,7 +20,7 @@ export default function LanguageSwitcher() {
 
   return (
     <>
-      <Tooltip title="Language" arrow>
+      <Tooltip title={t('navbar.language')} arrow>
         <IconButton
           onClick={(e) => setAnchorEl(e.currentTarget)}
           sx={{ color: 'inherit' }}

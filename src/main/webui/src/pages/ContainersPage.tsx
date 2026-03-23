@@ -83,14 +83,7 @@ interface ColumnDef {
 
 const STORAGE_KEY = 'containerColumnsVisibility'
 
-const DAY_MARKS = [
-  { value: 1, label: '1' },
-  { value: 7, label: '7' },
-  { value: 14, label: '14' },
-  { value: 30, label: '30' },
-  { value: 60, label: '60' },
-  { value: 90, label: '90' },
-]
+import { DAY_MARKS } from '../utils/constants'
 
 function loadVisibility(columns: ColumnDef[]): Record<string, boolean> {
   try {
@@ -690,7 +683,7 @@ export default function ContainersPage() {
                                 component="a"
                                 href={`http://${machineIp}:${port.trim()}${c.portPaths?.[port.trim()] ?? ''}`}
                                 target="_blank"
-                                rel="noreferrer"
+                                rel="noopener noreferrer"
                                 clickable
                                 sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', height: 24 }}
                               />

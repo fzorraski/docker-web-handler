@@ -161,9 +161,7 @@ export function downloadSnapshotDirect(body: {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
     })
-    .catch((err) => {
-      console.error('Download failed:', err)
-    })
+    .catch(() => {})
 }
 
 export async function cleanupIdleSnapshots(password: string, minDays: number): Promise<{ success: boolean; deleted?: number; error?: string }> {

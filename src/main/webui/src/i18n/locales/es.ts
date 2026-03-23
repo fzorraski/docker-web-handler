@@ -38,6 +38,7 @@ const es: typeof en = {
     schedules: 'Programaciones',
     darkMode: 'Modo oscuro',
     lightMode: 'Modo claro',
+    language: 'Idioma',
   },
 
   footer: {

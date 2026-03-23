@@ -62,10 +62,9 @@ export function formatScriptSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function formatMigrationSummary(
   config: { mode: string; sql?: string; sourceVersion?: string; targetVersion?: string },
-  t: (...args: any[]) => string,
+  t: (key: string, options?: Record<string, string>) => string,
   section: string,
 ): string {
   const versionInfo = config.sourceVersion && config.targetVersion

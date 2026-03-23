@@ -38,6 +38,7 @@ const ptBR: typeof en = {
     schedules: 'Agendamentos',
     darkMode: 'Modo escuro',
     lightMode: 'Modo claro',
+    language: 'Idioma',
   },
 
   footer: {

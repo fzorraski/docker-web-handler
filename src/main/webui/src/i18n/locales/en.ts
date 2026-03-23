@@ -36,6 +36,7 @@ const en = {
     schedules: 'Schedules',
     darkMode: 'Dark mode',
     lightMode: 'Light mode',
+    language: 'Language',
   },
 
   footer: {
