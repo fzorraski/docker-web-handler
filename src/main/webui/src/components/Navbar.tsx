@@ -8,16 +8,18 @@ import {
   useMediaQuery, useTheme,
 } from '@mui/material'
 import { Link, useLocation } from 'react-router-dom'
-import { DarkMode, LightMode, Menu as MenuIcon } from '@mui/icons-material'
+import { DarkMode, LightMode, Logout, Menu as MenuIcon } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { isDumpEnabled } from '../services/dumpService'
 import { isSchedulingEnabled } from '../services/scheduleService'
 import { useThemeMode } from './ThemeModeProvider'
+import { useAuth } from './AuthProvider'
 import LanguageSwitcher from './LanguageSwitcher'
 
 export default function Navbar() {
   const location = useLocation()
   const { mode, toggleMode } = useThemeMode()
+  const { authEnabled, logout } = useAuth()
   const { t } = useTranslation()
   const [dumpEnabled, setDumpEnabled] = useState(false)
   const [schedulingEnabled, setSchedulingEnabled] = useState(false)
@@ -135,6 +137,20 @@ export default function Navbar() {
                 {mode === 'light' ? <DarkMode /> : <LightMode />}
               </IconButton>
             </Tooltip>
+            {authEnabled && (
+              <Tooltip title={t('login.logout')} arrow>
+                <IconButton
+                  onClick={logout}
+                  sx={{
+                    ml: 0.5,
+                    color: isDark ? 'rgba(255,255,255,0.55)' : 'text.secondary',
+                    '&:hover': { color: 'error.main' },
+                  }}
+                >
+                  <Logout />
+                </IconButton>
+              </Tooltip>
+            )}
           </Box>
 
           {/* Mobile hamburger button */}
@@ -197,6 +213,13 @@ export default function Navbar() {
                 {mode === 'light' ? <DarkMode /> : <LightMode />}
               </IconButton>
             </Tooltip>
+            {authEnabled && (
+              <Tooltip title={t('login.logout')} arrow>
+                <IconButton onClick={logout} sx={{ '&:hover': { color: 'error.main' } }}>
+                  <Logout />
+                </IconButton>
+              </Tooltip>
+            )}
           </Box>
         </Box>
       </Drawer>

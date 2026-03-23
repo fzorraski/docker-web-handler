@@ -15,6 +15,7 @@ dayjs.extend(localizedFormat)
 import App from './App'
 import ThemeModeProvider from './components/ThemeModeProvider'
 import NotificationProvider from './components/NotificationProvider'
+import AuthProvider from './components/AuthProvider'
 
 const DAYJS_LOCALE_MAP: Record<string, string> = {
   en: 'en',
@@ -46,9 +47,11 @@ function Root() {
     <ThemeModeProvider>
       <LocalizationProvider key={locale} dateAdapter={AdapterDayjs} adapterLocale={locale}>
         <NotificationProvider>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
+          <AuthProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </AuthProvider>
         </NotificationProvider>
       </LocalizationProvider>
     </ThemeModeProvider>
