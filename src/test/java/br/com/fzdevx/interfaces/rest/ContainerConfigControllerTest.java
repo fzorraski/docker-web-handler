@@ -1,0 +1,310 @@
+package br.com.fzdevx.interfaces.rest;
+
+import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
+import br.com.fzdevx.infrastructure.config.PasswordValidationService;
+import br.com.fzdevx.infrastructure.config.RequestStash;
+import br.com.fzdevx.infrastructure.docker.MigrationService;
+import br.com.fzdevx.infrastructure.persistence.DatabaseService;
+import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
+import br.com.fzdevx.infrastructure.registry.RegistryService;
+import br.com.fzdevx.infrastructure.webhook.WebhookService;
+import br.com.fzdevx.interfaces.rest.dto.Response;
+import jakarta.ws.rs.core.Response.Status;
+import org.eclipse.microprofile.config.Config;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+
+import java.lang.reflect.Field;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
+class ContainerConfigControllerTest {
+
+    @Mock AllowedRepositoryResolver allowedRepositoryResolver;
+    @Mock RegistryService registryService;
+    @Mock DatabaseService databaseService;
+    @Mock MigrationService migrationService;
+    @Mock DumpStorageService dumpStorageService;
+    @Mock WebhookService webhookService;
+    @Mock PasswordValidationService passwordValidationService;
+    @Mock RequestStash requestStash;
+    @Mock Config config;
+
+    @InjectMocks
+    ContainerConfigController controller;
+
+    @BeforeEach
+    void setUp() {
+        setField("defaultExpirationMinutes", 480);
+        setField("memoryLimitEnabled", false);
+        setField("uiLocale", Optional.of("en"));
+        setField("terminalEnabled", false);
+    }
+
+    private void setField(String name, Object value) {
+        try {
+            Field f = ContainerConfigController.class.getDeclaredField(name);
+            f.setAccessible(true);
+            f.set(controller, value);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    // ---- getAllowedRepositories ----
+
+    @Test
+    void getAllowedRepositories_delegates() {
+        when(allowedRepositoryResolver.getAllowed()).thenReturn(List.of("postgres", "redis"));
+        assertEquals(List.of("postgres", "redis"), controller.getAllowedRepositories());
+    }
+
+    // ---- getRepositoryTags ----
+
+    @Test
+    void getRepositoryTags_invalidRepo_returnsState0() {
+        Response res = controller.getRepositoryTags("UPPERCASE");
+        assertEquals(0, res.getState());
+    }
+
+    @Test
+    void getRepositoryTags_notAllowed_returnsState0() {
+        when(allowedRepositoryResolver.isAllowed("unknown")).thenReturn(false);
+        Response res = controller.getRepositoryTags("unknown");
+        assertEquals(0, res.getState());
+    }
+
+    @Test
+    void getRepositoryTags_success_returnsTagsAndState1() throws Exception {
+        when(allowedRepositoryResolver.isAllowed("postgres")).thenReturn(true);
+        when(registryService.fetchTags("postgres")).thenReturn(List.of("16", "15"));
+        Response res = controller.getRepositoryTags("postgres");
+        assertEquals(1, res.getState());
+        assertEquals(List.of("16", "15"), res.getTags());
+    }
+
+    @Test
+    void getRepositoryTags_fetchFails_returnsState0() throws Exception {
+        when(allowedRepositoryResolver.isAllowed("postgres")).thenReturn(true);
+        when(registryService.fetchTags("postgres")).thenThrow(new RuntimeException("timeout"));
+        Response res = controller.getRepositoryTags("postgres");
+        assertEquals(0, res.getState());
+    }
+
+    // ---- getRepositoryEnvKeys ----
+
+    @Test
+    void getRepositoryEnvKeys_invalidRepo_returnsEmpty() {
+        assertTrue(controller.getRepositoryEnvKeys("UPPERCASE").isEmpty());
+    }
+
+    @Test
+    void getRepositoryEnvKeys_noConfig_returnsEmpty() {
+        when(config.getOptionalValue("repository.env-keys.postgres", String.class)).thenReturn(Optional.empty());
+        assertTrue(controller.getRepositoryEnvKeys("postgres").isEmpty());
+    }
+
+    @Test
+    void getRepositoryEnvKeys_parsesKeyValuePairs() {
+        when(config.getOptionalValue("repository.env-keys.postgres", String.class))
+                .thenReturn(Optional.of("POSTGRES_DB=mydb,POSTGRES_USER=admin"));
+        List<Map<String, String>> result = controller.getRepositoryEnvKeys("postgres");
+        assertEquals(2, result.size());
+        assertEquals("POSTGRES_DB", result.get(0).get("key"));
+        assertEquals("mydb", result.get(0).get("value"));
+    }
+
+    @Test
+    void getRepositoryEnvKeys_keyWithoutValue_setsEmptyValue() {
+        when(config.getOptionalValue("repository.env-keys.postgres", String.class))
+                .thenReturn(Optional.of("MY_KEY"));
+        List<Map<String, String>> result = controller.getRepositoryEnvKeys("postgres");
+        assertEquals(1, result.size());
+        assertEquals("MY_KEY", result.get(0).get("key"));
+        assertEquals("", result.get(0).get("value"));
+    }
+
+    // ---- getDefaultExpirationMinutes ----
+
+    @Test
+    void getDefaultExpirationMinutes_returnsConfigured() {
+        assertEquals(480, controller.getDefaultExpirationMinutes());
+    }
+
+    // ---- isMemoryLimitEnabled ----
+
+    @Test
+    void isMemoryLimitEnabled_returnsFalse() {
+        assertFalse(controller.isMemoryLimitEnabled());
+    }
+
+    // ---- getLocale ----
+
+    @Test
+    void getLocale_returnsConfigured() {
+        assertEquals("en", controller.getLocale());
+    }
+
+    // ---- isDatabaseListingEnabled ----
+
+    @Test
+    void isDatabaseListingEnabled_delegates() {
+        when(databaseService.isListingEnabled()).thenReturn(true);
+        assertTrue(controller.isDatabaseListingEnabled());
+    }
+
+    // ---- repositoryHasDatabases ----
+
+    @Test
+    void repositoryHasDatabases_invalidRepo_returnsFalse() {
+        assertFalse(controller.repositoryHasDatabases("UPPERCASE"));
+    }
+
+    @Test
+    void repositoryHasDatabases_notAllowed_returnsFalse() {
+        when(allowedRepositoryResolver.isAllowed("unknown")).thenReturn(false);
+        assertFalse(controller.repositoryHasDatabases("unknown"));
+    }
+
+    @Test
+    void repositoryHasDatabases_hasConfig_returnsTrue() {
+        when(allowedRepositoryResolver.isAllowed("postgres")).thenReturn(true);
+        when(databaseService.hasDatabaseConfig("postgres")).thenReturn(true);
+        assertTrue(controller.repositoryHasDatabases("postgres"));
+    }
+
+    // ---- getRepositoryDatabases ----
+
+    @Test
+    void getRepositoryDatabases_invalidRepo_returnsState0() {
+        Response res = controller.getRepositoryDatabases("UPPERCASE");
+        assertEquals(0, res.getState());
+    }
+
+    @Test
+    void getRepositoryDatabases_notAllowed_returnsState0() {
+        when(allowedRepositoryResolver.isAllowed("unknown")).thenReturn(false);
+        Response res = controller.getRepositoryDatabases("unknown");
+        assertEquals(0, res.getState());
+    }
+
+    @Test
+    void getRepositoryDatabases_noConfig_returnsState0() {
+        when(allowedRepositoryResolver.isAllowed("postgres")).thenReturn(true);
+        when(databaseService.hasDatabaseConfig("postgres")).thenReturn(false);
+        Response res = controller.getRepositoryDatabases("postgres");
+        assertEquals(0, res.getState());
+    }
+
+    @Test
+    void getRepositoryDatabases_success_returnsDbs() {
+        when(allowedRepositoryResolver.isAllowed("postgres")).thenReturn(true);
+        when(databaseService.hasDatabaseConfig("postgres")).thenReturn(true);
+        when(databaseService.listDatabases("postgres")).thenReturn(List.of("db1", "db2"));
+        when(databaseService.getDbEnvVar("postgres")).thenReturn(Optional.of("POSTGRES_DB"));
+        Response res = controller.getRepositoryDatabases("postgres");
+        assertEquals(1, res.getState());
+        assertEquals(List.of("db1", "db2"), res.getDatabases());
+        assertEquals("POSTGRES_DB", res.getDbEnvVar());
+    }
+
+    // ---- getFeatures ----
+
+    @Test
+    void getFeatures_returnsAllFlags() {
+        when(databaseService.isDeletionOnExpirationEnabled()).thenReturn(true);
+        when(databaseService.isListingEnabled()).thenReturn(true);
+        when(dumpStorageService.isEnabled()).thenReturn(true);
+        when(migrationService.isEnabled()).thenReturn(false);
+        when(webhookService.isEnabled()).thenReturn(false);
+        when(passwordValidationService.isUploadPasswordRequired()).thenReturn(true);
+        when(passwordValidationService.isOperationsPasswordRequired()).thenReturn(true);
+        when(passwordValidationService.isTerminalPasswordRequired()).thenReturn(false);
+
+        Map<String, Object> features = controller.getFeatures();
+
+        assertEquals(false, features.get("memoryLimit"));
+        assertEquals(true, features.get("deletionOnExpiration"));
+        assertEquals(true, features.get("databaseListing"));
+        assertEquals(true, features.get("dump"));
+        assertEquals(false, features.get("migration"));
+        assertEquals(false, features.get("webhook"));
+        assertEquals(false, features.get("terminal"));
+        assertEquals(480, features.get("defaultExpirationMinutes"));
+        assertEquals(true, features.get("uploadPasswordRequired"));
+        assertEquals(true, features.get("operationsPasswordRequired"));
+        assertEquals(false, features.get("terminalPasswordRequired"));
+    }
+
+    // ---- authorizeTerminal ----
+
+    @Test
+    void authorizeTerminal_disabled_returnsForbidden() {
+        var res = controller.authorizeTerminal(Map.of("containerId", "abc123def4", "password", "x"));
+        assertEquals(403, res.getStatus());
+    }
+
+    @Test
+    void authorizeTerminal_enabled_noContainerId_returnsBadRequest() {
+        try { setField("terminalEnabled", true); } catch (Exception ignored) {}
+        var res = controller.authorizeTerminal(Map.of("password", "x"));
+        assertEquals(400, res.getStatus());
+    }
+
+    @Test
+    void authorizeTerminal_enabled_invalidContainerId_returnsBadRequest() {
+        try { setField("terminalEnabled", true); } catch (Exception ignored) {}
+        var res = controller.authorizeTerminal(Map.of("containerId", "BAD!", "password", "x"));
+        assertEquals(400, res.getStatus());
+    }
+
+    @Test
+    void authorizeTerminal_enabled_invalidPassword_returnsForbidden() {
+        try { setField("terminalEnabled", true); } catch (Exception ignored) {}
+        when(passwordValidationService.validateTerminalPassword("wrong")).thenReturn(false);
+        var res = controller.authorizeTerminal(Map.of("containerId", "abc123def4", "password", "wrong"));
+        assertEquals(403, res.getStatus());
+    }
+
+    @Test
+    void authorizeTerminal_valid_returnsTicket() {
+        try { setField("terminalEnabled", true); } catch (Exception ignored) {}
+        when(passwordValidationService.validateTerminalPassword("secret")).thenReturn(true);
+        when(requestStash.stashTerminal("abc123def4")).thenReturn("ticket-123");
+        var res = controller.authorizeTerminal(Map.of("containerId", "abc123def4", "password", "secret"));
+        assertEquals(200, res.getStatus());
+    }
+
+    // ---- isMigrationApiAvailable ----
+
+    @Test
+    void isMigrationApiAvailable_invalidRepo_returnsFalse() {
+        assertFalse(controller.isMigrationApiAvailable("UPPERCASE"));
+    }
+
+    @Test
+    void isMigrationApiAvailable_notAllowed_returnsFalse() {
+        when(allowedRepositoryResolver.isAllowed("unknown")).thenReturn(false);
+        assertFalse(controller.isMigrationApiAvailable("unknown"));
+    }
+
+    @Test
+    void isMigrationApiAvailable_delegates() {
+        when(allowedRepositoryResolver.isAllowed("postgres")).thenReturn(true);
+        when(migrationService.isApiAvailable("postgres")).thenReturn(true);
+        assertTrue(controller.isMigrationApiAvailable("postgres"));
+    }
+}
