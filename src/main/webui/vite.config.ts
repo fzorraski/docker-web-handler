@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api/containers/terminal': {
+      '/api': {
         target: 'http://localhost:8080',
         ws: true,
       },
