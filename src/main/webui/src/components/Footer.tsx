@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import { Box, Typography, Tooltip, useTheme } from '@mui/material'
-import { Dns, DeleteSweep, Storage, CameraAlt, SettingsBackupRestore } from '@mui/icons-material'
+import { Dns, DeleteSweep, Storage, CameraAlt, SettingsBackupRestore, Schedule } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 
 interface Stats {
@@ -12,6 +12,7 @@ interface Stats {
   dumps: number
   snapshots: number
   restores: number
+  schedulesExecuted: number
   startedAt: string
 }
 
@@ -82,6 +83,9 @@ export default function Footer() {
                   <StatItem icon={<CameraAlt />} label={t('footer.snapshots')} value={stats.snapshots} isDark={isDark} />
                   <StatItem icon={<SettingsBackupRestore />} label={t('footer.restores')} value={stats.restores} isDark={isDark} />
                 </>
+              )}
+              {stats.schedulesExecuted > 0 && (
+                <StatItem icon={<Schedule />} label={t('footer.schedulesExecuted')} value={stats.schedulesExecuted} isDark={isDark} />
               )}
             </Box>
           </>

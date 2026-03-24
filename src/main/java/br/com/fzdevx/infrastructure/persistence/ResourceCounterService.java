@@ -37,6 +37,7 @@ public class ResourceCounterService {
     public static final String DUMPS = "dumps";
     public static final String SNAPSHOTS = "snapshots";
     public static final String RESTORES = "restores";
+    public static final String SCHEDULES_EXECUTED = "schedulesExecuted";
 
     @PostConstruct
     void init() {
@@ -60,6 +61,7 @@ public class ResourceCounterService {
         result.put(DUMPS, get(DUMPS));
         result.put(SNAPSHOTS, get(SNAPSHOTS));
         result.put(RESTORES, get(RESTORES));
+        result.put(SCHEDULES_EXECUTED, get(SCHEDULES_EXECUTED));
         return result;
     }
 

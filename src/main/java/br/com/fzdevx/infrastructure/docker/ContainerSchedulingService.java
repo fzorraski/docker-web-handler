@@ -2,6 +2,7 @@ package br.com.fzdevx.infrastructure.docker;
 
 import br.com.fzdevx.application.port.ScheduleRepository;
 import br.com.fzdevx.application.usecase.RunContainerUseCase;
+import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.model.ContainerSchedule;
 import br.com.fzdevx.domain.model.ScheduleAction;
@@ -37,6 +38,9 @@ public class ContainerSchedulingService {
 
     @Inject
     RunContainerUseCase runContainerUseCase;
+
+    @Inject
+    ResourceCounterService resourceCounterService;
 
     @ConfigProperty(name = "container.scheduling.enabled", defaultValue = "false")
     boolean schedulingEnabled;
@@ -364,5 +368,8 @@ public class ContainerSchedulingService {
         schedule.setLastExecutionStatus(status);
         schedule.setLastExecutionMessage(message);
         scheduleRepository.save(schedule);
+        if ("SUCCESS".equals(status)) {
+            resourceCounterService.increment(ResourceCounterService.SCHEDULES_EXECUTED);
+        }
     }
 }
