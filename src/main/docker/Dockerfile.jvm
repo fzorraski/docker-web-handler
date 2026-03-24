@@ -77,20 +77,26 @@
 #   accessed directly. (example: "foo.example.com,bar.example.com")
 #
 ###
-FROM registry.access.redhat.com/ubi8/openjdk-17:1.16
+FROM eclipse-temurin:25-jre
 
 ENV LANGUAGE='en_US:en'
 ENV TZ='America/Sao_Paulo'
 
+WORKDIR /deployments
+
 # We make four distinct layers so if there are application changes the library layers can be re-used
-COPY --chown=0 target/quarkus-app/lib/ /deployments/lib/
-COPY --chown=0 target/quarkus-app/*.jar /deployments/
-COPY --chown=0 target/quarkus-app/app/ /deployments/app/
-COPY --chown=0 target/quarkus-app/quarkus/ /deployments/quarkus/
+COPY target/quarkus-app/lib/ /deployments/lib/
+COPY target/quarkus-app/*.jar /deployments/
+COPY target/quarkus-app/app/ /deployments/app/
+COPY target/quarkus-app/quarkus/ /deployments/quarkus/
 
 EXPOSE 8080
+# Run as root — required for Docker socket access (/var/run/docker.'sock)
 USER 0
-#USER 185
-ENV JAVA_OPTS="-Dquarkus.http.host=0.0.0.0 -Djava.util.logging.manager=org.jboss.logmanager.LogManager -Duser.timezone=America/Sao_Paulo"
-ENV JAVA_APP_JAR="/deployments/quarkus-run.jar"
+
+ENTRYPOINT ["java", \
+    "-Dquarkus.http.host=0.0.0.0", \
+    "-Djava.util.logging.manager=org.jboss.logmanager.LogManager", \
+    "-Duser.timezone=America/Sao_Paulo", \
+    "-jar", "/deployments/quarkus-run.jar"]
 
