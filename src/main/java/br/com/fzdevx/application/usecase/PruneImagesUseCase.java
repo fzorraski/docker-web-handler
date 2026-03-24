@@ -4,6 +4,7 @@ import br.com.fzdevx.application.port.DockerContainerPort;
 import br.com.fzdevx.application.port.DockerImagePort;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.shared.Constants;
+import br.com.fzdevx.infrastructure.docker.SelfContainerDetector;
 import br.com.fzdevx.infrastructure.persistence.ImageUsageTracker;
 import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import br.com.fzdevx.infrastructure.util.BytesConverter;
@@ -45,6 +46,9 @@ public class PruneImagesUseCase {
                     .filter(Objects::nonNull)
                     .collect(Collectors.toSet());
 
+            // Detect own image ID to protect from pruning
+            String selfImageId = SelfContainerDetector.findSelfImageId(allContainers);
+
             boolean pruneAll = (minDays <= 0);
             Instant cutoff = pruneAll ? null : Instant.now().minus(minDays, ChronoUnit.DAYS);
 
@@ -54,6 +58,7 @@ public class PruneImagesUseCase {
                     String repo = img.getRepoTags()[0].split(":")[0];
                     if (repo.equals(Constants.DOCKER_WEB_HANDLER_IMAGE)) continue;
                 }
+                if (selfImageId != null && img.getId().equals(selfImageId)) continue;
 
                 // Skip images currently in use
                 if (usedImageIds.contains(img.getId())) continue;

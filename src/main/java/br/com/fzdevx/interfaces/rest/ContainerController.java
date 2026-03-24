@@ -4,6 +4,7 @@ import br.com.fzdevx.domain.model.DockerContainer;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.application.usecase.RestoreDumpUseCase;
 import br.com.fzdevx.domain.shared.Constants;
+import br.com.fzdevx.infrastructure.docker.SelfContainerDetector;
 import br.com.fzdevx.infrastructure.util.DateFormatter;
 import br.com.fzdevx.domain.shared.InputValidator;
 import com.github.dockerjava.api.DockerClient;
@@ -47,8 +48,10 @@ public class ContainerController {
         List<Container> dockerContainers = dockerClient.listContainersCmd().withShowAll(true).exec();
         List<DockerContainer> containers = new ArrayList<>();
 
+        String selfId = SelfContainerDetector.findSelfContainerId(dockerContainers);
         for (Container dc : dockerContainers) {
             if (dc.getImage().equals(Constants.DOCKER_WEB_HANDLER_IMAGE)) continue;
+            if (dc.getId().equals(selfId)) continue;
             if (dc.getLabels() != null && dc.getLabels().containsKey(RestoreDumpUseCase.EPHEMERAL_LABEL)) continue;
 
             DockerContainer dockerContainer = new DockerContainer();

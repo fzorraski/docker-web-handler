@@ -4,6 +4,7 @@ import br.com.fzdevx.application.port.DockerContainerPort;
 import br.com.fzdevx.application.port.DockerImagePort;
 import br.com.fzdevx.domain.model.DockerImage;
 import br.com.fzdevx.domain.shared.Constants;
+import br.com.fzdevx.infrastructure.docker.SelfContainerDetector;
 import br.com.fzdevx.infrastructure.persistence.ImageUsageTracker;
 import br.com.fzdevx.infrastructure.util.BytesConverter;
 import br.com.fzdevx.infrastructure.util.DateFormatter;
@@ -37,6 +38,9 @@ public class ListImagesUseCase {
     public List<DockerImage> execute() {
         List<Image> allImages = dockerImagePort.listImages();
         List<Container> allContainers = dockerContainerPort.listContainers(true);
+
+        // Detect own image ID to exclude from listing
+        String selfImageId = SelfContainerDetector.findSelfImageId(allContainers);
 
         // Build set of image IDs currently in use by containers
         Set<String> usedImageIds = allContainers.stream()
@@ -79,6 +83,7 @@ public class ListImagesUseCase {
             String repo = parts[0];
 
             if (repo.equals(Constants.DOCKER_WEB_HANDLER_IMAGE)) continue;
+            if (selfImageId != null && img.getId().equals(selfImageId)) continue;
 
             String fullId = img.getId();
             boolean inUse = usedImageIds.contains(fullId);
