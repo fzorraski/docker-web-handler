@@ -13,6 +13,7 @@ import {
   TextField,
   InputAdornment,
   Snackbar,
+  Alert,
   useTheme,
 } from '@mui/material'
 import {
@@ -142,6 +143,7 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
   const [copySnackbar, setCopySnackbar] = useState(false)
   const [paused, setPaused] = useState(false)
   const [pausedBufferCount, setPausedBufferCount] = useState(0)
+  const [streamError, setStreamError] = useState('')
   const pausedRef = useRef(false)
 
   const listRef = useListRef(null)
@@ -169,6 +171,7 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
     setLogs([])
     pendingLogsRef.current = []
     setConnected(true)
+    setStreamError('')
     setAutoScroll(true)
     setSearchTerm('')
     setCurrentErrorIdx(-1)
@@ -193,7 +196,7 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
         }
       },
       () => { flushLogs(); setConnected(false) },
-      () => { flushLogs(); setConnected(false) },
+      (msg) => { flushLogs(); setConnected(false); setStreamError(msg) },
     )
 
     return () => {
@@ -701,6 +704,12 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
             </span>
           </Tooltip>
         </Box>
+
+        {streamError && (
+          <Alert severity="error" sx={{ borderRadius: 0 }} onClose={() => setStreamError('')}>
+            {streamError}
+          </Alert>
+        )}
 
         {/* Log viewer */}
         <Box sx={{ position: 'relative', ...viewerSx(CONTAINER_HEIGHT) }}>

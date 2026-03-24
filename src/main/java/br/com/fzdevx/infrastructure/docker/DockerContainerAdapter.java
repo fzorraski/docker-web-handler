@@ -71,6 +71,16 @@ public class DockerContainerAdapter implements DockerContainerPort {
                     eventSink.accept(ContainerEvent.info(streamType, line));
                 }
             }
+
+            @Override
+            public void onError(Throwable throwable) {
+                String msg = throwable.getMessage();
+                if (msg != null && msg.contains("configured logging driver does not support reading")) {
+                    msg = "This container's logging driver does not support log reading.";
+                }
+                eventSink.accept(ContainerEvent.error("Logs", msg != null ? msg : "Unknown log stream error."));
+                super.onError(throwable);
+            }
         };
 
         try {
