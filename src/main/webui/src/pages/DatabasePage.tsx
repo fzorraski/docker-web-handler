@@ -15,6 +15,7 @@ import { useSnapshotMetadataEdit } from '../hooks/useSnapshotMetadataEdit'
 import { useExpirationEdit } from '../hooks/useExpirationEdit'
 import { useCleanupByIdle } from '../hooks/useCleanupByIdle'
 import { useActionMenu } from '../hooks/useActionMenu'
+import { useTablePagination } from '../hooks/useTablePagination'
 import { formatBytes, formatDate } from '../utils/format'
 import { getLastUsedColor, getLastUsedLabel } from '../utils/lastUsedColor'
 import { useTranslation } from 'react-i18next'
@@ -55,6 +56,7 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
+  TablePagination,
 } from '@mui/material'
 import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile, CameraAlt, InfoOutlined, CleaningServices, Warning, Edit, Check, Close } from '@mui/icons-material'
 
@@ -234,6 +236,8 @@ export default function DatabasePage() {
     })
   }, [dumps, filter, sortKey, sortDir, showNeverUsedDumps])
 
+  const dumpPagination = useTablePagination(filteredDumps, { storageKey: 'dumps' })
+
   // --- Snapshots logic ---
   function handleSnapSort(key: string) {
     if (key === 'action') return
@@ -367,6 +371,8 @@ export default function DatabasePage() {
       return snapSortDir === 'asc' ? cmp : -cmp
     })
   }, [snapshots, snapFilter, snapSortKey, snapSortDir, showNeverUsedSnaps])
+
+  const snapPagination = useTablePagination(filteredSnapshots, { storageKey: 'snapshots' })
 
   const currentStorageInfo = activeTab === 0 ? storageInfo : snapStorageInfo
   const currentFileLabel = activeTab === 0
@@ -538,7 +544,7 @@ export default function DatabasePage() {
                       </TableCell>
                     </TableRow>
                   )}
-                  {filteredDumps.map((dump) => (
+                  {dumpPagination.paginatedData.map((dump) => (
                     <Tooltip
                       key={dump.id}
                       title={dump.description ? (
@@ -635,7 +641,7 @@ export default function DatabasePage() {
                             <IconButton size="small" onClick={() => dumpEdit.saveEdit()} disabled={dumpEdit.saving} color="success">
                               {dumpEdit.saving ? <CircularProgress size={14} /> : <Check sx={{ fontSize: 16 }} />}
                             </IconButton>
-                            <IconButton size="small" onClick={cancelEditDump} disabled={dumpEdit.saving}>
+                            <IconButton size="small" onClick={() => dumpEdit.cancelEdit()} disabled={dumpEdit.saving}>
                               <Close sx={{ fontSize: 16 }} />
                             </IconButton>
                           </Box>
@@ -703,6 +709,16 @@ export default function DatabasePage() {
                 </TableBody>
               </Table>
             </TableContainer>
+            <TablePagination
+              component="div"
+              count={dumpPagination.totalCount}
+              page={dumpPagination.page}
+              onPageChange={dumpPagination.handleChangePage}
+              rowsPerPage={dumpPagination.rowsPerPage}
+              onRowsPerPageChange={dumpPagination.handleChangeRowsPerPage}
+              rowsPerPageOptions={[10, 25, 50, 100]}
+              labelRowsPerPage={t('common.rowsPerPage')}
+            />
           </>
         )}
 
@@ -779,7 +795,7 @@ export default function DatabasePage() {
                       </TableCell>
                     </TableRow>
                   )}
-                  {filteredSnapshots.map((snap) => (
+                  {snapPagination.paginatedData.map((snap) => (
                     <Tooltip
                       key={snap.id}
                       title={snap.description ? (
@@ -836,7 +852,7 @@ export default function DatabasePage() {
                               <IconButton size="small" onClick={() => snapEdit.saveEdit()} disabled={snapEdit.saving} color="success">
                                 {snapEdit.saving ? <CircularProgress size={14} /> : <Check sx={{ fontSize: 16 }} />}
                               </IconButton>
-                              <IconButton size="small" onClick={cancelEditSnap} disabled={snapEdit.saving}>
+                              <IconButton size="small" onClick={() => snapEdit.cancelEdit()} disabled={snapEdit.saving}>
                                 <Close sx={{ fontSize: 16 }} />
                               </IconButton>
                             </Box>
@@ -920,6 +936,16 @@ export default function DatabasePage() {
                 </TableBody>
               </Table>
             </TableContainer>
+            <TablePagination
+              component="div"
+              count={snapPagination.totalCount}
+              page={snapPagination.page}
+              onPageChange={snapPagination.handleChangePage}
+              rowsPerPage={snapPagination.rowsPerPage}
+              onRowsPerPageChange={snapPagination.handleChangeRowsPerPage}
+              rowsPerPageOptions={[10, 25, 50, 100]}
+              labelRowsPerPage={t('common.rowsPerPage')}
+            />
           </>
         )}
       </Box>
@@ -945,6 +971,7 @@ export default function DatabasePage() {
           <MenuItem
             key="restore"
             onClick={() => {
+              if (!dumpMenu.target) return
               handleRestoreClick(dumpMenu.target)
               dumpMenu.close()
             }}
@@ -956,6 +983,7 @@ export default function DatabasePage() {
           <MenuItem
             key="delete"
             onClick={() => {
+              if (!dumpMenu.target) return
               handleDeleteClick(dumpMenu.target)
               dumpMenu.close()
             }}
@@ -1000,6 +1028,7 @@ export default function DatabasePage() {
           <MenuItem
             key="delete"
             onClick={() => {
+              if (!snapMenu.target) return
               handleSnapDeleteClick(snapMenu.target)
               snapMenu.close()
             }}
@@ -1138,11 +1167,10 @@ export default function DatabasePage() {
         confirmColor="primary"
         icon={<Edit />}
         onConfirm={async (password) => {
-          setMetadataPassword(password)
-          setMetadataPasswordOpen(false)
+          dumpEdit.setPasswordOpen(false)
           await dumpEdit.saveEdit(password)
         }}
-        onClose={() => { setMetadataPasswordOpen(false); dumpEdit.cancelEdit() }}
+        onClose={() => { dumpEdit.setPasswordOpen(false); dumpEdit.cancelEdit() }}
       />
 
       <PasswordConfirmDialog
@@ -1154,11 +1182,10 @@ export default function DatabasePage() {
         confirmColor="primary"
         icon={<Edit />}
         onConfirm={async (password) => {
-          setSnapMetadataPassword(password)
-          setSnapMetadataPasswordOpen(false)
+          snapEdit.setPasswordOpen(false)
           await snapEdit.saveEdit(password)
         }}
-        onClose={() => { setSnapMetadataPasswordOpen(false); snapEdit.cancelEdit() }}
+        onClose={() => { snapEdit.setPasswordOpen(false); snapEdit.cancelEdit() }}
       />
     </>
   )

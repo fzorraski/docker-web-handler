@@ -5,7 +5,8 @@ import { cleanupIdleSnapshots } from '../services/snapshotService'
 
 interface Deps {
   notify: (msg: string, severity: 'success' | 'error') => void
-  t: (key: string, options?: Record<string, unknown>) => string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- i18next TFunction has complex overloads
+  t: (...args: any[]) => string
   loadDumps: () => void
   loadSnapshots: () => void
 }

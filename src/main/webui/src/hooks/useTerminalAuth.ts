@@ -4,7 +4,8 @@ import { authorizeTerminal } from '../services/terminalService'
 
 interface Deps {
   notify: (msg: string, severity: 'success' | 'error') => void
-  t: (key: string) => string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- i18next TFunction has complex overloads
+  t: (...args: any[]) => string
 }
 
 export function useTerminalAuth({ notify, t }: Deps) {

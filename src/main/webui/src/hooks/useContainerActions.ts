@@ -15,7 +15,8 @@ import type { DockerContainer } from '../types'
 interface Deps {
   notify: (msg: string, severity: 'success' | 'error' | 'warning') => void
   confirm: (msg: string) => Promise<boolean>
-  t: (key: string, options?: Record<string, unknown>) => string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- i18next TFunction has complex overloads
+  t: (...args: any[]) => string
   loadContainers: () => void
 }
 
