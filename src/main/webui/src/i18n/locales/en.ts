@@ -50,6 +50,19 @@ const en = {
     snapshots: 'Snapshots',
     restores: 'Restores',
     schedulesExecuted: 'Schedules executed',
+    cpuUsage: 'CPU: {{percent}}% ({{cores}} cores)',
+    memoryUsage: 'Memory: {{used}} / {{total}} GB',
+    diskUsage: 'Disk: {{used}} / {{total}} GB',
+    hostDetails: {
+      title: 'Host Resources',
+      cpu: 'CPU',
+      cpuDetail: '{{percent}}% usage across {{cores}} cores',
+      memory: 'Memory',
+      memoryDetail: '{{used}} GB used of {{total}} GB ({{available}} GB available)',
+      disk: 'Disk',
+      diskDetail: '{{used}} GB used of {{total}} GB ({{available}} GB available)',
+      guardThreshold: 'Guard: min {{value}} GB free',
+    },
   },
 
   hero: {

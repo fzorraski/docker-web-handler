@@ -52,6 +52,19 @@ const es: typeof en = {
     snapshots: 'Snapshots',
     restores: 'Restauraciones',
     schedulesExecuted: 'Programaciones ejecutadas',
+    cpuUsage: 'CPU: {{percent}}% ({{cores}} nucleos)',
+    memoryUsage: 'Memoria: {{used}} / {{total}} GB',
+    diskUsage: 'Disco: {{used}} / {{total}} GB',
+    hostDetails: {
+      title: 'Recursos del Host',
+      cpu: 'CPU',
+      cpuDetail: '{{percent}}% de uso en {{cores}} nucleos',
+      memory: 'Memoria',
+      memoryDetail: '{{used}} GB usados de {{total}} GB ({{available}} GB disponibles)',
+      disk: 'Disco',
+      diskDetail: '{{used}} GB usados de {{total}} GB ({{available}} GB disponibles)',
+      guardThreshold: 'Limite: min {{value}} GB libre',
+    },
   },
 
   hero: {

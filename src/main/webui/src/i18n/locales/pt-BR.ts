@@ -52,6 +52,19 @@ const ptBR: typeof en = {
     snapshots: 'Snapshots',
     restores: 'Restauracoes',
     schedulesExecuted: 'Agendamentos executados',
+    cpuUsage: 'CPU: {{percent}}% ({{cores}} nucleos)',
+    memoryUsage: 'Memoria: {{used}} / {{total}} GB',
+    diskUsage: 'Disco: {{used}} / {{total}} GB',
+    hostDetails: {
+      title: 'Recursos do Host',
+      cpu: 'CPU',
+      cpuDetail: '{{percent}}% de uso em {{cores}} nucleos',
+      memory: 'Memoria',
+      memoryDetail: '{{used}} GB usados de {{total}} GB ({{available}} GB disponiveis)',
+      disk: 'Disco',
+      diskDetail: '{{used}} GB usados de {{total}} GB ({{available}} GB disponiveis)',
+      guardThreshold: 'Limite: min {{value}} GB livre',
+    },
   },
 
   hero: {
