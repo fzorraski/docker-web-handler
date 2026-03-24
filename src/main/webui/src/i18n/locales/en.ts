@@ -128,6 +128,7 @@ const en = {
       description: 'Remove stopped containers that have been idle for a minimum number of days.',
       minDaysLabel: 'Minimum idle days',
       daysValue: '{{count}} days',
+      allStopped: 'All stopped',
       matchCount: '{{count}} container(s) will be removed.',
       confirm: 'Remove {{count}} container(s)',
       running: 'Removing...',

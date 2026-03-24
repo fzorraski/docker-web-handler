@@ -130,6 +130,7 @@ const es: typeof en = {
       description: 'Eliminar contenedores detenidos que han estado inactivos por un numero minimo de dias.',
       minDaysLabel: 'Dias minimos de inactividad',
       daysValue: '{{count}} dias',
+      allStopped: 'Todos detenidos',
       matchCount: '{{count}} contenedor(es) seran eliminados.',
       confirm: 'Eliminar {{count}} contenedor(es)',
       running: 'Eliminando...',

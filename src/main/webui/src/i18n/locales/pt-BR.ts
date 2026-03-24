@@ -130,6 +130,7 @@ const ptBR: typeof en = {
       description: 'Remover containers parados que estao ociosos por um numero minimo de dias.',
       minDaysLabel: 'Dias minimos de ociosidade',
       daysValue: '{{count}} dias',
+      allStopped: 'Todos parados',
       matchCount: '{{count}} container(s) serao removidos.',
       confirm: 'Remover {{count}} container(s)',
       running: 'Removendo...',

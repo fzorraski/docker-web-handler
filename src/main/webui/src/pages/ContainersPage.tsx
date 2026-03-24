@@ -229,7 +229,7 @@ export default function ContainersPage() {
   }, [containers])
 
   const cleanupCandidates = useMemo(
-    () => containers.filter(c => !isUp(c.status) && getContainerAgeDays(c) >= dialogs.cleanup.minDays),
+    () => containers.filter(c => !isUp(c.status) && getContainerIdleDays(c) >= dialogs.cleanup.minDays),
     [containers, dialogs.cleanup.minDays]
   )
 
@@ -256,7 +256,19 @@ export default function ContainersPage() {
     }
   }
 
-  function getContainerAgeDays(c: DockerContainer): number {
+  function getContainerIdleDays(c: DockerContainer): number {
+    // Parse idle time from Docker status string, e.g. "Exited (0) 3 days ago"
+    const match = c.status.match(/Exited\s*\(\d+\)\s+(.+)\s+ago/)
+    if (match) {
+      const elapsed = match[1].toLowerCase()
+      const num = parseInt(elapsed, 10) || 0
+      if (elapsed.includes('second') || elapsed.includes('minute') || elapsed.includes('hour')) return 0
+      if (elapsed.includes('day')) return num
+      if (elapsed.includes('week')) return num * 7
+      if (elapsed.includes('month')) return num * 30
+      if (elapsed.includes('year')) return num * 365
+    }
+    // Fallback: use creation date
     const created = dayjs(c.created, 'DD/MM/YYYY HH:mm:ss')
     if (!created.isValid()) return 0
     return dayjs().diff(created, 'day')
@@ -914,12 +926,12 @@ export default function ContainersPage() {
             <Slider
               value={dialogs.cleanup.minDays}
               onChange={(_, v) => dialogs.setCleanupMinDays(v as number)}
-              min={1}
+              min={0}
               max={90}
               step={1}
               marks={DAY_MARKS}
               valueLabelDisplay="auto"
-              valueLabelFormat={(v) => t('containers.cleanup.daysValue', { count: v })}
+              valueLabelFormat={(v) => v === 0 ? t('containers.cleanup.allStopped') : t('containers.cleanup.daysValue', { count: v })}
             />
           </Box>
 
@@ -931,7 +943,7 @@ export default function ContainersPage() {
             <Box sx={{ maxHeight: 150, overflowY: 'auto', mb: 1 }}>
               {cleanupCandidates.map(c => (
                 <Typography key={c.containerId} variant="body2" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem', py: 0.25 }}>
-                  {c.names} — {getContainerAgeDays(c)}d
+                  {c.names} — {getContainerIdleDays(c) === 0 ? '<1' : getContainerIdleDays(c)}d
                 </Typography>
               ))}
             </Box>
