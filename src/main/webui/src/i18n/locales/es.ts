@@ -55,6 +55,13 @@ const es: typeof en = {
     cpuUsage: 'CPU: {{percent}}% ({{cores}} nucleos)',
     memoryUsage: 'Memoria: {{used}} / {{total}} GB',
     diskUsage: 'Disco: {{used}} / {{total}} GB',
+    statsDetails: {
+      title: 'Resumen de Actividad',
+      runningSince: 'En ejecucion desde {{date}} ({{days}} dias)',
+      metric: 'Metrica',
+      total: 'Total',
+      avgPerDay: 'Prom / dia',
+    },
     hostDetails: {
       title: 'Recursos del Host',
       cpu: 'CPU',

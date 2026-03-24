@@ -2,8 +2,8 @@
 // Uses theme-aware tokens for background and text colors.
 
 import { useState, useEffect, useCallback } from 'react'
-import { Box, Typography, Tooltip, useTheme, Dialog, DialogTitle, DialogContent, LinearProgress, IconButton } from '@mui/material'
-import { Dns, DeleteSweep, Storage, CameraAlt, SettingsBackupRestore, Schedule, Memory, Speed, SdStorage, Close, Monitor } from '@mui/icons-material'
+import { Box, Typography, Tooltip, useTheme, Dialog, DialogTitle, DialogContent, LinearProgress, IconButton, Table, TableBody, TableCell, TableRow, TableHead } from '@mui/material'
+import { Dns, DeleteSweep, Storage, CameraAlt, SettingsBackupRestore, Schedule, Memory, Speed, SdStorage, Close, Monitor, Assessment } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 
 interface Stats {
@@ -36,6 +36,7 @@ export default function Footer() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [hostStats, setHostStats] = useState<HostStats | null>(null)
   const [hostModalOpen, setHostModalOpen] = useState(false)
+  const [statsModalOpen, setStatsModalOpen] = useState(false)
 
   const loadHost = useCallback(() => {
     fetch('/api/stats/host').then(r => r.ok ? r.json() : null).then(setHostStats).catch(() => {})
@@ -77,7 +78,10 @@ export default function Footer() {
       }}
     >
       {/* Left: stats overview */}
-      <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+      <Box
+        sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 0.5, cursor: stats ? 'pointer' : 'default' }}
+        onClick={() => stats && setStatsModalOpen(true)}
+      >
         {stats && (
           <>
             <Tooltip title={t('footer.startedAt', { date: formatStartedAt(stats.startedAt, i18n.language) })} arrow>
@@ -89,7 +93,6 @@ export default function Footer() {
                   letterSpacing: '0.04em',
                   fontWeight: 500,
                   mr: 0.5,
-                  cursor: 'default',
                   fontStyle: 'italic',
                 }}
               >
@@ -153,6 +156,9 @@ export default function Footer() {
           </>
         )}
       </Box>
+      {/* Stats modal */}
+      {stats && <StatsModal open={statsModalOpen} onClose={() => setStatsModalOpen(false)} stats={stats} isDark={isDark} />}
+
       {/* Host usage modal */}
       <Dialog open={hostModalOpen} onClose={() => setHostModalOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center' }}>
@@ -212,6 +218,67 @@ export default function Footer() {
         </DialogContent>
       </Dialog>
     </Box>
+  )
+}
+
+function StatsModal({ open, onClose, stats, isDark }: { open: boolean; onClose: () => void; stats: Stats; isDark: boolean }) {
+  const { t, i18n } = useTranslation()
+  const startDate = new Date(stats.startedAt)
+  const daysRunning = Math.max(1, Math.round((Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
+  const avg = (value: number) => (value / daysRunning).toFixed(1)
+
+  const rows: { icon: React.ReactElement; label: string; total: number }[] = [
+    { icon: <Dns color="primary" />, label: t('footer.containers'), total: stats.containers },
+    { icon: <DeleteSweep color="action" />, label: t('footer.imagesDeleted'), total: stats.imagesDeleted },
+  ]
+  if (stats.dumps > 0 || stats.snapshots > 0) {
+    rows.push(
+      { icon: <Storage color="action" />, label: t('footer.dumps'), total: stats.dumps },
+      { icon: <CameraAlt color="action" />, label: t('footer.snapshots'), total: stats.snapshots },
+      { icon: <SettingsBackupRestore color="action" />, label: t('footer.restores'), total: stats.restores },
+    )
+  }
+  if (stats.schedulesExecuted > 0) {
+    rows.push({ icon: <Schedule color="action" />, label: t('footer.schedulesExecuted'), total: stats.schedulesExecuted })
+  }
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center' }}>
+        <Assessment sx={{ mr: 1 }} />
+        {t('footer.statsDetails.title')}
+        <IconButton onClick={onClose} sx={{ ml: 'auto' }}><Close /></IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {t('footer.statsDetails.runningSince', { date: formatStartedAt(stats.startedAt, i18n.language), days: daysRunning })}
+        </Typography>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell />
+              <TableCell sx={{ fontWeight: 600 }}>{t('footer.statsDetails.metric')}</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 600 }}>{t('footer.statsDetails.total')}</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 600 }}>{t('footer.statsDetails.avgPerDay')}</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={row.label}>
+                <TableCell sx={{ width: 32, pr: 0, '& > svg': { fontSize: 18 } }}>{row.icon}</TableCell>
+                <TableCell>{row.label}</TableCell>
+                <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: isDark ? 'primary.main' : 'text.primary' }}>
+                  {row.total}
+                </TableCell>
+                <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", color: 'text.secondary' }}>
+                  {avg(row.total)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </DialogContent>
+    </Dialog>
   )
 }
 

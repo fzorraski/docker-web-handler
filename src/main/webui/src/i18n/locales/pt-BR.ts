@@ -55,6 +55,13 @@ const ptBR: typeof en = {
     cpuUsage: 'CPU: {{percent}}% ({{cores}} nucleos)',
     memoryUsage: 'Memoria: {{used}} / {{total}} GB',
     diskUsage: 'Disco: {{used}} / {{total}} GB',
+    statsDetails: {
+      title: 'Resumo de Atividade',
+      runningSince: 'Em execucao desde {{date}} ({{days}} dias)',
+      metric: 'Metrica',
+      total: 'Total',
+      avgPerDay: 'Media / dia',
+    },
     hostDetails: {
       title: 'Recursos do Host',
       cpu: 'CPU',

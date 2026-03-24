@@ -53,6 +53,13 @@ const en = {
     cpuUsage: 'CPU: {{percent}}% ({{cores}} cores)',
     memoryUsage: 'Memory: {{used}} / {{total}} GB',
     diskUsage: 'Disk: {{used}} / {{total}} GB',
+    statsDetails: {
+      title: 'Activity Summary',
+      runningSince: 'Running since {{date}} ({{days}} days)',
+      metric: 'Metric',
+      total: 'Total',
+      avgPerDay: 'Avg / day',
+    },
     hostDetails: {
       title: 'Host Resources',
       cpu: 'CPU',
