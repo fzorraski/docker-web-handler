@@ -141,6 +141,8 @@ const es: typeof en = {
       running: 'En Ejecucion',
       stopped: 'Detenidos',
       expiring: 'Expirando',
+      memory: 'Memoria del Host',
+      memoryTooltip: 'Disponible: {{available}} MB / Limite: {{threshold}} MB',
     },
     stats: {
       viewStats: 'Ver Estadisticas',

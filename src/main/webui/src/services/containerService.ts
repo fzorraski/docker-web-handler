@@ -93,6 +93,7 @@ export async function isWebhookEnabled(): Promise<boolean> {
 
 export interface FeatureFlags {
   memoryLimit: boolean
+  memoryGuard: boolean
   deletionOnExpiration: boolean
   databaseListing: boolean
   dump: boolean
@@ -108,6 +109,21 @@ export interface FeatureFlags {
 
 export async function getFeatures(): Promise<FeatureFlags> {
   const res = await fetchWithAuth(API + 'features')
+  return handleResponse(res)
+}
+
+export interface HostMemoryStatus {
+  supported: boolean
+  enabled: boolean
+  available: boolean
+  totalMb: number
+  usedMb: number
+  availableMb: number
+  thresholdMb: number
+}
+
+export async function getMemoryStatus(): Promise<HostMemoryStatus> {
+  const res = await fetchWithAuth(API + 'memory-status')
   return handleResponse(res)
 }
 

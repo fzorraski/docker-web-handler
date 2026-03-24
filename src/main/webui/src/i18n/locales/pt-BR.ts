@@ -141,6 +141,8 @@ const ptBR: typeof en = {
       running: 'Em Execucao',
       stopped: 'Parados',
       expiring: 'Expirando',
+      memory: 'Memoria do Host',
+      memoryTooltip: 'Disponivel: {{available}} MB / Limite: {{threshold}} MB',
     },
     stats: {
       viewStats: 'Ver Estatisticas',

@@ -9,6 +9,8 @@ import {
   isMigrationEnabled as checkMigrationEnabled,
   getMigratedDatabases,
   getFeatures,
+  getMemoryStatus,
+  type HostMemoryStatus,
   type MigratedDatabase,
 } from '../services/containerService'
 
@@ -69,7 +71,7 @@ import {
   AlertTitle,
   TablePagination,
 } from '@mui/material'
-import { Search, AddCircleOutline, Stop, PlayArrow, Delete, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord, Code } from '@mui/icons-material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord, Code, Memory } from '@mui/icons-material'
 import { isSchedulingEnabled, listSchedules } from '../services/scheduleService'
 import type { ContainerSchedule } from '../types'
 
@@ -120,6 +122,8 @@ export default function ContainersPage() {
   const [schedulingFeatureEnabled, setSchedulingFeatureEnabled] = useState(false)
   const [containerSchedules, setContainerSchedules] = useState<Map<string, ContainerSchedule[]>>(new Map())
   const [showStoppedOnly, setShowStoppedOnly] = useState(false)
+  const [memoryGuardEnabled, setMemoryGuardEnabled] = useState(false)
+  const [memoryStatus, setMemoryStatus] = useState<HostMemoryStatus | null>(null)
 
   // Extracted hooks
   const loadContainers = useCallback(() => {
@@ -129,6 +133,10 @@ export default function ContainersPage() {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
+
+  const refreshMemoryStatus = useCallback(() => {
+    if (memoryGuardEnabled) getMemoryStatus().then(setMemoryStatus).catch(() => {})
+  }, [memoryGuardEnabled])
 
   const actions = useContainerActions({ notify, confirm, t, loadContainers })
   const dialogs = useContainerDialogs()
@@ -195,12 +203,15 @@ export default function ContainersPage() {
       setTerminalFeatureEnabled(f.terminal)
       setTerminalPasswordRequired(f.terminalPasswordRequired)
       setSchedulingPwRequired(f.schedulingPasswordRequired)
+      setMemoryGuardEnabled(f.memoryGuard)
     }).catch(() => setTerminalFeatureEnabled(false))
     isSchedulingEnabled().then((enabled) => {
       setSchedulingFeatureEnabled(enabled)
       if (enabled) loadContainerSchedules()
     }).catch(() => setSchedulingFeatureEnabled(false))
   }, [loadContainers])
+
+  useEffect(() => { refreshMemoryStatus() }, [refreshMemoryStatus, containers])
 
   useEffect(() => {
     const check = () => getActiveRestores().then(setActiveRestores).catch(() => setActiveRestores([]))
@@ -358,6 +369,19 @@ export default function ContainersPage() {
                   <Typography sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.65rem', fontWeight: 600 }}>{t('containers.overview.expiring')}</Typography>
                 </Box>
               </Box>
+              {memoryGuardEnabled && memoryStatus?.supported && (
+                <Tooltip title={t('containers.overview.memoryTooltip', { available: memoryStatus.availableMb, threshold: memoryStatus.thresholdMb })} arrow>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, cursor: 'default' }}>
+                    <Memory color={!memoryStatus.available ? 'error' : memoryStatus.availableMb < memoryStatus.thresholdMb * 2 ? 'warning' : 'success'} sx={{ fontSize: 32 }} />
+                    <Box>
+                      <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.2, fontFamily: "'JetBrains Mono', monospace", fontSize: '1.1rem' }}>
+                        {(memoryStatus.usedMb / 1024).toFixed(1)} / {(memoryStatus.totalMb / 1024).toFixed(1)} GB
+                      </Typography>
+                      <Typography sx={{ color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.65rem', fontWeight: 600 }}>{t('containers.overview.memory')}</Typography>
+                    </Box>
+                  </Box>
+                </Tooltip>
+              )}
             </Box>
           </Paper>
         )}

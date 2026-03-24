@@ -139,6 +139,8 @@ const en = {
       running: 'Running',
       stopped: 'Stopped',
       expiring: 'Expiring',
+      memory: 'Host Memory',
+      memoryTooltip: 'Available: {{available}} MB / Threshold: {{threshold}} MB',
     },
     stats: {
       viewStats: 'View Stats',
