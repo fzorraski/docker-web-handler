@@ -14,7 +14,6 @@ import jakarta.ws.rs.core.MediaType;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -27,18 +26,13 @@ public class StatsController {
     @Inject
     MemoryGuardService memoryGuardService;
 
-    private String startedAt;
-
     // Cached CPU snapshot for delta calculation (avoids Thread.sleep)
     private volatile long[] lastCpuSnapshot;
-    private volatile long lastCpuTimestamp;
 
     @PostConstruct
     void init() {
-        startedAt = Instant.now().toString();
         // Seed initial CPU snapshot so the first call has a baseline
         try { lastCpuSnapshot = readCpuSnapshot(); } catch (Exception ignored) {}
-        lastCpuTimestamp = System.currentTimeMillis();
     }
 
     @GET
@@ -47,7 +41,7 @@ public class StatsController {
     public Map<String, Object> getSummary() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.putAll(resourceCounterService.getAll());
-        result.put("startedAt", startedAt);
+        result.put("startedAt", resourceCounterService.getStartedAt());
         return result;
     }
 
@@ -92,7 +86,6 @@ public class StatsController {
             }
             if (current != null) {
                 lastCpuSnapshot = current;
-                lastCpuTimestamp = System.currentTimeMillis();
             }
         } catch (Exception e) {
             Log.debugf("Failed to read /proc/stat: %s", e.getMessage());

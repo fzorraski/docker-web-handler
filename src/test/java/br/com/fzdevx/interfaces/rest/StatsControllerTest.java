@@ -30,6 +30,7 @@ class StatsControllerTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        when(resourceCounterService.getStartedAt()).thenReturn("2026-01-01T00:00:00Z");
         // Trigger @PostConstruct manually
         var initMethod = StatsController.class.getDeclaredMethod("init");
         initMethod.setAccessible(true);

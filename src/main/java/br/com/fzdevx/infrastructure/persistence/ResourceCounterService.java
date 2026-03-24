@@ -10,6 +10,7 @@ import org.jboss.logging.Logger;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -38,10 +39,22 @@ public class ResourceCounterService {
     public static final String SNAPSHOTS = "snapshots";
     public static final String RESTORES = "restores";
     public static final String SCHEDULES_EXECUTED = "schedulesExecuted";
+    private static final String STARTED_AT_KEY = "_startedAt";
+
+    private volatile String startedAt;
 
     @PostConstruct
     void init() {
         load();
+        // Set startedAt once on first-ever boot, persist it so it survives restarts
+        if (startedAt == null) {
+            startedAt = Instant.now().toString();
+            persist();
+        }
+    }
+
+    public String getStartedAt() {
+        return startedAt;
     }
 
     public void increment(String key) {
@@ -76,8 +89,12 @@ public class ResourceCounterService {
             Map<String, Object> loaded = jsonb.fromJson(content, Map.class);
             if (loaded != null) {
                 loaded.forEach((k, v) -> {
-                    long val = v instanceof Number ? ((Number) v).longValue() : 0;
-                    counters.put(k, new AtomicLong(val));
+                    if (STARTED_AT_KEY.equals(k)) {
+                        startedAt = String.valueOf(v);
+                    } else {
+                        long val = v instanceof Number ? ((Number) v).longValue() : 0;
+                        counters.put(k, new AtomicLong(val));
+                    }
                 });
             }
         } catch (Exception e) {
@@ -92,8 +109,9 @@ public class ResourceCounterService {
         lock.readLock().lock();
         try {
             Files.createDirectories(path.getParent());
-            Map<String, Long> snapshot = new java.util.LinkedHashMap<>();
+            Map<String, Object> snapshot = new java.util.LinkedHashMap<>();
             counters.forEach((k, v) -> snapshot.put(k, v.get()));
+            if (startedAt != null) snapshot.put(STARTED_AT_KEY, startedAt);
             Files.writeString(path, jsonb.toJson(snapshot));
         } catch (IOException e) {
             LOG.error("Failed to persist resource counters: " + e.getMessage());
