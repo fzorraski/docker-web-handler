@@ -23,6 +23,7 @@ interface Props {
   onClose: () => void
   onCreated: () => void
   containers?: DockerContainer[]
+  passwordRequired?: boolean
 }
 
 function compareTagsDesc(a: string, b: string): number {
@@ -42,7 +43,7 @@ function compareTagsDesc(a: string, b: string): number {
   return 0
 }
 
-export default function CreateScheduleModal({ open, onClose, onCreated, containers = [] }: Props) {
+export default function CreateScheduleModal({ open, onClose, onCreated, containers = [], passwordRequired = true }: Props) {
   const { t } = useTranslation()
   const { notify } = useNotification()
 
@@ -127,7 +128,7 @@ export default function CreateScheduleModal({ open, onClose, onCreated, containe
     setContainerSchedules([])
   }
 
-  function handleCreate() {
+  async function handleCreate() {
     if (!name.trim()) {
       notify(t('schedules.nameRequired'), 'warning')
       return
@@ -162,6 +163,18 @@ export default function CreateScheduleModal({ open, onClose, onCreated, containe
       }
     }
 
+    if (!passwordRequired) {
+      try {
+        await createSchedule(request)
+        notify(t('schedules.created'), 'success')
+        reset()
+        onCreated()
+        onClose()
+      } catch (e: unknown) {
+        notify((e as Error).message || t('common.unexpectedError'), 'error')
+      }
+      return
+    }
     setPendingRequest(request)
   }
 

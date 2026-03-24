@@ -25,9 +25,10 @@ interface Props {
   containerName: string
   expiresAt?: string
   onClose: () => void
+  passwordRequired?: boolean
 }
 
-export default function QuickScheduleDialog({ open, containerId, containerName, expiresAt, onClose }: Props) {
+export default function QuickScheduleDialog({ open, containerId, containerName, expiresAt, onClose, passwordRequired = true }: Props) {
   const { t } = useTranslation()
   const { notify } = useNotification()
   const [tab, setTab] = useState(0)
@@ -78,6 +79,7 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
       notify(t('schedules.nameRequired'), 'warning')
       return
     }
+    if (!passwordRequired) { handleCreateConfirm(''); return }
     setPendingCreate(true)
   }
 
@@ -91,7 +93,7 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
         scheduledAt: scheduleType === 'ONE_TIME' && scheduledAt ? scheduledAt.toISOString() : undefined,
         containerId,
         containerName,
-        operationsPassword: password,
+        operationsPassword: password || undefined,
       })
       notify(t('schedules.created'), 'success')
       loadSchedules()
@@ -118,6 +120,15 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
     }
   }
 
+  async function requestToggle(id: string) {
+    if (!passwordRequired) {
+      try {
+        const updated = await toggleSchedule(id, '')
+        setSchedules(prev => prev.map(s => s.id === id ? updated : s))
+      } catch { notify(t('common.unexpectedError'), 'error') }
+    } else { setPendingToggleId(id) }
+  }
+
   async function handleDeleteConfirm(password: string) {
     if (!pendingDeleteId) return
     try {
@@ -129,6 +140,13 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
     } finally {
       setPendingDeleteId(null)
     }
+  }
+
+  async function requestDelete(id: string) {
+    if (!passwordRequired) {
+      try { await deleteSchedule(id, ''); notify(t('schedules.deleted'), 'success'); loadSchedules() }
+      catch { notify(t('common.unexpectedError'), 'error') }
+    } else { setPendingDeleteId(id) }
   }
 
   const [pendingExecId, setPendingExecId] = useState<string | null>(null)
@@ -144,6 +162,13 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
     } finally {
       setPendingExecId(null)
     }
+  }
+
+  async function requestExecNow(id: string) {
+    if (!passwordRequired) {
+      try { await executeScheduleNow(id, ''); notify(t('schedules.executionTriggered'), 'success') }
+      catch { notify(t('common.unexpectedError'), 'error') }
+    } else { setPendingExecId(id) }
   }
 
   return (
@@ -271,7 +296,7 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
                           <Switch
                             checked={s.enabled}
                             size="small"
-                            onChange={() => setPendingToggleId(s.id)}
+                            onChange={() => requestToggle(s.id)}
                             disabled={!s.enabled && s.scheduleType === 'ONE_TIME' && !!s.lastExecutedAt}
                           />
                         </span>
@@ -291,13 +316,13 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
                       <Box sx={{ display: 'flex', gap: 0.5 }}>
                         {s.enabled && (
                           <Tooltip title={t('schedules.executeNow')}>
-                            <IconButton size="small" onClick={() => setPendingExecId(s.id)}>
+                            <IconButton size="small" onClick={() => requestExecNow(s.id)}>
                               <PlayArrow fontSize="small" />
                             </IconButton>
                           </Tooltip>
                         )}
                         <Tooltip title={t('common.delete')}>
-                          <IconButton size="small" color="error" onClick={() => setPendingDeleteId(s.id)}>
+                          <IconButton size="small" color="error" onClick={() => requestDelete(s.id)}>
                             <Delete fontSize="small" />
                           </IconButton>
                         </Tooltip>

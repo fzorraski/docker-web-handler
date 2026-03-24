@@ -102,6 +102,7 @@ export interface FeatureFlags {
   defaultExpirationMinutes: number
   uploadPasswordRequired: boolean
   operationsPasswordRequired: boolean
+  schedulingPasswordRequired: boolean
   terminalPasswordRequired: boolean
 }
 

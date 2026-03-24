@@ -28,6 +28,14 @@ public class PasswordValidationService {
     boolean operationsPasswordRequired;
 
     @Inject
+    @ConfigProperty(name = "container.scheduling.password")
+    Optional<String> schedulingPassword;
+
+    @Inject
+    @ConfigProperty(name = "container.scheduling.password.required", defaultValue = "true")
+    boolean schedulingPasswordRequired;
+
+    @Inject
     @ConfigProperty(name = "container.terminal.password")
     Optional<String> terminalPassword;
 
@@ -43,12 +51,19 @@ public class PasswordValidationService {
         return validate(operationsPassword, operationsPasswordRequired, password);
     }
 
+    public boolean validateSchedulingPassword(String password) {
+        if (!schedulingPasswordRequired) return true;
+        if (!hasPassword(schedulingPassword)) return false;
+        return constantTimeEquals(schedulingPassword, password);
+    }
+
     public boolean validateTerminalPassword(String password) {
         return validate(terminalPassword, terminalPasswordRequired, password);
     }
 
     public boolean isUploadPasswordRequired() { return uploadPasswordRequired && hasPassword(uploadPassword); }
     public boolean isOperationsPasswordRequired() { return operationsPasswordRequired && hasPassword(operationsPassword); }
+    public boolean isSchedulingPasswordRequired() { return schedulingPasswordRequired && hasPassword(schedulingPassword); }
     public boolean isTerminalPasswordRequired() { return terminalPasswordRequired && hasPassword(terminalPassword); }
 
     /**

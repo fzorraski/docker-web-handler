@@ -219,6 +219,7 @@ public class ContainerConfigController {
         features.put("defaultExpirationMinutes", defaultExpirationMinutes);
         features.put("uploadPasswordRequired", passwordValidationService.isUploadPasswordRequired());
         features.put("operationsPasswordRequired", passwordValidationService.isOperationsPasswordRequired());
+        features.put("schedulingPasswordRequired", passwordValidationService.isSchedulingPasswordRequired());
         features.put("terminalPasswordRequired", passwordValidationService.isTerminalPasswordRequired());
         return features;
     }

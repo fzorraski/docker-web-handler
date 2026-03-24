@@ -89,9 +89,9 @@ public class ScheduleController {
                     .entity(Map.of("error", "Scheduling is disabled.")).build();
         }
 
-        if (!passwordValidationService.validateOperationsPassword(request.getOperationsPassword())) {
+        if (!passwordValidationService.validateSchedulingPassword(request.getOperationsPassword())) {
             return Response.status(Response.Status.FORBIDDEN)
-                    .entity(Map.of("error", "Invalid operations password.")).build();
+                    .entity(Map.of("error", "Invalid scheduling password.")).build();
         }
 
         ContainerSchedule schedule = manageScheduleUseCase.createAndSchedule(request);
@@ -110,9 +110,9 @@ public class ScheduleController {
                     .entity(Map.of("error", "Scheduling is disabled.")).build();
         }
 
-        if (!passwordValidationService.validateOperationsPassword(password)) {
+        if (!passwordValidationService.validateSchedulingPassword(password)) {
             return Response.status(Response.Status.FORBIDDEN)
-                    .entity(Map.of("error", "Invalid operations password.")).build();
+                    .entity(Map.of("error", "Invalid scheduling password.")).build();
         }
 
         Optional<String> uuidError = InputValidator.validateUuid(id);
@@ -135,9 +135,9 @@ public class ScheduleController {
                     .entity(Map.of("error", "Scheduling is disabled.")).build();
         }
 
-        if (!passwordValidationService.validateOperationsPassword(password)) {
+        if (!passwordValidationService.validateSchedulingPassword(password)) {
             return Response.status(Response.Status.FORBIDDEN)
-                    .entity(Map.of("error", "Invalid operations password.")).build();
+                    .entity(Map.of("error", "Invalid scheduling password.")).build();
         }
 
         Optional<String> uuidError = InputValidator.validateUuid(id);
@@ -160,9 +160,9 @@ public class ScheduleController {
                     .entity(Map.of("error", "Scheduling is disabled.")).build();
         }
 
-        if (!passwordValidationService.validateOperationsPassword(password)) {
+        if (!passwordValidationService.validateSchedulingPassword(password)) {
             return Response.status(Response.Status.FORBIDDEN)
-                    .entity(Map.of("error", "Invalid operations password.")).build();
+                    .entity(Map.of("error", "Invalid scheduling password.")).build();
         }
 
         Optional<String> uuidError = InputValidator.validateUuid(id);
@@ -185,9 +185,9 @@ public class ScheduleController {
                     .entity(Map.of("error", "Scheduling is disabled.")).build();
         }
 
-        if (!passwordValidationService.validateOperationsPassword(password)) {
+        if (!passwordValidationService.validateSchedulingPassword(password)) {
             return Response.status(Response.Status.FORBIDDEN)
-                    .entity(Map.of("error", "Invalid operations password.")).build();
+                    .entity(Map.of("error", "Invalid scheduling password.")).build();
         }
 
         Optional<String> uuidError = InputValidator.validateUuid(id);

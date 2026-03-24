@@ -130,7 +130,7 @@ class ScheduleControllerTest {
         when(schedulingService.isEnabled()).thenReturn(true);
         CreateScheduleRequest req = new CreateScheduleRequest();
         req.setOperationsPassword("wrong");
-        when(passwordValidationService.validateOperationsPassword("wrong")).thenReturn(false);
+        when(passwordValidationService.validateSchedulingPassword("wrong")).thenReturn(false);
         assertEquals(403, controller.create(req).getStatus());
     }
 
@@ -139,7 +139,7 @@ class ScheduleControllerTest {
         when(schedulingService.isEnabled()).thenReturn(true);
         CreateScheduleRequest req = new CreateScheduleRequest();
         req.setOperationsPassword(VALID_PASSWORD);
-        when(passwordValidationService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        when(passwordValidationService.validateSchedulingPassword(VALID_PASSWORD)).thenReturn(true);
         ContainerSchedule s = makeSchedule();
         when(manageScheduleUseCase.createAndSchedule(req)).thenReturn(s);
 
@@ -159,21 +159,21 @@ class ScheduleControllerTest {
     @Test
     void update_invalidPassword_returnsForbidden() {
         when(schedulingService.isEnabled()).thenReturn(true);
-        when(passwordValidationService.validateOperationsPassword("wrong")).thenReturn(false);
+        when(passwordValidationService.validateSchedulingPassword("wrong")).thenReturn(false);
         assertEquals(403, controller.update(VALID_UUID, "wrong", new UpdateScheduleRequest()).getStatus());
     }
 
     @Test
     void update_invalidUuid_returnsBadRequest() {
         when(schedulingService.isEnabled()).thenReturn(true);
-        when(passwordValidationService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        when(passwordValidationService.validateSchedulingPassword(VALID_PASSWORD)).thenReturn(true);
         assertEquals(400, controller.update("bad!", VALID_PASSWORD, new UpdateScheduleRequest()).getStatus());
     }
 
     @Test
     void update_valid_returns200() {
         when(schedulingService.isEnabled()).thenReturn(true);
-        when(passwordValidationService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        when(passwordValidationService.validateSchedulingPassword(VALID_PASSWORD)).thenReturn(true);
         UpdateScheduleRequest req = new UpdateScheduleRequest();
         ContainerSchedule s = makeSchedule();
         when(manageScheduleUseCase.updateAndReschedule(VALID_UUID, req)).thenReturn(s);
@@ -193,21 +193,21 @@ class ScheduleControllerTest {
     @Test
     void toggle_invalidPassword_returnsForbidden() {
         when(schedulingService.isEnabled()).thenReturn(true);
-        when(passwordValidationService.validateOperationsPassword("wrong")).thenReturn(false);
+        when(passwordValidationService.validateSchedulingPassword("wrong")).thenReturn(false);
         assertEquals(403, controller.toggle(VALID_UUID, "wrong").getStatus());
     }
 
     @Test
     void toggle_invalidUuid_returnsBadRequest() {
         when(schedulingService.isEnabled()).thenReturn(true);
-        when(passwordValidationService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        when(passwordValidationService.validateSchedulingPassword(VALID_PASSWORD)).thenReturn(true);
         assertEquals(400, controller.toggle("bad!", VALID_PASSWORD).getStatus());
     }
 
     @Test
     void toggle_valid_returns200() {
         when(schedulingService.isEnabled()).thenReturn(true);
-        when(passwordValidationService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        when(passwordValidationService.validateSchedulingPassword(VALID_PASSWORD)).thenReturn(true);
         when(manageScheduleUseCase.toggleAndReschedule(VALID_UUID)).thenReturn(makeSchedule());
         assertEquals(200, controller.toggle(VALID_UUID, VALID_PASSWORD).getStatus());
     }
@@ -223,21 +223,21 @@ class ScheduleControllerTest {
     @Test
     void delete_invalidPassword_returnsForbidden() {
         when(schedulingService.isEnabled()).thenReturn(true);
-        when(passwordValidationService.validateOperationsPassword("wrong")).thenReturn(false);
+        when(passwordValidationService.validateSchedulingPassword("wrong")).thenReturn(false);
         assertEquals(403, controller.delete(VALID_UUID, "wrong").getStatus());
     }
 
     @Test
     void delete_invalidUuid_returnsBadRequest() {
         when(schedulingService.isEnabled()).thenReturn(true);
-        when(passwordValidationService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        when(passwordValidationService.validateSchedulingPassword(VALID_PASSWORD)).thenReturn(true);
         assertEquals(400, controller.delete("bad!", VALID_PASSWORD).getStatus());
     }
 
     @Test
     void delete_valid_returns200() {
         when(schedulingService.isEnabled()).thenReturn(true);
-        when(passwordValidationService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        when(passwordValidationService.validateSchedulingPassword(VALID_PASSWORD)).thenReturn(true);
         Response response = controller.delete(VALID_UUID, VALID_PASSWORD);
         assertEquals(200, response.getStatus());
         verify(manageScheduleUseCase).deleteAndCancel(VALID_UUID);
@@ -254,21 +254,21 @@ class ScheduleControllerTest {
     @Test
     void executeNow_invalidPassword_returnsForbidden() {
         when(schedulingService.isEnabled()).thenReturn(true);
-        when(passwordValidationService.validateOperationsPassword("wrong")).thenReturn(false);
+        when(passwordValidationService.validateSchedulingPassword("wrong")).thenReturn(false);
         assertEquals(403, controller.executeNow(VALID_UUID, "wrong").getStatus());
     }
 
     @Test
     void executeNow_invalidUuid_returnsBadRequest() {
         when(schedulingService.isEnabled()).thenReturn(true);
-        when(passwordValidationService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        when(passwordValidationService.validateSchedulingPassword(VALID_PASSWORD)).thenReturn(true);
         assertEquals(400, controller.executeNow("bad!", VALID_PASSWORD).getStatus());
     }
 
     @Test
     void executeNow_valid_returns202() {
         when(schedulingService.isEnabled()).thenReturn(true);
-        when(passwordValidationService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        when(passwordValidationService.validateSchedulingPassword(VALID_PASSWORD)).thenReturn(true);
         Response response = controller.executeNow(VALID_UUID, VALID_PASSWORD);
         assertEquals(202, response.getStatus());
         verify(manageScheduleUseCase).executeNow(VALID_UUID);
