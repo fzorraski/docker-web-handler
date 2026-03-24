@@ -20,10 +20,12 @@ import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.HostConfig;
+import com.github.dockerjava.api.model.LogConfig;
 import com.github.dockerjava.api.model.Ports;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.Config;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -86,6 +88,15 @@ public class RunContainerUseCase {
 
     @Inject
     MemoryGuardService memoryGuardService;
+
+    @ConfigProperty(name = "container.log-rotation.enabled", defaultValue = "true")
+    boolean logRotationEnabled;
+
+    @ConfigProperty(name = "container.log-rotation.max-size", defaultValue = "10m")
+    String logRotationMaxSize;
+
+    @ConfigProperty(name = "container.log-rotation.max-files", defaultValue = "3")
+    String logRotationMaxFiles;
 
     private final ConcurrentHashMap<String, AtomicBoolean> activeRuns = new ConcurrentHashMap<>();
 
@@ -357,11 +368,17 @@ public class RunContainerUseCase {
         boolean hasMemory = request.getMemoryMb() != null;
         boolean hasPorts = !containerPorts.isEmpty();
 
-        if (!hasMemory && !hasPorts) {
+        if (!hasMemory && !hasPorts && !logRotationEnabled) {
             return null;
         }
 
         HostConfig hostConfig = HostConfig.newHostConfig();
+
+        if (logRotationEnabled) {
+            hostConfig.withLogConfig(new LogConfig(
+                    LogConfig.LoggingType.JSON_FILE,
+                    Map.of("max-size", logRotationMaxSize, "max-file", logRotationMaxFiles)));
+        }
 
         if (hasMemory) {
             hostConfig.withMemory(request.getMemoryMb() * 1024 * 1024);
