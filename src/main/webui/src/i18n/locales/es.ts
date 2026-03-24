@@ -28,6 +28,7 @@ const es: typeof en = {
     cancelling: 'Cancelando...',
     fullscreen: 'Pantalla completa',
     exitFullscreen: 'Salir de pantalla completa',
+    rowsPerPage: 'Filas por pagina:',
   },
 
   navbar: {
@@ -50,6 +51,7 @@ const es: typeof en = {
     dumps: 'Dumps',
     snapshots: 'Snapshots',
     restores: 'Restauraciones',
+    schedulesExecuted: 'Programaciones ejecutadas',
   },
 
   hero: {

@@ -26,6 +26,7 @@ const en = {
     cancelling: 'Cancelling...',
     fullscreen: 'Fullscreen',
     exitFullscreen: 'Exit fullscreen',
+    rowsPerPage: 'Rows per page:',
   },
 
   navbar: {
@@ -48,6 +49,7 @@ const en = {
     dumps: 'Dumps',
     snapshots: 'Snapshots',
     restores: 'Restores',
+    schedulesExecuted: 'Schedules executed',
   },
 
   hero: {

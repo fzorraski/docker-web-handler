@@ -28,6 +28,7 @@ const ptBR: typeof en = {
     cancelling: 'Cancelando...',
     fullscreen: 'Tela cheia',
     exitFullscreen: 'Sair da tela cheia',
+    rowsPerPage: 'Linhas por pagina:',
   },
 
   navbar: {
@@ -50,6 +51,7 @@ const ptBR: typeof en = {
     dumps: 'Dumps',
     snapshots: 'Snapshots',
     restores: 'Restauracoes',
+    schedulesExecuted: 'Agendamentos executados',
   },
 
   hero: {

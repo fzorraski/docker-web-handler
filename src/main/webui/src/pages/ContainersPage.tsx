@@ -33,6 +33,7 @@ import { useContainerActions } from '../hooks/useContainerActions'
 import { useContainerDialogs } from '../hooks/useContainerDialogs'
 import { useTerminalAuth } from '../hooks/useTerminalAuth'
 import { useActionMenu } from '../hooks/useActionMenu'
+import { useTablePagination } from '../hooks/useTablePagination'
 import {
   Box,
   Typography,
@@ -66,6 +67,7 @@ import {
   Slider,
   Alert,
   AlertTitle,
+  TablePagination,
 } from '@mui/material'
 import { Search, AddCircleOutline, Stop, PlayArrow, Delete, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord, Code } from '@mui/icons-material'
 import { isSchedulingEnabled, listSchedules } from '../services/scheduleService'
@@ -82,11 +84,16 @@ const STORAGE_KEY = 'containerColumnsVisibility'
 import { DAY_MARKS } from '../utils/constants'
 
 function loadVisibility(columns: ColumnDef[]): Record<string, boolean> {
+  const defaults = Object.fromEntries(columns.map((c) => [c.key, c.defaultVisible]))
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) return JSON.parse(stored)
+    if (stored) {
+      const parsed = JSON.parse(stored) as Record<string, boolean>
+      // Merge: use stored value for known columns, defaults for new ones, ignore removed ones
+      return Object.fromEntries(columns.map((c) => [c.key, c.key in parsed ? parsed[c.key] : c.defaultVisible]))
+    }
   } catch { /* ignore */ }
-  return Object.fromEntries(columns.map((c) => [c.key, c.defaultVisible]))
+  return defaults
 }
 
 export default function ContainersPage() {
@@ -109,6 +116,7 @@ export default function ContainersPage() {
   const [migrationFeatureEnabled, setMigrationFeatureEnabled] = useState(false)
   const [terminalFeatureEnabled, setTerminalFeatureEnabled] = useState(false)
   const [terminalPasswordRequired, setTerminalPasswordRequired] = useState(true)
+  const [schedulingPwRequired, setSchedulingPwRequired] = useState(true)
   const [schedulingFeatureEnabled, setSchedulingFeatureEnabled] = useState(false)
   const [containerSchedules, setContainerSchedules] = useState<Map<string, ContainerSchedule[]>>(new Map())
   const [showStoppedOnly, setShowStoppedOnly] = useState(false)
@@ -151,6 +159,7 @@ export default function ContainersPage() {
 
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(() => loadVisibility(BASE_COLUMNS))
   const visibleColumns = columns.filter((c) => columnVisibility[c.key])
+  const vis = new Set(visibleColumns.map((c) => c.key))
   const colSpan = visibleColumns.length
 
   function toggleColumn(key: string) {
@@ -185,6 +194,7 @@ export default function ContainersPage() {
     getFeatures().then((f) => {
       setTerminalFeatureEnabled(f.terminal)
       setTerminalPasswordRequired(f.terminalPasswordRequired)
+      setSchedulingPwRequired(f.schedulingPasswordRequired)
     }).catch(() => setTerminalFeatureEnabled(false))
     isSchedulingEnabled().then((enabled) => {
       setSchedulingFeatureEnabled(enabled)
@@ -269,6 +279,8 @@ export default function ContainersPage() {
       return sortDir === 'asc' ? cmp : -cmp
     })
   }, [filteredByStatus, filter, sortKey, sortDir])
+
+  const pagination = useTablePagination(filtered, { storageKey: 'containers' })
 
   const dbsScheduledForDeletion = useMemo(() => {
     const map = new Map<string, string>()
@@ -459,7 +471,7 @@ export default function ContainersPage() {
                   </TableCell>
                 </TableRow>
               )}
-              {filtered.map((c) => (
+              {pagination.paginatedData.map((c) => (
                 <TableRow
                   key={c.containerId}
                   hover
@@ -468,7 +480,7 @@ export default function ContainersPage() {
                     actionMenu.openByPosition({ top: e.clientY, left: e.clientX }, c)
                   }}
                 >
-                  {columnVisibility.names && (
+                  {vis.has('names') && (
                     <TableCell sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                         {c.names}
@@ -492,7 +504,7 @@ export default function ContainersPage() {
                       </Box>
                     </TableCell>
                   )}
-                  {columnVisibility.status && (
+                  {vis.has('status') && (
                     <TableCell>
                       <Chip
                         icon={
@@ -517,9 +529,9 @@ export default function ContainersPage() {
                       />
                     </TableCell>
                   )}
-                  {columnVisibility.image && <TableCell sx={{ fontSize: '0.85rem' }}>{c.image.split(':')[0]}</TableCell>}
-                  {columnVisibility.tag && <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{c.image.split(':')[1] ?? '-'}</TableCell>}
-                  {columnVisibility.ports && (
+                  {vis.has('image') &&<TableCell sx={{ fontSize: '0.85rem' }}>{c.image.split(':')[0]}</TableCell>}
+                  {vis.has('tag') &&<TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{c.image.split(':')[1] ?? '-'}</TableCell>}
+                  {vis.has('ports') && (
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                         {c.ports !== '-'
@@ -542,12 +554,12 @@ export default function ContainersPage() {
                       </Box>
                     </TableCell>
                   )}
-                  {columnVisibility.ipAddress && (
+                  {vis.has('ipAddress') && (
                     <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem' }}>
                       {c.ipAddress || <Typography variant="body2" color="text.secondary">-</Typography>}
                     </TableCell>
                   )}
-                  {columnVisibility.database && (
+                  {vis.has('database') && (
                     <TableCell>
                       {c.databaseName ? (() => {
                         const migration = migratedDatabases.find(
@@ -572,7 +584,7 @@ export default function ContainersPage() {
                       )}
                     </TableCell>
                   )}
-                  {columnVisibility.expires && (
+                  {vis.has('expires') && (
                     <TableCell>
                       {c.expiresAt ? (
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
@@ -613,10 +625,10 @@ export default function ContainersPage() {
                       )}
                     </TableCell>
                   )}
-                  {columnVisibility.created && <TableCell sx={{ fontSize: '0.85rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>{formatBackendDate(c.created)}</TableCell>}
-                  {columnVisibility.containerId && <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem' }}>{c.containerId}</TableCell>}
-                  {columnVisibility.command && <TableCell>{c.command}</TableCell>}
-                  {columnVisibility.actions && (
+                  {vis.has('created') &&<TableCell sx={{ fontSize: '0.85rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>{formatBackendDate(c.created)}</TableCell>}
+                  {vis.has('containerId') &&<TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem' }}>{c.containerId}</TableCell>}
+                  {vis.has('command') &&<TableCell>{c.command}</TableCell>}
+                  {vis.has('actions') && (
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.25, alignItems: 'center' }}>
                         {isUp(c.status) ? (
@@ -657,6 +669,16 @@ export default function ContainersPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        <TablePagination
+          component="div"
+          count={pagination.totalCount}
+          page={pagination.page}
+          onPageChange={pagination.handleChangePage}
+          rowsPerPage={pagination.rowsPerPage}
+          onRowsPerPageChange={pagination.handleChangeRowsPerPage}
+          rowsPerPageOptions={[10, 25, 50, 100]}
+          labelRowsPerPage={t('common.rowsPerPage')}
+        />
 
         <Menu
           anchorEl={actionMenu.anchorEl}
@@ -676,10 +698,11 @@ export default function ContainersPage() {
               <MenuItem
                 key="stop"
                 onClick={() => {
+                  if (!actionMenu.target) return
                   actions.handleStop(actionMenu.target.containerId, actionMenu.target.names)
                   actionMenu.close()
                 }}
-                disabled={actions.stoppingId === actionMenu.target.containerId}
+                disabled={actions.stoppingId === actionMenu.target?.containerId}
               >
                 <ListItemIcon><Stop fontSize="small" color="warning" /></ListItemIcon>
                 <ListItemText>{t('containers.stop')}</ListItemText>
@@ -688,6 +711,7 @@ export default function ContainersPage() {
               <MenuItem
                 key="start"
                 onClick={() => {
+                  if (!actionMenu.target) return
                   actions.handleStart(actionMenu.target.containerId, actionMenu.target.names)
                   actionMenu.close()
                 }}
@@ -702,6 +726,7 @@ export default function ContainersPage() {
             <MenuItem
               key="logs"
               onClick={() => {
+                if (!actionMenu.target) return
                 dialogs.openLogs(actionMenu.target)
                 actionMenu.close()
               }}
@@ -746,6 +771,7 @@ export default function ContainersPage() {
               <MenuItem
                 key="snapshot"
                 onClick={() => {
+                  if (!actionMenu.target) return
                   dialogs.openSnapshot(actionMenu.target)
                   actionMenu.close()
                 }}
@@ -786,6 +812,7 @@ export default function ContainersPage() {
             <MenuItem
               key="delete"
               onClick={() => {
+                if (!actionMenu.target) return
                 actions.handleRemove(actionMenu.target.containerId, actionMenu.target.names)
                 actionMenu.close()
               }}
@@ -936,6 +963,7 @@ export default function ContainersPage() {
         containerId={dialogs.schedule.containerId}
         containerName={dialogs.schedule.containerName}
         expiresAt={dialogs.schedule.expiresAt}
+        passwordRequired={schedulingPwRequired}
         onClose={() => {
           dialogs.closeSchedule()
           if (schedulingFeatureEnabled) loadContainerSchedules()

@@ -3,7 +3,7 @@ import {
   Box, Typography, Button, TextField, InputAdornment,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel,
   Paper, Chip, IconButton, Tooltip, Switch, CircularProgress, Divider, Checkbox,
-  Alert, AlertTitle, Menu, MenuItem, ListItemIcon, ListItemText,
+  Alert, AlertTitle, Menu, MenuItem, ListItemIcon, ListItemText, TablePagination,
 } from '@mui/material'
 import {
   Search, AddCircleOutline, Delete, PlayArrow, Stop, Add,
@@ -16,10 +16,11 @@ import HeroBanner from '../components/HeroBanner'
 import CreateScheduleModal from '../components/CreateScheduleModal'
 import PasswordConfirmDialog from '../components/PasswordConfirmDialog'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
+import { useTablePagination } from '../hooks/useTablePagination'
 import {
   listSchedules, toggleSchedule, deleteSchedule, executeScheduleNow,
 } from '../services/scheduleService'
-import { getContainers } from '../services/containerService'
+import { getContainers, getFeatures } from '../services/containerService'
 import { cronToHuman } from '../utils/cronFormat'
 import type { ContainerSchedule, DockerContainer } from '../types'
 
@@ -52,6 +53,7 @@ export default function SchedulesPage() {
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
   const [contextMenuPos, setContextMenuPos] = useState<{ top: number; left: number } | null>(null)
   const [contextSchedule, setContextSchedule] = useState<ContainerSchedule | null>(null)
+  const [pwRequired, setPwRequired] = useState(true)
 
   const loadSchedules = useCallback(() => {
     setLoading(true)
@@ -64,6 +66,7 @@ export default function SchedulesPage() {
   useEffect(() => {
     loadSchedules()
     getContainers().then(setContainers).catch(() => setContainers([]))
+    getFeatures().then(f => setPwRequired(f.schedulingPasswordRequired)).catch(() => {})
   }, [loadSchedules])
 
   const activeCount = useMemo(() => schedules.filter(s => s.enabled).length, [schedules])
@@ -103,22 +106,39 @@ export default function SchedulesPage() {
     return result
   }, [schedules, filter, actionFilter, typeFilter, enabledFilter, statusFilter, sortKey, sortDir])
 
+  const pagination = useTablePagination(filtered, { storageKey: 'schedules' })
+
   function handleSort(key: string) {
     if (key === 'actions') return
     setSortDir(sortKey === key && sortDir === 'asc' ? 'desc' : 'asc')
     setSortKey(key)
   }
 
-  function handleToggleClick(id: string, name: string) {
+  async function handleToggleClick(id: string, name: string) {
+    if (!pwRequired) {
+      try { const updated = await toggleSchedule(id, ''); setSchedules(prev => prev.map(s => s.id === id ? updated : s)) }
+      catch { notify(t('common.unexpectedError'), 'error') }
+      return
+    }
     setPendingAction({ kind: 'toggle', id, name })
   }
 
-  function handleDeleteClick(id: string, name: string) {
+  async function handleDeleteClick(id: string, name: string) {
+    if (!pwRequired) {
+      try { await deleteSchedule(id, ''); notify(t('schedules.deleted'), 'success'); loadSchedules() }
+      catch { notify(t('common.unexpectedError'), 'error') }
+      return
+    }
     setPendingDelete({ kind: 'single', id, name })
   }
 
-  function handleBulkDeleteClick() {
+  async function handleBulkDeleteClick() {
     if (selected.size === 0) return
+    if (!pwRequired) {
+      try { await Promise.all([...selected].map(id => deleteSchedule(id, ''))); notify(t('schedules.bulkDeleted', { count: selected.size }), 'success'); setSelected(new Set()); loadSchedules() }
+      catch { notify(t('common.unexpectedError'), 'error') }
+      return
+    }
     setPendingDelete({ kind: 'bulk', ids: [...selected] })
   }
 
@@ -173,7 +193,12 @@ export default function SchedulesPage() {
     }
   }
 
-  function handleExecuteNowClick(id: string, name: string) {
+  async function handleExecuteNowClick(id: string, name: string) {
+    if (!pwRequired) {
+      try { await executeScheduleNow(id, ''); notify(t('schedules.executionTriggered'), 'success'); setTimeout(loadSchedules, 2000) }
+      catch { notify(t('common.unexpectedError'), 'error') }
+      return
+    }
     setPendingAction({ kind: 'executeNow', id, name })
   }
 
@@ -475,7 +500,7 @@ export default function SchedulesPage() {
                   </TableCell>
                 </TableRow>
               )}
-              {filtered.map((s) => (
+              {pagination.paginatedData.map((s) => (
                 <TableRow
                   key={s.id}
                   hover
@@ -572,6 +597,16 @@ export default function SchedulesPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        <TablePagination
+          component="div"
+          count={pagination.totalCount}
+          page={pagination.page}
+          onPageChange={pagination.handleChangePage}
+          rowsPerPage={pagination.rowsPerPage}
+          onRowsPerPageChange={pagination.handleChangeRowsPerPage}
+          rowsPerPageOptions={[10, 25, 50, 100]}
+          labelRowsPerPage={t('common.rowsPerPage')}
+        />
       </Box>
 
       <Menu
@@ -614,6 +649,7 @@ export default function SchedulesPage() {
         onClose={() => setModalOpen(false)}
         onCreated={loadSchedules}
         containers={containers}
+        passwordRequired={pwRequired}
       />
 
       <PasswordConfirmDialog

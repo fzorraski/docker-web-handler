@@ -12,6 +12,7 @@ import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
 import { useSseOperation } from '../hooks/useSseOperation'
 import { usePruneDialog } from '../hooks/usePruneDialog'
 import { useActionMenu } from '../hooks/useActionMenu'
+import { useTablePagination } from '../hooks/useTablePagination'
 import {
   Box,
   Typography,
@@ -42,6 +43,7 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
+  TablePagination,
 } from '@mui/material'
 import { Search, Delete, DeleteSweep, CleaningServices, AccountTree, Info, Warning, PhotoLibrary, CheckCircle, RemoveCircleOutline, DataUsage } from '@mui/icons-material'
 import { getLastUsedColor, getLastUsedLabel } from '../utils/lastUsedColor'
@@ -82,6 +84,8 @@ export default function ImagesPage() {
     filterFn: filterImage,
     sortValueFn: sortImageValue,
   })
+
+  const pagination = useTablePagination(filtered, { storageKey: 'images' })
 
   const IMAGE_COLUMNS: { key: string; label: string; sortable: boolean }[] = useMemo(() => [
     { key: 'repository', label: t('images.columns.repository'), sortable: true },
@@ -279,7 +283,7 @@ export default function ImagesPage() {
                   </TableCell>
                 </TableRow>
               )}
-              {filtered.map((img) => (
+              {pagination.paginatedData.map((img) => (
                 <TableRow
                   key={img.imageId}
                   hover
@@ -341,6 +345,16 @@ export default function ImagesPage() {
             </TableBody>
           </Table>
         </TableContainer>
+        <TablePagination
+          component="div"
+          count={pagination.totalCount}
+          page={pagination.page}
+          onPageChange={pagination.handleChangePage}
+          rowsPerPage={pagination.rowsPerPage}
+          onRowsPerPageChange={pagination.handleChangeRowsPerPage}
+          rowsPerPageOptions={[10, 25, 50, 100]}
+          labelRowsPerPage={t('common.rowsPerPage')}
+        />
       </Box>
 
       <Menu
