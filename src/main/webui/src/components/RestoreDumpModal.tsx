@@ -101,7 +101,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
       .then((res) => {
         setScriptsResponse(res)
         if (res.enabled) {
-          setSelectedOptionalScripts(res.optional.map((s) => s.filename))
+          setSelectedOptionalScripts([])
         }
       })
       .catch(() => setScriptsResponse(null))

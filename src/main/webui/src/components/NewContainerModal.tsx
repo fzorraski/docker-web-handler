@@ -186,7 +186,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       .then((res) => {
         setScriptsResponse(res)
         if (res.enabled) {
-          setSelectedOptionalScripts(res.optional.map((s) => s.filename))
+          setSelectedOptionalScripts([])
         }
       })
       .catch(() => setScriptsResponse(null))
