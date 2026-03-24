@@ -7,6 +7,7 @@ import br.com.fzdevx.infrastructure.docker.MigrationService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
 import br.com.fzdevx.infrastructure.registry.RegistryService;
+import br.com.fzdevx.infrastructure.docker.MemoryGuardService;
 import br.com.fzdevx.infrastructure.webhook.WebhookService;
 import br.com.fzdevx.interfaces.rest.dto.Response;
 import jakarta.ws.rs.core.Response.Status;
@@ -40,6 +41,7 @@ class ContainerConfigControllerTest {
     @Mock DumpStorageService dumpStorageService;
     @Mock WebhookService webhookService;
     @Mock PasswordValidationService passwordValidationService;
+    @Mock MemoryGuardService memoryGuardService;
     @Mock RequestStash requestStash;
     @Mock Config config;
 

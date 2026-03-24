@@ -4,7 +4,9 @@ import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
 import br.com.fzdevx.infrastructure.config.RequestStash;
 import br.com.fzdevx.domain.model.DatabaseMigrationRecord;
+import br.com.fzdevx.infrastructure.docker.MemoryGuardService;
 import br.com.fzdevx.infrastructure.docker.MigrationService;
+import br.com.fzdevx.domain.model.HostMemoryStatus;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
 import br.com.fzdevx.infrastructure.webhook.WebhookService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
@@ -71,6 +73,9 @@ public class ContainerConfigController {
 
     @Inject
     Config config;
+
+    @Inject
+    MemoryGuardService memoryGuardService;
 
     @GET
     @Path("/allowed-repositories")
@@ -219,6 +224,7 @@ public class ContainerConfigController {
         features.put("defaultExpirationMinutes", defaultExpirationMinutes);
         features.put("uploadPasswordRequired", passwordValidationService.isUploadPasswordRequired());
         features.put("operationsPasswordRequired", passwordValidationService.isOperationsPasswordRequired());
+        features.put("memoryGuard", memoryGuardService.isEnabled());
         features.put("schedulingPasswordRequired", passwordValidationService.isSchedulingPasswordRequired());
         features.put("terminalPasswordRequired", passwordValidationService.isTerminalPasswordRequired());
         return features;
@@ -358,5 +364,12 @@ public class ContainerConfigController {
         }
 
         return response;
+    }
+
+    @GET
+    @Path("/memory-status")
+    @Produces(MediaType.APPLICATION_JSON)
+    public HostMemoryStatus getMemoryStatus() {
+        return memoryGuardService.getStatus();
     }
 }

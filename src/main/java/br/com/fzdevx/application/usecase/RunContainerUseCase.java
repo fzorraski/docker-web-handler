@@ -6,6 +6,7 @@ import br.com.fzdevx.application.dto.RestoreDumpRequest;
 import br.com.fzdevx.domain.model.RunContainerConfig;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.MemoryGuardService;
 import br.com.fzdevx.infrastructure.docker.MigrationService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
@@ -82,6 +83,9 @@ public class RunContainerUseCase {
 
     @Inject
     ResourceCounterService resourceCounterService;
+
+    @Inject
+    MemoryGuardService memoryGuardService;
 
     private final ConcurrentHashMap<String, AtomicBoolean> activeRuns = new ConcurrentHashMap<>();
 
@@ -176,6 +180,12 @@ public class RunContainerUseCase {
             if (!allowed.contains(request.getRepository())) {
                 eventSink.accept(ContainerEvent.error("Validating",
                         "Repository '" + request.getRepository() + "' is not in the allowed list."));
+                return;
+            }
+
+            String memoryError = memoryGuardService.checkMemoryFor(request.getMemoryMb());
+            if (memoryError != null) {
+                eventSink.accept(ContainerEvent.error("Validating", memoryError));
                 return;
             }
 

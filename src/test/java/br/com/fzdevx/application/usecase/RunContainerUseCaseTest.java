@@ -10,6 +10,7 @@ import br.com.fzdevx.infrastructure.docker.MigrationService;
 import br.com.fzdevx.infrastructure.docker.PortFinder;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
+import br.com.fzdevx.infrastructure.docker.MemoryGuardService;
 import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import br.com.fzdevx.infrastructure.registry.RegistryService;
 import com.github.dockerjava.api.DockerClient;
@@ -59,6 +60,7 @@ class RunContainerUseCaseTest {
     @Mock DatabaseService databaseService;
     @Mock DumpStorageService dumpStorageService;
     @Mock ResourceCounterService resourceCounterService;
+    @Mock MemoryGuardService memoryGuardService;
 
     @InjectMocks
     RunContainerUseCase useCase;
