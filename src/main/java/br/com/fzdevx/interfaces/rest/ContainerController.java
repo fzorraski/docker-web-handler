@@ -9,6 +9,7 @@ import br.com.fzdevx.domain.shared.Constants;
 import br.com.fzdevx.infrastructure.docker.SelfContainerDetector;
 import br.com.fzdevx.infrastructure.util.DateFormatter;
 import br.com.fzdevx.domain.shared.InputValidator;
+import br.com.fzdevx.interfaces.rest.util.ContainerListBroadcaster;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.model.Container;
 import com.github.dockerjava.api.model.ContainerNetwork;
@@ -43,6 +44,9 @@ public class ContainerController {
 
     @Inject
     MemoryGuardService memoryGuardService;
+
+    @Inject
+    ContainerListBroadcaster broadcaster;
 
     @Inject
     Config config;
@@ -123,6 +127,7 @@ public class ContainerController {
         }
         try {
             dockerClient.stopContainerCmd(dockerContainer.getContainerId()).exec();
+            broadcaster.notifyChange();
             return true;
         } catch (Exception e) {
             Log.errorf("Failed to stop container %s: %s", dockerContainer.getContainerId(), e.getMessage());
@@ -145,6 +150,7 @@ public class ContainerController {
             } catch (Exception ignored) {
             }
             dockerClient.removeContainerCmd(dockerContainer.getContainerId()).exec();
+            broadcaster.notifyChange();
             return true;
         } catch (Exception e) {
             Log.errorf("Failed to remove container %s: %s", dockerContainer.getContainerId(), e.getMessage());
@@ -174,6 +180,7 @@ public class ContainerController {
         }
         try {
             dockerClient.startContainerCmd(dockerContainer.getContainerId()).exec();
+            broadcaster.notifyChange();
             return Response.ok(true, MediaType.APPLICATION_JSON_TYPE).build();
         } catch (Exception e) {
             Log.errorf("Failed to start container %s: %s", dockerContainer.getContainerId(), e.getMessage());

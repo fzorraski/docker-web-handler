@@ -14,6 +14,7 @@ import br.com.fzdevx.application.usecase.StreamContainerStatsUseCase;
 import br.com.fzdevx.domain.model.ContainerStats;
 import br.com.fzdevx.application.dto.WebhookPayload;
 import br.com.fzdevx.infrastructure.webhook.WebhookService;
+import br.com.fzdevx.interfaces.rest.util.ContainerListBroadcaster;
 import br.com.fzdevx.interfaces.rest.util.SseHelper;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -52,6 +53,16 @@ public class ContainerSseController {
 
     @Inject
     WebhookService webhookService;
+
+    @Inject
+    ContainerListBroadcaster broadcaster;
+
+    @GET
+    @Path("/updates")
+    @Produces(MediaType.SERVER_SENT_EVENTS)
+    public void subscribeToUpdates(@Context SseEventSink sink, @Context Sse sse) {
+        broadcaster.register(sink, sse);
+    }
 
     @POST
     @Path("/run/prepare")
@@ -105,6 +116,7 @@ public class ContainerSseController {
                         request.getRepository(), request.getTag(), request.getContainerName(),
                         String.join(", ", ports), lastError[0]));
             }
+            if (succeeded[0]) broadcaster.notifyChange();
             SseHelper.closeSink(sink);
         }
     }
@@ -169,9 +181,14 @@ public class ContainerSseController {
             SseHelper.closeSink(sink);
             return;
         }
+        boolean[] succeeded = {false};
         try {
-            removeContainerUseCase.execute(containerId, event -> SseHelper.sendEvent(sink, sse, event));
+            removeContainerUseCase.execute(containerId, event -> {
+                SseHelper.sendEvent(sink, sse, event);
+                if (event.getType() == ContainerEvent.EventType.SUCCESS) succeeded[0] = true;
+            });
         } finally {
+            if (succeeded[0]) broadcaster.notifyChange();
             SseHelper.closeSink(sink);
         }
     }

@@ -8,6 +8,7 @@ import br.com.fzdevx.domain.model.ContainerSchedule;
 import br.com.fzdevx.domain.model.ScheduleAction;
 import br.com.fzdevx.domain.model.ScheduleType;
 import br.com.fzdevx.domain.shared.CronParser;
+import br.com.fzdevx.interfaces.rest.util.ContainerListBroadcaster;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.model.Container;
 import io.quarkus.logging.Log;
@@ -44,6 +45,9 @@ public class ContainerSchedulingService {
 
     @Inject
     MemoryGuardService memoryGuardService;
+
+    @Inject
+    ContainerListBroadcaster broadcaster;
 
     @ConfigProperty(name = "container.scheduling.enabled", defaultValue = "false")
     boolean schedulingEnabled;
@@ -254,6 +258,7 @@ public class ContainerSchedulingService {
 
             dockerClient.startContainerCmd(containerId).exec();
             updateStatus(schedule, "SUCCESS", "Container started successfully.");
+            broadcaster.notifyChange();
         } catch (Exception e) {
             updateStatus(schedule, "FAILED", "Failed to start container: " + e.getMessage());
         }
@@ -285,6 +290,7 @@ public class ContainerSchedulingService {
 
             dockerClient.stopContainerCmd(containerId).exec();
             updateStatus(schedule, "SUCCESS", "Container stopped successfully.");
+            broadcaster.notifyChange();
         } catch (Exception e) {
             updateStatus(schedule, "FAILED", "Failed to stop container: " + e.getMessage());
         }
@@ -319,6 +325,7 @@ public class ContainerSchedulingService {
 
             dockerClient.removeContainerCmd(containerId).exec();
             updateStatus(schedule, "SUCCESS", "Container removed successfully.");
+            broadcaster.notifyChange();
 
             // Clean up other schedules targeting this container, excluding the current one
             removeSchedulesByContainer(containerId, schedule.getId());
@@ -367,6 +374,7 @@ public class ContainerSchedulingService {
 
         if (logBuilder.isEmpty()) {
             updateStatus(schedule, "SUCCESS", "Container created successfully.");
+            broadcaster.notifyChange();
         } else {
             updateStatus(schedule, "FAILED", logBuilder.toString());
         }

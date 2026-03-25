@@ -3,6 +3,7 @@ package br.com.fzdevx.infrastructure.docker;
 import br.com.fzdevx.domain.model.ContainerExpiration;
 import br.com.fzdevx.application.port.ExpirationRepository;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
+import br.com.fzdevx.interfaces.rest.util.ContainerListBroadcaster;
 import com.github.dockerjava.api.DockerClient;
 import io.quarkus.logging.Log;
 import io.quarkus.runtime.ShutdownEvent;
@@ -32,6 +33,9 @@ public class ContainerExpirationService {
 
     @Inject
     ContainerSchedulingService schedulingService;
+
+    @Inject
+    ContainerListBroadcaster broadcaster;
 
     void onStartup(@Observes StartupEvent event) {
         reloadExpirations();
@@ -151,6 +155,7 @@ public class ContainerExpirationService {
             }
             dockerClient.removeContainerCmd(expiration.getFullContainerId()).exec();
             Log.infof("Container %s expired and was removed.", expiration.getShortId());
+            broadcaster.notifyChange();
         } catch (Exception e) {
             Log.errorf("Failed to expire container %s: %s", expiration.getShortId(), e.getMessage());
         } finally {
@@ -190,6 +195,7 @@ public class ContainerExpirationService {
 
     private void removeContainersByDatabase(String databaseName, String excludeShortId) {
         List<ContainerExpiration> others = expirationRepository.findByDatabaseName(databaseName);
+        boolean changed = false;
         for (ContainerExpiration other : others) {
             if (other.getShortId().equals(excludeShortId)) {
                 continue;
@@ -204,6 +210,7 @@ public class ContainerExpirationService {
                 dockerClient.removeContainerCmd(other.getFullContainerId()).exec();
                 Log.infof("Container %s removed (database '%s' no longer exists).",
                         other.getShortId(), databaseName);
+                changed = true;
             } catch (Exception e) {
                 Log.errorf("Failed to remove container %s after database drop: %s",
                         other.getShortId(), e.getMessage());
@@ -215,5 +222,6 @@ public class ContainerExpirationService {
                 expirationRepository.delete(other.getShortId());
             }
         }
+        if (changed) broadcaster.notifyChange();
     }
 }
