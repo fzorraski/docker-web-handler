@@ -45,7 +45,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   TableSortLabel,
@@ -472,12 +471,12 @@ export default function ContainersPage() {
           </Menu>
         </Box>
 
-        <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 2, overflowX: 'auto', border: '1px solid', borderColor: 'divider' }}>
-          <Table aria-label="Containers" size="small">
+        <Paper elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+          <Table stickyHeader aria-label="Containers" size="small">
             <TableHead>
-              <TableRow sx={{ bgcolor: theadBg }}>
+              <TableRow>
                 {visibleColumns.map((col) => (
-                  <TableCell key={col.key} sx={{ color: theadColor, fontWeight: 600 }}>
+                  <TableCell key={col.key} sx={{ bgcolor: theadBg, color: theadColor, fontWeight: 600 }}>
                     {col.key !== 'actions' ? (
                       <TableSortLabel
                         active={sortKey === col.key}
@@ -704,7 +703,7 @@ export default function ContainersPage() {
               ))}
             </TableBody>
           </Table>
-        </TableContainer>
+        </Paper>
         <TablePagination
           component="div"
           count={pagination.totalCount}
@@ -804,17 +803,19 @@ export default function ContainersPage() {
               : null,
 
             dumpEnabled && actionMenu.target.repository && actionMenu.target.databaseName && (
-              <MenuItem
-                key="snapshot"
-                onClick={() => {
-                  if (!actionMenu.target) return
-                  dialogs.openSnapshot(actionMenu.target)
-                  actionMenu.close()
-                }}
-              >
-                <ListItemIcon><CameraAlt fontSize="small" /></ListItemIcon>
-                <ListItemText>{t('containers.snapshotDatabase', { database: actionMenu.target.databaseName })}</ListItemText>
-              </MenuItem>
+              <Tooltip title={t('containers.snapshotDatabase', { database: actionMenu.target.databaseName })} placement="left" arrow>
+                <MenuItem
+                  key="snapshot"
+                  onClick={() => {
+                    if (!actionMenu.target) return
+                    dialogs.openSnapshot(actionMenu.target)
+                    actionMenu.close()
+                  }}
+                >
+                  <ListItemIcon><CameraAlt fontSize="small" /></ListItemIcon>
+                  <ListItemText>{t('containers.snapshot')}</ListItemText>
+                </MenuItem>
+              </Tooltip>
             ),
 
             migrationFeatureEnabled && actionMenu.target.repository && actionMenu.target.databaseName && (

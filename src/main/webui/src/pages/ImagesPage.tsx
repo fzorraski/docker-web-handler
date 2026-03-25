@@ -21,7 +21,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   TableSortLabel,
@@ -248,12 +247,12 @@ export default function ImagesPage() {
           </Tooltip>
         </Box>
 
-        <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2, overflowX: 'auto' }}>
-          <Table aria-label="Docker images">
+        <Paper elevation={2} sx={{ borderRadius: 2 }}>
+          <Table stickyHeader aria-label="Docker images">
             <TableHead>
-              <TableRow sx={{ bgcolor: theadBg }}>
+              <TableRow>
                 {IMAGE_COLUMNS.map((col) => (
-                  <TableCell key={col.key} sx={{ color: theadColor, fontWeight: 600 }}>
+                  <TableCell key={col.key} sx={{ bgcolor: theadBg, color: theadColor, fontWeight: 600 }}>
                     {col.sortable ? (
                       <TableSortLabel
                         active={sortKey === col.key}
@@ -344,7 +343,7 @@ export default function ImagesPage() {
               ))}
             </TableBody>
           </Table>
-        </TableContainer>
+        </Paper>
         <TablePagination
           component="div"
           count={pagination.totalCount}

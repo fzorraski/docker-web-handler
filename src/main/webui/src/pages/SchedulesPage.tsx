@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Box, Typography, Button, TextField, InputAdornment,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel,
+  Table, TableBody, TableCell, TableHead, TableRow, TableSortLabel,
   Paper, Chip, IconButton, Tooltip, Switch, CircularProgress, Divider, Checkbox,
   Alert, AlertTitle, Menu, MenuItem, ListItemIcon, ListItemText, TablePagination,
 } from '@mui/material'
@@ -35,7 +35,7 @@ type PendingAction =
 export default function SchedulesPage() {
   const { t } = useTranslation()
   const { notify, confirm } = useNotification()
-  const { theadBg, theadColor, theadSortSx } = useTableHeaderTheme()
+  const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
 
   const [schedules, setSchedules] = useState<ContainerSchedule[]>([])
   const [containers, setContainers] = useState<DockerContainer[]>([])
@@ -445,17 +445,17 @@ export default function SchedulesPage() {
           </Box>
         )}
 
-        <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2, overflowX: 'auto' }}>
-          <Table>
+        <Paper elevation={2} sx={{ borderRadius: 2 }}>
+          <Table stickyHeader>
             <TableHead>
-              <TableRow sx={{ bgcolor: theadBg }}>
+              <TableRow>
                 <TableCell padding="checkbox" sx={{ bgcolor: theadBg }}>
                   <Checkbox
                     size="small"
                     checked={filtered.length > 0 && selected.size === filtered.length}
                     indeterminate={selected.size > 0 && selected.size < filtered.length}
                     onChange={toggleSelectAll}
-                    sx={{ color: theadColor }}
+                    sx={theadCheckboxSx}
                   />
                 </TableCell>
                 {[
@@ -470,7 +470,7 @@ export default function SchedulesPage() {
                   { key: 'status', label: t('schedules.columns.status') },
                   { key: 'actions', label: t('schedules.columns.actions') },
                 ].map((col) => (
-                  <TableCell key={col.key} sx={{ color: theadColor, fontWeight: 600 }}>
+                  <TableCell key={col.key} sx={{ bgcolor: theadBg, color: theadColor, fontWeight: 600 }}>
                     {col.key !== 'actions' ? (
                       <TableSortLabel
                         active={sortKey === col.key}
@@ -596,7 +596,7 @@ export default function SchedulesPage() {
               ))}
             </TableBody>
           </Table>
-        </TableContainer>
+        </Paper>
         <TablePagination
           component="div"
           count={pagination.totalCount}

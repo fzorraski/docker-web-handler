@@ -17,7 +17,7 @@ export function useTableHeaderTheme(): TableHeaderTheme {
   const isDark = theme.palette.mode === 'dark'
 
   return useMemo(() => ({
-    theadBg: isDark ? 'rgba(255,255,255,0.03)' : '#F0F2F5',
+    theadBg: isDark ? '#1E1E1E' : '#F0F2F5',
     theadColor: isDark ? 'text.secondary' : '#5A6577',
     theadSortSx: isDark
       ? {

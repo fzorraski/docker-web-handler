@@ -27,7 +27,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
   TableSortLabel,
@@ -501,10 +500,10 @@ export default function DatabasePage() {
                 {t('database.uploadDump')}
               </Button>
             </Box>
-            <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2, overflowX: 'auto' }}>
-              <Table aria-label="Database dumps">
+            <Paper elevation={2} sx={{ borderRadius: 2 }}>
+              <Table stickyHeader aria-label="Database dumps">
                 <TableHead>
-                  <TableRow sx={{ bgcolor: theadBg }}>
+                  <TableRow>
                     <TableCell padding="checkbox" sx={{ bgcolor: theadBg }}>
                       <Checkbox
                         checked={filteredDumps.length > 0 && selected.size === filteredDumps.length}
@@ -514,7 +513,7 @@ export default function DatabasePage() {
                       />
                     </TableCell>
                     {DUMP_COLUMNS.map((col) => (
-                      <TableCell key={col.key} sx={{ color: theadColor, fontWeight: 600 }}>
+                      <TableCell key={col.key} sx={{ bgcolor: theadBg, color: theadColor, fontWeight: 600 }}>
                         {col.key !== 'action' ? (
                           <TableSortLabel
                             active={sortKey === col.key}
@@ -708,7 +707,7 @@ export default function DatabasePage() {
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </Paper>
             <TablePagination
               component="div"
               count={dumpPagination.totalCount}
@@ -752,10 +751,10 @@ export default function DatabasePage() {
                 {t('database.createSnapshot')}
               </Button>
             </Box>
-            <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2, overflowX: 'auto' }}>
-              <Table aria-label="Database snapshots">
+            <Paper elevation={2} sx={{ borderRadius: 2 }}>
+              <Table stickyHeader aria-label="Database snapshots">
                 <TableHead>
-                  <TableRow sx={{ bgcolor: theadBg }}>
+                  <TableRow>
                     <TableCell padding="checkbox" sx={{ bgcolor: theadBg }}>
                       <Checkbox
                         checked={filteredSnapshots.length > 0 && snapSelected.size === filteredSnapshots.length}
@@ -765,7 +764,7 @@ export default function DatabasePage() {
                       />
                     </TableCell>
                     {SNAP_COLUMNS.map((col) => (
-                      <TableCell key={col.key} sx={{ color: theadColor, fontWeight: 600 }}>
+                      <TableCell key={col.key} sx={{ bgcolor: theadBg, color: theadColor, fontWeight: 600 }}>
                         {col.key !== 'action' ? (
                           <TableSortLabel
                             active={snapSortKey === col.key}
@@ -935,7 +934,7 @@ export default function DatabasePage() {
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+            </Paper>
             <TablePagination
               component="div"
               count={snapPagination.totalCount}
