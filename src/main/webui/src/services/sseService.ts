@@ -199,6 +199,15 @@ export function streamContainerStats(
   return () => es.close()
 }
 
+export function subscribeContainerUpdates(onRefresh: () => void): () => void {
+  const es = new EventSource('/api/containers/sse/updates')
+  es.addEventListener('refresh', () => onRefresh())
+  es.onerror = () => {
+    // EventSource auto-reconnects on error; no action needed
+  }
+  return () => es.close()
+}
+
 export function streamRemoveContainer(
   containerId: string,
   onEvent: (event: ContainerEvent) => void,

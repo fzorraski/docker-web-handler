@@ -6,6 +6,7 @@ import br.com.fzdevx.domain.model.ContainerSchedule;
 import br.com.fzdevx.domain.model.ScheduleAction;
 import br.com.fzdevx.domain.model.ScheduleType;
 import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
+import br.com.fzdevx.interfaces.rest.util.ContainerListBroadcaster;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.ListContainersCmd;
 import com.github.dockerjava.api.command.StartContainerCmd;
@@ -37,6 +38,7 @@ class ContainerSchedulingServiceTest {
     @Mock RunContainerUseCase runContainerUseCase;
     @Mock ResourceCounterService resourceCounterService;
     @Mock MemoryGuardService memoryGuardService;
+    @Mock ContainerListBroadcaster broadcaster;
 
     @InjectMocks
     ContainerSchedulingService service;

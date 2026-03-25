@@ -5,6 +5,7 @@ import br.com.fzdevx.domain.model.HostMemoryStatus;
 import br.com.fzdevx.domain.shared.Constants;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.infrastructure.docker.MemoryGuardService;
+import br.com.fzdevx.interfaces.rest.util.ContainerListBroadcaster;
 import br.com.fzdevx.application.usecase.RestoreDumpUseCase;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.ListContainersCmd;
@@ -41,6 +42,7 @@ class ContainerControllerTest {
     @Mock DockerClient dockerClient;
     @Mock ContainerExpirationService expirationService;
     @Mock MemoryGuardService memoryGuardService;
+    @Mock ContainerListBroadcaster broadcaster;
     @Mock Config config;
 
     @InjectMocks
