@@ -42,6 +42,9 @@ public class ContainerSchedulingService {
     @Inject
     ResourceCounterService resourceCounterService;
 
+    @Inject
+    MemoryGuardService memoryGuardService;
+
     @ConfigProperty(name = "container.scheduling.enabled", defaultValue = "false")
     boolean schedulingEnabled;
 
@@ -240,6 +243,12 @@ public class ContainerSchedulingService {
             String state = containers.getFirst().getState();
             if ("running".equalsIgnoreCase(state)) {
                 updateStatus(schedule, "SKIPPED", "Container is already running.");
+                return;
+            }
+
+            String memoryError = memoryGuardService.checkMemoryFor(null);
+            if (memoryError != null) {
+                updateStatus(schedule, "FAILED", memoryError);
                 return;
             }
 

@@ -1,7 +1,9 @@
 package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.domain.model.DockerContainer;
+import br.com.fzdevx.domain.model.HostMemoryStatus;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.MemoryGuardService;
 import br.com.fzdevx.application.usecase.RestoreDumpUseCase;
 import br.com.fzdevx.domain.shared.Constants;
 import br.com.fzdevx.infrastructure.docker.SelfContainerDetector;
@@ -16,6 +18,7 @@ import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.config.Config;
 
 import java.time.Instant;
@@ -37,6 +40,9 @@ public class ContainerController {
 
     @Inject
     ContainerExpirationService expirationService;
+
+    @Inject
+    MemoryGuardService memoryGuardService;
 
     @Inject
     Config config;
@@ -148,18 +154,30 @@ public class ContainerController {
 
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.TEXT_PLAIN)
+    @Produces(MediaType.APPLICATION_JSON)
     @Path("/start")
-    public boolean startContainer(DockerContainer dockerContainer) {
+    public Response startContainer(DockerContainer dockerContainer) {
         if (InputValidator.validateContainerId(dockerContainer.getContainerId()).isPresent()) {
-            return false;
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+        String memoryError = memoryGuardService.checkMemoryFor(null);
+        if (memoryError != null) {
+            HostMemoryStatus status = memoryGuardService.getStatus();
+            return Response.status(Response.Status.SERVICE_UNAVAILABLE)
+                    .type(MediaType.APPLICATION_JSON)
+                    .entity(Map.of(
+                            "code", "MEMORY_GUARD",
+                            "availableMb", status.availableMb(),
+                            "thresholdMb", status.thresholdMb()
+                    ))
+                    .build();
         }
         try {
             dockerClient.startContainerCmd(dockerContainer.getContainerId()).exec();
-            return true;
+            return Response.ok(true, MediaType.APPLICATION_JSON_TYPE).build();
         } catch (Exception e) {
             Log.errorf("Failed to start container %s: %s", dockerContainer.getContainerId(), e.getMessage());
-            return false;
+            return Response.ok(false, MediaType.APPLICATION_JSON_TYPE).build();
         }
     }
 
