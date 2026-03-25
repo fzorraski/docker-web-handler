@@ -145,6 +145,17 @@ const es: typeof en = {
     activeSchedules: '{{count}} programacion(es) activa(s): {{summary}}',
     snapshotDatabase: 'Snapshot de la base "{{database}}"',
     showStoppedOnly: 'Mostrar solo detenidos',
+    bulk: {
+      confirmStart: 'Iniciar {{count}} contenedor(es)?',
+      confirmStop: 'Detener {{count}} contenedor(es)?',
+      confirmRemove: 'Eliminar {{count}} contenedor(es)? Esta accion no se puede deshacer.',
+      startResult: '{{started}} iniciado(s), {{failed}} fallo(s).',
+      stopResult: '{{stopped}} detenido(s), {{failed}} fallo(s).',
+      removeResult: '{{removed}} eliminado(s), {{failed}} fallo(s).',
+      progressStarting: 'Iniciando',
+      progressStopping: 'Deteniendo',
+      progressRemoving: 'Eliminando',
+    },
     cleanup: {
       button: 'Limpiar Inactivos',
       title: 'Limpiar Contenedores Inactivos',

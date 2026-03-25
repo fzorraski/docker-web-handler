@@ -145,6 +145,17 @@ const ptBR: typeof en = {
     activeSchedules: '{{count}} agendamento(s) ativo(s): {{summary}}',
     snapshotDatabase: 'Snapshot do banco "{{database}}"',
     showStoppedOnly: 'Mostrar apenas parados',
+    bulk: {
+      confirmStart: 'Iniciar {{count}} container(s)?',
+      confirmStop: 'Parar {{count}} container(s)?',
+      confirmRemove: 'Remover {{count}} container(s)? Esta acao nao pode ser desfeita.',
+      startResult: '{{started}} iniciado(s), {{failed}} falha(s).',
+      stopResult: '{{stopped}} parado(s), {{failed}} falha(s).',
+      removeResult: '{{removed}} removido(s), {{failed}} falha(s).',
+      progressStarting: 'Iniciando',
+      progressStopping: 'Parando',
+      progressRemoving: 'Removendo',
+    },
     cleanup: {
       button: 'Limpar Ociosos',
       title: 'Limpar Containers Ociosos',

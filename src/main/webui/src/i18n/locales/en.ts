@@ -143,6 +143,17 @@ const en = {
     activeSchedules: '{{count}} active schedule(s): {{summary}}',
     snapshotDatabase: 'Snapshot database "{{database}}"',
     showStoppedOnly: 'Show stopped only',
+    bulk: {
+      confirmStart: 'Start {{count}} container(s)?',
+      confirmStop: 'Stop {{count}} container(s)?',
+      confirmRemove: 'Remove {{count}} container(s)? This action cannot be undone.',
+      startResult: '{{started}} started, {{failed}} failed.',
+      stopResult: '{{stopped}} stopped, {{failed}} failed.',
+      removeResult: '{{removed}} removed, {{failed}} failed.',
+      progressStarting: 'Starting',
+      progressStopping: 'Stopping',
+      progressRemoving: 'Removing',
+    },
     cleanup: {
       button: 'Clean Up Idle',
       title: 'Clean Up Idle Containers',

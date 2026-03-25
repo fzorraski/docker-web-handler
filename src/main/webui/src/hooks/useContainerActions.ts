@@ -21,9 +21,43 @@ interface Deps {
   loadContainers: () => void
 }
 
+export interface BulkProgress {
+  current: number
+  total: number
+  action: string
+}
+
 export function useContainerActions({ notify, confirm, t, loadContainers }: Deps) {
   const [stoppingId, setStoppingId] = useState<string | null>(null)
+  const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null)
   const removeSse = useSseOperation()
+
+  const executeBulk = useCallback(async <T>(
+    items: T[],
+    action: string,
+    fn: (item: T) => Promise<boolean>,
+    opts?: { onMemoryGuard?: (e: MemoryGuardError, remaining: number) => void },
+  ): Promise<{ succeeded: number; failed: number }> => {
+    let succeeded = 0
+    let failed = 0
+    setBulkProgress({ current: 0, total: items.length, action })
+    for (const item of items) {
+      try {
+        const ok = await fn(item)
+        if (ok) succeeded++; else failed++
+      } catch (e) {
+        if (e instanceof MemoryGuardError && opts?.onMemoryGuard) {
+          opts.onMemoryGuard(e, items.length - succeeded - failed)
+          failed += items.length - succeeded - failed
+          break
+        }
+        failed++
+      }
+      setBulkProgress({ current: succeeded + failed, total: items.length, action })
+    }
+    setBulkProgress(null)
+    return { succeeded, failed }
+  }, [])
 
   const handleStop = useCallback(async (id: string, name: string) => {
     if (!(await confirm(t('containers.confirmStop', { name })))) return
@@ -109,25 +143,51 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
 
   const handleCleanup = useCallback(async (candidates: DockerContainer[]) => {
     if (candidates.length === 0) return
-    let removed = 0
-    let failed = 0
-    for (const c of candidates) {
-      try {
-        const ok = await removeContainer(c.containerId)
-        if (ok) removed++; else failed++
-      } catch {
-        failed++
-      }
-    }
-    notify(
-      t('containers.cleanup.result', { removed, failed }),
-      failed > 0 ? 'warning' : 'success',
+    const { succeeded: removed, failed } = await executeBulk(
+      candidates, t('containers.bulk.progressRemoving'), c => removeContainer(c.containerId),
     )
+    notify(t('containers.cleanup.result', { removed, failed }), failed > 0 ? 'warning' : 'success')
     loadContainers()
-  }, [t, notify, loadContainers])
+  }, [executeBulk, t, notify, loadContainers])
+
+  const handleBulkStart = useCallback(async (containers: DockerContainer[]) => {
+    const startable = containers.filter(c => !c.status.includes('Up'))
+    if (startable.length === 0) return
+    if (!(await confirm(t('containers.bulk.confirmStart', { count: startable.length })))) return
+    const { succeeded: started, failed } = await executeBulk(
+      startable, t('containers.bulk.progressStarting'), c => startContainer(c.containerId),
+      { onMemoryGuard: (e) => notify(t('containers.memoryGuardBlocked', { available: e.availableMb, threshold: e.thresholdMb }), 'error') },
+    )
+    if (started > 0 || failed > 0) {
+      notify(t('containers.bulk.startResult', { started, failed }), failed > 0 ? 'warning' : 'success')
+    }
+    loadContainers()
+  }, [executeBulk, confirm, t, notify, loadContainers])
+
+  const handleBulkStop = useCallback(async (containers: DockerContainer[]) => {
+    const stoppable = containers.filter(c => c.status.includes('Up'))
+    if (stoppable.length === 0) return
+    if (!(await confirm(t('containers.bulk.confirmStop', { count: stoppable.length })))) return
+    const { succeeded: stopped, failed } = await executeBulk(
+      stoppable, t('containers.bulk.progressStopping'), c => stopContainer(c.containerId),
+    )
+    notify(t('containers.bulk.stopResult', { stopped, failed }), failed > 0 ? 'warning' : 'success')
+    loadContainers()
+  }, [executeBulk, confirm, t, notify, loadContainers])
+
+  const handleBulkRemove = useCallback(async (containers: DockerContainer[]) => {
+    if (containers.length === 0) return
+    if (!(await confirm(t('containers.bulk.confirmRemove', { count: containers.length })))) return
+    const { succeeded: removed, failed } = await executeBulk(
+      containers, t('containers.bulk.progressRemoving'), c => removeContainer(c.containerId),
+    )
+    notify(t('containers.bulk.removeResult', { removed, failed }), failed > 0 ? 'warning' : 'success')
+    loadContainers()
+  }, [executeBulk, confirm, t, notify, loadContainers])
 
   return {
     stoppingId,
+    bulkProgress,
     removeSse,
     handleStop,
     handleStart,
@@ -137,5 +197,8 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
     handleCancelExpiration,
     handleCancelDbDeletion,
     handleCleanup,
+    handleBulkStart,
+    handleBulkStop,
+    handleBulkRemove,
   }
 }
