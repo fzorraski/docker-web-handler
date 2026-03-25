@@ -1,8 +1,10 @@
 package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.domain.model.DockerContainer;
+import br.com.fzdevx.domain.model.HostMemoryStatus;
 import br.com.fzdevx.domain.shared.Constants;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.MemoryGuardService;
 import br.com.fzdevx.application.usecase.RestoreDumpUseCase;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.ListContainersCmd;
@@ -12,6 +14,7 @@ import com.github.dockerjava.api.command.RemoveContainerCmd;
 import com.github.dockerjava.api.model.Container;
 import com.github.dockerjava.api.model.ContainerPort;
 import com.github.dockerjava.api.model.ContainerNetworkSettings;
+import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.config.Config;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,6 +40,7 @@ class ContainerControllerTest {
 
     @Mock DockerClient dockerClient;
     @Mock ContainerExpirationService expirationService;
+    @Mock MemoryGuardService memoryGuardService;
     @Mock Config config;
 
     @InjectMocks
@@ -218,27 +222,30 @@ class ContainerControllerTest {
     // ---- startContainer ----
 
     @Test
-    void startContainer_validId_returnsTrue() {
+    void startContainer_validId_returns200WithTrue() {
         StartContainerCmd cmd = mock(StartContainerCmd.class);
         when(dockerClient.startContainerCmd("abc123def4")).thenReturn(cmd);
 
         DockerContainer req = new DockerContainer();
         req.setContainerId("abc123def4");
 
-        assertTrue(controller.startContainer(req));
+        Response response = controller.startContainer(req);
+        assertEquals(200, response.getStatus());
+        assertEquals(true, response.getEntity());
         verify(cmd).exec();
     }
 
     @Test
-    void startContainer_invalidId_returnsFalse() {
+    void startContainer_invalidId_returns400() {
         DockerContainer req = new DockerContainer();
         req.setContainerId("bad!");
 
-        assertFalse(controller.startContainer(req));
+        Response response = controller.startContainer(req);
+        assertEquals(400, response.getStatus());
     }
 
     @Test
-    void startContainer_dockerException_returnsFalse() {
+    void startContainer_dockerException_returns200WithFalse() {
         StartContainerCmd cmd = mock(StartContainerCmd.class);
         when(dockerClient.startContainerCmd("abc123def4")).thenReturn(cmd);
         when(cmd.exec()).thenThrow(new RuntimeException("container already started"));
@@ -246,7 +253,45 @@ class ContainerControllerTest {
         DockerContainer req = new DockerContainer();
         req.setContainerId("abc123def4");
 
-        assertFalse(controller.startContainer(req));
+        Response response = controller.startContainer(req);
+        assertEquals(200, response.getStatus());
+        assertEquals(false, response.getEntity());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void startContainer_memoryGuardBlocked_returns503WithDetails() {
+        when(memoryGuardService.checkMemoryFor(null)).thenReturn("Insufficient host memory.");
+        when(memoryGuardService.getStatus()).thenReturn(
+                new HostMemoryStatus(true, true, false, 8192, 7000, 1192, 2048));
+
+        DockerContainer req = new DockerContainer();
+        req.setContainerId("abc123def4");
+
+        Response response = controller.startContainer(req);
+        assertEquals(503, response.getStatus());
+
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertEquals("MEMORY_GUARD", body.get("code"));
+        assertEquals(1192L, body.get("availableMb"));
+        assertEquals(2048L, body.get("thresholdMb"));
+
+        verify(dockerClient, never()).startContainerCmd(any());
+    }
+
+    @Test
+    void startContainer_memoryGuardAllows_startsContainer() {
+        when(memoryGuardService.checkMemoryFor(null)).thenReturn(null);
+        StartContainerCmd cmd = mock(StartContainerCmd.class);
+        when(dockerClient.startContainerCmd("abc123def4")).thenReturn(cmd);
+
+        DockerContainer req = new DockerContainer();
+        req.setContainerId("abc123def4");
+
+        Response response = controller.startContainer(req);
+        assertEquals(200, response.getStatus());
+        assertEquals(true, response.getEntity());
+        verify(cmd).exec();
     }
 
     // ---- removeContainer ----
