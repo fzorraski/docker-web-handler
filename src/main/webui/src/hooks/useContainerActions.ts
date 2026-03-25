@@ -7,6 +7,7 @@ import {
   cancelDatabaseDeletion,
   cancelExpiration,
   extendExpiration,
+  MemoryGuardError,
 } from '../services/containerService'
 import { streamRemoveContainer } from '../services/sseService'
 import { useSseOperation } from './useSseOperation'
@@ -43,8 +44,12 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
     try {
       const ok = await startContainer(id)
       notify(ok ? t('containers.containerStarted') : t('containers.failedToStart'), ok ? 'success' : 'error')
-    } catch {
-      notify(t('containers.startError'), 'error')
+    } catch (e) {
+      if (e instanceof MemoryGuardError) {
+        notify(t('containers.memoryGuardBlocked', { available: e.availableMb, threshold: e.thresholdMb }), 'error')
+      } else {
+        notify(t('containers.startError'), 'error')
+      }
     }
     loadContainers()
   }, [confirm, t, notify, loadContainers])

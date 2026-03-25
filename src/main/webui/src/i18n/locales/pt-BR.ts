@@ -124,6 +124,7 @@ const ptBR: typeof en = {
     containerStarted: 'Container iniciado.',
     failedToStart: 'Falha ao iniciar container.',
     startError: 'Ocorreu um erro inesperado ao iniciar o container.',
+    memoryGuardBlocked: 'Nao foi possivel iniciar o container. Memoria insuficiente: {{available}} MB disponivel, {{threshold}} MB necessario.',
     containerRemoved: 'Container removido.',
     restoreInProgress: 'Restauracao em andamento',
     restoringInto: 'Restaurando <strong>{{filename}}</strong> em <strong>{{database}}</strong> ({{repository}})',

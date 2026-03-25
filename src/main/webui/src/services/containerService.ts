@@ -26,8 +26,21 @@ export async function stopContainer(id: string): Promise<boolean> {
   return handleResponse(res)
 }
 
+export class MemoryGuardError extends Error {
+  constructor(public readonly availableMb: number, public readonly thresholdMb: number) {
+    super('MEMORY_GUARD')
+  }
+}
+
 export async function startContainer(id: string): Promise<boolean> {
   const res = await postJson(API + 'start', { containerId: id })
+  if (res.status === 503) {
+    const data = await res.json().catch(() => ({}))
+    if (data.code === 'MEMORY_GUARD') {
+      throw new MemoryGuardError(data.availableMb, data.thresholdMb)
+    }
+    throw new Error(res.statusText)
+  }
   return handleResponse(res)
 }
 

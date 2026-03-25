@@ -122,6 +122,7 @@ const en = {
     containerStarted: 'Container started.',
     failedToStart: 'Failed to start container.',
     startError: 'An unexpected error occurred while starting the container.',
+    memoryGuardBlocked: 'Cannot start container. Insufficient host memory: {{available}} MB available, {{threshold}} MB required.',
     containerRemoved: 'Container removed.',
     restoreInProgress: 'Restore in progress',
     restoringInto: 'Restoring <strong>{{filename}}</strong> into <strong>{{database}}</strong> ({{repository}})',

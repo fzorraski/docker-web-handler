@@ -124,6 +124,7 @@ const es: typeof en = {
     containerStarted: 'Contenedor iniciado.',
     failedToStart: 'Error al iniciar contenedor.',
     startError: 'Ocurrio un error inesperado al iniciar el contenedor.',
+    memoryGuardBlocked: 'No se puede iniciar el contenedor. Memoria insuficiente: {{available}} MB disponible, {{threshold}} MB requerido.',
     containerRemoved: 'Contenedor eliminado.',
     restoreInProgress: 'Restauracion en progreso',
     restoringInto: 'Restaurando <strong>{{filename}}</strong> en <strong>{{database}}</strong> ({{repository}})',
