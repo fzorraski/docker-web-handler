@@ -34,9 +34,9 @@ export default function App() {
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <Navbar />
-      <Box sx={{ flex: 1 }}>
+      <Box sx={{ flex: 1, overflowY: 'auto' }}>
         <ErrorBoundary>
           <Suspense fallback={<PageSpinner />}>
             <Routes>
