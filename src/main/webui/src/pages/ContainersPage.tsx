@@ -585,18 +585,20 @@ export default function ContainersPage() {
                   </TableCell>
                 </TableRow>
               )}
-              {pagination.paginatedData.map((c) => (
+              {pagination.paginatedData.map((c) => {
+                const isBulkOperating = actions.bulkOperatingIds.has(c.containerId)
+                return (
                 <TableRow
                   key={c.containerId}
-                  hover
+                  hover={!isBulkOperating}
                   selected={selected.has(c.containerId)}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    actionMenu.openByPosition({ top: e.clientY, left: e.clientX }, c)
-                  }}
+                  sx={isBulkOperating ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
                 >
                   <TableCell padding="checkbox">
-                    <Checkbox size="small" checked={selected.has(c.containerId)} onChange={() => toggleSelect(c.containerId)} />
+                    {isBulkOperating
+                      ? <CircularProgress size={20} />
+                      : <Checkbox size="small" checked={selected.has(c.containerId)} onChange={() => toggleSelect(c.containerId)} />
+                    }
                   </TableCell>
                   {vis.has('names') && (
                     <TableCell sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
@@ -783,7 +785,8 @@ export default function ContainersPage() {
                     </TableCell>
                   )}
                 </TableRow>
-              ))}
+                )
+              })}
             </TableBody>
           </Table>
         </Paper>

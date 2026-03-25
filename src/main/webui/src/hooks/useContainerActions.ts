@@ -30,16 +30,19 @@ export interface BulkProgress {
 export function useContainerActions({ notify, confirm, t, loadContainers }: Deps) {
   const [stoppingId, setStoppingId] = useState<string | null>(null)
   const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null)
+  const [bulkOperatingIds, setBulkOperatingIds] = useState<Set<string>>(new Set())
   const removeSse = useSseOperation()
 
-  const executeBulk = useCallback(async <T>(
-    items: T[],
+  const executeBulk = useCallback(async (
+    items: DockerContainer[],
     action: string,
-    fn: (item: T) => Promise<boolean>,
+    fn: (item: DockerContainer) => Promise<boolean>,
     opts?: { onMemoryGuard?: (e: MemoryGuardError, remaining: number) => void },
   ): Promise<{ succeeded: number; failed: number }> => {
     let succeeded = 0
     let failed = 0
+    const pending = new Set(items.map(c => c.containerId))
+    setBulkOperatingIds(new Set(pending))
     setBulkProgress({ current: 0, total: items.length, action })
     for (const item of items) {
       try {
@@ -49,13 +52,17 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
         if (e instanceof MemoryGuardError && opts?.onMemoryGuard) {
           opts.onMemoryGuard(e, items.length - succeeded - failed)
           failed += items.length - succeeded - failed
+          setBulkOperatingIds(new Set())
           break
         }
         failed++
       }
+      pending.delete(item.containerId)
+      setBulkOperatingIds(new Set(pending))
       setBulkProgress({ current: succeeded + failed, total: items.length, action })
     }
     setBulkProgress(null)
+    setBulkOperatingIds(new Set())
     return { succeeded, failed }
   }, [])
 
@@ -188,6 +195,7 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
   return {
     stoppingId,
     bulkProgress,
+    bulkOperatingIds,
     removeSse,
     handleStop,
     handleStart,
