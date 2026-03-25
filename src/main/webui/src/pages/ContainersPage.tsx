@@ -69,9 +69,11 @@ import {
   Alert,
   AlertTitle,
   TablePagination,
+  LinearProgress,
 } from '@mui/material'
 import { Search, AddCircleOutline, Stop, PlayArrow, Delete, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord, Code, Memory } from '@mui/icons-material'
 import { isSchedulingEnabled, listSchedules } from '../services/scheduleService'
+import { subscribeContainerUpdates } from '../services/sseService'
 import type { ContainerSchedule } from '../types'
 
 interface ColumnDef {
@@ -100,7 +102,7 @@ function loadVisibility(columns: ColumnDef[]): Record<string, boolean> {
 export default function ContainersPage() {
   const { notify, confirm } = useNotification()
   const { t } = useTranslation()
-  const { theadBg, theadColor, theadSortSx } = useTableHeaderTheme()
+  const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
 
   const [containers, setContainers] = useState<DockerContainer[]>([])
   const [filter, setFilter] = useState('')
@@ -123,12 +125,13 @@ export default function ContainersPage() {
   const [showStoppedOnly, setShowStoppedOnly] = useState(false)
   const [memoryGuardEnabled, setMemoryGuardEnabled] = useState(false)
   const [memoryStatus, setMemoryStatus] = useState<HostMemoryStatus | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   // Extracted hooks
   const loadContainers = useCallback(() => {
     setLoading(true)
     getContainers()
-      .then(setContainers)
+      .then((data) => { setContainers(data); setSelected(new Set()) })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
@@ -144,6 +147,14 @@ export default function ContainersPage() {
 
   const isUp = (status: string) => status.includes('Up')
   const machineIp = window.location.hostname
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }, [])
 
   const BASE_COLUMNS: ColumnDef[] = useMemo(() => [
     { key: 'names', label: t('containers.columns.name'), defaultVisible: true },
@@ -167,7 +178,7 @@ export default function ContainersPage() {
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(() => loadVisibility(BASE_COLUMNS))
   const visibleColumns = columns.filter((c) => columnVisibility[c.key])
   const vis = new Set(visibleColumns.map((c) => c.key))
-  const colSpan = visibleColumns.length
+  const colSpan = visibleColumns.length + 1 // +1 for checkbox column
 
   function toggleColumn(key: string) {
     setColumnVisibility((prev) => {
@@ -209,6 +220,8 @@ export default function ContainersPage() {
       if (enabled) loadContainerSchedules()
     }).catch(() => setSchedulingFeatureEnabled(false))
   }, [loadContainers])
+
+  useEffect(() => subscribeContainerUpdates(loadContainers), [loadContainers])
 
   useEffect(() => { refreshMemoryStatus() }, [refreshMemoryStatus, containers])
 
@@ -301,6 +314,17 @@ export default function ContainersPage() {
       return sortDir === 'asc' ? cmp : -cmp
     })
   }, [filteredByStatus, filter, sortKey, sortDir])
+
+  const toggleSelectAll = useCallback(() => {
+    setSelected(prev =>
+      prev.size === filtered.length ? new Set() : new Set(filtered.map(c => c.containerId))
+    )
+  }, [filtered])
+
+  const selectedContainers = useMemo(
+    () => filtered.filter(c => selected.has(c.containerId)),
+    [filtered, selected],
+  )
 
   const pagination = useTablePagination(filtered, { storageKey: 'containers' })
 
@@ -428,6 +452,40 @@ export default function ContainersPage() {
               </Typography>
             }
           />
+          {selected.size > 0 && (
+            <>
+              <Button
+                variant="contained"
+                color="success"
+                startIcon={<PlayArrow />}
+                onClick={() => actions.handleBulkStart(selectedContainers)}
+                disabled={!!actions.bulkProgress || selectedContainers.every(c => isUp(c.status))}
+                size="small"
+              >
+                {t('containers.start')} ({selectedContainers.filter(c => !isUp(c.status)).length})
+              </Button>
+              <Button
+                variant="contained"
+                color="warning"
+                startIcon={<Stop />}
+                onClick={() => actions.handleBulkStop(selectedContainers)}
+                disabled={!!actions.bulkProgress || selectedContainers.every(c => !isUp(c.status))}
+                size="small"
+              >
+                {t('containers.stop')} ({selectedContainers.filter(c => isUp(c.status)).length})
+              </Button>
+              <Button
+                variant="contained"
+                color="error"
+                startIcon={<Delete />}
+                onClick={() => actions.handleBulkRemove(selectedContainers)}
+                disabled={!!actions.bulkProgress}
+                size="small"
+              >
+                {t('common.delete')} ({selected.size})
+              </Button>
+            </>
+          )}
           <Tooltip title={t('containers.cleanup.description')}>
             <span>
               <Button
@@ -471,10 +529,31 @@ export default function ContainersPage() {
           </Menu>
         </Box>
 
+        {actions.bulkProgress && (
+          <Box sx={{ mb: 1 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+              {actions.bulkProgress.action} {actions.bulkProgress.current}/{actions.bulkProgress.total}...
+            </Typography>
+            <LinearProgress
+              variant="determinate"
+              value={(actions.bulkProgress.current / actions.bulkProgress.total) * 100}
+            />
+          </Box>
+        )}
+
         <Paper elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
           <Table stickyHeader aria-label="Containers" size="small">
             <TableHead>
               <TableRow>
+                <TableCell padding="checkbox" sx={{ bgcolor: theadBg }}>
+                  <Checkbox
+                    size="small"
+                    checked={filtered.length > 0 && selected.size === filtered.length}
+                    indeterminate={selected.size > 0 && selected.size < filtered.length}
+                    onChange={toggleSelectAll}
+                    sx={theadCheckboxSx}
+                  />
+                </TableCell>
                 {visibleColumns.map((col) => (
                   <TableCell key={col.key} sx={{ bgcolor: theadBg, color: theadColor, fontWeight: 600 }}>
                     {col.key !== 'actions' ? (
@@ -510,11 +589,15 @@ export default function ContainersPage() {
                 <TableRow
                   key={c.containerId}
                   hover
+                  selected={selected.has(c.containerId)}
                   onContextMenu={(e) => {
                     e.preventDefault()
                     actionMenu.openByPosition({ top: e.clientY, left: e.clientX }, c)
                   }}
                 >
+                  <TableCell padding="checkbox">
+                    <Checkbox size="small" checked={selected.has(c.containerId)} onChange={() => toggleSelect(c.containerId)} />
+                  </TableCell>
                   {vis.has('names') && (
                     <TableCell sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
