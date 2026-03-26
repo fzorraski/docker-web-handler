@@ -168,7 +168,9 @@ public class RunContainerUseCase {
             }
 
             // Validate operations password when destructive operations are requested
-            if (request.isDeleteDatabaseOnExpiration() && !request.isOperationsPasswordValidated()) {
+            if (request.isDeleteDatabaseOnExpiration()
+                    && !request.isOperationsPasswordValidated()
+                    && !dumpStorageService.validateOperationsPassword(null)) {
                 eventSink.accept(ContainerEvent.error("Validating", "Invalid operations password."));
                 return;
             }
@@ -269,7 +271,8 @@ public class RunContainerUseCase {
                     && migrationService.isEnabled()
                     && request.getDatabaseName() != null && !request.getDatabaseName().isBlank()) {
                 // Standalone migration on existing database (no restore)
-                if (!request.isOperationsPasswordValidated()) {
+                if (!request.isOperationsPasswordValidated()
+                        && !dumpStorageService.validateOperationsPassword(null)) {
                     eventSink.accept(ContainerEvent.error("Running Migration", "Invalid operations password."));
                     return;
                 }
