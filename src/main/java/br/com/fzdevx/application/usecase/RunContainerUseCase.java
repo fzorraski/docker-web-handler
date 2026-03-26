@@ -449,6 +449,11 @@ public class RunContainerUseCase {
     private String scheduleExpiration(RunContainerConfig request, String fullContainerId) {
         Instant expiresInstant = resolveExpiration(request);
         if (expiresInstant == null) {
+            String dbName = request.getDatabaseName();
+            if (dbName != null && !dbName.isBlank()) {
+                String shortId = fullContainerId.substring(0, 10);
+                expirationService.saveMetadata(shortId, fullContainerId, request.getRepository(), dbName);
+            }
             return "";
         }
 

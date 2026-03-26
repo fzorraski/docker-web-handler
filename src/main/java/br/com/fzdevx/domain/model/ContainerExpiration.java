@@ -30,7 +30,7 @@ public class ContainerExpiration {
     }
 
     public boolean isExpired() {
-        return Instant.now().isAfter(expiresAt);
+        return expiresAt != null && Instant.now().isAfter(expiresAt);
     }
 
     public String getShortId() {

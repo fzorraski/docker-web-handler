@@ -53,6 +53,15 @@ public class ContainerExpirationService {
         scheduleTask(expiration);
     }
 
+    public void saveMetadata(String shortId, String fullContainerId, String repository, String databaseName) {
+        ContainerExpiration expiration = new ContainerExpiration();
+        expiration.setShortId(shortId);
+        expiration.setFullContainerId(fullContainerId);
+        expiration.setRepository(repository);
+        expiration.setDatabaseName(databaseName);
+        expirationRepository.save(expiration);
+    }
+
     public void cancel(String shortId) {
         ScheduledFuture<?> future = scheduledTasks.remove(shortId);
         if (future != null) {
@@ -120,6 +129,9 @@ public class ContainerExpirationService {
         Log.infof("Reloading %d persisted container expirations.", persisted.size());
 
         for (ContainerExpiration expiration : persisted) {
+            if (expiration.getExpiresAt() == null) {
+                continue;
+            }
             if (expiration.isExpired()) {
                 Log.infof("Container %s expiration is past due, executing now.", expiration.getShortId());
                 executeExpiration(expiration);
