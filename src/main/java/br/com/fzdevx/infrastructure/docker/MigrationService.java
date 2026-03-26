@@ -8,7 +8,6 @@ import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.ExecCreateCmdResponse;
 import com.github.dockerjava.api.command.InspectExecResponse;
-import com.github.dockerjava.api.model.Bind;
 import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.core.command.ExecStartResultCallback;
 import io.quarkus.logging.Log;
@@ -335,10 +334,12 @@ public class MigrationService {
                                       String targetDb, String pgImage,
                                       Consumer<ContainerEvent> eventSink,
                                       AtomicBoolean cancelled) {
+        Path tempDir = null;
         Path tempFile = null;
         String containerId = null;
         try {
-            tempFile = Files.createTempFile("migration-", ".sql");
+            tempDir = Files.createTempDirectory("migration-");
+            tempFile = tempDir.resolve("migration.sql");
             Files.writeString(tempFile, sql);
 
             eventSink.accept(ContainerEvent.info(STEP_NAME, "Creating ephemeral migration container..."));
@@ -346,13 +347,23 @@ public class MigrationService {
             CreateContainerResponse container = dockerClient.createContainerCmd(pgImage)
                     .withCmd("tail", "-f", "/dev/null")
                     .withHostConfig(HostConfig.newHostConfig()
-                            .withNetworkMode("host")
-                            .withBinds(Bind.parse(tempFile.toAbsolutePath() + ":/migration/migration.sql:ro")))
+                            .withNetworkMode("host"))
                     .withLabels(Map.of(EPHEMERAL_LABEL, "true"))
                     .exec();
 
             containerId = container.getId();
             dockerClient.startContainerCmd(containerId).exec();
+
+            ExecCreateCmdResponse mkdirExec = dockerClient.execCreateCmd(containerId)
+                    .withCmd("mkdir", "-p", "/migration")
+                    .exec();
+            dockerClient.execStartCmd(mkdirExec.getId()).exec(new ExecStartResultCallback())
+                    .awaitCompletion();
+
+            dockerClient.copyArchiveToContainerCmd(containerId)
+                    .withHostResource(tempFile.toAbsolutePath().toString())
+                    .withRemotePath("/migration/")
+                    .exec();
 
             if (cancelled.get()) {
                 eventSink.accept(ContainerEvent.error(STEP_NAME, "Migration cancelled."));
@@ -425,6 +436,9 @@ public class MigrationService {
             }
             if (tempFile != null) {
                 try { Files.deleteIfExists(tempFile); } catch (Exception ignored) {}
+            }
+            if (tempDir != null) {
+                try { Files.deleteIfExists(tempDir); } catch (Exception ignored) {}
             }
         }
     }

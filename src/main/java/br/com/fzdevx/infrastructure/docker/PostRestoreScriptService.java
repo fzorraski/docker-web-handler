@@ -9,7 +9,6 @@ import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.ExecCreateCmdResponse;
 import com.github.dockerjava.api.command.InspectExecResponse;
-import com.github.dockerjava.api.model.Bind;
 import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.core.command.ExecStartResultCallback;
 import io.quarkus.logging.Log;
@@ -127,7 +126,7 @@ public class PostRestoreScriptService {
                                       String repository,
                                       Consumer<ContainerEvent> eventSink,
                                       AtomicBoolean cancelled) {
-        // Collect all script directories to bind-mount
+        // Collect script directories to copy into the ephemeral container
         Path mandatoryDir = resolveDirPath(getMandatoryDir(repository));
         Path optionalDir = resolveDirPath(getOptionalDir(repository));
 
@@ -135,24 +134,37 @@ public class PostRestoreScriptService {
         try {
             eventSink.accept(ContainerEvent.info("Running Scripts", "Creating ephemeral script runner container..."));
 
-            List<Bind> binds = new ArrayList<>();
-            if (mandatoryDir != null && Files.isDirectory(mandatoryDir)) {
-                binds.add(Bind.parse(mandatoryDir.toAbsolutePath() + ":/scripts/mandatory:ro"));
-            }
-            if (optionalDir != null && Files.isDirectory(optionalDir)) {
-                binds.add(Bind.parse(optionalDir.toAbsolutePath() + ":/scripts/optional:ro"));
-            }
-
             CreateContainerResponse container = dockerClient.createContainerCmd(pgImage)
                     .withCmd("tail", "-f", "/dev/null")
                     .withHostConfig(HostConfig.newHostConfig()
-                            .withNetworkMode("host")
-                            .withBinds(binds))
+                            .withNetworkMode("host"))
                     .withLabels(Map.of(EPHEMERAL_LABEL, "true"))
                     .exec();
 
             containerId = container.getId();
             dockerClient.startContainerCmd(containerId).exec();
+
+            // Create target directories before copying files
+            ExecCreateCmdResponse mkdirExec = dockerClient.execCreateCmd(containerId)
+                    .withCmd("mkdir", "-p", "/scripts/mandatory", "/scripts/optional")
+                    .exec();
+            dockerClient.execStartCmd(mkdirExec.getId()).exec(new ExecStartResultCallback())
+                    .awaitCompletion();
+
+            if (mandatoryDir != null && Files.isDirectory(mandatoryDir)) {
+                dockerClient.copyArchiveToContainerCmd(containerId)
+                        .withHostResource(mandatoryDir.toAbsolutePath().toString())
+                        .withRemotePath("/scripts/mandatory/")
+                        .withDirChildrenOnly(true)
+                        .exec();
+            }
+            if (optionalDir != null && Files.isDirectory(optionalDir)) {
+                dockerClient.copyArchiveToContainerCmd(containerId)
+                        .withHostResource(optionalDir.toAbsolutePath().toString())
+                        .withRemotePath("/scripts/optional/")
+                        .withDirChildrenOnly(true)
+                        .exec();
+            }
 
             boolean allSuccess = true;
             for (PostRestoreScriptInfo script : scripts) {
