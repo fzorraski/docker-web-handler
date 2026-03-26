@@ -65,6 +65,33 @@ public class ContainerSseController {
     }
 
     @POST
+    @Path("/lock")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public void lockContainers(List<String> containerIds) {
+        List<String> valid = sanitizeIds(containerIds);
+        if (!valid.isEmpty()) {
+            broadcaster.broadcastLocking(valid);
+        }
+    }
+
+    @POST
+    @Path("/unlock")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public void unlockContainers(List<String> containerIds) {
+        List<String> valid = sanitizeIds(containerIds);
+        if (!valid.isEmpty()) {
+            broadcaster.broadcastUnlocking(valid);
+        }
+    }
+
+    private List<String> sanitizeIds(List<String> ids) {
+        if (ids == null) return List.of();
+        return ids.stream()
+                .filter(id -> id != null && InputValidator.validateContainerId(id).isEmpty())
+                .toList();
+    }
+
+    @POST
     @Path("/run/prepare")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
