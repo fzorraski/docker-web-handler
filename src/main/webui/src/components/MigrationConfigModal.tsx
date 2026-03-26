@@ -40,7 +40,7 @@ interface Props {
 
 export default function MigrationConfigModal({ open, config, apiModeAvailable, suggestedSourceVersion, suggestedTargetVersion, onSave, onClose }: Props) {
   const { t } = useTranslation()
-  const [mode, setMode] = useState<'MANUAL' | 'API'>(config?.mode ?? 'MANUAL')
+  const [mode, setMode] = useState<'MANUAL' | 'API'>(config?.mode ?? (apiModeAvailable ? 'API' : 'MANUAL'))
   const [sql, setSql] = useState(config?.sql ?? '')
   const [fileName, setFileName] = useState(config?.fileName ?? '')
   const [sourceVersion, setSourceVersion] = useState(config?.sourceVersion ?? '')
@@ -51,11 +51,12 @@ export default function MigrationConfigModal({ open, config, apiModeAvailable, s
 
   useEffect(() => {
     if (open) {
-      setMode(config?.mode ?? 'MANUAL')
+      setMode(config?.mode ?? (apiModeAvailable ? 'API' : 'MANUAL'))
       setSql(config?.sql ?? '')
       setFileName(config?.fileName ?? '')
-      setSourceVersion(config?.sourceVersion ?? '')
-      setTargetVersion(config?.targetVersion ?? '')
+      const autoFill = apiModeAvailable && !config?.sourceVersion && !config?.targetVersion
+      setSourceVersion(autoFill && suggestedSourceVersion ? suggestedSourceVersion : (config?.sourceVersion ?? ''))
+      setTargetVersion(autoFill && suggestedTargetVersion ? suggestedTargetVersion : (config?.targetVersion ?? ''))
       setValidateBeforeExecute(config?.validateBeforeExecute ?? true)
       setError('')
     }
