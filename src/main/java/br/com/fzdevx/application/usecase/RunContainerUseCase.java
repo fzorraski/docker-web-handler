@@ -231,7 +231,7 @@ public class RunContainerUseCase {
                 container = createContainer(imageRef, request, eventSink);
                 createdContainerId = container.getId();
             } catch (Exception e) {
-                eventSink.accept(ContainerEvent.error("Creating", "Failed to create container: " + e.getMessage()));
+                eventSink.accept(ContainerEvent.error("Creating", sanitizeCreateError(e.getMessage(), request.getContainerName())));
                 return;
             }
 
@@ -486,5 +486,20 @@ public class RunContainerUseCase {
             }
         }
         return null;
+    }
+
+    private String sanitizeCreateError(String message, String containerName) {
+        if (message != null && message.contains("is already in use by container")) {
+            return "A container named \"" + containerName + "\" already exists. Remove or rename it first.";
+        }
+        // Strip Docker API JSON noise (Status NNN: {"message":"..."})
+        if (message != null && message.contains("{\"message\":\"")) {
+            int start = message.indexOf("{\"message\":\"") + 12;
+            int end = message.lastIndexOf("\"}");
+            if (end > start) {
+                return message.substring(start, end);
+            }
+        }
+        return "Failed to create container" + (message != null ? ": " + message : ".");
     }
 }
