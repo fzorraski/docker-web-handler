@@ -126,6 +126,7 @@ export default function ContainersPage() {
   const [memoryGuardEnabled, setMemoryGuardEnabled] = useState(false)
   const [memoryStatus, setMemoryStatus] = useState<HostMemoryStatus | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [remoteLockIds, setRemoteLockIds] = useState<Set<string>>(new Set())
 
   // Extracted hooks
   const loadContainers = useCallback(() => {
@@ -221,7 +222,15 @@ export default function ContainersPage() {
     }).catch(() => setSchedulingFeatureEnabled(false))
   }, [loadContainers])
 
-  useEffect(() => subscribeContainerUpdates(loadContainers), [loadContainers])
+  useEffect(() => subscribeContainerUpdates(
+    loadContainers,
+    (ids) => setRemoteLockIds(prev => new Set([...prev, ...ids])),
+    (ids) => setRemoteLockIds(prev => {
+      const next = new Set(prev)
+      ids.forEach(id => next.delete(id))
+      return next
+    }),
+  ), [loadContainers])
 
   useEffect(() => { refreshMemoryStatus() }, [refreshMemoryStatus, containers])
 
@@ -586,7 +595,7 @@ export default function ContainersPage() {
                 </TableRow>
               )}
               {pagination.paginatedData.map((c) => {
-                const isBulkOperating = actions.bulkOperatingIds.has(c.containerId)
+                const isBulkOperating = actions.bulkOperatingIds.has(c.containerId) || remoteLockIds.has(c.containerId)
                 return (
                 <TableRow
                   key={c.containerId}

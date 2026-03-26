@@ -26,6 +26,14 @@ export async function stopContainer(id: string): Promise<boolean> {
   return handleResponse(res)
 }
 
+export async function lockContainers(ids: string[]): Promise<void> {
+  await postJson('/api/containers/sse/lock', ids)
+}
+
+export async function unlockContainers(ids: string[]): Promise<void> {
+  await postJson('/api/containers/sse/unlock', ids)
+}
+
 export class MemoryGuardError extends Error {
   constructor(public readonly availableMb: number, public readonly thresholdMb: number) {
     super('MEMORY_GUARD')

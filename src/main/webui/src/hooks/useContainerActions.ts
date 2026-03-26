@@ -7,6 +7,8 @@ import {
   cancelDatabaseDeletion,
   cancelExpiration,
   extendExpiration,
+  lockContainers,
+  unlockContainers,
   MemoryGuardError,
 } from '../services/containerService'
 import { streamRemoveContainer } from '../services/sseService'
@@ -41,9 +43,11 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
   ): Promise<{ succeeded: number; failed: number }> => {
     let succeeded = 0
     let failed = 0
-    const pending = new Set(items.map(c => c.containerId))
+    const ids = items.map(c => c.containerId)
+    const pending = new Set(ids)
     setBulkOperatingIds(new Set(pending))
     setBulkProgress({ current: 0, total: items.length, action })
+    await lockContainers(ids).catch(() => {})
     for (const item of items) {
       try {
         const ok = await fn(item)
@@ -60,9 +64,11 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
       pending.delete(item.containerId)
       setBulkOperatingIds(new Set(pending))
       setBulkProgress({ current: succeeded + failed, total: items.length, action })
+      await unlockContainers([item.containerId]).catch(() => {})
     }
     setBulkProgress(null)
     setBulkOperatingIds(new Set())
+    await unlockContainers(ids).catch(() => {}) // safety net: clear any remaining locks
     return { succeeded, failed }
   }, [])
 

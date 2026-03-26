@@ -199,9 +199,23 @@ export function streamContainerStats(
   return () => es.close()
 }
 
-export function subscribeContainerUpdates(onRefresh: () => void): () => void {
+export function subscribeContainerUpdates(
+  onRefresh: () => void,
+  onLocking?: (ids: string[]) => void,
+  onUnlocking?: (ids: string[]) => void,
+): () => void {
   const es = new EventSource('/api/containers/sse/updates')
   es.addEventListener('refresh', () => onRefresh())
+  if (onLocking) {
+    es.addEventListener('locking', (e) => {
+      try { onLocking(JSON.parse((e as MessageEvent).data)) } catch { /* ignore parse errors */ }
+    })
+  }
+  if (onUnlocking) {
+    es.addEventListener('unlocking', (e) => {
+      try { onUnlocking(JSON.parse((e as MessageEvent).data)) } catch { /* ignore parse errors */ }
+    })
+  }
   es.onerror = () => {
     // EventSource auto-reconnects on error; no action needed
   }
