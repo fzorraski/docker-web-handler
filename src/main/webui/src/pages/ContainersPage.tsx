@@ -629,7 +629,7 @@ export default function ContainersPage() {
                                 color="info"
                                 variant="outlined"
                                 sx={{ height: 20, fontSize: '0.7rem', '& .MuiChip-icon': { fontSize: 14 } }}
-                                onClick={() => dialogs.openSchedule(c)}
+                                onClick={() => dialogs.openSchedule(c, 1)}
                               />
                             </Tooltip>
                           )
@@ -1108,6 +1108,7 @@ export default function ContainersPage() {
         containerName={dialogs.schedule.containerName}
         expiresAt={dialogs.schedule.expiresAt}
         passwordRequired={schedulingPwRequired}
+        initialTab={dialogs.schedule.initialTab}
         onClose={() => {
           dialogs.closeSchedule()
           if (schedulingFeatureEnabled) loadContainerSchedules()

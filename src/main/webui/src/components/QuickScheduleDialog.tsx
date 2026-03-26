@@ -26,12 +26,13 @@ interface Props {
   expiresAt?: string
   onClose: () => void
   passwordRequired?: boolean
+  initialTab?: number
 }
 
-export default function QuickScheduleDialog({ open, containerId, containerName, expiresAt, onClose, passwordRequired = true }: Props) {
+export default function QuickScheduleDialog({ open, containerId, containerName, expiresAt, onClose, passwordRequired = true, initialTab = 0 }: Props) {
   const { t } = useTranslation()
   const { notify } = useNotification()
-  const [tab, setTab] = useState(0)
+  const [tab, setTab] = useState(initialTab)
   const [schedules, setSchedules] = useState<ContainerSchedule[]>([])
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const pendingSchedule = pendingDeleteId ? schedules.find(s => s.id === pendingDeleteId) : null
@@ -47,6 +48,7 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
   useEffect(() => {
     if (open) {
       loadSchedules()
+      setTab(initialTab)
       setName('')
       setAction('START')
       setScheduleType('ONE_TIME')
@@ -54,7 +56,7 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
       setScheduledAt(dayjs().add(1, 'hour'))
       setPendingCreate(false)
     }
-  }, [open, containerId])
+  }, [open, containerId, initialTab])
 
   function loadSchedules() {
     getSchedulesByContainer(containerId).then(setSchedules).catch(() => setSchedules([]))

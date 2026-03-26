@@ -27,6 +27,7 @@ export function useContainerDialogs() {
   const [scheduleContainerName, setScheduleContainerName] = useState('')
   const [scheduleExpiresAt, setScheduleExpiresAt] = useState<string | undefined>(undefined)
   const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [scheduleInitialTab, setScheduleInitialTab] = useState(0)
 
   // Cleanup
   const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false)
@@ -70,10 +71,11 @@ export function useContainerDialogs() {
 
   const closeMigration = useCallback(() => setMigrationOpen(false), [])
 
-  const openSchedule = useCallback((c: DockerContainer) => {
+  const openSchedule = useCallback((c: DockerContainer, initialTab = 0) => {
     setScheduleContainerId(c.containerId)
     setScheduleContainerName(c.names)
     setScheduleExpiresAt(c.expiresAt)
+    setScheduleInitialTab(initialTab)
     setScheduleOpen(true)
   }, [])
 
@@ -92,7 +94,7 @@ export function useContainerDialogs() {
     migration: { open: migrationOpen, repo: migrationRepo, db: migrationDb },
     openMigration, closeMigration,
 
-    schedule: { open: scheduleOpen, containerId: scheduleContainerId, containerName: scheduleContainerName, expiresAt: scheduleExpiresAt },
+    schedule: { open: scheduleOpen, containerId: scheduleContainerId, containerName: scheduleContainerName, expiresAt: scheduleExpiresAt, initialTab: scheduleInitialTab },
     openSchedule, closeSchedule,
 
     cleanup: { open: cleanupDialogOpen, minDays: cleanupMinDays, running: cleanupRunning },
