@@ -382,9 +382,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       if (!restoreTargetDb.trim()) return notify(t('newContainer.enterTargetDbWarning'), 'warning')
     }
 
-    const needsPassword = dbMode === 'existing' && (
-      (migrationEnabled && migrationConfig) || deleteDbOnExpiration
-    )
+    const needsPassword =
+      (dbMode === 'existing' && migrationEnabled && migrationConfig) || deleteDbOnExpiration
     if (needsPassword && !operationsPasswordRef.current) {
       setOperationsPasswordOpen(true)
       return
