@@ -124,6 +124,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const [migrationEnabled, setMigrationEnabled] = useState(false)
   const [migrationConfig, setMigrationConfig] = useState<MigrationConfig | null>(null)
   const [migrationModalOpen, setMigrationModalOpen] = useState(false)
+  const [opsPwRequired, setOpsPwRequired] = useState(true)
   const [webhookFeatureEnabled, setWebhookFeatureEnabled] = useState(false)
   const [webhookNotify, setWebhookNotify] = useState(false)
   const [operationsPassword, setOperationsPassword] = useState('')
@@ -157,6 +158,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         setDbDeletionEnabled(f.deletionOnExpiration)
         setDumpFeatureEnabled(f.dump)
         setMigrationFeatureEnabled(f.migration)
+        setOpsPwRequired(f.operationsPasswordRequired)
         setWebhookFeatureEnabled(f.webhook)
         if (f.dump) {
           listDumps().then(setAllDumps).catch(() => setAllDumps([]))
@@ -382,8 +384,9 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       if (!restoreTargetDb.trim()) return notify(t('newContainer.enterTargetDbWarning'), 'warning')
     }
 
-    const needsPassword =
+    const needsPassword = opsPwRequired && (
       (dbMode === 'existing' && migrationEnabled && migrationConfig) || deleteDbOnExpiration
+    )
     if (needsPassword && !operationsPasswordRef.current) {
       setOperationsPasswordOpen(true)
       return
@@ -469,8 +472,9 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
           }, 1500)
         },
       )
-    } catch {
-      notify(t('common.unexpectedError'), 'error')
+    } catch (e) {
+      operationsPasswordRef.current = ''
+      notify(e instanceof Error && e.message ? e.message : t('common.unexpectedError'), 'error')
     }
   }
 
