@@ -39,6 +39,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.function.Consumer;
@@ -68,9 +69,70 @@ public class RestoreDumpUseCase {
     ResourceCounterService resourceCounterService;
 
     public static final String EPHEMERAL_LABEL = "docker-web-handler.ephemeral";
+    private static final long PROGRESS_THROTTLE_MS = 200;
 
     private static final Pattern WARNINGS_IGNORED_PATTERN =
             Pattern.compile("errors ignored on restore:\\s*(\\d+)");
+
+    record OutputMonitorResult(int lineCount, int warningsIgnored) {}
+
+    /**
+     * Starts reader and reporter threads that drain an InputStream and send throttled SSE progress.
+     * Call {@code awaitCompletion()} after the data source finishes to join both threads.
+     */
+    private record OutputMonitor(Thread reader, Thread reporter,
+                                 AtomicInteger lineCount, AtomicInteger warningsIgnored) {
+        OutputMonitorResult awaitCompletion(Consumer<ContainerEvent> eventSink, String stepName)
+                throws InterruptedException {
+            reader.join();
+            reporter.interrupt();
+            reporter.join(2000);
+            eventSink.accept(ContainerEvent.progress(stepName,
+                    "Restore output finished (" + lineCount.get() + " lines).", -1));
+            return new OutputMonitorResult(lineCount.get(), warningsIgnored.get());
+        }
+    }
+
+    private OutputMonitor startOutputMonitor(InputStream input, String stepName,
+                                              Consumer<ContainerEvent> eventSink) {
+        AtomicInteger warningsIgnored = new AtomicInteger(0);
+        AtomicInteger lineCount = new AtomicInteger(0);
+        AtomicReference<String> lastLine = new AtomicReference<>("");
+
+        Thread outputReader = Thread.ofVirtual().start(() -> {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(input))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    lineCount.incrementAndGet();
+                    lastLine.set(line);
+                    Matcher m = WARNINGS_IGNORED_PATTERN.matcher(line);
+                    if (m.find()) {
+                        warningsIgnored.set(Integer.parseInt(m.group(1)));
+                    }
+                }
+            } catch (Exception e) {
+                Log.warnf("Error reading %s output: %s", stepName, e.getMessage());
+            }
+        });
+
+        Thread progressReporter = Thread.ofVirtual().start(() -> {
+            try {
+                int lastReported = 0;
+                while (outputReader.isAlive()) {
+                    Thread.sleep(PROGRESS_THROTTLE_MS);
+                    int count = lineCount.get();
+                    if (count > lastReported) {
+                        lastReported = count;
+                        eventSink.accept(ContainerEvent.progress(stepName,
+                                lastLine.get() + "  (" + count + " lines processed)", -1));
+                    }
+                }
+            } catch (InterruptedException ignored) {
+            }
+        });
+
+        return new OutputMonitor(outputReader, progressReporter, lineCount, warningsIgnored);
+    }
 
     private record RestoreResult(int exitCode, int warningsIgnored) {}
 
@@ -407,69 +469,62 @@ public class RestoreDumpUseCase {
 
             if (ctx.cancelled.get()) return new RestoreResult(-1, 0);
 
-            // Build restore command
+            // Copy dump file into the ephemeral container to avoid stdin/stdout multiplexing deadlock
+            String containerPath = "/restore/" + dumpFile.getFileName().toString();
+            ExecCreateCmdResponse mkdirExec = dockerClient.execCreateCmd(containerId)
+                    .withCmd("mkdir", "-p", "/restore")
+                    .exec();
+            dockerClient.execStartCmd(mkdirExec.getId()).exec(new ExecStartResultCallback())
+                    .awaitCompletion();
+            dockerClient.copyArchiveToContainerCmd(containerId)
+                    .withHostResource(dumpFile.toAbsolutePath().toString())
+                    .withRemotePath("/restore/")
+                    .exec();
+
+            // Build restore command with file path (no stdin piping)
             List<String> cmd = new ArrayList<>();
             if (dump.getFormat() == DatabaseDump.Format.SQL) {
                 cmd.addAll(List.of("psql",
                         "-h", pgInfo.host(),
                         "-p", String.valueOf(pgInfo.port()),
                         "-U", pgInfo.user(),
-                        "-d", targetDatabase));
+                        "-d", targetDatabase,
+                        "-f", containerPath));
             } else {
                 cmd.addAll(List.of("pg_restore",
                         "-h", pgInfo.host(),
                         "-p", String.valueOf(pgInfo.port()),
                         "-U", pgInfo.user(),
                         "-d", targetDatabase,
-                        "--no-owner", "--no-privileges"));
+                        "--no-owner", "--no-privileges",
+                        containerPath));
             }
 
-            // Exec restore with stdin pipe
             ExecCreateCmdResponse exec = dockerClient.execCreateCmd(containerId)
                     .withCmd(cmd.toArray(String[]::new))
-                    .withAttachStdin(true)
                     .withAttachStdout(true)
                     .withAttachStderr(true)
                     .withEnv(List.of("PGPASSWORD=" + pgInfo.password()))
                     .exec();
 
-            PipedInputStream stdoutPipe = new PipedInputStream();
+            PipedInputStream stdoutPipe = new PipedInputStream(65536);
             PipedOutputStream stdoutSink = new PipedOutputStream(stdoutPipe);
 
-            InputStream dumpInput = Files.newInputStream(dumpFile);
-
             ExecStartResultCallback callback = dockerClient.execStartCmd(exec.getId())
-                    .withStdIn(dumpInput)
                     .exec(new ExecStartResultCallback(stdoutSink, stdoutSink));
 
-            AtomicInteger warningsIgnored = new AtomicInteger(0);
-
-            Thread outputReader = Thread.ofVirtual().start(() -> {
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(stdoutPipe))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        eventSink.accept(ContainerEvent.progress("Restoring", line, -1));
-                        Matcher m = WARNINGS_IGNORED_PATTERN.matcher(line);
-                        if (m.find()) {
-                            warningsIgnored.set(Integer.parseInt(m.group(1)));
-                        }
-                    }
-                } catch (Exception e) {
-                    Log.warnf("Error reading restore output: %s", e.getMessage());
-                }
-            });
+            OutputMonitor monitor = startOutputMonitor(stdoutPipe, "Restoring", eventSink);
 
             callback.awaitCompletion();
-            dumpInput.close();
             stdoutSink.close();
-            outputReader.join();
+            OutputMonitorResult monitorResult = monitor.awaitCompletion(eventSink, "Restoring");
 
             if (ctx.cancelled.get()) return new RestoreResult(-1, 0);
 
             InspectExecResponse inspectResponse = dockerClient.inspectExecCmd(exec.getId()).exec();
             Long exitCodeLong = inspectResponse.getExitCodeLong();
             int exitCode = exitCodeLong != null ? exitCodeLong.intValue() : -1;
-            return new RestoreResult(exitCode, warningsIgnored.get());
+            return new RestoreResult(exitCode, monitorResult.warningsIgnored());
 
         } finally {
             ctx.ephemeralContainerId = null;
@@ -516,22 +571,14 @@ public class RestoreDumpUseCase {
         pb.environment().put("PGPASSWORD", pgInfo.password());
         pb.redirectErrorStream(true);
 
-        int warningsIgnored = 0;
         Process process = pb.start();
         ctx.localProcess = process;
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                eventSink.accept(ContainerEvent.progress("Restoring", line, -1));
-                Matcher m = WARNINGS_IGNORED_PATTERN.matcher(line);
-                if (m.find()) {
-                    warningsIgnored = Integer.parseInt(m.group(1));
-                }
-            }
+        try {
+            OutputMonitor monitor = startOutputMonitor(process.getInputStream(), "Restoring", eventSink);
+            OutputMonitorResult monitorResult = monitor.awaitCompletion(eventSink, "Restoring");
+            return new RestoreResult(process.waitFor(), monitorResult.warningsIgnored());
         } finally {
             ctx.localProcess = null;
         }
-
-        return new RestoreResult(process.waitFor(), warningsIgnored);
     }
 }
