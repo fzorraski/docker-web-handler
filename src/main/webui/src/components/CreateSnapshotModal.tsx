@@ -16,6 +16,7 @@ import {
   Typography,
   FormControlLabel,
   Switch,
+  Autocomplete,
 } from '@mui/material'
 import { Close, CameraAlt, Download } from '@mui/icons-material'
 import { MobileDateTimePicker } from '@mui/x-date-pickers/MobileDateTimePicker'
@@ -241,25 +242,33 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
                     disabled
                   />
                 ) : (
-                  <TextField
-                    select
-                    fullWidth
-                    label={t('createSnapshot.sourceDatabase')}
-                    value={selectedDb}
-                    onChange={(e) => setSelectedDb(e.target.value)}
-                    size="small"
+                  <Autocomplete
+                    freeSolo
+                    options={databases}
+                    value={selectedDb || null}
+                    onChange={(_e, v) => setSelectedDb(typeof v === 'string' ? v : '')}
+                    onInputChange={(_e, v) => setSelectedDb(v)}
                     disabled={!selectedRepo || dbLoading}
-                    slotProps={{
-                      input: {
-                        endAdornment: dbLoading ? <CircularProgress size={20} /> : null,
-                      },
-                    }}
-                  >
-                    <MenuItem value="">{t('createSnapshot.selectDatabase')}</MenuItem>
-                    {databases.map((db) => (
-                      <MenuItem key={db} value={db}>{db}</MenuItem>
-                    ))}
-                  </TextField>
+                    size="small"
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        fullWidth
+                        label={t('createSnapshot.sourceDatabase')}
+                        slotProps={{
+                          input: {
+                            ...params.InputProps,
+                            endAdornment: (
+                              <>
+                                {dbLoading ? <CircularProgress size={20} /> : null}
+                                {params.InputProps.endAdornment}
+                              </>
+                            ),
+                          },
+                        }}
+                      />
+                    )}
+                  />
                 )}
               </Grid>
             </Grid>
