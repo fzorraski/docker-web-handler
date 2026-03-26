@@ -3,6 +3,7 @@ package br.com.fzdevx.interfaces.rest;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.application.dto.CreateSnapshotRequest;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
+import br.com.fzdevx.infrastructure.persistence.SnapshotStorageService;
 import br.com.fzdevx.infrastructure.config.RequestStash;
 import br.com.fzdevx.application.usecase.CreateSnapshotUseCase;
 import br.com.fzdevx.interfaces.rest.util.SseHelper;
@@ -27,6 +28,9 @@ public class SnapshotSseController {
     @Inject
     DumpStorageService dumpStorageService;
 
+    @Inject
+    SnapshotStorageService snapshotStorageService;
+
     @POST
     @Path("/create/prepare")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -41,6 +45,12 @@ public class SnapshotSseController {
         if (!dumpStorageService.validateOperationsPassword(request.getPassword())) {
             return jakarta.ws.rs.core.Response.status(jakarta.ws.rs.core.Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "Invalid operations password."))
+                    .build();
+        }
+
+        if (snapshotStorageService.isStorageFull()) {
+            return jakarta.ws.rs.core.Response.status(507)
+                    .entity(Map.of("error", "Snapshot storage quota exceeded. Free up space before creating a new snapshot."))
                     .build();
         }
 

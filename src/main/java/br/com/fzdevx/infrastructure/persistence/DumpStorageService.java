@@ -84,6 +84,10 @@ public class DumpStorageService {
         return maxSizeMb;
     }
 
+    public boolean isStorageFull() {
+        return getTotalStorageBytes() >= (long) maxSizeMb * 1024 * 1024;
+    }
+
     public boolean validateUploadPassword(String password) {
         return passwordValidationService.validateUploadPassword(password);
     }

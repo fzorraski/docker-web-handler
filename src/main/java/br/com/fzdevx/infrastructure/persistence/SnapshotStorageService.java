@@ -69,6 +69,10 @@ public class SnapshotStorageService {
         return maxSizeMb;
     }
 
+    public boolean isStorageFull() {
+        return getTotalStorageBytes() >= (long) maxSizeMb * 1024 * 1024;
+    }
+
     public StoreResult storeFromStream(InputStream pgDumpOutput, DatabaseSnapshot snapshot) throws IOException {
         Path dir = Path.of(storageDir);
         Files.createDirectories(dir);

@@ -87,6 +87,12 @@ public class DatabaseDumpController {
                         .build();
             }
 
+            if (dumpStorageService.isStorageFull()) {
+                return Response.status(507)
+                        .entity(Map.of("error", "Storage quota exceeded. Free up space before uploading."))
+                        .build();
+            }
+
             List<InputPart> fileParts = form.get("file");
             if (fileParts == null || fileParts.isEmpty()) {
                 return Response.status(Response.Status.BAD_REQUEST)
