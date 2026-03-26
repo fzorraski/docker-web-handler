@@ -614,7 +614,10 @@ export default function SchedulesPage() {
         onClose={() => { setContextMenuPos(null); setContextSchedule(null) }}
         anchorReference="anchorPosition"
         anchorPosition={contextMenuPos ?? undefined}
-        slotProps={{ paper: { sx: { minWidth: 200 } } }}
+        slotProps={{
+          root: { onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); setContextMenuPos(null); setContextSchedule(null) } },
+          paper: { sx: { minWidth: 200 } },
+        }}
       >
         {contextSchedule && [
           contextSchedule.enabled && (

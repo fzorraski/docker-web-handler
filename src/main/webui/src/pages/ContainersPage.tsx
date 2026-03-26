@@ -833,7 +833,7 @@ export default function ContainersPage() {
             transformOrigin: { horizontal: 'right', vertical: 'top' },
             anchorOrigin: { horizontal: 'right', vertical: 'bottom' },
           })}
-          slotProps={{ paper: { sx: { minWidth: 200 } } }}
+          slotProps={{ ...actionMenu.menuSlotProps, paper: { sx: { minWidth: 200 } } }}
         >
           {actionMenu.target && [
             isUp(actionMenu.target.status) ? (

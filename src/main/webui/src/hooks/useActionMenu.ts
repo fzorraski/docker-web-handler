@@ -1,5 +1,5 @@
 // Generic context menu / action menu state for table row interactions. Reusable across pages.
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 
 export function useActionMenu<T>() {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
@@ -26,11 +26,23 @@ export function useActionMenu<T>() {
 
   const menuOpen = Boolean(anchorEl) || Boolean(contextMenuPos)
 
+  // Prevent browser context menu on the MUI Menu backdrop so right-clicking
+  // another row closes this menu instead of showing the browser menu.
+  const menuSlotProps = useMemo(() => ({
+    root: {
+      onContextMenu: (e: React.MouseEvent) => {
+        e.preventDefault()
+        close()
+      },
+    },
+  }), [close])
+
   return {
     anchorEl,
     contextMenuPos,
     target,
     menuOpen,
+    menuSlotProps,
     openByAnchor,
     openByPosition,
     close,

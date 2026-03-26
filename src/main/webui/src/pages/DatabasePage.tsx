@@ -955,7 +955,7 @@ export default function DatabasePage() {
         onClose={() => dumpMenu.close()}
         anchorReference="anchorPosition"
         anchorPosition={dumpMenu.contextMenuPos ?? undefined}
-        slotProps={{ paper: { sx: { minWidth: 200 } } }}
+        slotProps={{ ...dumpMenu.menuSlotProps, paper: { sx: { minWidth: 200 } } }}
       >
         {dumpMenu.target && [
           <MenuItem
@@ -1000,7 +1000,7 @@ export default function DatabasePage() {
         onClose={() => snapMenu.close()}
         anchorReference="anchorPosition"
         anchorPosition={snapMenu.contextMenuPos ?? undefined}
-        slotProps={{ paper: { sx: { minWidth: 200 } } }}
+        slotProps={{ ...snapMenu.menuSlotProps, paper: { sx: { minWidth: 200 } } }}
       >
         {snapMenu.target && [
           <MenuItem

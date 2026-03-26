@@ -361,7 +361,7 @@ export default function ImagesPage() {
         onClose={imageMenu.close}
         anchorReference="anchorPosition"
         anchorPosition={imageMenu.contextMenuPos ?? undefined}
-        slotProps={{ paper: { sx: { minWidth: 200 } } }}
+        slotProps={{ ...imageMenu.menuSlotProps, paper: { sx: { minWidth: 200 } } }}
       >
         {imageMenu.target && (
           <MenuItem
