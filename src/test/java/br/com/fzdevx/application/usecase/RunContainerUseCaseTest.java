@@ -257,6 +257,7 @@ class RunContainerUseCaseTest {
 
     @Test
     void execute_deleteDatabaseWithoutPassword_sendsError() {
+        when(dumpStorageService.validateOperationsPassword(null)).thenReturn(false);
         RunContainerRequest req = validRequest();
         req.setDeleteDatabaseOnExpiration(true);
         req.setOperationsPasswordValidated(false);
@@ -264,6 +265,19 @@ class RunContainerUseCaseTest {
         useCase.execute(req, events::add);
 
         assertLastEventError("Validating", "Invalid operations password");
+    }
+
+    @Test
+    void execute_deleteDatabaseWithoutPassword_passwordNotRequired_succeeds() {
+        when(dumpStorageService.validateOperationsPassword(null)).thenReturn(true);
+        stubHappyPath();
+        RunContainerRequest req = validRequest();
+        req.setDeleteDatabaseOnExpiration(true);
+        req.setOperationsPasswordValidated(false);
+
+        useCase.execute(req, events::add);
+
+        assertTrue(hasEvent(EventType.SUCCESS));
     }
 
     // ---- whitelist ----
