@@ -98,12 +98,24 @@ public class RunContainerUseCase {
     @ConfigProperty(name = "container.log-rotation.max-files", defaultValue = "3")
     String logRotationMaxFiles;
 
-    private final ConcurrentHashMap<String, AtomicBoolean> activeRuns = new ConcurrentHashMap<>();
+    static class RunContext {
+        final AtomicBoolean cancelled = new AtomicBoolean(false);
+        volatile String restoreRepository;
+        volatile String restoreTargetDatabase;
+        volatile boolean restoreCreatedDatabase;
+    }
+
+    private final ConcurrentHashMap<String, RunContext> activeRuns = new ConcurrentHashMap<>();
 
     public boolean cancel(String ticket) {
-        AtomicBoolean flag = activeRuns.get(ticket);
-        if (flag == null) return false;
-        flag.set(true);
+        RunContext ctx = activeRuns.get(ticket);
+        if (ctx == null) return false;
+        ctx.cancelled.set(true);
+        String repo = ctx.restoreRepository;
+        String db = ctx.restoreTargetDatabase;
+        if (repo != null && db != null) {
+            restoreDumpUseCase.cancel(repo, db);
+        }
         return true;
     }
 
@@ -112,9 +124,9 @@ public class RunContainerUseCase {
     }
 
     public void execute(RunContainerConfig request, Consumer<ContainerEvent> eventSink, String ticket) {
-        AtomicBoolean cancelled = new AtomicBoolean(false);
+        RunContext runCtx = new RunContext();
         if (ticket != null) {
-            activeRuns.put(ticket, cancelled);
+            activeRuns.put(ticket, runCtx);
         }
 
         String createdContainerId = null;
@@ -175,7 +187,7 @@ public class RunContainerUseCase {
                 return;
             }
 
-            if (cancelled.get()) {
+            if (runCtx.cancelled.get()) {
                 eventSink.accept(ContainerEvent.error("Validating", "Operation cancelled."));
                 return;
             }
@@ -205,7 +217,7 @@ public class RunContainerUseCase {
             String imageRef = registryService.buildFullImageRef(request.getRepository(), request.getTag());
             eventSink.accept(ContainerEvent.info("Validating", "All validations passed."));
 
-            if (cancelled.get()) {
+            if (runCtx.cancelled.get()) {
                 eventSink.accept(ContainerEvent.error("Pulling", "Operation cancelled."));
                 return;
             }
@@ -219,7 +231,7 @@ public class RunContainerUseCase {
                 return;
             }
 
-            if (cancelled.get()) {
+            if (runCtx.cancelled.get()) {
                 eventSink.accept(ContainerEvent.error("Pulling", "Operation cancelled."));
                 return;
             }
@@ -237,7 +249,7 @@ public class RunContainerUseCase {
                 return;
             }
 
-            if (cancelled.get()) {
+            if (runCtx.cancelled.get()) {
                 eventSink.accept(ContainerEvent.error("Creating", "Operation cancelled. Removing created container..."));
                 return;
             }
@@ -247,10 +259,23 @@ public class RunContainerUseCase {
             boolean hasDump = request.getDumpId() != null && !request.getDumpId().isBlank();
             boolean hasSnapshot = request.getSnapshotId() != null && !request.getSnapshotId().isBlank();
             if (hasDump || hasSnapshot) {
-                if (cancelled.get()) {
+                if (runCtx.cancelled.get()) {
                     eventSink.accept(ContainerEvent.error("Restoring", "Operation cancelled."));
                     return;
                 }
+
+                boolean dbExistedBefore = true;
+                if (request.isCreateDatabase() && request.getDatabaseName() != null
+                        && !request.getDatabaseName().isBlank()
+                        && databaseService.hasDatabaseConfig(request.getRepository())) {
+                    try {
+                        dbExistedBefore = databaseService.databaseExists(
+                                request.getRepository(), request.getDatabaseName());
+                    } catch (Exception e) {
+                        io.quarkus.logging.Log.warnf("Failed to check database existence: %s", e.getMessage());
+                    }
+                }
+
                 eventSink.accept(ContainerEvent.info("Restoring", "Starting restore..."));
                 RestoreDumpRequest restoreReq = new RestoreDumpRequest();
                 restoreReq.setDumpId(hasDump ? request.getDumpId() : null);
@@ -263,7 +288,19 @@ public class RunContainerUseCase {
                 restoreReq.setMigrationSql(request.getMigrationSql());
                 restoreReq.setMigrationSourceVersion(request.getMigrationSourceVersion());
                 restoreReq.setMigrationTargetVersion(request.getMigrationTargetVersion());
-                boolean restoreSuccess = restoreDumpUseCase.execute(restoreReq, eventSink);
+
+                runCtx.restoreRepository = request.getRepository();
+                runCtx.restoreTargetDatabase = request.getDatabaseName();
+                boolean restoreSuccess;
+                try {
+                    restoreSuccess = restoreDumpUseCase.execute(restoreReq, eventSink);
+                    if (restoreSuccess && request.isCreateDatabase() && !dbExistedBefore) {
+                        runCtx.restoreCreatedDatabase = true;
+                    }
+                } finally {
+                    runCtx.restoreRepository = null;
+                    runCtx.restoreTargetDatabase = null;
+                }
                 if (!restoreSuccess) {
                     return;
                 }
@@ -276,7 +313,7 @@ public class RunContainerUseCase {
                     eventSink.accept(ContainerEvent.error("Running Migration", "Invalid operations password."));
                     return;
                 }
-                if (cancelled.get()) {
+                if (runCtx.cancelled.get()) {
                     eventSink.accept(ContainerEvent.error("Running Migration", "Operation cancelled."));
                     return;
                 }
@@ -288,13 +325,13 @@ public class RunContainerUseCase {
                         request.getMigrationMode(), request.getMigrationSql(),
                         request.getMigrationSourceVersion(), request.getMigrationTargetVersion(),
                         request.getRepository(), request.getDatabaseName(), pgImage,
-                        pgInfo, eventSink, cancelled);
+                        pgInfo, eventSink, runCtx.cancelled);
                 if (!migrationOk) {
                     return;
                 }
             }
 
-            if (cancelled.get()) {
+            if (runCtx.cancelled.get()) {
                 eventSink.accept(ContainerEvent.error("Starting", "Operation cancelled."));
                 return;
             }
@@ -320,13 +357,24 @@ public class RunContainerUseCase {
                 activeRuns.remove(ticket);
             }
             // Clean up container if it was created but the operation was cancelled or failed after creation
-            if (createdContainerId != null && cancelled.get()) {
+            if (createdContainerId != null && runCtx.cancelled.get()) {
                 try {
                     dockerClient.removeContainerCmd(createdContainerId).withForce(true).exec();
                     eventSink.accept(ContainerEvent.info("Creating",
                             "Container removed due to cancellation."));
                 } catch (Exception e) {
                     io.quarkus.logging.Log.warnf("Failed to remove container after cancellation: %s", e.getMessage());
+                }
+            }
+            // Drop newly created database if cancelled after restore completed (Scenario B)
+            if (runCtx.cancelled.get() && runCtx.restoreCreatedDatabase) {
+                try {
+                    databaseService.dropDatabase(request.getRepository(), request.getDatabaseName());
+                    eventSink.accept(ContainerEvent.info("Restoring",
+                            "Dropped newly created database '" + request.getDatabaseName() + "' due to cancellation."));
+                } catch (Exception e) {
+                    io.quarkus.logging.Log.warnf("Failed to drop database '%s' after cancellation: %s",
+                            request.getDatabaseName(), e.getMessage());
                 }
             }
         }
