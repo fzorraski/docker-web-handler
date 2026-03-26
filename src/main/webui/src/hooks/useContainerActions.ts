@@ -75,44 +75,51 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
   const handleStop = useCallback(async (id: string, name: string) => {
     if (!(await confirm(t('containers.confirmStop', { name })))) return
     setStoppingId(id)
+    await lockContainers([id]).catch(() => {})
     try {
       const ok = await stopContainer(id)
-      notify(ok ? t('containers.containerStopped') : t('containers.failedToStop'), ok ? 'success' : 'error')
+      notify(ok ? t('containers.containerStopped', { name }) : t('containers.failedToStop', { name }), ok ? 'success' : 'error')
     } catch {
-      notify(t('containers.stopError'), 'error')
+      notify(t('containers.stopError', { name }), 'error')
     } finally {
       setStoppingId(null)
+      await unlockContainers([id]).catch(() => {})
     }
     loadContainers()
   }, [confirm, t, notify, loadContainers])
 
   const handleStart = useCallback(async (id: string, name: string) => {
     if (!(await confirm(t('containers.confirmStart', { name })))) return
+    await lockContainers([id]).catch(() => {})
     try {
       const ok = await startContainer(id)
-      notify(ok ? t('containers.containerStarted') : t('containers.failedToStart'), ok ? 'success' : 'error')
+      notify(ok ? t('containers.containerStarted', { name }) : t('containers.failedToStart', { name }), ok ? 'success' : 'error')
     } catch (e) {
       if (e instanceof MemoryGuardError) {
         notify(t('containers.memoryGuardBlocked', { available: e.availableMb, threshold: e.thresholdMb }), 'error')
       } else {
-        notify(t('containers.startError'), 'error')
+        notify(t('containers.startError', { name }), 'error')
       }
+    } finally {
+      await unlockContainers([id]).catch(() => {})
     }
     loadContainers()
   }, [confirm, t, notify, loadContainers])
 
   const handleRemove = useCallback(async (id: string, name: string) => {
     if (!(await confirm(t('containers.confirmRemove', { name })))) return
+    await lockContainers([id]).catch(() => {})
     removeSse.start(
       (onEvent, onDone, onError) => streamRemoveContainer(id, onEvent, onDone, onError),
       () => {
-        setTimeout(() => {
+        setTimeout(async () => {
           removeSse.reset()
-          notify(t('containers.containerRemoved'), 'success')
+          notify(t('containers.containerRemoved', { name }), 'success')
+          await unlockContainers([id]).catch(() => {})
           loadContainers()
         }, 1500)
       },
-      () => loadContainers(),
+      async () => { await unlockContainers([id]).catch(() => {}); loadContainers() },
     )
   }, [confirm, t, notify, loadContainers, removeSse])
 
