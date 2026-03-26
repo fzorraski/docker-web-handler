@@ -601,7 +601,11 @@ export default function ContainersPage() {
                   key={c.containerId}
                   hover={!isBulkOperating}
                   selected={selected.has(c.containerId)}
-                  sx={isBulkOperating ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
+                  sx={isBulkOperating ? { opacity: 0.5 } : undefined}
+                  onContextMenu={isBulkOperating ? undefined : (e) => {
+                    e.preventDefault()
+                    actionMenu.openByPosition({ top: e.clientY, left: e.clientX }, c)
+                  }}
                 >
                   <TableCell padding="checkbox">
                     {isBulkOperating
@@ -759,38 +763,46 @@ export default function ContainersPage() {
                   {vis.has('command') &&<TableCell>{c.command}</TableCell>}
                   {vis.has('actions') && (
                     <TableCell>
-                      <Box sx={{ display: 'flex', gap: 0.25, alignItems: 'center' }}>
-                        {isUp(c.status) ? (
-                          <Tooltip title={actions.stoppingId === c.containerId ? t('containers.stopping') : t('containers.stop')}>
-                            <span>
+                      {isBulkOperating ? (
+                        <Tooltip title={t('containers.logs.title', { name: c.names })}>
+                          <IconButton size="small" onClick={() => dialogs.openLogs(c)} sx={{ opacity: 1 }}>
+                            <Monitor />
+                          </IconButton>
+                        </Tooltip>
+                      ) : (
+                        <Box sx={{ display: 'flex', gap: 0.25, alignItems: 'center' }}>
+                          {isUp(c.status) ? (
+                            <Tooltip title={actions.stoppingId === c.containerId ? t('containers.stopping') : t('containers.stop')}>
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color="warning"
+                                  onClick={() => actions.handleStop(c.containerId, c.names)}
+                                  disabled={actions.stoppingId === c.containerId}
+                                >
+                                  {actions.stoppingId === c.containerId ? <CircularProgress size={18} color="inherit" /> : <Stop />}
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          ) : (
+                            <Tooltip title={t('containers.start')}>
                               <IconButton
                                 size="small"
-                                color="warning"
-                                onClick={() => actions.handleStop(c.containerId, c.names)}
-                                disabled={actions.stoppingId === c.containerId}
+                                color="primary"
+                                onClick={() => actions.handleStart(c.containerId, c.names)}
                               >
-                                {actions.stoppingId === c.containerId ? <CircularProgress size={18} color="inherit" /> : <Stop />}
+                                <PlayArrow />
                               </IconButton>
-                            </span>
-                          </Tooltip>
-                        ) : (
-                          <Tooltip title={t('containers.start')}>
-                            <IconButton
-                              size="small"
-                              color="primary"
-                              onClick={() => actions.handleStart(c.containerId, c.names)}
-                            >
-                              <PlayArrow />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                        <IconButton
-                          size="small"
-                          onClick={(e) => actionMenu.openByAnchor(e.currentTarget, c)}
-                        >
-                          <MoreVert />
-                        </IconButton>
-                      </Box>
+                            </Tooltip>
+                          )}
+                          <IconButton
+                            size="small"
+                            onClick={(e) => actionMenu.openByAnchor(e.currentTarget, c)}
+                          >
+                            <MoreVert />
+                          </IconButton>
+                        </Box>
+                      )}
                     </TableCell>
                   )}
                 </TableRow>
