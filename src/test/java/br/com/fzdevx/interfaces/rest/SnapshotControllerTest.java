@@ -57,6 +57,19 @@ class SnapshotControllerTest {
         assertTrue(controller.listSnapshots().isEmpty());
     }
 
+    @Test
+    void listSnapshots_filtersTemporarySnapshots() {
+        when(dumpStorageService.isEnabled()).thenReturn(true);
+        DatabaseSnapshot permanent = new DatabaseSnapshot("pg", "db1", DatabaseSnapshot.Format.CUSTOM, "keep");
+        DatabaseSnapshot temporary = new DatabaseSnapshot("pg", "db2", DatabaseSnapshot.Format.CUSTOM, "temp");
+        temporary.setTemporary(true);
+        when(snapshotStorageService.findAll()).thenReturn(List.of(permanent, temporary));
+
+        List<DatabaseSnapshot> result = controller.listSnapshots();
+        assertEquals(1, result.size());
+        assertEquals("keep", result.getFirst().getLabel());
+    }
+
     // ---- downloadSnapshot ----
 
     @Test
@@ -240,6 +253,20 @@ class SnapshotControllerTest {
 
         Map<String, Object> result = controller.getStorageInfo();
         assertEquals(3000L, result.get("totalBytes"));
+        assertEquals(1L, result.get("fileCount"));
+    }
+
+    @Test
+    void getStorageInfo_excludesTemporaryFromCount() {
+        when(dumpStorageService.isEnabled()).thenReturn(true);
+        DatabaseSnapshot permanent = new DatabaseSnapshot();
+        DatabaseSnapshot temporary = new DatabaseSnapshot();
+        temporary.setTemporary(true);
+        when(snapshotStorageService.findAll()).thenReturn(List.of(permanent, temporary));
+        when(snapshotStorageService.getTotalStorageBytes()).thenReturn(5000L);
+        when(snapshotStorageService.getMaxSizeMb()).thenReturn(200);
+
+        Map<String, Object> result = controller.getStorageInfo();
         assertEquals(1L, result.get("fileCount"));
     }
 
