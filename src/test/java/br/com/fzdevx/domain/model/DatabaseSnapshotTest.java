@@ -74,4 +74,17 @@ class DatabaseSnapshotTest {
         assertEquals("abc123", s.getMd5Hash());
         assertEquals(2048, s.getFileSize());
     }
+
+    @Test
+    void temporary_defaultsFalse() {
+        DatabaseSnapshot s = new DatabaseSnapshot();
+        assertFalse(s.isTemporary());
+    }
+
+    @Test
+    void temporary_setAndGet() {
+        DatabaseSnapshot s = new DatabaseSnapshot();
+        s.setTemporary(true);
+        assertTrue(s.isTemporary());
+    }
 }
