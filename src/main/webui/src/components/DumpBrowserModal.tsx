@@ -240,7 +240,7 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
                     },
                   }}
                 >
-                <TableRow hover>
+                <TableRow hover onDoubleClick={() => handleSelectDump(dump)} sx={{ cursor: 'pointer' }}>
                   <TableCell sx={{ fontWeight: 600 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                       {dump.originalFilename}
@@ -312,7 +312,7 @@ export default function DumpBrowserModal({ open, dumps, onClose, onSelect, onSel
                     },
                   }}
                 >
-                <TableRow hover>
+                <TableRow hover onDoubleClick={() => handleSelectSnapshot(snap)} sx={{ cursor: 'pointer' }}>
                   <TableCell sx={{ fontWeight: 600 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                       {snap.label || '-'}

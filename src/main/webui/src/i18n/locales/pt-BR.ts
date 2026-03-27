@@ -124,6 +124,11 @@ const ptBR: typeof en = {
     containerStarted: 'Container "{{name}}" iniciado.',
     failedToStart: 'Falha ao iniciar container "{{name}}".',
     startError: 'Ocorreu um erro inesperado ao iniciar "{{name}}".',
+    errors: {
+      portAlreadyAllocated: 'A porta {{port}} ja esta em uso.',
+      alreadyRunning: 'Container "{{name}}" ja esta em execucao.',
+      portConflictCount: '({{count}} conflito(s) de porta)',
+    },
     memoryGuardBlocked: 'Nao foi possivel iniciar o container. Memoria insuficiente: {{available}} MB disponivel, {{threshold}} MB necessario.',
     containerRemoved: 'Container "{{name}}" removido.',
     restoreInProgress: 'Restauracao em andamento',

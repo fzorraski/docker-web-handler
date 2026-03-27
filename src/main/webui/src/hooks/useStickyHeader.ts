@@ -36,10 +36,14 @@ export function useStickyHeader(containerRef: React.RefObject<HTMLElement | null
         thead.style.transform = `translateY(${dy}px)`
         thead.style.position = 'relative'
         thead.style.zIndex = '4'
+        thead.style.willChange = 'transform'
+        thead.style.boxShadow = '0 2px 6px rgba(0,0,0,0.25)'
       } else {
         thead.style.transform = ''
         thead.style.position = ''
         thead.style.zIndex = ''
+        thead.style.willChange = ''
+        thead.style.boxShadow = ''
       }
     }
 
@@ -58,6 +62,8 @@ export function useStickyHeader(containerRef: React.RefObject<HTMLElement | null
       thead.style.transform = ''
       thead.style.position = ''
       thead.style.zIndex = ''
+      thead.style.willChange = ''
+      thead.style.boxShadow = ''
     }
   }, [containerRef])
 }

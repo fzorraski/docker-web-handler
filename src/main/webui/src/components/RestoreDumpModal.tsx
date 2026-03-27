@@ -443,7 +443,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
             <Button
               variant="contained"
               color="primary"
-              onClick={() => sse.reset()}
+              onClick={() => { setCancelling(false); sse.reset() }}
             >
               {t('common.backToForm')}
             </Button>

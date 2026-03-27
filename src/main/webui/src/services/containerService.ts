@@ -40,7 +40,13 @@ export class MemoryGuardError extends Error {
   }
 }
 
-export async function startContainer(id: string): Promise<boolean> {
+export interface StartResult {
+  success: boolean
+  error?: string
+  detail?: string
+}
+
+export async function startContainer(id: string): Promise<StartResult> {
   const res = await postJson(API + 'start', { containerId: id })
   if (res.status === 503) {
     const data = await res.json().catch(() => ({}))
@@ -49,7 +55,8 @@ export async function startContainer(id: string): Promise<boolean> {
     }
     throw new Error(res.statusText)
   }
-  return handleResponse(res)
+  if (!res.ok) throw new Error(res.statusText)
+  return res.json()
 }
 
 export async function removeContainer(id: string): Promise<boolean> {

@@ -10,6 +10,7 @@ import {
   lockContainers,
   unlockContainers,
   MemoryGuardError,
+  type StartResult,
 } from '../services/containerService'
 import { streamRemoveContainer } from '../services/sseService'
 import { useSseOperation } from './useSseOperation'
@@ -38,11 +39,12 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
   const executeBulk = useCallback(async (
     items: DockerContainer[],
     action: string,
-    fn: (item: DockerContainer) => Promise<boolean>,
+    fn: (item: DockerContainer) => Promise<boolean | StartResult>,
     opts?: { onMemoryGuard?: (e: MemoryGuardError, remaining: number) => void },
-  ): Promise<{ succeeded: number; failed: number }> => {
+  ): Promise<{ succeeded: number; failed: number; errors: string[] }> => {
     let succeeded = 0
     let failed = 0
+    const errors: string[] = []
     const ids = items.map(c => c.containerId)
     const pending = new Set(ids)
     setBulkOperatingIds(new Set(pending))
@@ -50,8 +52,14 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
     await lockContainers(ids).catch(() => {})
     for (const item of items) {
       try {
-        const ok = await fn(item)
-        if (ok) succeeded++; else failed++
+        const result = await fn(item)
+        const ok = typeof result === 'boolean' ? result : result.success
+        if (ok) {
+          succeeded++
+        } else {
+          failed++
+          if (typeof result === 'object' && result.error) errors.push(result.error)
+        }
       } catch (e) {
         if (e instanceof MemoryGuardError && opts?.onMemoryGuard) {
           opts.onMemoryGuard(e, items.length - succeeded - failed)
@@ -69,7 +77,7 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
     setBulkProgress(null)
     setBulkOperatingIds(new Set())
     await unlockContainers(ids).catch(() => {}) // safety net: clear any remaining locks
-    return { succeeded, failed }
+    return { succeeded, failed, errors }
   }, [])
 
   const handleStop = useCallback(async (id: string, name: string) => {
@@ -88,12 +96,22 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
     loadContainers()
   }, [confirm, t, notify, loadContainers])
 
+  const formatStartError = useCallback((error: string | undefined, detail: string | undefined, name: string) => {
+    if (error === 'PORT_ALREADY_ALLOCATED' && detail) return t('containers.errors.portAlreadyAllocated', { port: detail })
+    if (error === 'ALREADY_RUNNING') return t('containers.errors.alreadyRunning', { name })
+    return t('containers.failedToStart', { name })
+  }, [t])
+
   const handleStart = useCallback(async (id: string, name: string) => {
     if (!(await confirm(t('containers.confirmStart', { name })))) return
     await lockContainers([id]).catch(() => {})
     try {
-      const ok = await startContainer(id)
-      notify(ok ? t('containers.containerStarted', { name }) : t('containers.failedToStart', { name }), ok ? 'success' : 'error')
+      const result = await startContainer(id)
+      if (result.success) {
+        notify(t('containers.containerStarted', { name }), 'success')
+      } else {
+        notify(formatStartError(result.error, result.detail, name), 'error')
+      }
     } catch (e) {
       if (e instanceof MemoryGuardError) {
         notify(t('containers.memoryGuardBlocked', { available: e.availableMb, threshold: e.thresholdMb }), 'error')
@@ -104,7 +122,7 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
       await unlockContainers([id]).catch(() => {})
     }
     loadContainers()
-  }, [confirm, t, notify, loadContainers])
+  }, [confirm, t, notify, loadContainers, formatStartError])
 
   const handleRemove = useCallback(async (id: string, name: string) => {
     if (!(await confirm(t('containers.confirmRemove', { name })))) return
@@ -174,12 +192,17 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
     const startable = containers.filter(c => !c.status.includes('Up'))
     if (startable.length === 0) return
     if (!(await confirm(t('containers.bulk.confirmStart', { count: startable.length })))) return
-    const { succeeded: started, failed } = await executeBulk(
+    const { succeeded: started, failed, errors } = await executeBulk(
       startable, t('containers.bulk.progressStarting'), c => startContainer(c.containerId),
       { onMemoryGuard: (e) => notify(t('containers.memoryGuardBlocked', { available: e.availableMb, threshold: e.thresholdMb }), 'error') },
     )
     if (started > 0 || failed > 0) {
-      notify(t('containers.bulk.startResult', { started, failed }), failed > 0 ? 'warning' : 'success')
+      let msg = t('containers.bulk.startResult', { started, failed })
+      const portErrors = errors.filter(e => e === 'PORT_ALREADY_ALLOCATED')
+      if (portErrors.length > 0) {
+        msg += ' ' + t('containers.errors.portConflictCount', { count: portErrors.length })
+      }
+      notify(msg, failed > 0 ? 'warning' : 'success')
     }
     loadContainers()
   }, [executeBulk, confirm, t, notify, loadContainers])

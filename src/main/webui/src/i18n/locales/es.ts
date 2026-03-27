@@ -124,6 +124,11 @@ const es: typeof en = {
     containerStarted: 'Contenedor "{{name}}" iniciado.',
     failedToStart: 'Error al iniciar contenedor "{{name}}".',
     startError: 'Ocurrio un error inesperado al iniciar "{{name}}".',
+    errors: {
+      portAlreadyAllocated: 'El puerto {{port}} ya esta en uso.',
+      alreadyRunning: 'El contenedor "{{name}}" ya esta en ejecucion.',
+      portConflictCount: '({{count}} conflicto(s) de puerto)',
+    },
     memoryGuardBlocked: 'No se puede iniciar el contenedor. Memoria insuficiente: {{available}} MB disponible, {{threshold}} MB requerido.',
     containerRemoved: 'Contenedor "{{name}}" eliminado.',
     restoreInProgress: 'Restauracion en progreso',

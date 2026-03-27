@@ -193,7 +193,7 @@ export function buildTheme(mode: PaletteMode) {
             ...(isDark
               ? {
                   color: D_TEXT_MUTED,
-                  backgroundColor: 'rgba(255,255,255,0.03)',
+                  backgroundColor: D_SURFACE,
                 }
               : {
                   color: '#5A6577',

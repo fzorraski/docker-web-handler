@@ -357,7 +357,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
             <Button
               variant="contained"
               color="primary"
-              onClick={() => sse.reset()}
+              onClick={() => { setCancelling(false); sse.reset() }}
             >
               {t('common.backToForm')}
             </Button>

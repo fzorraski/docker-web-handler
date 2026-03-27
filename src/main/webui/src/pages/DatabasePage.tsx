@@ -581,6 +581,7 @@ export default function DatabasePage() {
                     >
                     <TableRow
                       hover
+                      sx={{ cursor: 'pointer' }}
                       selected={selected.has(dump.id)}
                       onContextMenu={(e) => {
                         e.preventDefault()
@@ -834,6 +835,7 @@ export default function DatabasePage() {
                     >
                     <TableRow
                       hover
+                      sx={{ cursor: 'pointer' }}
                       selected={snapSelected.has(snap.id)}
                       onContextMenu={(e) => {
                         e.preventDefault()

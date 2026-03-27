@@ -366,7 +366,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setMigrationEnabled(false)
     setMigrationConfig(null)
     setMigrationModalOpen(false)
-    setWebhookNotify(true)
+    setWebhookNotify(false)
     setOperationsPassword('')
     operationsPasswordRef.current = ''
     setOperationsPasswordOpen(false)
@@ -1092,7 +1092,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
             <Button
               variant="contained"
               color="primary"
-              onClick={() => sse.reset()}
+              onClick={() => { setCancelling(false); sse.reset() }}
             >
               {t('common.backToForm')}
             </Button>

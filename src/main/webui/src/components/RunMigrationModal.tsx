@@ -167,7 +167,7 @@ export default function RunMigrationModal({ open, repository, databaseName, onCl
           {sse.hasError ? (
             <>
               <Button onClick={handleClose} color="inherit">{t('common.close')}</Button>
-              <Button variant="contained" color="primary" onClick={() => sse.reset()}>
+              <Button variant="contained" color="primary" onClick={() => { setCancelling(false); sse.reset() }}>
                 {t('common.backToForm')}
               </Button>
             </>

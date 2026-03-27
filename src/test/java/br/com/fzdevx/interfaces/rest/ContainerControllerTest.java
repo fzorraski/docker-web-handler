@@ -224,6 +224,7 @@ class ContainerControllerTest {
     // ---- startContainer ----
 
     @Test
+    @SuppressWarnings("unchecked")
     void startContainer_validId_returns200WithTrue() {
         StartContainerCmd cmd = mock(StartContainerCmd.class);
         when(dockerClient.startContainerCmd("abc123def4")).thenReturn(cmd);
@@ -233,7 +234,8 @@ class ContainerControllerTest {
 
         Response response = controller.startContainer(req);
         assertEquals(200, response.getStatus());
-        assertEquals(true, response.getEntity());
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertEquals(true, body.get("success"));
         verify(cmd).exec();
     }
 
@@ -247,6 +249,7 @@ class ContainerControllerTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void startContainer_dockerException_returns200WithFalse() {
         StartContainerCmd cmd = mock(StartContainerCmd.class);
         when(dockerClient.startContainerCmd("abc123def4")).thenReturn(cmd);
@@ -257,7 +260,9 @@ class ContainerControllerTest {
 
         Response response = controller.startContainer(req);
         assertEquals(200, response.getStatus());
-        assertEquals(false, response.getEntity());
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertEquals(false, body.get("success"));
+        assertEquals("ALREADY_RUNNING", body.get("error"));
     }
 
     @Test
@@ -282,6 +287,7 @@ class ContainerControllerTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void startContainer_memoryGuardAllows_startsContainer() {
         when(memoryGuardService.checkMemoryFor(null)).thenReturn(null);
         StartContainerCmd cmd = mock(StartContainerCmd.class);
@@ -292,7 +298,8 @@ class ContainerControllerTest {
 
         Response response = controller.startContainer(req);
         assertEquals(200, response.getStatus());
-        assertEquals(true, response.getEntity());
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertEquals(true, body.get("success"));
         verify(cmd).exec();
     }
 

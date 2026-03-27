@@ -122,6 +122,11 @@ const en = {
     containerStarted: 'Container "{{name}}" started.',
     failedToStart: 'Failed to start container "{{name}}".',
     startError: 'An unexpected error occurred while starting "{{name}}".',
+    errors: {
+      portAlreadyAllocated: 'Port {{port}} is already in use.',
+      alreadyRunning: 'Container "{{name}}" is already running.',
+      portConflictCount: '({{count}} port conflict(s))',
+    },
     memoryGuardBlocked: 'Cannot start container. Insufficient host memory: {{available}} MB available, {{threshold}} MB required.',
     containerRemoved: 'Container "{{name}}" removed.',
     restoreInProgress: 'Restore in progress',

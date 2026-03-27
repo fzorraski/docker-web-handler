@@ -606,7 +606,7 @@ export default function ContainersPage() {
                   key={c.containerId}
                   hover={!isBulkOperating}
                   selected={selected.has(c.containerId)}
-                  sx={isBulkOperating ? { opacity: 0.5 } : undefined}
+                  sx={isBulkOperating ? { opacity: 0.5 } : { cursor: 'pointer' }}
                   onContextMenu={isBulkOperating ? undefined : (e) => {
                     e.preventDefault()
                     actionMenu.openByPosition({ top: e.clientY, left: e.clientX }, c)

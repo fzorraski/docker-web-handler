@@ -291,6 +291,7 @@ export default function ImagesPage() {
                 <TableRow
                   key={img.imageId}
                   hover
+                  sx={{ cursor: 'pointer' }}
                   onContextMenu={(e) => {
                     e.preventDefault()
                     imageMenu.openByPosition({ top: e.clientY, left: e.clientX }, img)

@@ -31,6 +31,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 @Path("/containers")
@@ -181,11 +183,28 @@ public class ContainerController {
         try {
             dockerClient.startContainerCmd(dockerContainer.getContainerId()).exec();
             broadcaster.notifyChange();
-            return Response.ok(true, MediaType.APPLICATION_JSON_TYPE).build();
+            return Response.ok(Map.of("success", true), MediaType.APPLICATION_JSON_TYPE).build();
         } catch (Exception e) {
             Log.errorf("Failed to start container %s: %s", dockerContainer.getContainerId(), e.getMessage());
-            return Response.ok(false, MediaType.APPLICATION_JSON_TYPE).build();
+            return Response.ok(parseStartError(e.getMessage()), MediaType.APPLICATION_JSON_TYPE).build();
         }
+    }
+
+    private static final Pattern PORT_PATTERN = Pattern.compile("Bind for [\\d.]+:(\\d+) failed: port is already allocated");
+    private static final Pattern ALREADY_RUNNING_PATTERN = Pattern.compile("already (running|started)");
+
+    private Map<String, Object> parseStartError(String message) {
+        if (message == null) {
+            return Map.of("success", false, "error", "START_FAILED");
+        }
+        Matcher portMatcher = PORT_PATTERN.matcher(message);
+        if (portMatcher.find()) {
+            return Map.of("success", false, "error", "PORT_ALREADY_ALLOCATED", "detail", portMatcher.group(1));
+        }
+        if (ALREADY_RUNNING_PATTERN.matcher(message).find()) {
+            return Map.of("success", false, "error", "ALREADY_RUNNING");
+        }
+        return Map.of("success", false, "error", "START_FAILED");
     }
 
     private Map<String, String> buildPortPaths(String image, ContainerPort[] ports) {

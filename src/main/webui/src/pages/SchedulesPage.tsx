@@ -509,7 +509,7 @@ export default function SchedulesPage() {
                   key={s.id}
                   hover
                   selected={selected.has(s.id)}
-                  sx={{ opacity: s.enabled ? 1 : 0.5 }}
+                  sx={{ cursor: 'pointer', opacity: s.enabled ? 1 : 0.5 }}
                   onContextMenu={(e) => {
                     e.preventDefault()
                     setContextMenuPos({ top: e.clientY, left: e.clientX })
