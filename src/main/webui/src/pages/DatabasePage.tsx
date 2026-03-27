@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { DatabaseDump, DatabaseSnapshot } from '../types'
 import { listDumps, deleteDump, deleteDumpsBulk, getStorageInfo, getActiveRestores, updateDumpExpiration, type ActiveRestore } from '../services/dumpService'
 import { listSnapshots, deleteSnapshot, deleteSnapshotsBulk, getSnapshotStorageInfo, getActiveSnapshots, updateSnapshotExpiration, type ActiveSnapshot } from '../services/snapshotService'
@@ -10,6 +10,7 @@ import CreateSnapshotModal from '../components/CreateSnapshotModal'
 import EditExpirationDialog from '../components/EditExpirationDialog'
 import PasswordConfirmDialog from '../components/PasswordConfirmDialog'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
+import { useStickyHeader } from '../hooks/useStickyHeader'
 import { useDumpMetadataEdit } from '../hooks/useDumpMetadataEdit'
 import { useSnapshotMetadataEdit } from '../hooks/useSnapshotMetadataEdit'
 import { useExpirationEdit } from '../hooks/useExpirationEdit'
@@ -27,6 +28,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TableSortLabel,
@@ -69,6 +71,10 @@ export default function DatabasePage() {
   const { notify } = useNotification()
   const { t } = useTranslation()
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
+  const dumpTableRef = useRef<HTMLDivElement>(null)
+  const snapTableRef = useRef<HTMLDivElement>(null)
+  useStickyHeader(dumpTableRef)
+  useStickyHeader(snapTableRef)
   const [activeTab, setActiveTab] = useState(0)
 
   // --- Dumps state ---
@@ -501,7 +507,8 @@ export default function DatabasePage() {
               </Button>
             </Box>
             <Paper elevation={2} sx={{ borderRadius: 2 }}>
-              <Table stickyHeader aria-label="Database dumps">
+              <TableContainer ref={dumpTableRef}>
+                <Table stickyHeader aria-label="Database dumps">
                 <TableHead>
                   <TableRow>
                     <TableCell padding="checkbox" sx={{ bgcolor: theadBg }}>
@@ -707,6 +714,7 @@ export default function DatabasePage() {
                   ))}
                 </TableBody>
               </Table>
+              </TableContainer>
             </Paper>
             <TablePagination
               component="div"
@@ -752,7 +760,8 @@ export default function DatabasePage() {
               </Button>
             </Box>
             <Paper elevation={2} sx={{ borderRadius: 2 }}>
-              <Table stickyHeader aria-label="Database snapshots">
+              <TableContainer ref={snapTableRef}>
+                <Table stickyHeader aria-label="Database snapshots">
                 <TableHead>
                   <TableRow>
                     <TableCell padding="checkbox" sx={{ bgcolor: theadBg }}>
@@ -934,6 +943,7 @@ export default function DatabasePage() {
                   ))}
                 </TableBody>
               </Table>
+              </TableContainer>
             </Paper>
             <TablePagination
               component="div"

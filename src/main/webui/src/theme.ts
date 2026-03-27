@@ -155,7 +155,7 @@ export function buildTheme(mode: PaletteMode) {
         styleOverrides: {
           root: {
             borderRadius: 10,
-            overflow: 'hidden',
+            overflowX: 'auto',
             ...(!isDark && {
               border: '1px solid rgba(0,0,0,0.1)',
               boxShadow: '0 1px 3px rgba(0,0,0,0.04)',

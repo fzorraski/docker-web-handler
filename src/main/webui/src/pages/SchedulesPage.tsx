@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Box, Typography, Button, TextField, InputAdornment,
-  Table, TableBody, TableCell, TableHead, TableRow, TableSortLabel,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel,
   Paper, Chip, IconButton, Tooltip, Switch, CircularProgress, Divider, Checkbox,
   Alert, AlertTitle, Menu, MenuItem, ListItemIcon, ListItemText, TablePagination,
 } from '@mui/material'
@@ -16,6 +16,7 @@ import HeroBanner from '../components/HeroBanner'
 import CreateScheduleModal from '../components/CreateScheduleModal'
 import PasswordConfirmDialog from '../components/PasswordConfirmDialog'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
+import { useStickyHeader } from '../hooks/useStickyHeader'
 import { useTablePagination } from '../hooks/useTablePagination'
 import {
   listSchedules, toggleSchedule, deleteSchedule, executeScheduleNow,
@@ -36,6 +37,8 @@ export default function SchedulesPage() {
   const { t } = useTranslation()
   const { notify, confirm } = useNotification()
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
+  const tableRef = useRef<HTMLDivElement>(null)
+  useStickyHeader(tableRef)
 
   const [schedules, setSchedules] = useState<ContainerSchedule[]>([])
   const [containers, setContainers] = useState<DockerContainer[]>([])
@@ -446,7 +449,8 @@ export default function SchedulesPage() {
         )}
 
         <Paper elevation={2} sx={{ borderRadius: 2 }}>
-          <Table stickyHeader>
+          <TableContainer ref={tableRef}>
+            <Table stickyHeader>
             <TableHead>
               <TableRow>
                 <TableCell padding="checkbox" sx={{ bgcolor: theadBg }}>
@@ -596,6 +600,7 @@ export default function SchedulesPage() {
               ))}
             </TableBody>
           </Table>
+          </TableContainer>
         </Paper>
         <TablePagination
           component="div"

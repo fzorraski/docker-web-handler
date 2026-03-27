@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { DockerImage } from '../types'
 import { getImages } from '../services/imageService'
 import { streamRemoveImage } from '../services/sseService'
@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { formatBackendDate } from '../utils/format'
 import { useTableSort } from '../hooks/useTableSort'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
+import { useStickyHeader } from '../hooks/useStickyHeader'
 import { useSseOperation } from '../hooks/useSseOperation'
 import { usePruneDialog } from '../hooks/usePruneDialog'
 import { useActionMenu } from '../hooks/useActionMenu'
@@ -21,6 +22,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TableSortLabel,
@@ -65,6 +67,8 @@ import { DAY_MARKS } from '../utils/constants'
 
 export default function ImagesPage() {
   const { theadBg, theadColor, theadSortSx } = useTableHeaderTheme()
+  const tableRef = useRef<HTMLDivElement>(null)
+  useStickyHeader(tableRef)
   const { notify, confirm } = useNotification()
   const { t } = useTranslation()
   const [images, setImages] = useState<DockerImage[]>([])
@@ -248,7 +252,8 @@ export default function ImagesPage() {
         </Box>
 
         <Paper elevation={2} sx={{ borderRadius: 2 }}>
-          <Table stickyHeader aria-label="Docker images">
+          <TableContainer ref={tableRef}>
+            <Table stickyHeader aria-label="Docker images">
             <TableHead>
               <TableRow>
                 {IMAGE_COLUMNS.map((col) => (
@@ -343,6 +348,7 @@ export default function ImagesPage() {
               ))}
             </TableBody>
           </Table>
+          </TableContainer>
         </Paper>
         <TablePagination
           component="div"

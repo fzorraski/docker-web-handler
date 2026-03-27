@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import dayjs from 'dayjs'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import type { DockerContainer } from '../types'
@@ -31,6 +31,7 @@ import HeroBanner from '../components/HeroBanner'
 import { useTranslation } from 'react-i18next'
 import { formatBackendDate } from '../utils/format'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
+import { useStickyHeader } from '../hooks/useStickyHeader'
 import { useContainerActions } from '../hooks/useContainerActions'
 import { useContainerDialogs } from '../hooks/useContainerDialogs'
 import { useTerminalAuth } from '../hooks/useTerminalAuth'
@@ -45,6 +46,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
   TableSortLabel,
@@ -103,6 +105,8 @@ export default function ContainersPage() {
   const { notify, confirm } = useNotification()
   const { t } = useTranslation()
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
+  const tableRef = useRef<HTMLDivElement>(null)
+  useStickyHeader(tableRef)
 
   const [containers, setContainers] = useState<DockerContainer[]>([])
   const [filter, setFilter] = useState('')
@@ -551,7 +555,8 @@ export default function ContainersPage() {
         )}
 
         <Paper elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-          <Table stickyHeader aria-label="Containers" size="small">
+          <TableContainer ref={tableRef}>
+            <Table stickyHeader aria-label="Containers" size="small">
             <TableHead>
               <TableRow>
                 <TableCell padding="checkbox" sx={{ bgcolor: theadBg }}>
@@ -810,6 +815,7 @@ export default function ContainersPage() {
               })}
             </TableBody>
           </Table>
+          </TableContainer>
         </Paper>
         <TablePagination
           component="div"
