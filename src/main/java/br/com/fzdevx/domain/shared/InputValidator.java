@@ -261,6 +261,45 @@ public final class InputValidator {
         return Optional.empty();
     }
 
+    private static final Pattern CONTAINER_PATH_PATTERN =
+            Pattern.compile("^/[a-zA-Z0-9/_.-]+$");
+
+    public static Optional<String> validateContainerPath(String path) {
+        if (path == null || path.isBlank()) {
+            return Optional.of("Destination path is required.");
+        }
+        if (!path.startsWith("/")) {
+            return Optional.of("Destination path must be absolute (start with '/').");
+        }
+        if (path.contains("..")) {
+            return Optional.of("Destination path must not contain '..'.");
+        }
+        if (path.length() > 4096) {
+            return Optional.of("Destination path exceeds maximum length of 4096 characters.");
+        }
+        if (!CONTAINER_PATH_PATTERN.matcher(path).matches()) {
+            return Optional.of("Destination path contains invalid characters. "
+                    + "Only letters, digits, slashes, hyphens, underscores, and dots are allowed.");
+        }
+        return Optional.empty();
+    }
+
+    public static Optional<String> validateUploadFilename(String filename) {
+        if (filename == null || filename.isBlank()) {
+            return Optional.of("Filename is required.");
+        }
+        if (filename.contains("/") || filename.contains("\\")) {
+            return Optional.of("Filename must not contain path separators.");
+        }
+        if (filename.contains("..")) {
+            return Optional.of("Filename must not contain '..'.");
+        }
+        if (filename.length() > 255) {
+            return Optional.of("Filename exceeds maximum length of 255 characters.");
+        }
+        return Optional.empty();
+    }
+
     public static Optional<String> validateScriptFilename(String filename) {
         if (filename == null || filename.isBlank()) {
             return Optional.of("Script filename is required.");

@@ -1,6 +1,7 @@
 package br.com.fzdevx.application.port;
 
 import java.io.OutputStream;
+import java.nio.file.Path;
 import java.util.function.Consumer;
 
 public interface DockerTerminalPort {
@@ -12,6 +13,8 @@ public interface DockerTerminalPort {
     void resizeExec(String execId, int cols, int rows);
 
     boolean isContainerRunning(String containerId);
+
+    void copyFileToContainer(String containerId, Path hostFile, String remotePath);
 
     interface ExecSession extends AutoCloseable {
         OutputStream getStdin();

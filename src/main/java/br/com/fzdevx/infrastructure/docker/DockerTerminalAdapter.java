@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
+import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -161,5 +162,14 @@ public class DockerTerminalAdapter implements DockerTerminalPort {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    @Override
+    public void copyFileToContainer(String containerId, Path hostFile, String remotePath) {
+        dockerClient.copyArchiveToContainerCmd(containerId)
+                .withHostResource(hostFile.toAbsolutePath().toString())
+                .withRemotePath(remotePath)
+                .exec();
+        Log.infof("Copied file '%s' to container '%s' at '%s'", hostFile.getFileName(), containerId, remotePath);
     }
 }

@@ -72,6 +72,18 @@ public class ContainerConfigController {
     boolean terminalEnabled;
 
     @Inject
+    @ConfigProperty(name = "container.terminal.upload.enabled", defaultValue = "false")
+    boolean terminalUploadEnabled;
+
+    @Inject
+    @ConfigProperty(name = "container.terminal.upload.max-size-mb", defaultValue = "100")
+    int terminalUploadMaxSizeMb;
+
+    @Inject
+    @ConfigProperty(name = "container.terminal.upload.default-path", defaultValue = "/tmp")
+    String terminalUploadDefaultPath;
+
+    @Inject
     Config config;
 
     @Inject
@@ -227,6 +239,9 @@ public class ContainerConfigController {
         features.put("memoryGuard", memoryGuardService.isEnabled());
         features.put("schedulingPasswordRequired", passwordValidationService.isSchedulingPasswordRequired());
         features.put("terminalPasswordRequired", passwordValidationService.isTerminalPasswordRequired());
+        features.put("terminalUpload", terminalUploadEnabled);
+        features.put("terminalUploadMaxSizeMb", terminalUploadMaxSizeMb);
+        features.put("terminalUploadDefaultPath", terminalUploadDefaultPath);
         return features;
     }
 
