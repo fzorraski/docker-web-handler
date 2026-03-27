@@ -184,14 +184,34 @@ repository.pg-image.myapp=postgres:16
 
 ---
 
+## Container Terminal
+
+| Property | Description | Default |
+|----------|-------------|---------|
+| `container.terminal.enabled` | Enable the interactive terminal feature | `false` |
+| `container.terminal.password` | Password for terminal access | — |
+| `container.terminal.password.required` | Whether password is mandatory | `false` |
+| `container.terminal.default-shell` | Preferred shell (falls back to `/bin/sh`) | `/bin/bash` |
+| `container.terminal.max-sessions` | Maximum concurrent terminal sessions | `5` |
+| `container.terminal.idle-timeout-minutes` | Auto-close idle sessions after this period | `30` |
+| `container.terminal.upload.enabled` | Enable file upload to container from terminal | `false` |
+| `container.terminal.upload.max-size-mb` | Maximum upload file size (MB) | `100` |
+| `container.terminal.upload.default-path` | Default destination path inside the container | `/tmp` |
+
+See [Container Terminal](container-terminal.md) for full documentation.
+
+---
+
 ## Passwords
 
-The application uses a two-tier password system:
+The application uses a multi-tier password system:
 
 | Password | Used For | Property |
 |----------|----------|----------|
 | **Upload password** | Uploading new dumps | `database.dump.upload-password` |
 | **Operations password** | Restoring dumps, deleting dumps/snapshots, running migrations, pruning images | `database.dump.operations-password` |
+| **Scheduling password** | Creating, deleting, toggling, and executing schedules | `container.scheduling.password` |
+| **Terminal password** | Terminal access and file upload to containers | `container.terminal.password` |
 
 ---
 
