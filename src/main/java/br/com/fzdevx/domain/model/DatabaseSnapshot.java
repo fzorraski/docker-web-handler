@@ -23,6 +23,7 @@ public class DatabaseSnapshot {
     private String containerName;
     private String description;
     private Instant lastUsedAt;
+    private boolean temporary;
 
     public DatabaseSnapshot() {
     }
@@ -79,6 +80,9 @@ public class DatabaseSnapshot {
 
     public Instant getLastUsedAt() { return lastUsedAt; }
     public void setLastUsedAt(Instant lastUsedAt) { this.lastUsedAt = lastUsedAt; }
+
+    public boolean isTemporary() { return temporary; }
+    public void setTemporary(boolean temporary) { this.temporary = temporary; }
 
     @Override
     public boolean equals(Object o) {

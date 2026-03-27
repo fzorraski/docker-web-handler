@@ -23,13 +23,9 @@ import jakarta.inject.Inject;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +38,7 @@ import java.util.function.Consumer;
 public class CreateSnapshotUseCase {
 
     private static final String EPHEMERAL_LABEL = "docker-web-handler.ephemeral";
+    private static final int TEMPORARY_SNAPSHOT_TTL_SECONDS = 120;
 
     @Inject
     DatabaseService databaseService;
@@ -94,13 +91,13 @@ public class CreateSnapshotUseCase {
         return true;
     }
 
-    public boolean executeSave(CreateSnapshotRequest request, Consumer<ContainerEvent> eventSink) {
+    public String executeSave(CreateSnapshotRequest request, Consumer<ContainerEvent> eventSink) {
         eventSink.accept(ContainerEvent.info("Validating", "Validating snapshot request..."));
 
         Optional<String> error = validateRequest(request);
         if (error.isPresent()) {
             eventSink.accept(ContainerEvent.error("Validating", error.get()));
-            return false;
+            return null;
         }
 
         DatabaseSnapshot.Format format = DatabaseSnapshot.Format.valueOf(request.getFormat());
@@ -112,15 +109,20 @@ public class CreateSnapshotUseCase {
             eventSink.accept(ContainerEvent.error("Validating",
                     "A snapshot is already in progress for " + request.getSourceDatabaseName()
                             + " on repository " + request.getRepository() + "."));
-            return false;
+            return null;
         }
 
         DatabaseSnapshot snapshot = new DatabaseSnapshot(
                 request.getRepository(), request.getSourceDatabaseName(), format, request.getLabel());
         snapshot.setContainerName(request.getContainerName());
         snapshot.setDescription(request.getDescription());
-        Instant expiresAt = DateTimeParser.parseExpiresAt(request.getExpiresAt());
-        snapshot.setExpiresAt(expiresAt);
+        snapshot.setTemporary(request.isTemporary());
+        if (request.isTemporary()) {
+            snapshot.setExpiresAt(Instant.now().plusSeconds(TEMPORARY_SNAPSHOT_TTL_SECONDS));
+        } else {
+            Instant expiresAt = DateTimeParser.parseExpiresAt(request.getExpiresAt());
+            snapshot.setExpiresAt(expiresAt);
+        }
 
         try {
             eventSink.accept(ContainerEvent.info("Validating", "Validation passed."));
@@ -138,20 +140,20 @@ public class CreateSnapshotUseCase {
             if (ctx.cancelled.get()) {
                 eventSink.accept(ContainerEvent.error("Creating Snapshot", "Snapshot cancelled by user."));
                 snapshotStorageService.cleanupFile(snapshot);
-                return false;
+                return null;
             }
 
             if (exitCode != 0) {
                 eventSink.accept(ContainerEvent.error("Creating Snapshot",
                         "pg_dump exited with code " + exitCode + ". Check logs above."));
                 snapshotStorageService.cleanupFile(snapshot);
-                return false;
+                return null;
             }
 
             eventSink.accept(ContainerEvent.info("Saving", "Snapshot saved successfully."));
             snapshotStorageService.saveMetadata(snapshot);
             resourceCounterService.increment(ResourceCounterService.SNAPSHOTS);
-            return true;
+            return snapshot.getId();
 
         } catch (Exception e) {
             if (ctx.cancelled.get()) {
@@ -162,28 +164,9 @@ public class CreateSnapshotUseCase {
                         "Snapshot failed: " + e.getMessage()));
             }
             snapshotStorageService.cleanupFile(snapshot);
-            return false;
+            return null;
         } finally {
             activeSnapshots.remove(lockKey);
-        }
-    }
-
-    public void executeDownload(CreateSnapshotRequest request, OutputStream output,
-                                 Consumer<String> onError) throws Exception {
-        Optional<String> error = validateRequest(request);
-        if (error.isPresent()) {
-            onError.accept(error.get());
-            return;
-        }
-
-        DatabaseSnapshot.Format format = DatabaseSnapshot.Format.valueOf(request.getFormat());
-        String pgImage = databaseService.getContainerImage(request.getRepository());
-        DatabasePort.PgConnectionInfo pgInfo = databaseService.getConnectionInfo(request.getRepository());
-
-        if (!"none".equalsIgnoreCase(pgImage)) {
-            streamDockerDump(pgInfo, request.getSourceDatabaseName(), format, pgImage, output);
-        } else {
-            streamLocalDump(pgInfo, request.getSourceDatabaseName(), format, output);
         }
     }
 
@@ -338,87 +321,6 @@ public class CreateSnapshotUseCase {
         }
     }
 
-    private void streamDockerDump(DatabasePort.PgConnectionInfo pgInfo,
-                                   String databaseName,
-                                   DatabaseSnapshot.Format format,
-                                   String pgImage,
-                                   OutputStream output) throws Exception {
-        CreateContainerResponse container = dockerClient.createContainerCmd(pgImage)
-                .withCmd("tail", "-f", "/dev/null")
-                .withHostConfig(HostConfig.newHostConfig().withNetworkMode("host"))
-                .withLabels(Map.of(EPHEMERAL_LABEL, "true"))
-                .exec();
-
-        String containerId = container.getId();
-        try {
-            dockerClient.startContainerCmd(containerId).exec();
-
-            List<String> cmd = buildPgDumpCommand(pgInfo, databaseName, format);
-
-            ExecCreateCmdResponse exec = dockerClient.execCreateCmd(containerId)
-                    .withCmd(cmd.toArray(String[]::new))
-                    .withAttachStdout(true)
-                    .withAttachStderr(true)
-                    .withEnv(List.of("PGPASSWORD=" + pgInfo.password()))
-                    .exec();
-
-            PipedInputStream stdoutPipe = new PipedInputStream(65536);
-            PipedOutputStream stdoutSink = new PipedOutputStream(stdoutPipe);
-            PipedOutputStream stderrSink = new PipedOutputStream(new PipedInputStream());
-
-            ExecStartResultCallback callback = dockerClient.execStartCmd(exec.getId())
-                    .exec(new ExecStartResultCallback(stdoutSink, stderrSink));
-
-            Thread pipeReader = Thread.ofVirtual().start(() -> {
-                try {
-                    byte[] buffer = new byte[8192];
-                    int len;
-                    while ((len = stdoutPipe.read(buffer)) != -1) {
-                        output.write(buffer, 0, len);
-                    }
-                } catch (Exception e) {
-                    Log.warnf("Error piping pg_dump output: %s", e.getMessage());
-                }
-            });
-
-            callback.awaitCompletion();
-            stdoutSink.close();
-            stderrSink.close();
-            pipeReader.join();
-
-        } finally {
-            try {
-                dockerClient.stopContainerCmd(containerId).withTimeout(2).exec();
-            } catch (Exception ignored) {}
-            try {
-                dockerClient.removeContainerCmd(containerId).withForce(true).exec();
-            } catch (Exception e) {
-                Log.warnf("Failed to remove ephemeral container %s: %s", containerId, e.getMessage());
-            }
-        }
-    }
-
-    private void streamLocalDump(DatabasePort.PgConnectionInfo pgInfo,
-                                  String databaseName,
-                                  DatabaseSnapshot.Format format,
-                                  OutputStream output) throws Exception {
-        List<String> cmd = buildPgDumpCommand(pgInfo, databaseName, format);
-
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.environment().put("PGPASSWORD", pgInfo.password());
-
-        Process process = pb.start();
-        try {
-            process.getInputStream().transferTo(output);
-            int exitCode = process.waitFor();
-            if (exitCode != 0) {
-                throw new RuntimeException("pg_dump exited with code " + exitCode);
-            }
-        } finally {
-            process.destroyForcibly();
-        }
-    }
-
     private List<String> buildPgDumpCommand(DatabasePort.PgConnectionInfo pgInfo,
                                              String databaseName,
                                              DatabaseSnapshot.Format format) {
@@ -459,13 +361,4 @@ public class CreateSnapshotUseCase {
         return Optional.empty();
     }
 
-    private Instant parseExpiresAt(String value) {
-        if (value == null || value.isBlank()) return null;
-        try {
-            LocalDateTime ldt = LocalDateTime.parse(value, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-            return ldt.atZone(ZoneId.systemDefault()).toInstant();
-        } catch (Exception e) {
-            return null;
-        }
-    }
 }

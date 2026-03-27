@@ -22,7 +22,7 @@ import { Close, CameraAlt, Download } from '@mui/icons-material'
 import { MobileDateTimePicker } from '@mui/x-date-pickers/MobileDateTimePicker'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useTranslation } from 'react-i18next'
-import { getSnapshotRepositories, downloadSnapshotDirect, cancelSnapshot } from '../services/snapshotService'
+import { getSnapshotRepositories, cancelSnapshot } from '../services/snapshotService'
 import { getRepositoryDatabases } from '../services/containerService'
 import { prepareSnapshot, streamSnapshot } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
@@ -53,7 +53,6 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(dayjs().add(7, 'day'))
   const [password, setPassword] = useState('')
   const [cancelling, setCancelling] = useState(false)
-  const [downloading, setDownloading] = useState(false)
   const sse = useSseOperation()
   const pendingInitialDb = useRef<string | undefined>(undefined)
 
@@ -105,10 +104,12 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
     setPassword('')
     sse.reset()
     setCancelling(false)
-    setDownloading(false)
   }
 
-  function handleClose() {
+  async function handleClose() {
+    if (sse.isRunning && selectedRepo && selectedDb) {
+      await cancelSnapshot(selectedRepo, selectedDb)
+    }
     sse.cleanup()
     onClose()
     setTimeout(resetForm, 300)
@@ -122,26 +123,43 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
 
   async function handleSaveToServer() {
     if (!validate()) return
+    await startSnapshotSse(false)
+  }
 
+  async function handleDownload() {
+    if (!validate()) return
+    await startSnapshotSse(true)
+  }
+
+  async function startSnapshotSse(download: boolean) {
     try {
       const ticket = await prepareSnapshot({
         repository: selectedRepo,
         sourceDatabaseName: selectedDb,
         format,
         label: label.trim() || undefined,
-        description: description.trim() || undefined,
-        expiresAt: expirationEnabled && expiresAt ? expiresAt.format('YYYY-MM-DDTHH:mm:ss') : undefined,
+        description: download ? undefined : description.trim() || undefined,
+        expiresAt: download ? undefined : (expirationEnabled && expiresAt ? expiresAt.format('YYYY-MM-DDTHH:mm:ss') : undefined),
         password,
         containerName,
+        temporary: download,
       })
 
       sse.start(
         (onEvent, onDone, onError) => streamSnapshot(ticket, onEvent, onDone, onError),
-        () => {
+        (event) => {
+          if (download && event.detail) {
+            const a = document.createElement('a')
+            a.href = `/api/database/snapshots/download/${encodeURIComponent(event.detail)}`
+            a.download = ''
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+          }
           setTimeout(() => {
             onClose()
             onCreated()
-            notify(t('createSnapshot.snapshotCreated'), 'success')
+            notify(download ? t('createSnapshot.downloadStarted') : t('createSnapshot.snapshotCreated'), 'success')
             setTimeout(resetForm, 300)
           }, 1500)
         },
@@ -149,20 +167,6 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
     } catch (e) {
       notify(e instanceof Error ? e.message : t('common.unexpectedError'), 'error')
     }
-  }
-
-  function handleDownload() {
-    if (!validate()) return
-    setDownloading(true)
-    downloadSnapshotDirect({
-      repository: selectedRepo,
-      sourceDatabaseName: selectedDb,
-      format,
-      label: label.trim() || undefined,
-      password,
-      containerName,
-    })
-    setTimeout(() => setDownloading(false), 3000)
   }
 
   function validate(): boolean {
@@ -379,10 +383,10 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
               variant="contained"
               color="info"
               onClick={handleDownload}
-              disabled={!formReady || downloading}
-              startIcon={downloading ? <CircularProgress size={20} /> : <Download />}
+              disabled={!formReady}
+              startIcon={<Download />}
             >
-              {downloading ? t('common.preparing') : t('common.download')}
+              {t('common.download')}
             </Button>
             <Button
               variant="contained"

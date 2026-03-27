@@ -240,7 +240,7 @@ class SnapshotControllerTest {
 
         Map<String, Object> result = controller.getStorageInfo();
         assertEquals(3000L, result.get("totalBytes"));
-        assertEquals(1, result.get("fileCount"));
+        assertEquals(1L, result.get("fileCount"));
     }
 
     // ---- getSnapshotRepositories ----

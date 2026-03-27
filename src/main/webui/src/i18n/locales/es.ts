@@ -528,6 +528,7 @@ const es: typeof en = {
     expiresHelperText: 'El snapshot sera eliminado automaticamente en este momento',
     saveToServer: 'Guardar en Servidor',
     snapshotCreated: 'Snapshot creado exitosamente.',
+    downloadStarted: 'Descarga del snapshot iniciada.',
     selectRepoWarning: 'Seleccione un repositorio.',
     selectDbWarning: 'Seleccione una base de datos.',
     enterPasswordWarning: 'Ingrese la contrasena de operaciones.',

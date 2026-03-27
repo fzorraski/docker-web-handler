@@ -121,49 +121,6 @@ export async function updateSnapshotExpiration(
   return { success: true }
 }
 
-export function downloadSnapshotDirect(body: {
-  repository: string
-  sourceDatabaseName: string
-  format: string
-  label?: string
-  password: string
-  containerName?: string
-}): void {
-  const form = document.createElement('form')
-  form.method = 'POST'
-  form.action = API + 'download-direct'
-  form.style.display = 'none'
-
-  // We need to use fetch for JSON body, so use a hidden iframe approach
-  // Actually, let's use fetch with blob download
-  fetchWithAuth(API + 'download-direct', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-    .then((res) => {
-      if (!res.ok) throw new Error('Download failed')
-      const disposition = res.headers.get('Content-Disposition')
-      let filename = 'snapshot.dump'
-      if (disposition) {
-        const match = disposition.match(/filename="?([^"]+)"?/)
-        if (match) filename = match[1]
-      }
-      return res.blob().then((blob) => ({ blob, filename }))
-    })
-    .then(({ blob, filename }) => {
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    })
-    .catch(() => {})
-}
-
 export async function cleanupIdleSnapshots(password: string, minDays: number): Promise<{ success: boolean; deleted?: number; error?: string }> {
   const res = await fetchWithAuth(API + 'cleanup-idle', {
     method: 'POST',

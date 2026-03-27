@@ -5,12 +5,13 @@ export interface ContainerEvent {
   step: string
   message: string
   progress?: number
+  detail?: string
 }
 
 function streamSse(
   url: string,
   onEvent: (event: ContainerEvent) => void,
-  onDone: () => void,
+  onDone: (event: ContainerEvent) => void,
   onError: (message: string) => void,
 ): () => void {
   const es = new EventSource(url)
@@ -22,7 +23,7 @@ function streamSse(
 
       if (event.type === 'SUCCESS') {
         es.close()
-        onDone()
+        onDone(event)
       } else if (event.type === 'ERROR') {
         es.close()
         onError(event.message)
@@ -76,7 +77,7 @@ export async function prepareRunContainer(body: {
 export function streamRunContainer(
   ticket: string,
   onEvent: (event: ContainerEvent) => void,
-  onDone: () => void,
+  onDone: (event: ContainerEvent) => void,
   onError: (message: string) => void,
 ): () => void {
   return streamSse(`/api/containers/sse/run/${ticket}`, onEvent, onDone, onError)
@@ -114,7 +115,7 @@ export async function prepareRunMigration(body: {
 export function streamRunMigration(
   ticket: string,
   onEvent: (event: ContainerEvent) => void,
-  onDone: () => void,
+  onDone: (event: ContainerEvent) => void,
   onError: (message: string) => void,
 ): () => void {
   return streamSse(`/api/containers/sse/migration/${ticket}`, onEvent, onDone, onError)
@@ -147,7 +148,7 @@ export async function preparePruneImages(body: {
 export function streamPruneImages(
   ticket: string,
   onEvent: (event: ContainerEvent) => void,
-  onDone: () => void,
+  onDone: (event: ContainerEvent) => void,
   onError: (message: string) => void,
 ): () => void {
   return streamSse(`/api/images/sse/prune/${ticket}`, onEvent, onDone, onError)
@@ -156,7 +157,7 @@ export function streamPruneImages(
 export function streamRemoveImage(
   imageId: string,
   onEvent: (event: ContainerEvent) => void,
-  onDone: () => void,
+  onDone: (event: ContainerEvent) => void,
   onError: (message: string) => void,
 ): () => void {
   return streamSse(`/api/images/sse/remove/${encodeURIComponent(imageId)}`, onEvent, onDone, onError)
@@ -165,7 +166,7 @@ export function streamRemoveImage(
 export function streamContainerLogs(
   containerId: string,
   onEvent: (event: ContainerEvent) => void,
-  onDone: () => void,
+  onDone: (event: ContainerEvent) => void,
   onError: (message: string) => void,
 ): () => void {
   return streamSse(`/api/containers/sse/logs/${encodeURIComponent(containerId)}`, onEvent, onDone, onError)
@@ -225,7 +226,7 @@ export function subscribeContainerUpdates(
 export function streamRemoveContainer(
   containerId: string,
   onEvent: (event: ContainerEvent) => void,
-  onDone: () => void,
+  onDone: (event: ContainerEvent) => void,
   onError: (message: string) => void,
 ): () => void {
   return streamSse(`/api/containers/sse/remove/${encodeURIComponent(containerId)}`, onEvent, onDone, onError)
@@ -261,7 +262,7 @@ export async function prepareRestoreDump(body: {
 export function streamRestoreDump(
   ticket: string,
   onEvent: (event: ContainerEvent) => void,
-  onDone: () => void,
+  onDone: (event: ContainerEvent) => void,
   onError: (message: string) => void,
 ): () => void {
   return streamSse(`/api/database/dumps/sse/restore/${ticket}`, onEvent, onDone, onError)
@@ -276,6 +277,7 @@ export async function prepareSnapshot(body: {
   expiresAt?: string
   password: string
   containerName?: string
+  temporary?: boolean
 }): Promise<string> {
   const res = await fetchWithAuth('/api/database/snapshots/sse/create/prepare', {
     method: 'POST',
@@ -293,7 +295,7 @@ export async function prepareSnapshot(body: {
 export function streamSnapshot(
   ticket: string,
   onEvent: (event: ContainerEvent) => void,
-  onDone: () => void,
+  onDone: (event: ContainerEvent) => void,
   onError: (message: string) => void,
 ): () => void {
   return streamSse(`/api/database/snapshots/sse/create/${ticket}`, onEvent, onDone, onError)

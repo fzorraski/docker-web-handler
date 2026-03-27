@@ -73,13 +73,15 @@ public class SnapshotSseController {
         }
 
         try {
-            boolean success = createSnapshotUseCase.executeSave(request, event -> SseHelper.sendEvent(sink, sse, event));
-            if (success) {
+            String snapshotId = createSnapshotUseCase.executeSave(request, event -> SseHelper.sendEvent(sink, sse, event));
+            if (snapshotId != null) {
                 SseHelper.sendEvent(sink, sse, ContainerEvent.success("Complete",
-                        "Snapshot of '" + request.getSourceDatabaseName() + "' created successfully."));
+                        "Snapshot of '" + request.getSourceDatabaseName() + "' created successfully.",
+                        snapshotId));
             }
         } finally {
             SseHelper.closeSink(sink);
         }
     }
+
 }

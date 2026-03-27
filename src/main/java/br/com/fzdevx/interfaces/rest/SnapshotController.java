@@ -1,6 +1,5 @@
 package br.com.fzdevx.interfaces.rest;
 
-import br.com.fzdevx.application.dto.CreateSnapshotRequest;
 import br.com.fzdevx.domain.model.DatabaseSnapshot;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
@@ -15,7 +14,6 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import jakarta.ws.rs.core.StreamingOutput;
 import java.io.File;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -50,7 +48,9 @@ public class SnapshotController {
         if (!dumpStorageService.isEnabled()) {
             return Collections.emptyList();
         }
-        return snapshotStorageService.findAll();
+        return snapshotStorageService.findAll().stream()
+                .filter(s -> !s.isTemporary())
+                .toList();
     }
 
     @GET
@@ -85,55 +85,6 @@ public class SnapshotController {
         return Response.ok(file, MediaType.APPLICATION_OCTET_STREAM)
                 .header("Content-Disposition", ContentDispositionHelper.buildAttachmentHeader(downloadName))
                 .header("Content-Length", file.length())
-                .build();
-    }
-
-    @POST
-    @Path("/download-direct")
-    @Consumes(MediaType.APPLICATION_JSON)
-    @Produces(MediaType.APPLICATION_OCTET_STREAM)
-    public Response downloadDirect(CreateSnapshotRequest request) {
-        if (!dumpStorageService.isEnabled()) {
-            return Response.status(Response.Status.FORBIDDEN)
-                    .entity(Map.of("error", "Dump feature is disabled."))
-                    .build();
-        }
-
-        if (!dumpStorageService.validateOperationsPassword(request.getPassword())) {
-            return Response.status(Response.Status.FORBIDDEN)
-                    .entity(Map.of("error", "Invalid operations password."))
-                    .build();
-        }
-
-        DatabaseSnapshot.Format format;
-        try {
-            format = DatabaseSnapshot.Format.valueOf(request.getFormat());
-        } catch (Exception e) {
-            return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", "Invalid format."))
-                    .build();
-        }
-
-        String extension = format == DatabaseSnapshot.Format.CUSTOM ? ".dump" : ".sql";
-        String timestamp = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")
-                .format(Instant.now().atZone(ZoneId.systemDefault()));
-        String filename = "snapshot_" + request.getSourceDatabaseName() + "_" + timestamp + extension;
-
-        StreamingOutput stream = output -> {
-            try {
-                createSnapshotUseCase.executeDownload(request, output, error -> {
-                    throw new RuntimeException(error);
-                });
-            } catch (Exception e) {
-                Log.errorf("Download snapshot failed: %s", e.getMessage());
-                throw new jakarta.ws.rs.WebApplicationException(e.getMessage(),
-                        Response.Status.INTERNAL_SERVER_ERROR);
-            }
-        };
-
-
-        return Response.ok(stream, MediaType.APPLICATION_OCTET_STREAM)
-                .header("Content-Disposition", ContentDispositionHelper.buildAttachmentHeader(filename))
                 .build();
     }
 
@@ -307,10 +258,12 @@ public class SnapshotController {
         if (!dumpStorageService.isEnabled()) {
             return Map.of("totalBytes", 0, "fileCount", 0, "maxBytes", 0);
         }
-        List<DatabaseSnapshot> all = snapshotStorageService.findAll();
+        long count = snapshotStorageService.findAll().stream()
+                .filter(s -> !s.isTemporary())
+                .count();
         return Map.of(
                 "totalBytes", snapshotStorageService.getTotalStorageBytes(),
-                "fileCount", all.size(),
+                "fileCount", count,
                 "maxBytes", (long) snapshotStorageService.getMaxSizeMb() * 1024 * 1024
         );
     }

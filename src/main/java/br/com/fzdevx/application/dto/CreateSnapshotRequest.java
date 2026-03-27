@@ -32,7 +32,11 @@ public class CreateSnapshotRequest {
     public void setContainerName(String containerName) { this.containerName = containerName; }
 
     private String description;
+    private boolean temporary;
 
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+
+    public boolean isTemporary() { return temporary; }
+    public void setTemporary(boolean temporary) { this.temporary = temporary; }
 }

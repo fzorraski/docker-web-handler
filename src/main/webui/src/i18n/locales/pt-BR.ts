@@ -528,6 +528,7 @@ const ptBR: typeof en = {
     expiresHelperText: 'Snapshot sera automaticamente excluido neste horario',
     saveToServer: 'Salvar no Servidor',
     snapshotCreated: 'Snapshot criado com sucesso.',
+    downloadStarted: 'Download do snapshot iniciado.',
     selectRepoWarning: 'Selecione um repositorio.',
     selectDbWarning: 'Selecione um banco de dados.',
     enterPasswordWarning: 'Informe a senha de operacoes.',

@@ -526,6 +526,7 @@ const en = {
     expiresHelperText: 'Snapshot will be automatically deleted at this time',
     saveToServer: 'Save to Server',
     snapshotCreated: 'Snapshot created successfully.',
+    downloadStarted: 'Snapshot download started.',
     selectRepoWarning: 'Please select a repository.',
     selectDbWarning: 'Please select a database.',
     enterPasswordWarning: 'Please enter the operations password.',
