@@ -303,4 +303,84 @@ class InputValidatorTest {
     void validateSnapshotLabel_valid_returnsEmpty() {
         assertTrue(InputValidator.validateSnapshotLabel("Release 2.0 snapshot").isEmpty());
     }
+
+    // ---- validateContainerPath ----
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"   "})
+    void validateContainerPath_nullOrBlank_returnsError(String path) {
+        assertTrue(InputValidator.validateContainerPath(path).isPresent());
+    }
+
+    @Test
+    void validateContainerPath_noLeadingSlash_returnsError() {
+        assertTrue(InputValidator.validateContainerPath("tmp").isPresent());
+    }
+
+    @Test
+    void validateContainerPath_pathTraversal_returnsError() {
+        assertTrue(InputValidator.validateContainerPath("/tmp/../etc").isPresent());
+    }
+
+    @Test
+    void validateContainerPath_tooLong_returnsError() {
+        assertTrue(InputValidator.validateContainerPath("/" + "a".repeat(4096)).isPresent());
+    }
+
+    @Test
+    void validateContainerPath_invalidChars_returnsError() {
+        assertTrue(InputValidator.validateContainerPath("/tmp/$HOME").isPresent());
+    }
+
+    @Test
+    void validateContainerPath_bareRoot_returnsError() {
+        assertTrue(InputValidator.validateContainerPath("/").isPresent());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/tmp", "/tmp/", "/home/user/data", "/var/log/app.d", "/opt/my-app"})
+    void validateContainerPath_validPaths_returnsEmpty(String path) {
+        assertTrue(InputValidator.validateContainerPath(path).isEmpty());
+    }
+
+    // ---- validateUploadFilename ----
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"   "})
+    void validateUploadFilename_nullOrBlank_returnsError(String filename) {
+        assertTrue(InputValidator.validateUploadFilename(filename).isPresent());
+    }
+
+    @Test
+    void validateUploadFilename_forwardSlash_returnsError() {
+        assertTrue(InputValidator.validateUploadFilename("path/file.txt").isPresent());
+    }
+
+    @Test
+    void validateUploadFilename_backslash_returnsError() {
+        assertTrue(InputValidator.validateUploadFilename("path\\file.txt").isPresent());
+    }
+
+    @Test
+    void validateUploadFilename_pathTraversal_returnsError() {
+        assertTrue(InputValidator.validateUploadFilename("..secret").isPresent());
+    }
+
+    @Test
+    void validateUploadFilename_tooLong_returnsError() {
+        assertTrue(InputValidator.validateUploadFilename("a".repeat(256)).isPresent());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"file.txt", "backup.tar.gz", "my-script.sh", "data_export.csv", "README"})
+    void validateUploadFilename_validNames_returnsEmpty(String filename) {
+        assertTrue(InputValidator.validateUploadFilename(filename).isEmpty());
+    }
+
+    @Test
+    void validateUploadFilename_maxLength_returnsEmpty() {
+        assertTrue(InputValidator.validateUploadFilename("a".repeat(255)).isEmpty());
+    }
 }

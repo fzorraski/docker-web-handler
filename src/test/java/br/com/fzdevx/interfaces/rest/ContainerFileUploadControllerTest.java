@@ -1,0 +1,277 @@
+package br.com.fzdevx.interfaces.rest;
+
+import br.com.fzdevx.application.port.DockerTerminalPort;
+import br.com.fzdevx.infrastructure.config.PasswordValidationService;
+import jakarta.ws.rs.core.MultivaluedHashMap;
+import jakarta.ws.rs.core.Response;
+import org.jboss.resteasy.plugins.providers.multipart.InputPart;
+import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+
+import java.io.ByteArrayInputStream;
+import java.lang.reflect.Field;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
+class ContainerFileUploadControllerTest {
+
+    private static final String VALID_CONTAINER_ID = "abcdef1234567890";
+    private static final String VALID_PASSWORD = "secret";
+    private static final String VALID_REMOTE_PATH = "/tmp";
+
+    @Mock DockerTerminalPort dockerTerminalPort;
+    @Mock PasswordValidationService passwordValidationService;
+
+    @InjectMocks
+    ContainerFileUploadController controller;
+
+    @BeforeEach
+    void setUp() {
+        setField("uploadEnabled", true);
+        setField("maxSizeMb", 100);
+    }
+
+    private void setField(String name, Object value) {
+        try {
+            Field f = ContainerFileUploadController.class.getDeclaredField(name);
+            f.setAccessible(true);
+            f.set(controller, value);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    // ---- Feature disabled ----
+
+    @Test
+    void uploadFile_disabled_returnsForbidden() {
+        setField("uploadEnabled", false);
+
+        Response response = controller.uploadFile(VALID_CONTAINER_ID, mock(MultipartFormDataInput.class));
+
+        assertEquals(403, response.getStatus());
+    }
+
+    // ---- Invalid container ID ----
+
+    @Test
+    void uploadFile_invalidContainerId_returnsBadRequest() {
+        Response response = controller.uploadFile("not-hex!", mock(MultipartFormDataInput.class));
+
+        assertEquals(400, response.getStatus());
+    }
+
+    // ---- Invalid password ----
+
+    @Test
+    void uploadFile_invalidPassword_returnsForbidden() throws Exception {
+        MultipartFormDataInput input = mockForm("wrong", VALID_REMOTE_PATH, "test.txt", new byte[]{1, 2, 3});
+        when(passwordValidationService.validateTerminalPassword("wrong")).thenReturn(false);
+
+        Response response = controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        assertEquals(403, response.getStatus());
+    }
+
+    // ---- Container not running ----
+
+    @Test
+    void uploadFile_containerNotRunning_returnsBadRequest() throws Exception {
+        MultipartFormDataInput input = mockForm(VALID_PASSWORD, VALID_REMOTE_PATH, "test.txt", new byte[]{1, 2, 3});
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(false);
+
+        Response response = controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        assertEquals(400, response.getStatus());
+        assertErrorContains(response, "not running");
+    }
+
+    // ---- Invalid remote path ----
+
+    @Test
+    void uploadFile_invalidRemotePath_returnsBadRequest() throws Exception {
+        MultipartFormDataInput input = mockForm(VALID_PASSWORD, "../etc", "test.txt", new byte[]{1});
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        assertEquals(400, response.getStatus());
+    }
+
+    // ---- No file provided ----
+
+    @Test
+    void uploadFile_noFile_returnsBadRequest() throws Exception {
+        MultipartFormDataInput input = mockFormNoFile(VALID_PASSWORD, VALID_REMOTE_PATH);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        assertEquals(400, response.getStatus());
+        assertErrorContains(response, "No file");
+    }
+
+    // ---- Missing filename in Content-Disposition ----
+
+    @Test
+    void uploadFile_blankFilename_returnsBadRequest() throws Exception {
+        MultipartFormDataInput input = mockForm(VALID_PASSWORD, VALID_REMOTE_PATH, "", new byte[]{1});
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        assertEquals(400, response.getStatus());
+    }
+
+    // ---- Invalid filename ----
+
+    @Test
+    void uploadFile_filenameWithSlash_returnsBadRequest() throws Exception {
+        MultipartFormDataInput input = mockForm(VALID_PASSWORD, VALID_REMOTE_PATH, "path/file.txt", new byte[]{1});
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        assertEquals(400, response.getStatus());
+    }
+
+    // ---- File too large ----
+
+    @Test
+    void uploadFile_exceedsMaxSize_returnsBadRequest() throws Exception {
+        setField("maxSizeMb", 1); // 1 MB limit
+        byte[] largeFile = new byte[1024 * 1024 + 1]; // 1 MB + 1 byte
+        MultipartFormDataInput input = mockForm(VALID_PASSWORD, VALID_REMOTE_PATH, "big.bin", largeFile);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        assertEquals(400, response.getStatus());
+        assertErrorContains(response, "maximum size");
+        verify(dockerTerminalPort, never()).copyFileToContainer(any(), any(), any());
+    }
+
+    // ---- Successful upload ----
+
+    @Test
+    void uploadFile_valid_returns200AndCopies() throws Exception {
+        byte[] content = "hello world".getBytes();
+        MultipartFormDataInput input = mockForm(VALID_PASSWORD, VALID_REMOTE_PATH, "test.txt", content);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        assertEquals(200, response.getStatus());
+        verify(dockerTerminalPort).copyFileToContainer(eq(VALID_CONTAINER_ID), any(Path.class), eq(VALID_REMOTE_PATH));
+
+        @SuppressWarnings("unchecked")
+        Map<String, String> entity = (Map<String, String>) response.getEntity();
+        assertEquals("test.txt", entity.get("filename"));
+        assertEquals(VALID_REMOTE_PATH, entity.get("remotePath"));
+    }
+
+    // ---- copyFileToContainer failure ----
+
+    @Test
+    void uploadFile_copyThrows_returns500() throws Exception {
+        byte[] content = "data".getBytes();
+        MultipartFormDataInput input = mockForm(VALID_PASSWORD, VALID_REMOTE_PATH, "test.txt", content);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+        doThrow(new RuntimeException("Docker error"))
+                .when(dockerTerminalPort).copyFileToContainer(any(), any(), any());
+
+        Response response = controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        assertEquals(500, response.getStatus());
+    }
+
+    // ---- Valid upload with trailing slash in path ----
+
+    @Test
+    void uploadFile_trailingSlashPath_returns200() throws Exception {
+        byte[] content = "data".getBytes();
+        MultipartFormDataInput input = mockForm(VALID_PASSWORD, "/tmp/", "script.sh", content);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        assertEquals(200, response.getStatus());
+        verify(dockerTerminalPort).copyFileToContainer(eq(VALID_CONTAINER_ID), any(Path.class), eq("/tmp/"));
+    }
+
+    // ---- Helpers ----
+
+    @SuppressWarnings("unchecked")
+    private void assertErrorContains(Response response, String substring) {
+        Map<String, String> entity = (Map<String, String>) response.getEntity();
+        assertTrue(entity.get("error").toLowerCase().contains(substring.toLowerCase()),
+                "Expected error to contain '" + substring + "' but got: " + entity.get("error"));
+    }
+
+    private MultipartFormDataInput mockForm(String password, String remotePath, String filename, byte[] fileContent) throws Exception {
+        MultipartFormDataInput input = mock(MultipartFormDataInput.class);
+
+        InputPart passwordPart = mockStringPart(password);
+        InputPart remotePathPart = mockStringPart(remotePath);
+        InputPart filePart = mockFilePart(filename, fileContent);
+
+        when(input.getFormDataMap()).thenReturn(Map.of(
+                "password", List.of(passwordPart),
+                "remotePath", List.of(remotePathPart),
+                "file", List.of(filePart)
+        ));
+        return input;
+    }
+
+    private MultipartFormDataInput mockFormNoFile(String password, String remotePath) throws Exception {
+        MultipartFormDataInput input = mock(MultipartFormDataInput.class);
+
+        InputPart passwordPart = mockStringPart(password);
+        InputPart remotePathPart = mockStringPart(remotePath);
+
+        when(input.getFormDataMap()).thenReturn(Map.of(
+                "password", List.of(passwordPart),
+                "remotePath", List.of(remotePathPart)
+        ));
+        return input;
+    }
+
+    private InputPart mockStringPart(String value) throws Exception {
+        InputPart part = mock(InputPart.class);
+        when(part.getBodyAsString()).thenReturn(value);
+        return part;
+    }
+
+    private InputPart mockFilePart(String filename, byte[] content) throws Exception {
+        InputPart part = mock(InputPart.class);
+        MultivaluedHashMap<String, String> headers = new MultivaluedHashMap<>();
+        headers.putSingle("Content-Disposition", "form-data; name=\"file\"; filename=\"" + filename + "\"");
+        when(part.getHeaders()).thenReturn(headers);
+        when(part.getBody(eq(java.io.InputStream.class), any())).thenReturn(new ByteArrayInputStream(content));
+        return part;
+    }
+}
