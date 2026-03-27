@@ -18,7 +18,14 @@ export function useStickyHeader(containerRef: React.RefObject<HTMLElement | null
     if (!el) return
 
     const thead = el.querySelector('thead') as HTMLElement | null
+    const tbody = el.querySelector('tbody') as HTMLElement | null
     if (!thead) return
+
+    // Safari: tbody needs its own stacking context so thead z-index is respected
+    if (tbody) {
+      tbody.style.position = 'relative'
+      tbody.style.zIndex = '1'
+    }
 
     const scroller = getScrollParent(el)
 
@@ -64,6 +71,10 @@ export function useStickyHeader(containerRef: React.RefObject<HTMLElement | null
       thead.style.zIndex = ''
       thead.style.willChange = ''
       thead.style.boxShadow = ''
+      if (tbody) {
+        tbody.style.position = ''
+        tbody.style.zIndex = ''
+      }
     }
   }, [containerRef])
 }
