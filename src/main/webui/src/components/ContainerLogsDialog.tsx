@@ -26,6 +26,7 @@ import {
   BugReport,
   Pause,
   PlayArrow,
+  ClearAll,
 } from '@mui/icons-material'
 import { List, useListRef, type RowComponentProps } from 'react-window'
 import { useTranslation } from 'react-i18next'
@@ -432,6 +433,13 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
     }
   }, [flushLogs])
 
+  const clearLogs = useCallback(() => {
+    setLogs([])
+    pendingLogsRef.current = []
+    setCurrentErrorIdx(-1)
+    setCurrentExcIdx(-1)
+  }, [])
+
   // Periodically update the buffered count while paused
   useEffect(() => {
     if (!paused) return
@@ -650,6 +658,20 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
           </Box>
 
           <Box sx={{ flex: 1 }} />
+
+          {/* Clear */}
+          <Tooltip title={t('containers.logs.clear')}>
+            <span>
+              <IconButton
+                onClick={clearLogs}
+                disabled={logs.length === 0}
+                size="small"
+                sx={{ color: lt.iconColor, '&.Mui-disabled': { color: lt.iconDisabled } }}
+              >
+                <ClearAll sx={{ fontSize: 18 }} />
+              </IconButton>
+            </span>
+          </Tooltip>
 
           {/* Pause/Resume */}
           <Tooltip title={paused

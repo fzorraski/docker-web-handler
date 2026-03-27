@@ -224,6 +224,7 @@ const ptBR: typeof en = {
       pause: 'Pausar',
       resume: 'Retomar ({{count}} em buffer)',
       paused: 'Pausado ({{count}} em buffer)',
+      clear: 'Limpar logs',
     },
     terminal: {
       openTerminal: 'Abrir Terminal',

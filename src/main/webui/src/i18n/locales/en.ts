@@ -222,6 +222,7 @@ const en = {
       pause: 'Pause',
       resume: 'Resume ({{count}} buffered)',
       paused: 'Paused ({{count}} buffered)',
+      clear: 'Clear logs',
     },
     terminal: {
       openTerminal: 'Open Terminal',

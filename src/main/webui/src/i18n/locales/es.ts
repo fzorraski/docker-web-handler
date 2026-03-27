@@ -224,6 +224,7 @@ const es: typeof en = {
       pause: 'Pausar',
       resume: 'Reanudar ({{count}} en buffer)',
       paused: 'Pausado ({{count}} en buffer)',
+      clear: 'Limpiar logs',
     },
     terminal: {
       openTerminal: 'Abrir Terminal',
