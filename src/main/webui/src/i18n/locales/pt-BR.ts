@@ -239,6 +239,13 @@ const ptBR: typeof en = {
       connect: 'Conectar',
       reconnect: 'Reconectar',
       sessionEnded: 'Sessao do terminal encerrada.',
+      uploadFile: 'Enviar arquivo',
+      uploadToContainer: 'Enviar arquivo para o container',
+      selectFile: 'Selecionar arquivo',
+      remotePath: 'Caminho de destino',
+      uploadComplete: 'Arquivo enviado com sucesso para {{path}}.',
+      uploadFailed: 'Falha no envio.',
+      fileTooLarge: 'O arquivo excede o tamanho maximo de {{max}} MB.',
     },
     columns: {
       containerId: 'ID do Container',

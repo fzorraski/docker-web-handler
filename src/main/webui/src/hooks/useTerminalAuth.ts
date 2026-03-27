@@ -11,20 +11,24 @@ interface Deps {
 export function useTerminalAuth({ notify, t }: Deps) {
   const [ticket, setTicket] = useState('')
   const [containerName, setContainerName] = useState('')
+  const [containerId, setContainerId] = useState('')
+  const [terminalPassword, setTerminalPassword] = useState('')
   const [authDialogOpen, setAuthDialogOpen] = useState(false)
   const [pendingContainerId, setPendingContainerId] = useState('')
   const [pendingContainerName, setPendingContainerName] = useState('')
 
-  const requestTerminal = useCallback((containerId: string, name: string, passwordRequired: boolean) => {
+  const requestTerminal = useCallback((cId: string, name: string, passwordRequired: boolean) => {
     if (passwordRequired) {
-      setPendingContainerId(containerId)
+      setPendingContainerId(cId)
       setPendingContainerName(name)
       setAuthDialogOpen(true)
     } else {
-      authorizeTerminal(containerId, '').then((res) => {
+      authorizeTerminal(cId, '').then((res) => {
         if (res.ticket) {
           setTicket(res.ticket)
           setContainerName(name)
+          setContainerId(cId)
+          setTerminalPassword('')
         } else {
           notify(res.error || t('common.unexpectedError'), 'error')
         }
@@ -37,6 +41,8 @@ export function useTerminalAuth({ notify, t }: Deps) {
     if (res.ticket) {
       setTicket(res.ticket)
       setContainerName(pendingContainerName)
+      setContainerId(pendingContainerId)
+      setTerminalPassword(password)
       setAuthDialogOpen(false)
     } else {
       throw new Error(res.error || t('common.unexpectedError'))
@@ -52,11 +58,15 @@ export function useTerminalAuth({ notify, t }: Deps) {
   const closeTerminal = useCallback(() => {
     setTicket('')
     setContainerName('')
+    setContainerId('')
+    setTerminalPassword('')
   }, [])
 
   return {
     ticket,
     containerName,
+    containerId,
+    terminalPassword,
     authDialogOpen,
     requestTerminal,
     confirmAuth,

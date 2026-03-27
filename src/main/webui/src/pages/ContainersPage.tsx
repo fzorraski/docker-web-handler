@@ -123,6 +123,9 @@ export default function ContainersPage() {
   const [migrationFeatureEnabled, setMigrationFeatureEnabled] = useState(false)
   const [terminalFeatureEnabled, setTerminalFeatureEnabled] = useState(false)
   const [terminalPasswordRequired, setTerminalPasswordRequired] = useState(true)
+  const [terminalUploadEnabled, setTerminalUploadEnabled] = useState(false)
+  const [terminalUploadMaxSizeMb, setTerminalUploadMaxSizeMb] = useState(100)
+  const [terminalUploadDefaultPath, setTerminalUploadDefaultPath] = useState('/tmp')
   const [schedulingPwRequired, setSchedulingPwRequired] = useState(true)
   const [schedulingFeatureEnabled, setSchedulingFeatureEnabled] = useState(false)
   const [containerSchedules, setContainerSchedules] = useState<Map<string, ContainerSchedule[]>>(new Map())
@@ -219,6 +222,9 @@ export default function ContainersPage() {
       setTerminalPasswordRequired(f.terminalPasswordRequired)
       setSchedulingPwRequired(f.schedulingPasswordRequired)
       setMemoryGuardEnabled(f.memoryGuard)
+      setTerminalUploadEnabled(f.terminalUpload)
+      setTerminalUploadMaxSizeMb(f.terminalUploadMaxSizeMb)
+      setTerminalUploadDefaultPath(f.terminalUploadDefaultPath)
     }).catch(() => setTerminalFeatureEnabled(false))
     isSchedulingEnabled().then((enabled) => {
       setSchedulingFeatureEnabled(enabled)
@@ -1034,7 +1040,12 @@ export default function ContainersPage() {
         open={!!terminal.ticket}
         ticket={terminal.ticket}
         containerName={terminal.containerName}
+        containerId={terminal.containerId}
         onClose={terminal.closeTerminal}
+        uploadEnabled={terminalUploadEnabled}
+        uploadMaxSizeMb={terminalUploadMaxSizeMb}
+        uploadDefaultPath={terminalUploadDefaultPath}
+        terminalPassword={terminal.terminalPassword}
       />
 
       <RunMigrationModal

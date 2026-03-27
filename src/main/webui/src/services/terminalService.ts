@@ -16,6 +16,53 @@ export async function authorizeTerminal(
   return { ticket: data.ticket }
 }
 
+export function uploadFileToContainer(
+  containerId: string,
+  file: File,
+  remotePath: string,
+  password: string,
+  onProgress?: (percent: number) => void,
+): Promise<{ success: boolean; filename?: string; remotePath?: string; error?: string }> {
+  return new Promise((resolve) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('remotePath', remotePath)
+    formData.append('password', password)
+
+    const xhr = new XMLHttpRequest()
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100))
+      }
+    })
+
+    xhr.addEventListener('load', () => {
+      try {
+        const data = JSON.parse(xhr.responseText)
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({ success: true, filename: data.filename, remotePath: data.remotePath })
+        } else {
+          resolve({ success: false, error: data.error || 'Upload failed' })
+        }
+      } catch {
+        resolve({ success: false, error: 'Upload failed' })
+      }
+    })
+
+    xhr.addEventListener('error', () => {
+      resolve({ success: false, error: 'Network error during upload' })
+    })
+
+    xhr.addEventListener('abort', () => {
+      resolve({ success: false, error: 'Upload cancelled' })
+    })
+
+    xhr.open('POST', API + encodeURIComponent(containerId) + '/upload')
+    xhr.send(formData)
+  })
+}
+
 export interface TerminalConnection {
   sendInput(data: string): void
   sendResize(cols: number, rows: number): void

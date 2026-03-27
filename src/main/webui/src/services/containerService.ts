@@ -133,6 +133,9 @@ export interface FeatureFlags {
   operationsPasswordRequired: boolean
   schedulingPasswordRequired: boolean
   terminalPasswordRequired: boolean
+  terminalUpload: boolean
+  terminalUploadMaxSizeMb: number
+  terminalUploadDefaultPath: string
 }
 
 export async function getFeatures(): Promise<FeatureFlags> {

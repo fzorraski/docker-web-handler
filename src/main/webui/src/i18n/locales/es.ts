@@ -239,6 +239,13 @@ const es: typeof en = {
       connect: 'Conectar',
       reconnect: 'Reconectar',
       sessionEnded: 'Sesion de terminal finalizada.',
+      uploadFile: 'Subir archivo',
+      uploadToContainer: 'Enviar archivo al contenedor',
+      selectFile: 'Seleccionar archivo',
+      remotePath: 'Ruta de destino',
+      uploadComplete: 'Archivo subido exitosamente a {{path}}.',
+      uploadFailed: 'Error al subir.',
+      fileTooLarge: 'El archivo excede el tamano maximo de {{max}} MB.',
     },
     columns: {
       containerId: 'ID del Contenedor',

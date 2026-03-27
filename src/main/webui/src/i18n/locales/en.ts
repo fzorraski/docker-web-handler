@@ -237,6 +237,13 @@ const en = {
       connect: 'Connect',
       reconnect: 'Reconnect',
       sessionEnded: 'Terminal session ended.',
+      uploadFile: 'Upload file',
+      uploadToContainer: 'Send file to container',
+      selectFile: 'Select file',
+      remotePath: 'Destination path',
+      uploadComplete: 'File uploaded successfully to {{path}}.',
+      uploadFailed: 'Upload failed.',
+      fileTooLarge: 'File exceeds the maximum size of {{max}} MB.',
     },
     columns: {
       containerId: 'Container ID',
