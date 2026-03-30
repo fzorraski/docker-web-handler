@@ -175,6 +175,11 @@ export function buildTheme(mode: PaletteMode) {
                 ? 'rgba(255,255,255,0.04) !important'
                 : 'rgba(0,0,0,0.03) !important',
             },
+            '&.Mui-selected, &.Mui-selected:hover': {
+              backgroundColor: isDark
+                ? 'rgba(255, 109, 0, 0.10) !important'
+                : 'rgba(255, 109, 0, 0.08) !important',
+            },
           },
         },
       },
