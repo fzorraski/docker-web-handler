@@ -12,6 +12,7 @@ import { DarkMode, LightMode, Logout, Menu as MenuIcon } from '@mui/icons-materi
 import { useTranslation } from 'react-i18next'
 import { isDumpEnabled } from '../services/dumpService'
 import { isSchedulingEnabled } from '../services/scheduleService'
+import { isLogAnalyzerEnabled } from '../services/logAnalyzerService'
 import { useThemeMode } from './ThemeModeProvider'
 import { useAuth } from './AuthProvider'
 import LanguageSwitcher from './LanguageSwitcher'
@@ -23,6 +24,7 @@ export default function Navbar() {
   const { t } = useTranslation()
   const [dumpEnabled, setDumpEnabled] = useState(false)
   const [schedulingEnabled, setSchedulingEnabled] = useState(false)
+  const [logAnalyzerEnabled, setLogAnalyzerEnabled] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const theme = useTheme()
@@ -32,6 +34,7 @@ export default function Navbar() {
   useEffect(() => {
     isDumpEnabled().then(setDumpEnabled).catch(() => setDumpEnabled(false))
     isSchedulingEnabled().then(setSchedulingEnabled).catch(() => setSchedulingEnabled(false))
+    isLogAnalyzerEnabled().then(setLogAnalyzerEnabled).catch(() => setLogAnalyzerEnabled(false))
   }, [])
 
   const navItems = [
@@ -39,6 +42,7 @@ export default function Navbar() {
     { label: t('navbar.images'), path: '/images' },
     ...(dumpEnabled ? [{ label: t('navbar.database'), path: '/database' }] : []),
     ...(schedulingEnabled ? [{ label: t('navbar.schedules'), path: '/schedules' }] : []),
+    ...(logAnalyzerEnabled ? [{ label: t('navbar.logs'), path: '/logs' }] : []),
   ]
 
   const handleDrawerToggle = () => {

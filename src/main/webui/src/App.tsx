@@ -11,6 +11,7 @@ const ContainersPage = lazy(() => import('./pages/ContainersPage'))
 const ImagesPage = lazy(() => import('./pages/ImagesPage'))
 const DatabasePage = lazy(() => import('./pages/DatabasePage'))
 const SchedulesPage = lazy(() => import('./pages/SchedulesPage'))
+const LogAnalyzerPage = lazy(() => import('./pages/LogAnalyzerPage'))
 
 const PageSpinner = () => (
   <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
@@ -44,6 +45,7 @@ export default function App() {
               <Route path="/images" element={<ImagesPage />} />
               <Route path="/database" element={<DatabasePage />} />
               <Route path="/schedules" element={<SchedulesPage />} />
+              <Route path="/logs" element={<LogAnalyzerPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>

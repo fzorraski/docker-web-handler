@@ -1,0 +1,257 @@
+import fetchWithAuth from './fetchWithAuth'
+
+const API = '/api/logs/analyzer'
+
+async function handleResponse<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }))
+    throw new Error(body.error || res.statusText)
+  }
+  return res.json()
+}
+
+// ---- Types ----
+
+export interface LogPreset {
+  name: string
+  logLineRegex: string
+  timestampFormat: string
+  apiCallRegex: string
+  jobStartRegex: string | null
+  jobEndRegex: string | null
+  failureRegex: string | null
+  sensitiveFieldNames: string[]
+}
+
+export interface AnalyzerStatus {
+  enabled: boolean
+  presets: LogPreset[]
+  defaultPreset: string
+}
+
+export interface AnalysisSummary {
+  id: string
+  sourceFiles: { filename: string; size: number }[]
+  totalLineCount: number
+  uploadedAt: string
+  timeRangeStart: string
+  timeRangeEnd: string
+  threadCount: number
+  endpointCount: number
+  apiCallCount: number
+  errorCount: number
+  levelCounts: Record<string, number>
+  jobExecutionCount: number
+  repeatedFailureCount: number
+}
+
+export interface ApiCallPair {
+  endpoint: string
+  correlationId: string | null
+  thread: string
+  requestTimestamp: string
+  responseTimestamp: string
+  durationMs: number
+  requestPayload: string
+  responsePayload: string
+  requestLineNumber: number
+  responseLineNumber: number
+  sourceFile: string
+  slow: boolean
+}
+
+export interface EndpointStats {
+  endpoint: string
+  callCount: number
+  avgDurationMs: number
+  minDurationMs: number
+  maxDurationMs: number
+  p95DurationMs: number
+  slowCount: number
+}
+
+export interface LogLine {
+  lineNumber: number
+  timestamp: string | null
+  level: string | null
+  logger: string | null
+  thread: string | null
+  message: string | null
+  sourceFile: string
+}
+
+export interface JobExecution {
+  jobName: string
+  triggerName: string | null
+  thread: string
+  startTimestamp: string
+  endTimestamp: string
+  durationMs: number
+  result: string
+  startLineNumber: number
+  endLineNumber: number
+  sourceFile: string
+}
+
+export interface RepeatedFailure {
+  entityId: string
+  reason: string | null
+  occurrences: number
+  firstSeen: string
+  lastSeen: string
+  details: { timestamp: string; lineNumber: number; message: string; sourceFile: string }[]
+}
+
+export interface PaginatedResponse<T> {
+  data: T[]
+  total: number
+  page: number
+  size: number
+}
+
+export interface ThreadInfo {
+  thread: string
+  lineCount: number
+}
+
+// ---- API calls ----
+
+export async function getStatus(): Promise<AnalyzerStatus> {
+  const res = await fetchWithAuth(`${API}/status`)
+  return handleResponse(res)
+}
+
+export async function isLogAnalyzerEnabled(): Promise<boolean> {
+  try {
+    const status = await getStatus()
+    return status.enabled
+  } catch {
+    return false
+  }
+}
+
+export interface UploadOptions {
+  preset?: string
+  logLineRegex?: string
+  apiCallRegex?: string
+  timestampFormat?: string
+  jobStartRegex?: string
+  jobEndRegex?: string
+  failureRegex?: string
+  sensitiveFieldNames?: string
+  slowThresholdMs?: number
+}
+
+export async function uploadFiles(
+  files: File[],
+  options: UploadOptions = {},
+): Promise<AnalysisSummary> {
+  const form = new FormData()
+  files.forEach((f) => form.append('files', f))
+  if (options.preset) form.append('preset', options.preset)
+  if (options.logLineRegex) form.append('logLineRegex', options.logLineRegex)
+  if (options.apiCallRegex) form.append('apiCallRegex', options.apiCallRegex)
+  if (options.timestampFormat) form.append('timestampFormat', options.timestampFormat)
+  if (options.jobStartRegex) form.append('jobStartRegex', options.jobStartRegex)
+  if (options.jobEndRegex) form.append('jobEndRegex', options.jobEndRegex)
+  if (options.failureRegex) form.append('failureRegex', options.failureRegex)
+  if (options.sensitiveFieldNames) form.append('sensitiveFieldNames', options.sensitiveFieldNames)
+  if (options.slowThresholdMs != null) form.append('slowThresholdMs', String(options.slowThresholdMs))
+
+  const res = await fetchWithAuth(`${API}/upload`, { method: 'POST', body: form })
+  return handleResponse(res)
+}
+
+export async function composeAnalyses(
+  ids: string[],
+  preset?: string,
+  slowThresholdMs?: number,
+): Promise<AnalysisSummary> {
+  const res = await fetchWithAuth(`${API}/compose`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, preset, slowThresholdMs }),
+  })
+  return handleResponse(res)
+}
+
+export async function getAnalysis(id: string): Promise<AnalysisSummary> {
+  const res = await fetchWithAuth(`${API}/${id}`)
+  return handleResponse(res)
+}
+
+export async function deleteAnalysis(id: string): Promise<void> {
+  const res = await fetchWithAuth(`${API}/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Delete failed')
+}
+
+export async function getApiCalls(
+  id: string,
+  params: { endpoint?: string; thread?: string; minDuration?: number; sort?: string; page?: number; size?: number } = {},
+): Promise<PaginatedResponse<ApiCallPair>> {
+  const q = new URLSearchParams()
+  if (params.endpoint) q.set('endpoint', params.endpoint)
+  if (params.thread) q.set('thread', params.thread)
+  if (params.minDuration != null) q.set('minDuration', String(params.minDuration))
+  if (params.sort) q.set('sort', params.sort)
+  if (params.page != null) q.set('page', String(params.page))
+  if (params.size != null) q.set('size', String(params.size))
+  const res = await fetchWithAuth(`${API}/${id}/api-calls?${q}`)
+  return handleResponse(res)
+}
+
+export async function getApiStats(id: string): Promise<EndpointStats[]> {
+  const res = await fetchWithAuth(`${API}/${id}/api-stats`)
+  return handleResponse(res)
+}
+
+export async function getLines(
+  id: string,
+  params: { thread?: string; level?: string; search?: string; page?: number; size?: number } = {},
+): Promise<PaginatedResponse<LogLine>> {
+  const q = new URLSearchParams()
+  if (params.thread) q.set('thread', params.thread)
+  if (params.level) q.set('level', params.level)
+  if (params.search) q.set('search', params.search)
+  if (params.page != null) q.set('page', String(params.page))
+  if (params.size != null) q.set('size', String(params.size))
+  const res = await fetchWithAuth(`${API}/${id}/lines?${q}`)
+  return handleResponse(res)
+}
+
+export async function getThreads(id: string): Promise<ThreadInfo[]> {
+  const res = await fetchWithAuth(`${API}/${id}/threads`)
+  return handleResponse(res)
+}
+
+export async function getEndpoints(id: string): Promise<string[]> {
+  const res = await fetchWithAuth(`${API}/${id}/endpoints`)
+  return handleResponse(res)
+}
+
+export async function getJobs(
+  id: string,
+  params: { page?: number; size?: number } = {},
+): Promise<PaginatedResponse<JobExecution>> {
+  const q = new URLSearchParams()
+  if (params.page != null) q.set('page', String(params.page))
+  if (params.size != null) q.set('size', String(params.size))
+  const res = await fetchWithAuth(`${API}/${id}/jobs?${q}`)
+  return handleResponse(res)
+}
+
+export async function getFailures(
+  id: string,
+  params: { page?: number; size?: number } = {},
+): Promise<PaginatedResponse<RepeatedFailure>> {
+  const q = new URLSearchParams()
+  if (params.page != null) q.set('page', String(params.page))
+  if (params.size != null) q.set('size', String(params.size))
+  const res = await fetchWithAuth(`${API}/${id}/failures?${q}`)
+  return handleResponse(res)
+}
+
+export async function listAnalyses(): Promise<AnalysisSummary[]> {
+  const res = await fetchWithAuth(`${API}/list`)
+  return handleResponse(res)
+}
