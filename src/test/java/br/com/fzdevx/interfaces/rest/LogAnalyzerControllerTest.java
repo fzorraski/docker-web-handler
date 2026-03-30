@@ -1,5 +1,6 @@
 package br.com.fzdevx.interfaces.rest;
 
+import br.com.fzdevx.application.usecase.AnalyzeContainerLogsUseCase;
 import br.com.fzdevx.application.usecase.AnalyzeLogFileUseCase;
 import br.com.fzdevx.domain.model.*;
 import br.com.fzdevx.infrastructure.config.LogPresetProvider;
@@ -37,6 +38,9 @@ class LogAnalyzerControllerTest {
     AnalyzeLogFileUseCase analyzeLogFileUseCase;
 
     @Mock
+    AnalyzeContainerLogsUseCase analyzeContainerLogsUseCase;
+
+    @Mock
     LogPresetProvider logPresetProvider;
 
     @InjectMocks
@@ -48,6 +52,7 @@ class LogAnalyzerControllerTest {
         setField("maxFileSizeMb", 500);
         setField("defaultSlowThresholdMs", 1000);
         setField("defaultPresetName", "WILDFLY");
+        setField("defaultContainerTail", 10000);
         when(logPresetProvider.allPresets()).thenReturn(LogPreset.allPresets());
         when(logPresetProvider.byName(anyString())).thenAnswer(inv -> LogPreset.byName(inv.getArgument(0)));
     }
@@ -705,7 +710,68 @@ class LogAnalyzerControllerTest {
     }
 
     // ======================================================================
-    // 5. Upload validation
+    // 5. Container log analysis
+    // ======================================================================
+
+    @Test
+    void analyzeContainerLogs_disabled_returnsForbidden() {
+        setField("enabled", false);
+        Response response = controller.analyzeContainerLogs("abcdef123456", null, null, null, null, "tail");
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void analyzeContainerLogs_invalidContainerId_returnsBadRequest() {
+        Response response = controller.analyzeContainerLogs("not-hex!", null, null, null, null, "tail");
+        assertEquals(400, response.getStatus());
+    }
+
+    @Test
+    void analyzeContainerLogs_success_returns200() throws Exception {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeContainerLogsUseCase.execute(anyString(), any(), anyInt(), anyString(), any(), anyInt()))
+                .thenReturn(analysis);
+
+        Response response = controller.analyzeContainerLogs("abcdef123456", null, null, null, null, "tail");
+
+        assertEquals(200, response.getStatus());
+        verify(analyzeContainerLogsUseCase).execute(eq("abcdef123456"), any(), eq(10000), eq("tail"), any(LogPreset.class), eq(1000));
+    }
+
+    @Test
+    void analyzeContainerLogs_withCustomLines_clampsToRange() throws Exception {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeContainerLogsUseCase.execute(anyString(), any(), anyInt(), anyString(), any(), anyInt()))
+                .thenReturn(analysis);
+
+        Response response = controller.analyzeContainerLogs("abcdef123456", null, null, null, 50, "tail");
+
+        assertEquals(200, response.getStatus());
+        verify(analyzeContainerLogsUseCase).execute(eq("abcdef123456"), any(), eq(100), eq("tail"), any(), anyInt());
+    }
+
+    @Test
+    void analyzeContainerLogs_containerLogException_returnsBadRequest() throws Exception {
+        when(analyzeContainerLogsUseCase.execute(anyString(), any(), anyInt(), anyString(), any(), anyInt()))
+                .thenThrow(new AnalyzeContainerLogsUseCase.ContainerLogException("Logging driver not supported"));
+
+        Response response = controller.analyzeContainerLogs("abcdef123456", null, null, null, null, "tail");
+
+        assertEquals(400, response.getStatus());
+    }
+
+    @Test
+    void analyzeContainerLogs_unexpectedException_returns500() throws Exception {
+        when(analyzeContainerLogsUseCase.execute(anyString(), any(), anyInt(), anyString(), any(), anyInt()))
+                .thenThrow(new RuntimeException("unexpected"));
+
+        Response response = controller.analyzeContainerLogs("abcdef123456", null, null, null, null, "tail");
+
+        assertEquals(500, response.getStatus());
+    }
+
+    // ======================================================================
+    // 6. Upload validation
     // ======================================================================
 
     @Test
