@@ -2,6 +2,7 @@ package br.com.fzdevx.application.usecase;
 
 import br.com.fzdevx.application.port.LogAnalysisPort;
 import br.com.fzdevx.domain.model.*;
+import br.com.fzdevx.domain.shared.EndpointStatsCalculator;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -14,7 +15,6 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class AnalyzeLogFileUseCase {
@@ -171,7 +171,7 @@ public class AnalyzeLogFileUseCase {
                 .filter(Objects::nonNull)
                 .max(Comparator.naturalOrder()).orElse(null);
 
-        var endpointStats = computeEndpointStats(apiCalls, slowThresholdMs);
+        var endpointStats = EndpointStatsCalculator.compute(apiCalls, slowThresholdMs);
 
         LogAnalysis merged = new LogAnalysis(
                 sourceFiles, allLines.size(), start, end,
@@ -181,28 +181,6 @@ public class AnalyzeLogFileUseCase {
         );
         analyses.put(merged.getId(), new AnalysisEntry(merged, Instant.now()));
         return merged;
-    }
-
-    private List<EndpointStats> computeEndpointStats(
-            List<ApiCallPair> apiCalls, int slowThresholdMs) {
-        var byEndpoint = apiCalls.stream()
-                .collect(Collectors.groupingBy(
-                        ApiCallPair::endpoint,
-                        LinkedHashMap::new,
-                        Collectors.toList()));
-
-        return byEndpoint.entrySet().stream().map(e -> {
-            var calls = e.getValue();
-            long[] durations = calls.stream().mapToLong(ApiCallPair::durationMs).sorted().toArray();
-            double avg = calls.stream().mapToLong(ApiCallPair::durationMs).average().orElse(0);
-            long min = durations.length > 0 ? durations[0] : 0;
-            long max = durations.length > 0 ? durations[durations.length - 1] : 0;
-            int p95Index = (int) Math.ceil(durations.length * 0.95) - 1;
-            long p95 = durations.length > 0 ? durations[Math.max(0, p95Index)] : 0;
-            int slowCount = (int) calls.stream().filter(c -> c.durationMs() >= slowThresholdMs).count();
-            return new EndpointStats(e.getKey(), calls.size(), avg, min, max, p95, slowCount);
-        }).sorted(Comparator.comparingInt(EndpointStats::callCount).reversed())
-        .toList();
     }
 
     public LogAnalysis get(String id) {

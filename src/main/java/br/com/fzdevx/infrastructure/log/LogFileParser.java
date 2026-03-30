@@ -2,6 +2,7 @@ package br.com.fzdevx.infrastructure.log;
 
 import br.com.fzdevx.application.port.LogAnalysisPort;
 import br.com.fzdevx.domain.model.*;
+import br.com.fzdevx.domain.shared.EndpointStatsCalculator;
 import jakarta.enterprise.context.ApplicationScoped;
 
 import java.io.BufferedReader;
@@ -17,7 +18,6 @@ import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
-import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class LogFileParser implements LogAnalysisPort {
@@ -63,8 +63,10 @@ public class LogFileParser implements LogAnalysisPort {
         List<String> sensitiveFieldNames = preset.sensitiveFieldNames() != null
                 ? preset.sensitiveFieldNames() : List.of();
 
+        List<Map.Entry<Pattern, String>> redactionPatterns = compileRedactionPatterns(sensitiveFieldNames);
+
         List<ApiCallPair> apiCalls = apiCallPattern != null
-                ? pairApiCalls(allLines, apiCallPattern, slowThresholdMs, sensitiveFieldNames)
+                ? pairApiCalls(allLines, apiCallPattern, slowThresholdMs, redactionPatterns)
                 : List.of();
 
         List<JobExecution> jobExecutions = jobStartPattern != null
@@ -96,7 +98,7 @@ public class LogFileParser implements LogAnalysisPort {
             endpointSet.add(pair.endpoint());
         }
 
-        List<EndpointStats> endpointStats = computeEndpointStats(apiCalls, slowThresholdMs);
+        List<EndpointStats> endpointStats = EndpointStatsCalculator.compute(apiCalls, slowThresholdMs);
 
         LocalDateTime start = allLines.stream()
                 .map(LogLine::timestamp)
@@ -157,7 +159,7 @@ public class LogFileParser implements LogAnalysisPort {
     }
 
     private List<ApiCallPair> pairApiCalls(List<LogLine> lines, Pattern apiCallPattern,
-                                              int slowThresholdMs, List<String> sensitiveFieldNames) {
+                                              int slowThresholdMs, List<Map.Entry<Pattern, String>> redactionPatterns) {
         // Key: thread + "|" + endpoint + "|" + correlationId (or empty)
         Map<String, Deque<PendingRequest>> pendingByCorrelation = new HashMap<>();
         // Key: thread + "|" + endpoint (for calls without correlationId — FIFO queue)
@@ -211,8 +213,8 @@ public class LogFileParser implements LogAnalysisPort {
                     pairs.add(new ApiCallPair(
                             endpoint, matched.correlationId, thread,
                             matched.timestamp, line.timestamp(), durationMs,
-                            redactPayload(matched.payload, sensitiveFieldNames),
-                            redactPayload(payload, sensitiveFieldNames),
+                            redactPayload(matched.payload, redactionPatterns),
+                            redactPayload(payload, redactionPatterns),
                             matched.lineNumber, line.lineNumber(),
                             matched.sourceFile, durationMs >= slowThresholdMs
                     ));
@@ -301,26 +303,6 @@ public class LogFileParser implements LogAnalysisPort {
                 .toList();
     }
 
-    private List<EndpointStats> computeEndpointStats(List<ApiCallPair> apiCalls, int slowThresholdMs) {
-        Map<String, List<ApiCallPair>> byEndpoint = apiCalls.stream()
-                .collect(Collectors.groupingBy(ApiCallPair::endpoint, LinkedHashMap::new, Collectors.toList()));
-
-        return byEndpoint.entrySet().stream().map(e -> {
-            String endpoint = e.getKey();
-            List<ApiCallPair> calls = e.getValue();
-            long[] durations = calls.stream().mapToLong(ApiCallPair::durationMs).sorted().toArray();
-            double avg = calls.stream().mapToLong(ApiCallPair::durationMs).average().orElse(0);
-            long min = durations.length > 0 ? durations[0] : 0;
-            long max = durations.length > 0 ? durations[durations.length - 1] : 0;
-            int p95Index = (int) Math.ceil(durations.length * 0.95) - 1;
-            long p95 = durations.length > 0 ? durations[Math.max(0, p95Index)] : 0;
-            int slowCount = (int) calls.stream().filter(c -> c.durationMs() >= slowThresholdMs).count();
-            return new EndpointStats(endpoint, calls.size(), avg, min, max, p95, slowCount);
-        })
-        .sorted(Comparator.comparingInt(EndpointStats::callCount).reversed())
-        .toList();
-    }
-
     private String safeGroup(Matcher matcher, String groupName) {
         try {
             return matcher.group(groupName);
@@ -363,15 +345,26 @@ public class LogFileParser implements LogAnalysisPort {
         }
     }
 
-    private String redactPayload(String payload, List<String> sensitiveFieldNames) {
-        if (payload == null || sensitiveFieldNames == null || sensitiveFieldNames.isEmpty()) {
-            return payload;
+    private List<Map.Entry<Pattern, String>> compileRedactionPatterns(List<String> sensitiveFieldNames) {
+        if (sensitiveFieldNames == null || sensitiveFieldNames.isEmpty()) {
+            return List.of();
         }
-        String result = payload;
+        List<Map.Entry<Pattern, String>> patterns = new ArrayList<>();
         for (String fieldName : sensitiveFieldNames) {
             String escaped = Pattern.quote(fieldName);
             Pattern p = Pattern.compile("\"(" + escaped + ")\"\\s*:\\s*\"[^\"]*\"");
-            result = p.matcher(result).replaceAll("\"$1\":\"***\"");
+            patterns.add(Map.entry(p, "\"$1\":\"***\""));
+        }
+        return patterns;
+    }
+
+    private String redactPayload(String payload, List<Map.Entry<Pattern, String>> redactionPatterns) {
+        if (payload == null || redactionPatterns.isEmpty()) {
+            return payload;
+        }
+        String result = payload;
+        for (Map.Entry<Pattern, String> entry : redactionPatterns) {
+            result = entry.getKey().matcher(result).replaceAll(entry.getValue());
         }
         return result;
     }
