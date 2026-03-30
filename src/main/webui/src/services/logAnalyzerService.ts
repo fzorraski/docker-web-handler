@@ -187,12 +187,13 @@ export async function deleteAnalysis(id: string): Promise<void> {
 
 export async function getApiCalls(
   id: string,
-  params: { endpoint?: string; thread?: string; minDuration?: number; sort?: string; page?: number; size?: number } = {},
+  params: { endpoint?: string; thread?: string; minDuration?: number; search?: string; sort?: string; page?: number; size?: number } = {},
 ): Promise<PaginatedResponse<ApiCallPair>> {
   const q = new URLSearchParams()
   if (params.endpoint) q.set('endpoint', params.endpoint)
   if (params.thread) q.set('thread', params.thread)
   if (params.minDuration != null) q.set('minDuration', String(params.minDuration))
+  if (params.search) q.set('search', params.search)
   if (params.sort) q.set('sort', params.sort)
   if (params.page != null) q.set('page', String(params.page))
   if (params.size != null) q.set('size', String(params.size))

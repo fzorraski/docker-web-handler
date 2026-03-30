@@ -220,7 +220,7 @@ class LogAnalyzerControllerTest {
     void getApiCalls_disabled_returnsForbidden() {
         setField("enabled", false);
 
-        Response response = controller.getApiCalls(ANALYSIS_ID, null, null, null, "time", 0, 50);
+        Response response = controller.getApiCalls(ANALYSIS_ID, null, null, null, null, "time", 0, 50);
 
         assertEquals(403, response.getStatus());
     }
@@ -323,7 +323,7 @@ class LogAnalyzerControllerTest {
     void getApiCalls_notFound_returns404() {
         when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
 
-        Response response = controller.getApiCalls("nonexistent", null, null, null, "time", 0, 50);
+        Response response = controller.getApiCalls("nonexistent", null, null, null, null, "time", 0, 50);
 
         assertEquals(404, response.getStatus());
     }
@@ -424,7 +424,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, "time", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, "time", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -433,6 +433,128 @@ class LogAnalyzerControllerTest {
         assertEquals(2, entity.get("total"));
         assertEquals(0, entity.get("page"));
         assertEquals(50, entity.get("size"));
+    }
+
+    // ---- API calls content search ----
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getApiCalls_searchByRequestPayload_filtersMatches() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, "item", "time", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertEquals(1, data.size());
+        assertEquals(1, entity.get("total"));
+        ApiCallPair match = (ApiCallPair) data.getFirst();
+        assertEquals("OrderResource/create", match.endpoint());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getApiCalls_searchByResponsePayload_filtersMatches() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, "\"id\":1", "time", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertEquals(1, data.size());
+        ApiCallPair match = (ApiCallPair) data.getFirst();
+        assertEquals("UserResource/getUser", match.endpoint());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getApiCalls_searchByCorrelationId_filtersMatches() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, "102", "time", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertEquals(1, data.size());
+        ApiCallPair match = (ApiCallPair) data.getFirst();
+        assertEquals("OrderResource/create", match.endpoint());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getApiCalls_searchCaseInsensitive_filtersMatches() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, "ITEM", "time", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        assertEquals(1, entity.get("total"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getApiCalls_searchNoMatch_returnsEmpty() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, "nonexistent-value", "time", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertTrue(data.isEmpty());
+        assertEquals(0, entity.get("total"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getApiCalls_searchCombinedWithEndpointFilter() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        // search "id" matches both calls, but endpoint filter narrows to one
+        Response response = controller.getApiCalls(analysis.getId(), "UserResource/getUser", null, null, "id", "time", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertEquals(1, data.size());
+        ApiCallPair match = (ApiCallPair) data.getFirst();
+        assertEquals("UserResource/getUser", match.endpoint());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getApiCalls_searchBlank_returnsAll() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, "   ", "time", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        assertEquals(2, entity.get("total"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getApiCalls_searchNull_returnsAll() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, "time", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        assertEquals(2, entity.get("total"));
     }
 
     @Test

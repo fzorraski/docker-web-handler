@@ -8,7 +8,7 @@ import {
   useTheme,
 } from '@mui/material'
 import {
-  CloudUpload, ContentCopy, ExpandMore,
+  Clear, CloudUpload, ContentCopy, ExpandMore,
   Search, MergeType,
 } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
@@ -365,12 +365,19 @@ function ApiCallsTab({ analysisId, sensitiveFields, isDark, headerTheme }: {
   const [sort, setSort] = useState('time')
   const [filterEndpoint, setFilterEndpoint] = useState('')
   const [filterThread, setFilterThread] = useState('')
+  const [contentSearch, setContentSearch] = useState('')
+  const [debouncedContentSearch, setDebouncedContentSearch] = useState('')
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
   const [maskEnabled, setMaskEnabled] = useState(true)
   const [endpoints, setEndpoints] = useState<string[]>([])
   const [threads, setThreads] = useState<ThreadInfo[]>([])
   const [loading, setLoading] = useState(false)
   const fetchGenRef = useRef(0)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedContentSearch(contentSearch), 300)
+    return () => clearTimeout(timer)
+  }, [contentSearch])
 
   useEffect(() => {
     logService.getEndpoints(analysisId).then(setEndpoints).catch(() => {})
@@ -383,6 +390,7 @@ function ApiCallsTab({ analysisId, sensitiveFields, isDark, headerTheme }: {
     logService.getApiCalls(analysisId, {
       endpoint: filterEndpoint || undefined,
       thread: filterThread || undefined,
+      search: debouncedContentSearch || undefined,
       sort, page, size: rowsPerPage,
     }).then((r) => {
       if (gen !== fetchGenRef.current) return
@@ -391,7 +399,7 @@ function ApiCallsTab({ analysisId, sensitiveFields, isDark, headerTheme }: {
     }).catch(() => {}).finally(() => {
       if (gen === fetchGenRef.current) setLoading(false)
     })
-  }, [analysisId, filterEndpoint, filterThread, sort, page, rowsPerPage])
+  }, [analysisId, filterEndpoint, filterThread, debouncedContentSearch, sort, page, rowsPerPage])
 
   return (
     <Box>
@@ -412,6 +420,21 @@ function ApiCallsTab({ analysisId, sensitiveFields, isDark, headerTheme }: {
           value={filterThread || null}
           onChange={(_, v) => { setFilterThread(v ?? ''); setPage(0) }}
           renderInput={(params) => <TextField {...params} label={t('logAnalyzer.apiCalls.thread')} />}
+        />
+        <TextField
+          size="small"
+          placeholder={t('logAnalyzer.apiCalls.searchContent')}
+          value={contentSearch}
+          onChange={(e) => { setContentSearch(e.target.value); setPage(0) }}
+          slotProps={{ input: {
+            startAdornment: <Search sx={{ mr: 1, color: 'text.secondary', fontSize: 20 }} />,
+            endAdornment: contentSearch ? (
+              <IconButton size="small" onClick={() => { setContentSearch(''); setPage(0) }} sx={{ p: 0.25 }}>
+                <Clear sx={{ fontSize: 16 }} />
+              </IconButton>
+            ) : undefined,
+          } }}
+          sx={{ minWidth: 280 }}
         />
         <Autocomplete
           size="small"

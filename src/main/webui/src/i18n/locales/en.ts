@@ -798,6 +798,7 @@ const en = {
       sortByDuration: 'By duration',
       sortByEndpoint: 'By endpoint',
       maskSensitive: 'Mask sensitive fields',
+      searchContent: 'Search in payloads...',
     },
     stats: {
       endpoint: 'Endpoint',

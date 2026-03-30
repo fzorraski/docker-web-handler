@@ -799,6 +799,7 @@ const ptBR: typeof en = {
       sortByDuration: 'Por duração',
       sortByEndpoint: 'Por endpoint',
       maskSensitive: 'Mascarar campos sensíveis',
+      searchContent: 'Buscar nos payloads...',
     },
     stats: {
       endpoint: 'Endpoint',

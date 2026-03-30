@@ -799,6 +799,7 @@ const es: typeof en = {
       sortByDuration: 'Por duración',
       sortByEndpoint: 'Por endpoint',
       maskSensitive: 'Enmascarar campos sensibles',
+      searchContent: 'Buscar en payloads...',
     },
     stats: {
       endpoint: 'Endpoint',

@@ -252,6 +252,7 @@ public class LogAnalyzerController {
                                 @QueryParam("endpoint") String endpoint,
                                 @QueryParam("thread") String thread,
                                 @QueryParam("minDuration") Long minDuration,
+                                @QueryParam("search") String search,
                                 @QueryParam("sort") @DefaultValue("time") String sort,
                                 @QueryParam("page") @DefaultValue("0") int page,
                                 @QueryParam("size") @DefaultValue("50") int size) {
@@ -265,10 +266,12 @@ public class LogAnalyzerController {
             return Response.status(Response.Status.NOT_FOUND).entity(Map.of("error", "Analysis not found.")).build();
         }
 
+        String searchTerm = search != null && !search.isBlank() ? search.trim() : null;
         var filtered = analysis.getApiCalls().stream()
                 .filter(c -> endpoint == null || endpoint.isBlank() || c.endpoint().equals(endpoint))
                 .filter(c -> thread == null || thread.isBlank() || c.thread().equals(thread))
-                .filter(c -> minDuration == null || c.durationMs() >= minDuration);
+                .filter(c -> minDuration == null || c.durationMs() >= minDuration)
+                .filter(c -> searchTerm == null || containsIgnoreCase(c, searchTerm));
 
         var sorted = switch (sort) {
             case "duration" -> filtered.sorted(Comparator.comparingLong(ApiCallPair::durationMs).reversed());
@@ -494,5 +497,19 @@ public class LogAnalyzerController {
 
     private String nonBlankOrDefault(String value, String defaultValue) {
         return value != null && !value.isBlank() ? value : defaultValue;
+    }
+
+    private boolean containsIgnoreCase(ApiCallPair call, String search) {
+        return containsIgnoreCase(call.requestPayload(), search)
+                || containsIgnoreCase(call.responsePayload(), search)
+                || containsIgnoreCase(call.correlationId(), search);
+    }
+
+    private boolean containsIgnoreCase(String text, String search) {
+        if (text == null || text.length() < search.length()) return false;
+        for (int i = 0, max = text.length() - search.length(); i <= max; i++) {
+            if (text.regionMatches(true, i, search, 0, search.length())) return true;
+        }
+        return false;
     }
 }
