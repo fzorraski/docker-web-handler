@@ -27,7 +27,10 @@ import {
   Pause,
   PlayArrow,
   ClearAll,
+  Analytics,
 } from '@mui/icons-material'
+import { useNavigate } from 'react-router-dom'
+import { isLogAnalyzerEnabled, analyzeContainerLogs } from '../services/logAnalyzerService'
 import { List, useListRef, type RowComponentProps } from 'react-window'
 import { useTranslation } from 'react-i18next'
 import { streamContainerLogs } from '../services/sseService'
@@ -65,6 +68,29 @@ const FLUSH_INTERVAL_MS = 100
 const ROW_HEIGHT = 20
 const CONTAINER_HEIGHT = 500
 const TOGGLE_LEVELS: LogLevel[] = ['ERROR', 'WARN', 'INFO', 'DEBUG']
+
+const shimmerSx = {
+  background: 'linear-gradient(90deg, #FF6D00, #FFC107, #FF6D00)',
+  backgroundSize: '200% 100%',
+  animation: 'shimmer 1.5s ease-in-out infinite',
+  color: '#fff !important',
+  '@keyframes shimmer': {
+    '0%': { backgroundPosition: '200% 0' },
+    '100%': { backgroundPosition: '-200% 0' },
+  },
+  '&.Mui-disabled': { color: '#fff !important' },
+}
+
+const sparkleSpinSx = {
+  animation: 'sparkle-spin 1.5s ease-in-out infinite',
+  '@keyframes sparkle-spin': {
+    '0%': { transform: 'rotate(0deg) scale(1)', filter: 'drop-shadow(0 0 2px #FF6D00)' },
+    '25%': { transform: 'rotate(90deg) scale(1.2)', filter: 'drop-shadow(0 0 6px #FFC107)' },
+    '50%': { transform: 'rotate(180deg) scale(1)', filter: 'drop-shadow(0 0 8px #FF6D00)' },
+    '75%': { transform: 'rotate(270deg) scale(1.2)', filter: 'drop-shadow(0 0 6px #FFC107)' },
+    '100%': { transform: 'rotate(360deg) scale(1)', filter: 'drop-shadow(0 0 2px #FF6D00)' },
+  },
+}
 
 const HighlightedText = memo(function HighlightedText({ text, search, markColor }: { text: string; search: string; markColor: string }) {
   if (!search) return <>{text}</>
@@ -142,6 +168,9 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
   const [currentErrorIdx, setCurrentErrorIdx] = useState(-1)
   const [currentExcIdx, setCurrentExcIdx] = useState(-1)
   const [copySnackbar, setCopySnackbar] = useState(false)
+  const [analyzerEnabled, setAnalyzerEnabled] = useState(false)
+  const [analyzing, setAnalyzing] = useState(false)
+  const navigate = useNavigate()
   const [paused, setPaused] = useState(false)
   const [pausedBufferCount, setPausedBufferCount] = useState(0)
   const [streamError, setStreamError] = useState('')
@@ -166,6 +195,10 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
   }, [])
 
   // SSE connection
+  useEffect(() => {
+    isLogAnalyzerEnabled().then(setAnalyzerEnabled).catch(() => setAnalyzerEnabled(false))
+  }, [])
+
   useEffect(() => {
     if (!open || !containerId) return
 
@@ -818,6 +851,31 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
       </DialogContent>
 
       <DialogActions sx={{ px: 3, py: 2 }}>
+        {analyzerEnabled && (
+          <Tooltip title={t('containers.logs.deepAnalysisTooltip')} arrow>
+            <span>
+              <Button
+                size="small"
+                startIcon={<Analytics sx={analyzing ? sparkleSpinSx : undefined} />}
+                disabled={analyzing}
+                sx={analyzing ? shimmerSx : undefined}
+                onClick={async () => {
+                  setAnalyzing(true)
+                  try {
+                    const result = await analyzeContainerLogs(containerId, { containerName })
+                    onClose()
+                    navigate('/logs', { state: { analysisId: result.id } })
+                  } catch (err) {
+                    setAnalyzing(false)
+                    setStreamError(err instanceof Error ? err.message : t('containers.logs.analyzing'))
+                  }
+                }}
+              >
+                {analyzing ? t('containers.logs.analyzing') : t('containers.logs.deepAnalysis')}
+              </Button>
+            </span>
+          </Tooltip>
+        )}
         <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
           {displayedLogs.length === logs.length
             ? t('containers.logs.lineCount', { count: logs.length })

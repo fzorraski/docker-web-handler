@@ -27,6 +27,7 @@ export interface AnalyzerStatus {
   enabled: boolean
   presets: LogPreset[]
   defaultPreset: string
+  containerTail: number
 }
 
 export interface AnalysisSummary {
@@ -159,6 +160,20 @@ export async function uploadFiles(
   if (options.slowThresholdMs != null) form.append('slowThresholdMs', String(options.slowThresholdMs))
 
   const res = await fetchWithAuth(`${API}/upload`, { method: 'POST', body: form })
+  return handleResponse(res)
+}
+
+export async function analyzeContainerLogs(
+  containerId: string,
+  params: { containerName?: string; preset?: string; slowThresholdMs?: number; lines?: number; direction?: 'head' | 'tail' } = {},
+): Promise<AnalysisSummary> {
+  const q = new URLSearchParams()
+  if (params.containerName) q.set('containerName', params.containerName)
+  if (params.preset) q.set('preset', params.preset)
+  if (params.slowThresholdMs != null) q.set('slowThresholdMs', String(params.slowThresholdMs))
+  if (params.lines != null) q.set('lines', String(params.lines))
+  if (params.direction) q.set('direction', params.direction)
+  const res = await fetchWithAuth(`${API}/from-container/${encodeURIComponent(containerId)}?${q}`, { method: 'POST' })
   return handleResponse(res)
 }
 

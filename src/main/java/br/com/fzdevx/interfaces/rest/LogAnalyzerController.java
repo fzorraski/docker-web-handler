@@ -1,5 +1,6 @@
 package br.com.fzdevx.interfaces.rest;
 
+import br.com.fzdevx.application.usecase.AnalyzeContainerLogsUseCase;
 import br.com.fzdevx.application.usecase.AnalyzeLogFileUseCase;
 import br.com.fzdevx.domain.model.*;
 import br.com.fzdevx.domain.shared.InputValidator;
@@ -14,13 +15,19 @@ import org.jboss.resteasy.plugins.providers.multipart.InputPart;
 import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
 
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.util.*;
+import java.util.regex.PatternSyntaxException;
+import java.util.stream.Collectors;
 
 @Path("/logs/analyzer")
 public class LogAnalyzerController {
 
     @Inject
     AnalyzeLogFileUseCase analyzeLogFileUseCase;
+
+    @Inject
+    AnalyzeContainerLogsUseCase analyzeContainerLogsUseCase;
 
     @Inject
     LogPresetProvider logPresetProvider;
@@ -38,6 +45,10 @@ public class LogAnalyzerController {
     int defaultSlowThresholdMs;
 
     @Inject
+    @ConfigProperty(name = "log.analyzer.container-tail", defaultValue = "10000")
+    int defaultContainerTail;
+
+    @Inject
     @ConfigProperty(name = "log.analyzer.default-preset", defaultValue = "WILDFLY")
     String defaultPresetName;
 
@@ -48,7 +59,8 @@ public class LogAnalyzerController {
         return Response.ok(Map.of(
                 "enabled", enabled,
                 "presets", logPresetProvider.allPresets().stream().map(this::presetToMap).toList(),
-                "defaultPreset", defaultPresetName
+                "defaultPreset", defaultPresetName,
+                "containerTail", defaultContainerTail
         )).build();
     }
 
@@ -57,11 +69,7 @@ public class LogAnalyzerController {
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Produces(MediaType.APPLICATION_JSON)
     public Response uploadAndAnalyze(MultipartFormDataInput input) {
-        if (!enabled) {
-            return Response.status(Response.Status.FORBIDDEN)
-                    .entity(Map.of("error", "Log analyzer is disabled."))
-                    .build();
-        }
+        if (!enabled) return featureDisabled();
 
         List<java.nio.file.Path> tempFiles = new ArrayList<>();
         List<java.nio.file.Path> tempDirs = new ArrayList<>();
@@ -129,14 +137,14 @@ public class LogAnalyzerController {
                             .build();
                 }
 
-                java.nio.file.Path tempDir = java.nio.file.Files.createTempDirectory("log-analyzer-");
+                java.nio.file.Path tempDir = Files.createTempDirectory("log-analyzer-");
                 tempDirs.add(tempDir);
                 java.nio.file.Path tempFile = tempDir.resolve(filename);
                 tempFiles.add(tempFile);
                 filenames.add(filename);
 
                 try (InputStream is = filePart.getBody(InputStream.class, null);
-                     var out = java.nio.file.Files.newOutputStream(tempFile)) {
+                     var out = Files.newOutputStream(tempFile)) {
                     long size = 0;
                     byte[] buf = new byte[8192];
                     int read;
@@ -159,7 +167,7 @@ public class LogAnalyzerController {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Invalid numeric parameter."))
                     .build();
-        } catch (java.util.regex.PatternSyntaxException e) {
+        } catch (PatternSyntaxException e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Invalid regex pattern: " + e.getDescription()))
                     .build();
@@ -170,11 +178,50 @@ public class LogAnalyzerController {
                     .build();
         } finally {
             for (java.nio.file.Path f : tempFiles) {
-                try { java.nio.file.Files.deleteIfExists(f); } catch (Exception ignored) {}
+                try { Files.deleteIfExists(f); } catch (Exception ignored) {}
             }
             for (java.nio.file.Path d : tempDirs) {
-                try { java.nio.file.Files.deleteIfExists(d); } catch (Exception ignored) {}
+                try { Files.deleteIfExists(d); } catch (Exception ignored) {}
             }
+        }
+    }
+
+    @POST
+    @Path("/from-container/{containerId}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response analyzeContainerLogs(@PathParam("containerId") String containerId,
+                                         @QueryParam("containerName") String containerName,
+                                         @QueryParam("preset") String presetName,
+                                         @QueryParam("slowThresholdMs") Integer slowThresholdMs,
+                                         @QueryParam("lines") Integer lines,
+                                         @QueryParam("direction") @DefaultValue("tail") String direction) {
+        if (!enabled) return featureDisabled();
+
+        Optional<String> idError = InputValidator.validateContainerId(containerId);
+        if (idError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", idError.get()))
+                    .build();
+        }
+
+        int requestedLines = Math.clamp(lines != null ? lines : defaultContainerTail, 100, 100_000);
+        LogPreset preset = presetName != null ? logPresetProvider.byName(presetName) : logPresetProvider.byName(defaultPresetName);
+        int threshold = slowThresholdMs != null ? slowThresholdMs : defaultSlowThresholdMs;
+
+        try {
+            LogAnalysis analysis = analyzeContainerLogsUseCase.execute(
+                    containerId, containerName, requestedLines, direction, preset, threshold
+            );
+            return Response.ok(analysisSummaryMap(analysis)).build();
+        } catch (AnalyzeContainerLogsUseCase.ContainerLogException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", e.getMessage()))
+                    .build();
+        } catch (Exception e) {
+            Log.errorf("Container log analysis failed: %s", e.getMessage());
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(Map.of("error", "Failed to analyze container logs."))
+                    .build();
         }
     }
 
@@ -183,11 +230,7 @@ public class LogAnalyzerController {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response compose(Map<String, Object> body) {
-        if (!enabled) {
-            return Response.status(Response.Status.FORBIDDEN)
-                    .entity(Map.of("error", "Log analyzer is disabled."))
-                    .build();
-        }
+        if (!enabled) return featureDisabled();
 
         Object idsObj = body.get("ids");
         if (!(idsObj instanceof List<?> rawList)) {
@@ -221,13 +264,9 @@ public class LogAnalyzerController {
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAnalysis(@PathParam("id") String id) {
-        if (!enabled) {
-            return Response.status(Response.Status.FORBIDDEN).entity(Map.of("error", "Log analyzer is disabled.")).build();
-        }
+        if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
-        if (analysis == null) {
-            return Response.status(Response.Status.NOT_FOUND).entity(Map.of("error", "Analysis not found.")).build();
-        }
+        if (analysis == null) return analysisNotFound();
         return Response.ok(analysisSummaryMap(analysis)).build();
     }
 
@@ -235,13 +274,9 @@ public class LogAnalyzerController {
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response deleteAnalysis(@PathParam("id") String id) {
-        if (!enabled) {
-            return Response.status(Response.Status.FORBIDDEN).entity(Map.of("error", "Log analyzer is disabled.")).build();
-        }
+        if (!enabled) return featureDisabled();
         boolean deleted = analyzeLogFileUseCase.delete(id);
-        if (!deleted) {
-            return Response.status(Response.Status.NOT_FOUND).entity(Map.of("error", "Analysis not found.")).build();
-        }
+        if (!deleted) return analysisNotFound();
         return Response.ok(Map.of("deleted", true)).build();
     }
 
@@ -256,15 +291,9 @@ public class LogAnalyzerController {
                                 @QueryParam("sort") @DefaultValue("time") String sort,
                                 @QueryParam("page") @DefaultValue("0") int page,
                                 @QueryParam("size") @DefaultValue("50") int size) {
-        if (!enabled) {
-            return Response.status(Response.Status.FORBIDDEN).entity(Map.of("error", "Log analyzer is disabled.")).build();
-        }
-        page = Math.max(0, page);
-        size = Math.clamp(size, 1, 500);
+        if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
-        if (analysis == null) {
-            return Response.status(Response.Status.NOT_FOUND).entity(Map.of("error", "Analysis not found.")).build();
-        }
+        if (analysis == null) return analysisNotFound();
 
         String searchTerm = search != null && !search.isBlank() ? search.trim() : null;
         var filtered = analysis.getApiCalls().stream()
@@ -280,30 +309,16 @@ public class LogAnalyzerController {
                     Comparator.nullsLast(Comparator.naturalOrder())));
         };
 
-        var all = sorted.toList();
-        int total = all.size();
-        int from = Math.min(page * size, total);
-        int to = Math.min(from + size, total);
-
-        return Response.ok(Map.of(
-                "data", all.subList(from, to),
-                "total", total,
-                "page", page,
-                "size", size
-        )).build();
+        return paginatedResponse(sorted.toList(), page, size);
     }
 
     @GET
     @Path("/{id}/api-stats")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getApiStats(@PathParam("id") String id) {
-        if (!enabled) {
-            return Response.status(Response.Status.FORBIDDEN).entity(Map.of("error", "Log analyzer is disabled.")).build();
-        }
+        if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
-        if (analysis == null) {
-            return Response.status(Response.Status.NOT_FOUND).entity(Map.of("error", "Analysis not found.")).build();
-        }
+        if (analysis == null) return analysisNotFound();
         return Response.ok(analysis.getEndpointStats()).build();
     }
 
@@ -316,15 +331,9 @@ public class LogAnalyzerController {
                              @QueryParam("search") String search,
                              @QueryParam("page") @DefaultValue("0") int page,
                              @QueryParam("size") @DefaultValue("100") int size) {
-        if (!enabled) {
-            return Response.status(Response.Status.FORBIDDEN).entity(Map.of("error", "Log analyzer is disabled.")).build();
-        }
-        page = Math.max(0, page);
-        size = Math.clamp(size, 1, 500);
+        if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
-        if (analysis == null) {
-            return Response.status(Response.Status.NOT_FOUND).entity(Map.of("error", "Analysis not found.")).build();
-        }
+        if (analysis == null) return analysisNotFound();
 
         String searchLower = search != null ? search.toLowerCase() : null;
         var filtered = analysis.getAllLines().stream()
@@ -332,34 +341,20 @@ public class LogAnalyzerController {
                 .filter(l -> level == null || level.isBlank() || level.equalsIgnoreCase(l.level()))
                 .filter(l -> searchLower == null || (l.message() != null && l.message().toLowerCase().contains(searchLower)));
 
-        var all = filtered.toList();
-        int total = all.size();
-        int from = Math.min(page * size, total);
-        int to = Math.min(from + size, total);
-
-        return Response.ok(Map.of(
-                "data", all.subList(from, to),
-                "total", total,
-                "page", page,
-                "size", size
-        )).build();
+        return paginatedResponse(filtered.toList(), page, size);
     }
 
     @GET
     @Path("/{id}/threads")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getThreads(@PathParam("id") String id) {
-        if (!enabled) {
-            return Response.status(Response.Status.FORBIDDEN).entity(Map.of("error", "Log analyzer is disabled.")).build();
-        }
+        if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
-        if (analysis == null) {
-            return Response.status(Response.Status.NOT_FOUND).entity(Map.of("error", "Analysis not found.")).build();
-        }
+        if (analysis == null) return analysisNotFound();
 
         var threadCounts = analysis.getAllLines().stream()
                 .filter(l -> l.thread() != null)
-                .collect(java.util.stream.Collectors.groupingBy(LogLine::thread, java.util.stream.Collectors.counting()));
+                .collect(Collectors.groupingBy(LogLine::thread, Collectors.counting()));
 
         var threads = threadCounts.entrySet().stream()
                 .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
@@ -373,13 +368,9 @@ public class LogAnalyzerController {
     @Path("/{id}/endpoints")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getEndpoints(@PathParam("id") String id) {
-        if (!enabled) {
-            return Response.status(Response.Status.FORBIDDEN).entity(Map.of("error", "Log analyzer is disabled.")).build();
-        }
+        if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
-        if (analysis == null) {
-            return Response.status(Response.Status.NOT_FOUND).entity(Map.of("error", "Analysis not found.")).build();
-        }
+        if (analysis == null) return analysisNotFound();
         return Response.ok(analysis.getEndpoints()).build();
     }
 
@@ -389,20 +380,10 @@ public class LogAnalyzerController {
     public Response getJobs(@PathParam("id") String id,
                             @QueryParam("page") @DefaultValue("0") int page,
                             @QueryParam("size") @DefaultValue("50") int size) {
-        if (!enabled) {
-            return Response.status(Response.Status.FORBIDDEN).entity(Map.of("error", "Log analyzer is disabled.")).build();
-        }
-        page = Math.max(0, page);
-        size = Math.clamp(size, 1, 500);
+        if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
-        if (analysis == null) {
-            return Response.status(Response.Status.NOT_FOUND).entity(Map.of("error", "Analysis not found.")).build();
-        }
-        var all = analysis.getJobExecutions();
-        int total = all.size();
-        int from = Math.min(page * size, total);
-        int to = Math.min(from + size, total);
-        return Response.ok(Map.of("data", all.subList(from, to), "total", total, "page", page, "size", size)).build();
+        if (analysis == null) return analysisNotFound();
+        return paginatedResponse(analysis.getJobExecutions(), page, size);
     }
 
     @GET
@@ -411,29 +392,17 @@ public class LogAnalyzerController {
     public Response getFailures(@PathParam("id") String id,
                                 @QueryParam("page") @DefaultValue("0") int page,
                                 @QueryParam("size") @DefaultValue("50") int size) {
-        if (!enabled) {
-            return Response.status(Response.Status.FORBIDDEN).entity(Map.of("error", "Log analyzer is disabled.")).build();
-        }
-        page = Math.max(0, page);
-        size = Math.clamp(size, 1, 500);
+        if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
-        if (analysis == null) {
-            return Response.status(Response.Status.NOT_FOUND).entity(Map.of("error", "Analysis not found.")).build();
-        }
-        var all = analysis.getRepeatedFailures();
-        int total = all.size();
-        int from = Math.min(page * size, total);
-        int to = Math.min(from + size, total);
-        return Response.ok(Map.of("data", all.subList(from, to), "total", total, "page", page, "size", size)).build();
+        if (analysis == null) return analysisNotFound();
+        return paginatedResponse(analysis.getRepeatedFailures(), page, size);
     }
 
     @GET
     @Path("/list")
     @Produces(MediaType.APPLICATION_JSON)
     public Response listAnalyses() {
-        if (!enabled) {
-            return Response.status(Response.Status.FORBIDDEN).entity(Map.of("error", "Log analyzer is disabled.")).build();
-        }
+        if (!enabled) return featureDisabled();
         var summaries = analyzeLogFileUseCase.listAll().stream()
                 .map(this::analysisSummaryMap)
                 .toList();
@@ -441,6 +410,25 @@ public class LogAnalyzerController {
     }
 
     // ---- Helpers ----
+
+    private Response featureDisabled() {
+        return Response.status(Response.Status.FORBIDDEN)
+                .entity(Map.of("error", "Log analyzer is disabled.")).build();
+    }
+
+    private Response analysisNotFound() {
+        return Response.status(Response.Status.NOT_FOUND)
+                .entity(Map.of("error", "Analysis not found.")).build();
+    }
+
+    private Response paginatedResponse(List<?> all, int page, int size) {
+        page = Math.max(0, page);
+        size = Math.clamp(size, 1, 500);
+        int total = all.size();
+        int from = Math.min(page * size, total);
+        int to = Math.min(from + size, total);
+        return Response.ok(Map.of("data", all.subList(from, to), "total", total, "page", page, "size", size)).build();
+    }
 
     private Map<String, Object> analysisSummaryMap(LogAnalysis a) {
         return Map.ofEntries(

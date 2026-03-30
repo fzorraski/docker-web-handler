@@ -27,5 +27,7 @@ public interface DockerContainerPort {
 
     void streamLogs(String containerId, int tail, Consumer<ContainerEvent> eventSink, Supplier<Boolean> isActive);
 
+    void collectLogs(String containerId, int tail, Consumer<ContainerEvent> eventSink);
+
     void streamStats(String containerId, Consumer<ContainerStats> statsSink, Supplier<Boolean> isActive);
 }

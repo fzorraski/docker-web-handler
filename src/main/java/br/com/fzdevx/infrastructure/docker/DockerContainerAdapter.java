@@ -100,6 +100,53 @@ public class DockerContainerAdapter implements DockerContainerPort {
         }
     }
 
+    private static final java.util.regex.Pattern ANSI_PATTERN =
+            java.util.regex.Pattern.compile("\u001B\\[[;\\d]*[A-Za-z]|\u001B\\[\\?\\d+[hl]|\u001B\\(B");
+
+    private String stripAnsi(String text) {
+        return ANSI_PATTERN.matcher(text).replaceAll("");
+    }
+
+    @Override
+    public void collectLogs(String containerId, int tail, Consumer<ContainerEvent> eventSink) {
+        ResultCallback.Adapter<Frame> callback = new ResultCallback.Adapter<>() {
+            @Override
+            public void onNext(Frame frame) {
+                String line = stripAnsi(new String(frame.getPayload(), StandardCharsets.UTF_8).stripTrailing());
+                if (!line.isEmpty()) {
+                    String streamType = frame.getStreamType() == StreamType.STDERR ? "STDERR" : "STDOUT";
+                    eventSink.accept(ContainerEvent.info(streamType, line));
+                }
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                String msg = throwable.getMessage();
+                if (msg != null && msg.contains("configured logging driver does not support reading")) {
+                    msg = "This container's logging driver does not support log reading.";
+                }
+                eventSink.accept(ContainerEvent.error("Logs", msg != null ? msg : "Unknown log error."));
+                super.onError(throwable);
+            }
+        };
+
+        try {
+            dockerClient.logContainerCmd(containerId)
+                    .withStdOut(true)
+                    .withStdErr(true)
+                    .withFollowStream(false)
+                    .withTail(tail)
+                    .withTimestamps(true)
+                    .exec(callback);
+
+            callback.awaitCompletion();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            eventSink.accept(ContainerEvent.error("Logs", "Log collection error: " + e.getMessage()));
+        }
+    }
+
     @Override
     public void pullImage(String imageRef, String repository, String tag,
                           Consumer<ContainerEvent> eventSink) throws InterruptedException {
