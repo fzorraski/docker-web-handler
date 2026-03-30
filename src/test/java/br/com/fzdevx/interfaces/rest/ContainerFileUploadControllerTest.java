@@ -17,6 +17,7 @@ import org.mockito.quality.Strictness;
 
 import java.io.ByteArrayInputStream;
 import java.lang.reflect.Field;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
+
+import org.mockito.ArgumentCaptor;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -221,6 +224,117 @@ class ContainerFileUploadControllerTest {
 
         assertEquals(200, response.getStatus());
         verify(dockerTerminalPort).copyFileToContainer(eq(VALID_CONTAINER_ID), any(Path.class), eq("/tmp/"));
+    }
+
+    // ---- Original filename preservation ----
+
+    @Test
+    void uploadFile_valid_copiesFileWithOriginalFilename() throws Exception {
+        byte[] content = "payload".getBytes();
+        MultipartFormDataInput input = mockForm(VALID_PASSWORD, VALID_REMOTE_PATH, "report.csv", content);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        assertEquals(200, response.getStatus());
+        ArgumentCaptor<Path> pathCaptor = ArgumentCaptor.forClass(Path.class);
+        verify(dockerTerminalPort).copyFileToContainer(eq(VALID_CONTAINER_ID), pathCaptor.capture(), eq(VALID_REMOTE_PATH));
+        assertEquals("report.csv", pathCaptor.getValue().getFileName().toString());
+    }
+
+    @Test
+    void uploadFile_valid_preservesFilenameWithSpaces() throws Exception {
+        byte[] content = "data".getBytes();
+        MultipartFormDataInput input = mockForm(VALID_PASSWORD, VALID_REMOTE_PATH, "my file.txt", content);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        assertEquals(200, response.getStatus());
+        ArgumentCaptor<Path> pathCaptor = ArgumentCaptor.forClass(Path.class);
+        verify(dockerTerminalPort).copyFileToContainer(eq(VALID_CONTAINER_ID), pathCaptor.capture(), eq(VALID_REMOTE_PATH));
+        assertEquals("my file.txt", pathCaptor.getValue().getFileName().toString());
+    }
+
+    @Test
+    void uploadFile_valid_preservesFilenameWithDot() throws Exception {
+        byte[] content = "war-content".getBytes();
+        MultipartFormDataInput input = mockForm(VALID_PASSWORD, VALID_REMOTE_PATH, "app.v2.1.war", content);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        assertEquals(200, response.getStatus());
+        ArgumentCaptor<Path> pathCaptor = ArgumentCaptor.forClass(Path.class);
+        verify(dockerTerminalPort).copyFileToContainer(eq(VALID_CONTAINER_ID), pathCaptor.capture(), eq(VALID_REMOTE_PATH));
+        assertEquals("app.v2.1.war", pathCaptor.getValue().getFileName().toString());
+    }
+
+    // ---- Temp file cleanup ----
+
+    @Test
+    void uploadFile_valid_cleansUpTempFiles() throws Exception {
+        byte[] content = "data".getBytes();
+        MultipartFormDataInput input = mockForm(VALID_PASSWORD, VALID_REMOTE_PATH, "test.txt", content);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        ArgumentCaptor<Path> pathCaptor = ArgumentCaptor.forClass(Path.class);
+
+        controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        verify(dockerTerminalPort).copyFileToContainer(any(), pathCaptor.capture(), any());
+        Path tempFile = pathCaptor.getValue();
+        Path tempDir = tempFile.getParent();
+
+        assertFalse(Files.exists(tempFile), "Temp file should be deleted after upload");
+        assertFalse(Files.exists(tempDir), "Temp directory should be deleted after upload");
+    }
+
+    @Test
+    void uploadFile_copyThrows_cleansUpTempFiles() throws Exception {
+        byte[] content = "data".getBytes();
+        MultipartFormDataInput input = mockForm(VALID_PASSWORD, VALID_REMOTE_PATH, "test.txt", content);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        ArgumentCaptor<Path> pathCaptor = ArgumentCaptor.forClass(Path.class);
+        doThrow(new RuntimeException("Docker error"))
+                .when(dockerTerminalPort).copyFileToContainer(any(), pathCaptor.capture(), any());
+
+        controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        Path tempFile = pathCaptor.getValue();
+        Path tempDir = tempFile.getParent();
+
+        assertFalse(Files.exists(tempFile), "Temp file should be deleted after failed upload");
+        assertFalse(Files.exists(tempDir), "Temp directory should be deleted after failed upload");
+    }
+
+    // ---- Temp file content ----
+
+    @Test
+    void uploadFile_valid_tempFileContainsUploadedContent() throws Exception {
+        byte[] content = "expected-content-12345".getBytes();
+        MultipartFormDataInput input = mockForm(VALID_PASSWORD, VALID_REMOTE_PATH, "data.bin", content);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        ArgumentCaptor<Path> pathCaptor = ArgumentCaptor.forClass(Path.class);
+        doAnswer(invocation -> {
+            Path file = invocation.getArgument(1);
+            byte[] written = Files.readAllBytes(file);
+            assertArrayEquals(content, written, "File content should match uploaded content");
+            return null;
+        }).when(dockerTerminalPort).copyFileToContainer(any(), pathCaptor.capture(), any());
+
+        Response response = controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        assertEquals(200, response.getStatus());
+        verify(dockerTerminalPort).copyFileToContainer(any(), any(Path.class), any());
     }
 
     // ---- Helpers ----

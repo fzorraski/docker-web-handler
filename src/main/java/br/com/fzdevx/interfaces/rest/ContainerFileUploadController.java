@@ -52,6 +52,7 @@ public class ContainerFileUploadController {
                     .build();
         }
 
+        java.nio.file.Path tempDir = null;
         java.nio.file.Path tempFile = null;
         try {
             Map<String, List<InputPart>> form = input.getFormDataMap();
@@ -99,7 +100,8 @@ public class ContainerFileUploadController {
                         .build();
             }
 
-            tempFile = java.nio.file.Files.createTempFile("container-upload-", ".tmp");
+            tempDir = java.nio.file.Files.createTempDirectory("container-upload-");
+            tempFile = tempDir.resolve(filename);
             long maxBytes = (long) maxSizeMb * 1024 * 1024;
             long size;
             try (InputStream is = filePart.getBody(InputStream.class, null);
@@ -136,6 +138,9 @@ public class ContainerFileUploadController {
         } finally {
             if (tempFile != null) {
                 try { java.nio.file.Files.deleteIfExists(tempFile); } catch (Exception ignored) {}
+            }
+            if (tempDir != null) {
+                try { java.nio.file.Files.deleteIfExists(tempDir); } catch (Exception ignored) {}
             }
         }
     }
