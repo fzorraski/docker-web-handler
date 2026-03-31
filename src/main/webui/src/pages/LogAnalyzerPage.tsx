@@ -36,6 +36,7 @@ export default function LogAnalyzerPage() {
   )
   const [uploading, setUploading] = useState(false)
   const [activeTab, setActiveTab] = useState(0)
+  const [jumpToLine, setJumpToLine] = useState<number | null>(null)
 
   // Upload form
   const [selectedPreset, setSelectedPreset] = useState('')
@@ -131,29 +132,44 @@ export default function LogAnalyzerPage() {
     [presets, selectedPreset],
   )
 
+  const handleJumpComplete = useCallback(() => setJumpToLine(null), [])
+
+  const handleJumpToLine = useCallback((lineNumber: number) => {
+    setJumpToLine(lineNumber)
+  }, [])
+
   const tabs = useMemo(() => {
     if (!selected) return []
     const list = [
-      { key: 'apiCalls', label: t('logAnalyzer.tabs.apiCalls'), component: <ApiCallsTab analysisId={selected.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} /> },
+      { key: 'apiCalls', label: t('logAnalyzer.tabs.apiCalls'), component: <ApiCallsTab analysisId={selected.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} onJumpToLine={handleJumpToLine} /> },
       { key: 'stats', label: t('logAnalyzer.tabs.endpointStats'), component: <EndpointStatsTab analysisId={selected.id} /> },
-      { key: 'rawLog', label: t('logAnalyzer.tabs.rawLog'), component: <RawLogTab analysisId={selected.id} levelCounts={selected.levelCounts} /> },
+      { key: 'rawLog', label: t('logAnalyzer.tabs.rawLog'), component: null },
       { key: 'threadView', label: t('logAnalyzer.tabs.threadView'), component: <ThreadViewTab analysisId={selected.id} /> },
     ]
-    if (selected.jobExecutionCount > 0) list.push({ key: 'jobs', label: t('logAnalyzer.tabs.jobs'), component: <JobsTab analysisId={selected.id} /> })
-    if (selected.repeatedFailureCount > 0) list.push({ key: 'failures', label: t('logAnalyzer.tabs.failures'), component: <FailuresTab analysisId={selected.id} /> })
+    if (selected.jobExecutionCount > 0) list.push({ key: 'jobs', label: t('logAnalyzer.tabs.jobs'), component: <JobsTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
+    if (selected.repeatedFailureCount > 0) list.push({ key: 'failures', label: t('logAnalyzer.tabs.failures'), component: <FailuresTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.customFields) {
       for (const cf of selected.customFields) {
         if (cf.matchCount > 0 && !cf.countOnly) {
           list.push({
             key: `custom-${cf.fieldName}`,
             label: cf.fieldName,
-            component: <CustomFieldTab analysisId={selected.id} fieldName={cf.fieldName} />,
+            component: <CustomFieldTab analysisId={selected.id} fieldName={cf.fieldName} onJumpToLine={handleJumpToLine} />,
           })
         }
       }
     }
     return list
-  }, [selected, t, presetObj])
+  }, [selected, t, presetObj, handleJumpToLine])
+
+  const rawLogTabIndex = useMemo(() => tabs.findIndex(t => t.key === 'rawLog'), [tabs])
+
+  // Switch to rawLog tab when jumpToLine is set (after handleJumpToLine is called)
+  useEffect(() => {
+    if (jumpToLine != null && rawLogTabIndex >= 0) {
+      setActiveTab(rawLogTabIndex)
+    }
+  }, [jumpToLine, rawLogTabIndex])
 
   return (
     <Box sx={{ maxWidth: 1600, mx: 'auto', p: 3 }}>
@@ -332,7 +348,11 @@ export default function LogAnalyzerPage() {
               {tabs.map(tab => <Tab key={tab.key} label={tab.label} />)}
             </Tabs>
             <Box sx={{ p: 2 }}>
-              {tabs[activeTab]?.component}
+              {tabs[activeTab] && (
+                tabs[activeTab].key === 'rawLog'
+                  ? <RawLogTab analysisId={selected!.id} levelCounts={selected!.levelCounts} jumpToLine={jumpToLine} onJumpComplete={handleJumpComplete} />
+                  : tabs[activeTab].component
+              )}
             </Box>
           </Paper>
         </>

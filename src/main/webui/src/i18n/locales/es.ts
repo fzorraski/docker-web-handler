@@ -818,6 +818,10 @@ const es: typeof en = {
       search: 'Buscar en logs...',
       level: 'Nivel',
       thread: 'Hilo',
+      prevMark: 'Marcador anterior',
+      nextMark: 'Siguiente marcador',
+      clearMarks: 'Limpiar marcadores',
+      goToHighlight: 'Ir a línea resaltada',
     },
     threads: {
       select: 'Seleccionar hilo',

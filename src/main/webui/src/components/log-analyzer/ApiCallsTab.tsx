@@ -12,6 +12,7 @@ import { usePaginatedFetch } from '../../hooks/usePaginatedFetch'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { maskSensitiveFields, tryFormatJson } from '../../utils/jsonUtils'
 import { formatDuration } from '../../utils/formatDuration'
+import { LineLink } from './LineLink'
 import type { ApiCallPair, ThreadInfo } from '../../services/logAnalyzerService'
 import * as logService from '../../services/logAnalyzerService'
 
@@ -61,8 +62,8 @@ function PayloadBox({ label, payload, sensitiveFields, maskEnabled, isDark }: {
   )
 }
 
-export function ApiCallsTab({ analysisId, sensitiveFields }: {
-  analysisId: string; sensitiveFields: string[]
+export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine }: {
+  analysisId: string; sensitiveFields: string[]; onJumpToLine?: (line: number) => void
 }) {
   const { t } = useTranslation()
   const theme = useTheme()
@@ -200,6 +201,16 @@ export function ApiCallsTab({ analysisId, sensitiveFields }: {
                   {expandedRow === globalIdx && (
                     <TableRow>
                       <TableCell colSpan={6} sx={{ bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)', borderLeft: `3px solid ${color}` }}>
+                        {onJumpToLine && (
+                          <Box sx={{ mb: 1, display: 'flex', gap: 2 }}>
+                            <Typography variant="caption" component="span">
+                              Request <LineLink line={call.requestLineNumber} onClick={onJumpToLine} />
+                            </Typography>
+                            <Typography variant="caption" component="span">
+                              Response <LineLink line={call.responseLineNumber} onClick={onJumpToLine} />
+                            </Typography>
+                          </Box>
+                        )}
                         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                           <PayloadBox label="Request" payload={call.requestPayload} sensitiveFields={sensitiveFields} maskEnabled={maskEnabled} isDark={isDark} />
                           <PayloadBox label="Response" payload={call.responsePayload} sensitiveFields={sensitiveFields} maskEnabled={maskEnabled} isDark={isDark} />

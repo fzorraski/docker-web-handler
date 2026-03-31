@@ -817,6 +817,10 @@ const en = {
       search: 'Search logs...',
       level: 'Level',
       thread: 'Thread',
+      prevMark: 'Previous bookmark',
+      nextMark: 'Next bookmark',
+      clearMarks: 'Clear all bookmarks',
+      goToHighlight: 'Go to highlighted line',
     },
     threads: {
       select: 'Select thread',

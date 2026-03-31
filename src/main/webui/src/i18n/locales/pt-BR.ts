@@ -818,6 +818,10 @@ const ptBR: typeof en = {
       search: 'Buscar nos logs...',
       level: 'Nível',
       thread: 'Thread',
+      prevMark: 'Marcação anterior',
+      nextMark: 'Próxima marcação',
+      clearMarks: 'Limpar marcações',
+      goToHighlight: 'Ir para linha destacada',
     },
     threads: {
       select: 'Selecionar thread',

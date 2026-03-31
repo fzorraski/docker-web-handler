@@ -4,9 +4,9 @@ import {
   TablePagination, LinearProgress, InputAdornment,
   useTheme,
 } from '@mui/material'
-import { Search, ContentCopy, WrapText } from '@mui/icons-material'
+import { Search, ContentCopy, WrapText, KeyboardArrowUp, KeyboardArrowDown, BookmarkBorder, MyLocation, ClearAll } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
-import { List, type RowComponentProps } from 'react-window'
+import { List, useListRef, type RowComponentProps } from 'react-window'
 import { usePaginatedFetch } from '../../hooks/usePaginatedFetch'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { getLogTheme } from '../../utils/logColors'
@@ -18,21 +18,47 @@ const TOGGLE_LEVELS: LogLevel[] = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE']
 const ROW_HEIGHT = 20
 const VIEWER_HEIGHT = 500
 
+function getLineBg(lineNumber: number, highlightLine: number | null, flashLine: number | null, markedLines: Set<number>, isDark: boolean): string | undefined {
+  if (lineNumber === highlightLine) return isDark ? 'rgba(255, 109, 0, 0.35)' : 'rgba(255, 109, 0, 0.25)'
+  if (lineNumber === flashLine) return isDark ? 'rgba(0, 188, 212, 0.30)' : 'rgba(0, 150, 136, 0.25)'
+  if (markedLines.has(lineNumber)) return isDark ? 'rgba(0, 188, 212, 0.10)' : 'rgba(0, 150, 136, 0.08)'
+  return undefined
+}
+
 interface RowCustomProps {
   lines: LogLine[]
   levelColor: (level: string | null) => string
   chipInactive: string
+  highlightLine: number | null
+  flashLine: number | null
+  markedLines: Set<number>
+  onToggleMark: (lineNumber: number) => void
+  isDark: boolean
 }
 
-function VirtualRow({ index, style, lines, levelColor, chipInactive }: RowComponentProps<RowCustomProps>) {
+function VirtualRow({ index, style, lines, levelColor, chipInactive, highlightLine, flashLine, markedLines, onToggleMark, isDark }: RowComponentProps<RowCustomProps>) {
   const line = lines[index]
   if (!line) return null
+  const isMarked = markedLines.has(line.lineNumber)
+  const bg = getLineBg(line.lineNumber, highlightLine, flashLine, markedLines, isDark)
   return (
-    <Box component="div" style={style} sx={{
+    <Box component="div" style={style} data-line={line.lineNumber} sx={{
       display: 'flex', px: 2,
-      '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' },
+      bgcolor: bg,
+      borderLeft: isMarked ? '3px solid' : '3px solid transparent',
+      borderColor: isMarked ? (isDark ? '#00BCD4' : '#009688') : 'transparent',
+      '&:hover': { bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' },
     }}>
-      <Box sx={{ color: chipInactive, minWidth: 55, textAlign: 'right', pr: 1.5, userSelect: 'none', opacity: 0.5, flexShrink: 0, lineHeight: `${ROW_HEIGHT}px` }}>
+      <Box
+        sx={{
+          minWidth: 55, textAlign: 'right', pr: 1.5, userSelect: 'none', flexShrink: 0,
+          lineHeight: `${ROW_HEIGHT}px`, cursor: 'pointer',
+          color: isMarked ? (isDark ? '#00BCD4' : '#009688') : chipInactive,
+          opacity: isMarked ? 1 : 0.5,
+          '&:hover': { opacity: 1, color: isDark ? '#00BCD4' : '#009688' },
+        }}
+        onClick={() => onToggleMark(line.lineNumber)}
+      >
         {line.lineNumber}
       </Box>
       <Box sx={{
@@ -49,8 +75,9 @@ function VirtualRow({ index, style, lines, levelColor, chipInactive }: RowCompon
   )
 }
 
-export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelCounts }: {
+export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelCounts, jumpToLine, onJumpComplete }: {
   analysisId: string; initialThread?: string; levelCounts?: Record<string, number>
+  jumpToLine?: number | null; onJumpComplete?: () => void
 }) {
   const { t } = useTranslation()
   const theme = useTheme()
@@ -61,18 +88,42 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
   const [rowsPerPage, setRowsPerPage] = useState(500)
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search, 300)
+  const [activeSearch, setActiveSearch] = useState('') // actual value sent to API
   const [filterLevel, setFilterLevel] = useState('')
   const [filterThread, setFilterThread] = useState(initialThread ?? '')
   const [threads, setThreads] = useState<ThreadInfo[]>([])
   const [wordWrap, setWordWrap] = useState(false)
   const [copySnackbar, setCopySnackbar] = useState(false)
+  const [highlightLine, setHighlightLine] = useState<number | null>(null)
+  const [markedLines, setMarkedLines] = useState<Set<number>>(new Set())
+  const [scrollTarget, setScrollTarget] = useState<number | null>(null)
+  const [flashLine, setFlashLine] = useState<number | null>(null)
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const listRef = useListRef(null)
+  const wrapContainerRef = useRef<HTMLDivElement>(null)
+
+  // Sync debounced search to active search (normal typing flow)
+  useEffect(() => { setActiveSearch(debouncedSearch) }, [debouncedSearch])
 
   useEffect(() => {
     logService.getThreads(analysisId).then(setThreads).catch(() => {})
   }, [analysisId])
 
-  useEffect(() => () => { if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current) }, [])
+  useEffect(() => () => {
+    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
+  }, [])
+
+  // Handle jump to line — clear filters immediately, go to correct page
+  useEffect(() => {
+    if (jumpToLine == null) return
+    setFilterLevel('')
+    setFilterThread('')
+    setSearch('')
+    setActiveSearch('') // bypass debounce
+    const rpp = wordWrap ? Math.min(rowsPerPage, 1000) : rowsPerPage
+    setPage(Math.floor((jumpToLine - 1) / rpp))
+    setHighlightLine(jumpToLine)
+  }, [jumpToLine])
 
   const effectiveRowsPerPage = wordWrap ? Math.min(rowsPerPage, 1000) : rowsPerPage
 
@@ -80,11 +131,33 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
     () => logService.getLines(analysisId, {
       thread: filterThread || undefined,
       level: filterLevel || undefined,
-      search: debouncedSearch || undefined,
+      search: activeSearch || undefined,
       page, size: effectiveRowsPerPage,
     }),
-    [analysisId, filterThread, filterLevel, debouncedSearch, page, effectiveRowsPerPage],
+    [analysisId, filterThread, filterLevel, activeSearch, page, effectiveRowsPerPage],
   )
+
+  // Scroll to target line after data loads (works for both highlight and bookmark navigation)
+  const activeScrollTarget = scrollTarget ?? highlightLine
+  useEffect(() => {
+    if (activeScrollTarget == null || lines.length === 0) return
+    const idx = lines.findIndex(l => l.lineNumber === activeScrollTarget)
+    if (idx === -1) return
+    setScrollTarget(null)
+    requestAnimationFrame(() => {
+      if (!wordWrap && listRef.current) {
+        listRef.current.scrollToRow({ index: idx, align: 'center' })
+      } else if (wrapContainerRef.current) {
+        const el = wrapContainerRef.current.querySelector(`[data-line="${activeScrollTarget}"]`) as HTMLElement | null
+        if (el) {
+          const container = wrapContainerRef.current
+          const elTop = el.offsetTop - container.offsetTop
+          container.scrollTop = elTop - container.clientHeight / 2
+        }
+      }
+      onJumpComplete?.()
+    })
+  }, [activeScrollTarget, lines, wordWrap])
 
   const levelCounts = useMemo(() => {
     if (globalLevelCounts) {
@@ -131,9 +204,53 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
     } catch { /* clipboard not available */ }
   }
 
+  const toggleMark = useCallback((lineNumber: number) => {
+    setMarkedLines(prev => {
+      const next = new Set(prev)
+      if (next.has(lineNumber)) next.delete(lineNumber)
+      else next.add(lineNumber)
+      return next
+    })
+  }, [])
+
+  const sortedMarks = useMemo(() => Array.from(markedLines).sort((a, b) => a - b), [markedLines])
+  const [currentMarkIdx, setCurrentMarkIdx] = useState(-1)
+
+  // Clamp currentMarkIdx when marks are removed
+  useEffect(() => {
+    if (currentMarkIdx >= sortedMarks.length) setCurrentMarkIdx(sortedMarks.length - 1)
+  }, [sortedMarks.length, currentMarkIdx])
+
+  const scrollToLine = useCallback((targetLine: number) => {
+    const rpp = wordWrap ? Math.min(rowsPerPage, 1000) : rowsPerPage
+    const targetPage = Math.floor((targetLine - 1) / rpp)
+    setPage(targetPage)
+    setScrollTarget(targetLine)
+    setFlashLine(targetLine)
+  }, [wordWrap, rowsPerPage])
+
+  const jumpToNextMark = useCallback(() => {
+    if (sortedMarks.length === 0) return
+    const nextIdx = currentMarkIdx + 1 >= sortedMarks.length ? 0 : currentMarkIdx + 1
+    setCurrentMarkIdx(nextIdx)
+    scrollToLine(sortedMarks[nextIdx])
+  }, [sortedMarks, currentMarkIdx, scrollToLine])
+
+  const jumpToPrevMark = useCallback(() => {
+    if (sortedMarks.length === 0) return
+    const prevIdx = currentMarkIdx - 1 < 0 ? sortedMarks.length - 1 : currentMarkIdx - 1
+    setCurrentMarkIdx(prevIdx)
+    scrollToLine(sortedMarks[prevIdx])
+  }, [sortedMarks, currentMarkIdx, scrollToLine])
+
+  const jumpToHighlight = useCallback(() => {
+    if (highlightLine == null) return
+    scrollToLine(highlightLine)
+  }, [highlightLine, scrollToLine])
+
   const rowProps = useMemo<RowCustomProps>(
-    () => ({ lines, levelColor, chipInactive: lt.chipInactive }),
-    [lines, levelColor, lt.chipInactive],
+    () => ({ lines, levelColor, chipInactive: lt.chipInactive, highlightLine, flashLine, markedLines, onToggleMark: toggleMark, isDark }),
+    [lines, levelColor, lt.chipInactive, highlightLine, flashLine, markedLines, toggleMark, isDark],
   )
 
   const wrapToggleColor = isDark ? '#4d96ff' : '#1565c0'
@@ -216,6 +333,39 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
             sx={{ '& .MuiInputBase-root': { height: 32, fontSize: '0.8rem' } }} />}
         />
 
+        {/* Bookmark navigation */}
+        {sortedMarks.length > 0 && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, borderLeft: `1px solid ${lt.toolbarBorder}`, pl: 1 }}>
+            <Tooltip title={t('logAnalyzer.rawLog.prevMark')} arrow>
+              <IconButton size="small" onClick={jumpToPrevMark} sx={{ color: '#00BCD4' }}>
+                <KeyboardArrowUp sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+            <Typography variant="caption" sx={{ color: '#00BCD4', fontFamily: 'monospace', fontSize: '0.7rem', minWidth: 30, textAlign: 'center' }}>
+              {currentMarkIdx >= 0 ? `${currentMarkIdx + 1}/${sortedMarks.length}` : sortedMarks.length}
+            </Typography>
+            <Tooltip title={t('logAnalyzer.rawLog.nextMark')} arrow>
+              <IconButton size="small" onClick={jumpToNextMark} sx={{ color: '#00BCD4' }}>
+                <KeyboardArrowDown sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={t('logAnalyzer.rawLog.clearMarks')} arrow>
+              <IconButton size="small" onClick={() => { setMarkedLines(new Set()); setCurrentMarkIdx(-1) }} sx={{ color: lt.iconColor, ml: 0.25 }}>
+                <ClearAll sx={{ fontSize: 16 }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        )}
+
+        {/* Jump to highlighted line */}
+        {highlightLine != null && (
+          <Tooltip title={`${t('logAnalyzer.rawLog.goToHighlight')} L${highlightLine}`} arrow>
+            <IconButton size="small" onClick={jumpToHighlight} sx={{ color: '#FF6D00' }}>
+              <MyLocation sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+        )}
+
         <Box sx={{ flex: 1 }} />
 
         <Tooltip title={wordWrap ? t('containers.logs.nowrapLines') : t('containers.logs.wrapLines')} arrow>
@@ -251,33 +401,52 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
 
         {lines.length > 0 && wordWrap ? (
           /* Wrap mode — plain divs, no virtualization */
-          <Box sx={{ maxHeight: VIEWER_HEIGHT, overflowY: 'auto' }}>
-            {lines.map((line) => (
-              <Box
-                key={`${line.sourceFile}-${line.lineNumber}`}
-                sx={{
-                  display: 'flex', px: 2, py: '1px',
-                  '&:hover': { bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' },
-                }}
-              >
-                <Box sx={{ color: lt.chipInactive, minWidth: 55, textAlign: 'right', pr: 1.5, userSelect: 'none', opacity: 0.5, flexShrink: 0 }}>
-                  {line.lineNumber}
+          <Box ref={wrapContainerRef} sx={{ maxHeight: VIEWER_HEIGHT, overflowY: 'auto' }}>
+            {lines.map((line) => {
+              const isMarked = markedLines.has(line.lineNumber)
+              const bg = getLineBg(line.lineNumber, highlightLine, flashLine, markedLines, isDark)
+              return (
+                <Box
+                  key={`${line.sourceFile}-${line.lineNumber}`}
+                  data-line={line.lineNumber}
+                  sx={{
+                    display: 'flex', px: 2, py: '1px',
+                    bgcolor: bg,
+                    transition: 'background-color 0.5s',
+                    borderLeft: isMarked ? '3px solid' : '3px solid transparent',
+                    borderColor: isMarked ? (isDark ? '#00BCD4' : '#009688') : 'transparent',
+                    '&:hover': { bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' },
+                  }}
+                >
+                  <Box
+                    sx={{
+                      minWidth: 55, textAlign: 'right', pr: 1.5, userSelect: 'none', flexShrink: 0,
+                      cursor: 'pointer',
+                      color: isMarked ? (isDark ? '#00BCD4' : '#009688') : lt.chipInactive,
+                      opacity: isMarked ? 1 : 0.5,
+                      '&:hover': { opacity: 1, color: isDark ? '#00BCD4' : '#009688' },
+                    }}
+                    onClick={() => toggleMark(line.lineNumber)}
+                  >
+                    {line.lineNumber}
+                  </Box>
+                  <Box sx={{
+                    color: levelColor(line.level),
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-all',
+                    flex: 1,
+                    lineHeight: '20px',
+                  }}>
+                    {line.message ?? ''}
+                  </Box>
                 </Box>
-                <Box sx={{
-                  color: levelColor(line.level),
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-all',
-                  flex: 1,
-                  lineHeight: '20px',
-                }}>
-                  {line.message ?? ''}
-                </Box>
-              </Box>
-            ))}
+              );
+            })}
           </Box>
         ) : lines.length > 0 ? (
           /* No-wrap mode — virtualized with react-window */
           <List
+            listRef={listRef}
             rowComponent={VirtualRow}
             rowCount={lines.length}
             rowHeight={ROW_HEIGHT}

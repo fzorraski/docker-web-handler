@@ -8,10 +8,11 @@ import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { usePaginatedFetch } from '../../hooks/usePaginatedFetch'
 import { formatDuration } from '../../utils/formatDuration'
+import { LineLink } from './LineLink'
 import type { JobExecution } from '../../services/logAnalyzerService'
 import * as logService from '../../services/logAnalyzerService'
 
-export function JobsTab({ analysisId }: { analysisId: string }) {
+export function JobsTab({ analysisId, onJumpToLine }: { analysisId: string; onJumpToLine?: (line: number) => void }) {
   const { t } = useTranslation()
   const headerTheme = useTableHeaderTheme()
 
@@ -22,6 +23,10 @@ export function JobsTab({ analysisId }: { analysisId: string }) {
     () => logService.getJobs(analysisId, { page, size: rowsPerPage }),
     [analysisId, page, rowsPerPage],
   )
+
+  const lineLink = (line: number) => onJumpToLine
+    ? <LineLink line={line} onClick={onJumpToLine} />
+    : null
 
   return (
     <Box>
@@ -37,6 +42,7 @@ export function JobsTab({ analysisId }: { analysisId: string }) {
               <TableCell>{t('logAnalyzer.jobs.end')}</TableCell>
               <TableCell>{t('logAnalyzer.apiCalls.duration')}</TableCell>
               <TableCell>{t('logAnalyzer.jobs.result')}</TableCell>
+              {onJumpToLine && <TableCell>{t('logAnalyzer.customFields.line')}</TableCell>}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -49,6 +55,7 @@ export function JobsTab({ analysisId }: { analysisId: string }) {
                 <TableCell><Typography variant="body2" fontSize="0.8rem">{job.endTimestamp?.replace('T', ' ')}</Typography></TableCell>
                 <TableCell><Chip size="small" label={formatDuration(job.durationMs)} /></TableCell>
                 <TableCell><Typography variant="body2" fontSize="0.8rem" color={job.result && job.result !== 'null' ? 'warning.main' : 'text.secondary'}>{job.result}</Typography></TableCell>
+                {onJumpToLine && <TableCell>{lineLink(job.startLineNumber)}</TableCell>}
               </TableRow>
             ))}
           </TableBody>

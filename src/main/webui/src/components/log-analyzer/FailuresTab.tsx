@@ -8,10 +8,11 @@ import {
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { formatDuration } from '../../utils/formatDuration'
+import { LineLink } from './LineLink'
 import type { RepeatedFailure } from '../../services/logAnalyzerService'
 import * as logService from '../../services/logAnalyzerService'
 
-export function FailuresTab({ analysisId }: { analysisId: string }) {
+export function FailuresTab({ analysisId, onJumpToLine }: { analysisId: string; onJumpToLine?: (line: number) => void }) {
   const { t } = useTranslation()
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
@@ -153,7 +154,11 @@ export function FailuresTab({ analysisId }: { analysisId: string }) {
                         <Box sx={{ maxHeight: 300, overflowY: 'auto' }}>
                           {detailSlice.map((d, di) => (
                             <Typography key={di} variant="body2" fontFamily="'JetBrains Mono', monospace" fontSize="0.75rem" sx={{ py: 0.25 }}>
-                              [{d.timestamp?.replace('T', ' ')}] L{d.lineNumber} — {d.message}
+                              [{d.timestamp?.replace('T', ' ')}]{' '}
+                              {onJumpToLine ? (
+                                <LineLink line={d.lineNumber} onClick={onJumpToLine} />
+                              ) : `L${d.lineNumber}`}
+                              {' — '}{d.message}
                             </Typography>
                           ))}
                         </Box>

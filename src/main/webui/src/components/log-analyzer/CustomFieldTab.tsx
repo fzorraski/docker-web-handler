@@ -8,10 +8,11 @@ import { ContentCopy } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { usePaginatedFetch } from '../../hooks/usePaginatedFetch'
+import { LineLink } from './LineLink'
 import type { CustomFieldMatch } from '../../services/logAnalyzerService'
 import * as logService from '../../services/logAnalyzerService'
 
-export function CustomFieldTab({ analysisId, fieldName }: { analysisId: string; fieldName: string }) {
+export function CustomFieldTab({ analysisId, fieldName, onJumpToLine }: { analysisId: string; fieldName: string; onJumpToLine?: (line: number) => void }) {
   const { t } = useTranslation()
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
@@ -53,9 +54,10 @@ export function CustomFieldTab({ analysisId, fieldName }: { analysisId: string; 
                 <Fragment key={globalIdx}>
                   <TableRow hover sx={{ cursor: 'pointer' }} onClick={() => setExpandedRow(expandedRow === globalIdx ? null : globalIdx)}>
                     <TableCell>
-                      <Typography variant="body2" fontFamily="'JetBrains Mono', monospace" fontSize="0.8rem">
-                        {match.lineNumber}
-                      </Typography>
+                      {onJumpToLine
+                        ? <LineLink line={match.lineNumber} onClick={onJumpToLine} />
+                        : <Typography variant="body2" fontFamily="'JetBrains Mono', monospace" fontSize="0.8rem">{match.lineNumber}</Typography>
+                      }
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" fontSize="0.8rem">
