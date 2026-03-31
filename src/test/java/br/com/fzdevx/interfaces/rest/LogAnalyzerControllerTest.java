@@ -114,9 +114,21 @@ class LogAnalyzerControllerTest {
         var threads = List.of("main", "db-pool-1", "http-thread-1", "http-thread-2", "scheduler-1");
         var endpoints = List.of("UserResource/getUser", "OrderResource/create");
 
-        return new LogAnalysis(sourceFiles, lines.size(), now, now.plusSeconds(30),
+        var analysis = new LogAnalysis(sourceFiles, lines.size(), now, now.plusSeconds(30),
                 threads, endpoints, apiCalls, endpointStats, levelCounts, errors,
                 jobExecutions, repeatedFailures, lines);
+        analysis.setCustomFieldResults(List.of(
+                new CustomFieldResult("Entity Changes", 3, false, List.of(
+                        new CustomFieldMatch(10, now, "main", "server.log", "Updated -> User: data",
+                                Map.of("entity", "User", "user", "admin")),
+                        new CustomFieldMatch(20, now.plusSeconds(1), "main", "server.log", "Updated -> Config: data",
+                                Map.of("entity", "Config", "user", "admin")),
+                        new CustomFieldMatch(30, now.plusSeconds(2), "main", "server.log", "Updated -> Role: data",
+                                Map.of("entity", "Role", "user", "system"))
+                )),
+                new CustomFieldResult("Error Codes", 5, true, List.of())
+        ));
+        return analysis;
     }
 
     // ---- Helper: assert error response ----
@@ -771,7 +783,99 @@ class LogAnalyzerControllerTest {
     }
 
     // ======================================================================
-    // 6. Upload validation
+    // 6. Custom field endpoints
+    // ======================================================================
+
+    @Test
+    void getCustomFieldMatches_disabled_returnsForbidden() {
+        setField("enabled", false);
+        Response response = controller.getCustomFieldMatches("id", "Entity Changes", 0, 100);
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void getCustomFieldMatches_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+        Response response = controller.getCustomFieldMatches("nonexistent", "Entity Changes", 0, 100);
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    void getCustomFieldMatches_fieldNotFound_returns404() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getCustomFieldMatches(analysis.getId(), "NonExistent Field", 0, 100);
+
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCustomFieldMatches_found_returns200WithPagination() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getCustomFieldMatches(analysis.getId(), "Entity Changes", 0, 100);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertEquals(3, data.size());
+        assertEquals(3, entity.get("total"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCustomFieldMatches_paginatesCorrectly() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getCustomFieldMatches(analysis.getId(), "Entity Changes", 0, 2);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertEquals(2, data.size());
+        assertEquals(3, entity.get("total"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCustomFieldMatches_countOnly_returnsEmptyData() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getCustomFieldMatches(analysis.getId(), "Error Codes", 0, 100);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        assertEquals(5, entity.get("matchCount"));
+        assertEquals(true, entity.get("countOnly"));
+        List<?> data = (List<?>) entity.get("data");
+        assertTrue(data.isEmpty());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void analysisSummary_includesCustomFieldsWithFieldNameKey() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getAnalysis(analysis.getId());
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<Map<String, Object>> customFields = (List<Map<String, Object>>) entity.get("customFields");
+        assertEquals(2, customFields.size());
+        assertEquals("Entity Changes", customFields.get(0).get("fieldName"));
+        assertEquals(3, customFields.get(0).get("matchCount"));
+        assertEquals("Error Codes", customFields.get(1).get("fieldName"));
+        assertEquals(5, customFields.get(1).get("matchCount"));
+    }
+
+    // ======================================================================
+    // 7. Upload validation
     // ======================================================================
 
     @Test

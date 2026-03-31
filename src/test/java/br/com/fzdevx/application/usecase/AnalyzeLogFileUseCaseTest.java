@@ -1,5 +1,6 @@
 package br.com.fzdevx.application.usecase;
 
+import br.com.fzdevx.application.port.CustomFieldExtractorPort;
 import br.com.fzdevx.application.port.LogAnalysisPort;
 import br.com.fzdevx.domain.model.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +24,7 @@ import static org.mockito.Mockito.*;
 class AnalyzeLogFileUseCaseTest {
 
     @Mock LogAnalysisPort logAnalysisPort;
+    @Mock CustomFieldExtractorPort customFieldExtractorPort;
 
     @InjectMocks
     AnalyzeLogFileUseCase useCase;
