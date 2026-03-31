@@ -832,6 +832,7 @@ const ptBR: typeof en = {
       start: 'Início',
       end: 'Fim',
       result: 'Resultado',
+      sortByName: 'Por nome',
     },
     failures: {
       entity: 'Entidade',

@@ -347,13 +347,13 @@ export default function LogAnalyzerPage() {
             <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} variant="scrollable" scrollButtons="auto">
               {tabs.map(tab => <Tab key={tab.key} label={tab.label} />)}
             </Tabs>
-            <Box sx={{ p: 2 }}>
-              {tabs[activeTab] && (
-                tabs[activeTab].key === 'rawLog'
+            {tabs.map((tab, idx) => (
+              <Box key={tab.key} sx={{ p: 2, display: idx === activeTab ? 'block' : 'none' }}>
+                {tab.key === 'rawLog'
                   ? <RawLogTab analysisId={selected!.id} levelCounts={selected!.levelCounts} jumpToLine={jumpToLine} onJumpComplete={handleJumpComplete} />
-                  : tabs[activeTab].component
-              )}
-            </Box>
+                  : tab.component}
+              </Box>
+            ))}
           </Paper>
         </>
       )}

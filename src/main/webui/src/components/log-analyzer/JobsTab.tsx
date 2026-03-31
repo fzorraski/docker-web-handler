@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
-  Box, Typography, Chip, LinearProgress,
+  Autocomplete, Box, Typography, Chip, LinearProgress, TextField, Stack,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
   TablePagination,
 } from '@mui/material'
@@ -18,11 +18,34 @@ export function JobsTab({ analysisId, onJumpToLine }: { analysisId: string; onJu
 
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(25)
+  const [filterJob, setFilterJob] = useState('')
+  const [filterThread, setFilterThread] = useState('')
+  const [sort, setSort] = useState('time')
 
+  // Fetch all jobs (server-side paginated)
   const { data: jobs, total, loading } = usePaginatedFetch<JobExecution>(
     () => logService.getJobs(analysisId, { page, size: rowsPerPage }),
     [analysisId, page, rowsPerPage],
   )
+
+  // Extract unique job names and threads for filters
+  const jobNames = useMemo(() => [...new Set(jobs.map(j => j.jobName))].sort(), [jobs])
+  const threads = useMemo(() => [...new Set(jobs.map(j => j.thread))].sort(), [jobs])
+
+  // Client-side filter + sort on current page
+  const filtered = useMemo(() => {
+    let result = jobs
+    if (filterJob) result = result.filter(j => j.jobName === filterJob)
+    if (filterThread) result = result.filter(j => j.thread === filterThread)
+
+    return [...result].sort((a, b) => {
+      switch (sort) {
+        case 'duration': return b.durationMs - a.durationMs
+        case 'name': return a.jobName.localeCompare(b.jobName)
+        default: return 0 // time — already sorted by server
+      }
+    })
+  }, [jobs, filterJob, filterThread, sort])
 
   const lineLink = (line: number) => onJumpToLine
     ? <LineLink line={line} onClick={onJumpToLine} />
@@ -31,6 +54,39 @@ export function JobsTab({ analysisId, onJumpToLine }: { analysisId: string; onJu
   return (
     <Box>
       {loading && <LinearProgress sx={{ mb: 1 }} />}
+      <Stack direction="row" spacing={2} mb={2} flexWrap="wrap" useFlexGap alignItems="center">
+        <Autocomplete
+          size="small"
+          sx={{ minWidth: 250 }}
+          options={jobNames}
+          value={filterJob || null}
+          onChange={(_, v) => { setFilterJob(v ?? ''); setPage(0) }}
+          renderInput={(params) => <TextField {...params} label={t('logAnalyzer.jobs.name')} />}
+        />
+        <Autocomplete
+          size="small"
+          sx={{ minWidth: 200 }}
+          options={threads}
+          value={filterThread || null}
+          onChange={(_, v) => { setFilterThread(v ?? ''); setPage(0) }}
+          renderInput={(params) => <TextField {...params} label={t('logAnalyzer.apiCalls.thread')} />}
+        />
+        <Autocomplete
+          size="small"
+          sx={{ minWidth: 180 }}
+          disableClearable
+          options={[
+            { value: 'time', label: t('logAnalyzer.apiCalls.sortByTime') },
+            { value: 'duration', label: t('logAnalyzer.apiCalls.sortByDuration') },
+            { value: 'name', label: t('logAnalyzer.jobs.sortByName') },
+          ]}
+          value={{ value: sort, label: sort === 'duration' ? t('logAnalyzer.apiCalls.sortByDuration') : sort === 'name' ? t('logAnalyzer.jobs.sortByName') : t('logAnalyzer.apiCalls.sortByTime') }}
+          onChange={(_, v) => setSort(v?.value ?? 'time')}
+          getOptionLabel={(o) => o.label}
+          isOptionEqualToValue={(o, v) => o.value === v.value}
+          renderInput={(params) => <TextField {...params} label={t('logAnalyzer.apiCalls.sort')} />}
+        />
+      </Stack>
       <TableContainer>
         <Table size="small">
           <TableHead>
@@ -46,14 +102,14 @@ export function JobsTab({ analysisId, onJumpToLine }: { analysisId: string; onJu
             </TableRow>
           </TableHead>
           <TableBody>
-            {jobs.map((job, i) => (
+            {filtered.map((job, i) => (
               <TableRow key={i} hover>
                 <TableCell><Typography variant="body2" fontFamily="'JetBrains Mono', monospace" fontSize="0.8rem">{job.jobName}</Typography></TableCell>
                 <TableCell><Typography variant="body2" fontSize="0.8rem">{job.triggerName ?? '-'}</Typography></TableCell>
                 <TableCell><Typography variant="body2" fontSize="0.8rem">{job.thread}</Typography></TableCell>
                 <TableCell><Typography variant="body2" fontSize="0.8rem">{job.startTimestamp?.replace('T', ' ')}</Typography></TableCell>
                 <TableCell><Typography variant="body2" fontSize="0.8rem">{job.endTimestamp?.replace('T', ' ')}</Typography></TableCell>
-                <TableCell><Chip size="small" label={formatDuration(job.durationMs)} /></TableCell>
+                <TableCell><Chip size="small" label={formatDuration(job.durationMs)} color={job.durationMs >= 10000 ? 'warning' : 'default'} /></TableCell>
                 <TableCell><Typography variant="body2" fontSize="0.8rem" color={job.result && job.result !== 'null' ? 'warning.main' : 'text.secondary'}>{job.result}</Typography></TableCell>
                 {onJumpToLine && <TableCell>{lineLink(job.startLineNumber)}</TableCell>}
               </TableRow>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
-  Box, Typography, Chip, LinearProgress,
+  Autocomplete, Box, Typography, Chip, LinearProgress, TextField, Stack,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
   useTheme,
 } from '@mui/material'
@@ -19,6 +19,7 @@ export function EndpointStatsTab({ analysisId }: { analysisId: string }) {
   const [stats, setStats] = useState<EndpointStats[]>([])
   const [sortField, setSortField] = useState<keyof EndpointStats>('callCount')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [filterEndpoint, setFilterEndpoint] = useState('')
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -26,14 +27,24 @@ export function EndpointStatsTab({ analysisId }: { analysisId: string }) {
     logService.getApiStats(analysisId).then(setStats).catch(() => {}).finally(() => setLoading(false))
   }, [analysisId])
 
+  const endpointOptions = useMemo(() => stats.map(s => s.endpoint), [stats])
+
+  const filtered = useMemo(() => {
+    if (!filterEndpoint) return stats
+    return stats.filter(s => s.endpoint.toLowerCase().includes(filterEndpoint.toLowerCase()))
+  }, [stats, filterEndpoint])
+
   const sorted = useMemo(() => {
-    return [...stats].sort((a, b) => {
+    return [...filtered].sort((a, b) => {
+      if (sortField === 'endpoint') {
+        return sortDir === 'desc' ? b.endpoint.localeCompare(a.endpoint) : a.endpoint.localeCompare(b.endpoint)
+      }
       const av = a[sortField] as number, bv = b[sortField] as number
       return sortDir === 'desc' ? bv - av : av - bv
     })
-  }, [stats, sortField, sortDir])
+  }, [filtered, sortField, sortDir])
 
-  const maxAvg = useMemo(() => stats.reduce((m, s) => Math.max(m, s.avgDurationMs), 1), [stats])
+  const maxAvg = useMemo(() => filtered.reduce((m, s) => Math.max(m, s.avgDurationMs), 1), [filtered])
 
   const handleSort = (field: keyof EndpointStats) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -43,6 +54,20 @@ export function EndpointStatsTab({ analysisId }: { analysisId: string }) {
   return (
     <Box>
       {loading && <LinearProgress sx={{ mb: 1 }} />}
+      <Stack direction="row" spacing={2} mb={2} alignItems="center">
+        <Autocomplete
+          size="small"
+          sx={{ minWidth: 300 }}
+          freeSolo
+          options={endpointOptions}
+          value={filterEndpoint || null}
+          onInputChange={(_, v) => setFilterEndpoint(v ?? '')}
+          renderInput={(params) => <TextField {...params} label={t('logAnalyzer.stats.endpoint')} />}
+        />
+        <Typography variant="caption" color="text.secondary">
+          {sorted.length} / {stats.length}
+        </Typography>
+      </Stack>
       <TableContainer>
         <Table size="small">
           <TableHead>

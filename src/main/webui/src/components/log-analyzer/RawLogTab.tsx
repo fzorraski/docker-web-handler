@@ -97,6 +97,7 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
   const [highlightLine, setHighlightLine] = useState<number | null>(null)
   const [markedLines, setMarkedLines] = useState<Set<number>>(new Set())
   const [scrollTarget, setScrollTarget] = useState<number | null>(null)
+  const [scrollGen, setScrollGen] = useState(0)
   const [flashLine, setFlashLine] = useState<number | null>(null)
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const listRef = useListRef(null)
@@ -157,7 +158,7 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
       }
       onJumpComplete?.()
     })
-  }, [activeScrollTarget, lines, wordWrap])
+  }, [activeScrollTarget, scrollGen, lines, wordWrap])
 
   const levelCounts = useMemo(() => {
     if (globalLevelCounts) {
@@ -226,6 +227,7 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
     const targetPage = Math.floor((targetLine - 1) / rpp)
     setPage(targetPage)
     setScrollTarget(targetLine)
+    setScrollGen(g => g + 1)
     setFlashLine(targetLine)
   }, [wordWrap, rowsPerPage])
 

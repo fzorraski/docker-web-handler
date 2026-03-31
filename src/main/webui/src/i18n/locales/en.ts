@@ -831,6 +831,7 @@ const en = {
       start: 'Start',
       end: 'End',
       result: 'Result',
+      sortByName: 'By name',
     },
     failures: {
       entity: 'Entity',

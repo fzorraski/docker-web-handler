@@ -832,6 +832,7 @@ const es: typeof en = {
       start: 'Inicio',
       end: 'Fin',
       result: 'Resultado',
+      sortByName: 'Por nombre',
     },
     failures: {
       entity: 'Entidad',
