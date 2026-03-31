@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -325,23 +326,33 @@ public class LogFileParser implements LogAnalysisPort {
     }
 
     private void validateRegexSafety(Pattern pattern, String name) {
-        String testInput = "a".repeat(1000);
-        Thread runner = new Thread(() -> pattern.matcher(testInput).find());
-        runner.setDaemon(true);
-        runner.start();
+        String[] testInputs = {
+            "a".repeat(1000),
+            "ab".repeat(500),
+            "a b c ".repeat(167),
+            "abc123!@#".repeat(111),
+        };
+        ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            runner.join(REGEX_SAFETY_TIMEOUT_MS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalArgumentException(
-                    "Regex safety check for '" + name + "' was interrupted.");
-        }
-        if (runner.isAlive()) {
-            runner.interrupt();
-            throw new IllegalArgumentException(
-                    "Regex for '" + name + "' appears to be vulnerable to catastrophic backtracking "
-                            + "(timed out after " + REGEX_SAFETY_TIMEOUT_MS + "ms on a 1000-char test string). "
-                            + "Please simplify the pattern.");
+            for (String input : testInputs) {
+                Future<?> future = executor.submit(() -> pattern.matcher(input).find());
+                try {
+                    future.get(REGEX_SAFETY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException e) {
+                    future.cancel(true);
+                    throw new IllegalArgumentException(
+                            "Regex for '" + name + "' timed out on safety check. Please simplify the pattern.");
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalArgumentException(
+                            "Regex safety check for '" + name + "' was interrupted.");
+                } catch (ExecutionException e) {
+                    throw new IllegalArgumentException(
+                            "Regex safety check for '" + name + "' failed: " + e.getCause().getMessage());
+                }
+            }
+        } finally {
+            executor.shutdownNow();
         }
     }
 
