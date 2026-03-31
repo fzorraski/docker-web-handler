@@ -14,6 +14,9 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.resteasy.plugins.providers.multipart.InputPart;
 import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.util.*;
@@ -22,6 +25,8 @@ import java.util.stream.Collectors;
 
 @Path("/logs/analyzer")
 public class LogAnalyzerController {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Inject
     AnalyzeLogFileUseCase analyzeLogFileUseCase;
@@ -86,6 +91,12 @@ public class LogAnalyzerController {
             String customJobEndRegex = extractString(form, "jobEndRegex");
             String customFailureRegex = extractString(form, "failureRegex");
             String customSensitiveFields = extractString(form, "sensitiveFieldNames");
+            String customFieldsJson = extractString(form, "customFields");
+
+            List<LogPreset.CustomField> uploadCustomFields = parseCustomFieldsJson(customFieldsJson);
+            List<LogPreset.CustomField> mergedCustomFields = uploadCustomFields.isEmpty()
+                    ? basePreset.customFields()
+                    : uploadCustomFields;
 
             LogPreset preset = new LogPreset(
                     basePreset.name(),
@@ -97,7 +108,8 @@ public class LogAnalyzerController {
                     nonBlankOrDefault(customFailureRegex, basePreset.failureRegex()),
                     customSensitiveFields != null && !customSensitiveFields.isBlank()
                             ? Arrays.asList(customSensitiveFields.split(","))
-                            : basePreset.sensitiveFieldNames()
+                            : basePreset.sensitiveFieldNames(),
+                    mergedCustomFields
             );
 
             if (preset.logLineRegex() == null || preset.logLineRegex().isBlank()) {
@@ -338,7 +350,7 @@ public class LogAnalyzerController {
         String searchLower = search != null ? search.toLowerCase() : null;
         var filtered = analysis.getAllLines().stream()
                 .filter(l -> thread == null || thread.isBlank() || thread.equals(l.thread()))
-                .filter(l -> level == null || level.isBlank() || level.equalsIgnoreCase(l.level()))
+                .filter(l -> level == null || level.isBlank() || matchesLevelGroup(level, l.level()))
                 .filter(l -> searchLower == null || (l.message() != null && l.message().toLowerCase().contains(searchLower)));
 
         return paginatedResponse(filtered.toList(), page, size);
@@ -399,6 +411,43 @@ public class LogAnalyzerController {
     }
 
     @GET
+    @Path("/{id}/custom-fields/{fieldName}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getCustomFieldMatches(@PathParam("id") String id,
+                                          @PathParam("fieldName") String fieldName,
+                                          @QueryParam("page") @DefaultValue("0") int page,
+                                          @QueryParam("size") @DefaultValue("100") int size) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+
+        var result = analysis.getCustomFieldResults().stream()
+                .filter(cf -> cf.fieldName().equals(fieldName))
+                .findFirst();
+
+        if (result.isEmpty()) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", "Custom field not found."))
+                    .build();
+        }
+
+        CustomFieldResult cfr = result.get();
+        if (cfr.countOnly()) {
+            return Response.ok(Map.of(
+                    "fieldName", cfr.fieldName(),
+                    "matchCount", cfr.matchCount(),
+                    "countOnly", true,
+                    "data", List.of(),
+                    "total", 0,
+                    "page", 0,
+                    "size", size
+            )).build();
+        }
+
+        return paginatedResponse(cfr.matches(), page, size);
+    }
+
+    @GET
     @Path("/list")
     @Produces(MediaType.APPLICATION_JSON)
     public Response listAnalyses() {
@@ -423,14 +472,28 @@ public class LogAnalyzerController {
 
     private Response paginatedResponse(List<?> all, int page, int size) {
         page = Math.max(0, page);
-        size = Math.clamp(size, 1, 500);
+        size = Math.clamp(size, 1, 5000);
         int total = all.size();
         int from = Math.min(page * size, total);
         int to = Math.min(from + size, total);
         return Response.ok(Map.of("data", all.subList(from, to), "total", total, "page", page, "size", size)).build();
     }
 
+    private boolean matchesLevelGroup(String filter, String lineLevel) {
+        if (lineLevel == null) return false;
+        return switch (filter.toUpperCase()) {
+            case "ERROR" -> "ERROR".equals(lineLevel) || "FATAL".equals(lineLevel) || "SEVERE".equals(lineLevel);
+            case "WARN" -> "WARN".equals(lineLevel) || "WARNING".equals(lineLevel);
+            default -> filter.equalsIgnoreCase(lineLevel);
+        };
+    }
+
     private Map<String, Object> analysisSummaryMap(LogAnalysis a) {
+        var customFieldsSummary = a.getCustomFieldResults().stream()
+                .map(cf -> Map.of("fieldName", (Object) cf.fieldName(), "matchCount", (Object) cf.matchCount(),
+                        "countOnly", (Object) cf.countOnly()))
+                .toList();
+
         return Map.ofEntries(
                 Map.entry("id", a.getId()),
                 Map.entry("sourceFiles", a.getSourceFiles()),
@@ -444,7 +507,8 @@ public class LogAnalyzerController {
                 Map.entry("errorCount", a.getErrors().size()),
                 Map.entry("levelCounts", a.getLevelCounts()),
                 Map.entry("jobExecutionCount", a.getJobExecutions().size()),
-                Map.entry("repeatedFailureCount", a.getRepeatedFailures().size())
+                Map.entry("repeatedFailureCount", a.getRepeatedFailures().size()),
+                Map.entry("customFields", customFieldsSummary)
         );
     }
 
@@ -458,6 +522,9 @@ public class LogAnalyzerController {
         map.put("jobEndRegex", p.jobEndRegex());
         map.put("failureRegex", p.failureRegex());
         map.put("sensitiveFieldNames", p.sensitiveFieldNames());
+        map.put("customFields", p.customFields().stream()
+                .map(cf -> Map.of("name", cf.name(), "regex", cf.regex(), "countOnly", cf.countOnly()))
+                .toList());
         return map;
     }
 
@@ -485,6 +552,26 @@ public class LogAnalyzerController {
 
     private String nonBlankOrDefault(String value, String defaultValue) {
         return value != null && !value.isBlank() ? value : defaultValue;
+    }
+
+    private List<LogPreset.CustomField> parseCustomFieldsJson(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            List<Map<String, Object>> items = OBJECT_MAPPER.readValue(json, new TypeReference<>() {});
+            List<LogPreset.CustomField> result = new ArrayList<>();
+            for (Map<String, Object> item : items) {
+                String name = (String) item.get("name");
+                String regex = (String) item.get("regex");
+                boolean countOnly = Boolean.TRUE.equals(item.get("countOnly"));
+                if (name != null && regex != null) {
+                    result.add(new LogPreset.CustomField(name, regex, countOnly));
+                }
+            }
+            return result;
+        } catch (Exception e) {
+            Log.warnf("Failed to parse customFields JSON: %s", e.getMessage());
+            return List.of();
+        }
     }
 
     private boolean containsIgnoreCase(ApiCallPair call, String search) {

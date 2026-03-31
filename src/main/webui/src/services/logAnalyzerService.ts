@@ -12,6 +12,27 @@ async function handleResponse<T>(res: Response): Promise<T> {
 
 // ---- Types ----
 
+export interface CustomField {
+  name: string
+  regex: string
+  countOnly: boolean
+}
+
+export interface CustomFieldMatch {
+  lineNumber: number
+  timestamp: string | null
+  thread: string | null
+  sourceFile: string
+  fullMessage: string
+  groups: Record<string, string>
+}
+
+export interface CustomFieldSummary {
+  fieldName: string
+  matchCount: number
+  countOnly: boolean
+}
+
 export interface LogPreset {
   name: string
   logLineRegex: string
@@ -21,6 +42,7 @@ export interface LogPreset {
   jobEndRegex: string | null
   failureRegex: string | null
   sensitiveFieldNames: string[]
+  customFields: CustomField[]
 }
 
 export interface AnalyzerStatus {
@@ -44,6 +66,7 @@ export interface AnalysisSummary {
   levelCounts: Record<string, number>
   jobExecutionCount: number
   repeatedFailureCount: number
+  customFields: CustomFieldSummary[]
 }
 
 export interface ApiCallPair {
@@ -141,6 +164,7 @@ export interface UploadOptions {
   failureRegex?: string
   sensitiveFieldNames?: string
   slowThresholdMs?: number
+  customFields?: string
 }
 
 export async function uploadFiles(
@@ -158,6 +182,7 @@ export async function uploadFiles(
   if (options.failureRegex) form.append('failureRegex', options.failureRegex)
   if (options.sensitiveFieldNames) form.append('sensitiveFieldNames', options.sensitiveFieldNames)
   if (options.slowThresholdMs != null) form.append('slowThresholdMs', String(options.slowThresholdMs))
+  if (options.customFields) form.append('customFields', options.customFields)
 
   const res = await fetchWithAuth(`${API}/upload`, { method: 'POST', body: form })
   return handleResponse(res)
@@ -269,5 +294,17 @@ export async function getFailures(
 
 export async function listAnalyses(): Promise<AnalysisSummary[]> {
   const res = await fetchWithAuth(`${API}/list`)
+  return handleResponse(res)
+}
+
+export async function getCustomFieldResults(
+  id: string,
+  fieldName: string,
+  params: { page?: number; size?: number } = {},
+): Promise<PaginatedResponse<CustomFieldMatch>> {
+  const q = new URLSearchParams()
+  if (params.page != null) q.set('page', String(params.page))
+  if (params.size != null) q.set('size', String(params.size))
+  const res = await fetchWithAuth(`${API}/${id}/custom-fields/${encodeURIComponent(fieldName)}?${q}`)
   return handleResponse(res)
 }

@@ -10,8 +10,15 @@ public record LogPreset(
         String jobStartRegex,
         String jobEndRegex,
         String failureRegex,
-        List<String> sensitiveFieldNames
+        List<String> sensitiveFieldNames,
+        List<CustomField> customFields
 ) {
+
+    public record CustomField(
+            String name,
+            String regex,
+            boolean countOnly
+    ) {}
 
     public static final LogPreset WILDFLY = new LogPreset(
             "WildFly",
@@ -21,7 +28,8 @@ public record LogPreset(
             "^Job \\[(?<jobName>.+?)\\] vai ser disparado pelo trigger \\[(?<trigger>.+?)\\]",
             "^Job \\[(?<jobName>.+?)\\] executou em .+ and reports: (?<result>.+)$",
             "ORDEM (?<entityId>ORDER \\d+) FALHA AO INICIAR (?<reason>\\w+):",
-            List.of("token", "senha", "password", "secret", "authorization")
+            List.of("token", "senha", "password", "secret", "authorization"),
+            List.of()
     );
 
     public static final LogPreset QUARKUS = new LogPreset(
@@ -32,7 +40,8 @@ public record LogPreset(
             null,
             null,
             null,
-            List.of("token", "password", "secret", "authorization")
+            List.of("token", "password", "secret", "authorization"),
+            List.of()
     );
 
     public static final LogPreset SPRING_BOOT = new LogPreset(
@@ -43,7 +52,8 @@ public record LogPreset(
             null,
             null,
             null,
-            List.of("token", "password", "secret", "authorization")
+            List.of("token", "password", "secret", "authorization"),
+            List.of()
     );
 
     public static final LogPreset CUSTOM = new LogPreset(
@@ -54,6 +64,7 @@ public record LogPreset(
             null,
             null,
             null,
+            List.of(),
             List.of()
     );
 
@@ -75,5 +86,9 @@ public record LogPreset(
 
     public boolean hasFailurePattern() {
         return failureRegex != null && !failureRegex.isBlank();
+    }
+
+    public boolean hasCustomFields() {
+        return customFields != null && !customFields.isEmpty();
     }
 }

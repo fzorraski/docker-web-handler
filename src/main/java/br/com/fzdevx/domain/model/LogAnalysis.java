@@ -23,6 +23,7 @@ public class LogAnalysis {
     private final List<JobExecution> jobExecutions;
     private final List<RepeatedFailure> repeatedFailures;
     private final List<LogLine> allLines;
+    private List<CustomFieldResult> customFieldResults;
 
     public LogAnalysis(List<SourceFile> sourceFiles, int totalLineCount,
                        LocalDateTime timeRangeStart, LocalDateTime timeRangeEnd,
@@ -46,6 +47,7 @@ public class LogAnalysis {
         this.jobExecutions = jobExecutions;
         this.repeatedFailures = repeatedFailures;
         this.allLines = allLines;
+        this.customFieldResults = List.of();
     }
 
     public record SourceFile(String filename, long size) {}
@@ -65,4 +67,9 @@ public class LogAnalysis {
     public List<JobExecution> getJobExecutions() { return jobExecutions; }
     public List<RepeatedFailure> getRepeatedFailures() { return repeatedFailures; }
     public List<LogLine> getAllLines() { return allLines; }
+    public List<CustomFieldResult> getCustomFieldResults() { return customFieldResults; }
+
+    public void setCustomFieldResults(List<CustomFieldResult> customFieldResults) {
+        this.customFieldResults = customFieldResults != null ? customFieldResults : List.of();
+    }
 }

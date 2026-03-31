@@ -1,5 +1,6 @@
 package br.com.fzdevx.application.usecase;
 
+import br.com.fzdevx.application.port.CustomFieldExtractorPort;
 import br.com.fzdevx.application.port.LogAnalysisPort;
 import br.com.fzdevx.domain.model.*;
 import br.com.fzdevx.domain.shared.EndpointStatsCalculator;
@@ -26,6 +27,9 @@ public class AnalyzeLogFileUseCase {
 
     @Inject
     LogAnalysisPort logAnalysisPort;
+
+    @Inject
+    CustomFieldExtractorPort customFieldExtractorPort;
 
     @Inject
     @ConfigProperty(name = "log.analyzer.max-files", defaultValue = "5")
@@ -59,6 +63,13 @@ public class AnalyzeLogFileUseCase {
         }
 
         LogAnalysis analysis = logAnalysisPort.analyze(files, filenames, preset, slowThresholdMs);
+
+        if (preset.hasCustomFields()) {
+            analysis.setCustomFieldResults(
+                    customFieldExtractorPort.extract(analysis.getAllLines(), preset.customFields())
+            );
+        }
+
         analyses.put(analysis.getId(), new AnalysisEntry(analysis, Instant.now()));
         LOG.info(String.format("Log analysis '%s' created: %d lines, %d API calls, %d endpoints from %d file(s)",
                 analysis.getId(), analysis.getTotalLineCount(),
@@ -173,12 +184,29 @@ public class AnalyzeLogFileUseCase {
 
         var endpointStats = EndpointStatsCalculator.compute(apiCalls, slowThresholdMs);
 
+        // Merge custom field results: combine by fieldName, sum matchCount, concatenate matches
+        var customFieldGroups = new LinkedHashMap<String, List<CustomFieldResult>>();
+        for (LogAnalysis src : sources) {
+            for (CustomFieldResult cfr : src.getCustomFieldResults()) {
+                customFieldGroups.computeIfAbsent(cfr.fieldName(), _ -> new ArrayList<>()).add(cfr);
+            }
+        }
+        var mergedCustomFields = customFieldGroups.entrySet().stream().map(e -> {
+            List<CustomFieldResult> group = e.getValue();
+            int totalCount = group.stream().mapToInt(CustomFieldResult::matchCount).sum();
+            boolean countOnly = group.getFirst().countOnly();
+            var mergedMatches = countOnly ? List.<CustomFieldMatch>of()
+                    : group.stream().flatMap(r -> r.matches().stream()).toList();
+            return new CustomFieldResult(e.getKey(), totalCount, countOnly, mergedMatches);
+        }).toList();
+
         LogAnalysis merged = new LogAnalysis(
                 sourceFiles, allLines.size(), start, end,
                 new ArrayList<>(threads), new ArrayList<>(endpoints),
                 apiCalls, endpointStats, levelCounts, errors,
                 jobExecs, failures, allLines
         );
+        merged.setCustomFieldResults(mergedCustomFields);
         analyses.put(merged.getId(), new AnalysisEntry(merged, Instant.now()));
         return merged;
     }

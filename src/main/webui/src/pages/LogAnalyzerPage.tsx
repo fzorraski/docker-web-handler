@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Autocomplete, Box, Typography, Button, Paper, Tabs, Tab,
-  Chip, TextField, Collapse,
+  Chip, TextField, Collapse, IconButton, Switch, FormControlLabel,
   LinearProgress, Stack,
 } from '@mui/material'
 import {
-  CloudUpload, ExpandMore, MergeType,
+  CloudUpload, ExpandMore, MergeType, Clear,
 } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
@@ -17,6 +17,7 @@ import { RawLogTab } from '../components/log-analyzer/RawLogTab'
 import { ThreadViewTab } from '../components/log-analyzer/ThreadViewTab'
 import { JobsTab } from '../components/log-analyzer/JobsTab'
 import { FailuresTab } from '../components/log-analyzer/FailuresTab'
+import { CustomFieldTab } from '../components/log-analyzer/CustomFieldTab'
 import type {
   AnalysisSummary, LogPreset, UploadOptions,
 } from '../services/logAnalyzerService'
@@ -41,6 +42,9 @@ export default function LogAnalyzerPage() {
   const [slowThreshold, setSlowThreshold] = useState(1000)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [customRegex, setCustomRegex] = useState<Partial<UploadOptions>>({})
+
+  // Custom fields
+  const [customFieldInputs, setCustomFieldInputs] = useState<Array<{ name: string; regex: string; countOnly: boolean }>>([])
 
   // Compose
   const [composeIds, setComposeIds] = useState<Set<string>>(new Set())
@@ -81,6 +85,12 @@ export default function LogAnalyzerPage() {
       }
       if (currentPreset && customRegex.logLineRegex && customRegex.logLineRegex !== currentPreset.logLineRegex) {
         opts.logLineRegex = customRegex.logLineRegex
+      }
+      if (customFieldInputs.length > 0) {
+        const validFields = customFieldInputs.filter(cf => cf.name.trim() && cf.regex.trim())
+        if (validFields.length > 0) {
+          opts.customFields = JSON.stringify(validFields)
+        }
       }
       const result = await logService.uploadFiles(files, opts)
       setSelectedId(result.id)
@@ -126,11 +136,22 @@ export default function LogAnalyzerPage() {
     const list = [
       { key: 'apiCalls', label: t('logAnalyzer.tabs.apiCalls'), component: <ApiCallsTab analysisId={selected.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} /> },
       { key: 'stats', label: t('logAnalyzer.tabs.endpointStats'), component: <EndpointStatsTab analysisId={selected.id} /> },
-      { key: 'rawLog', label: t('logAnalyzer.tabs.rawLog'), component: <RawLogTab analysisId={selected.id} /> },
+      { key: 'rawLog', label: t('logAnalyzer.tabs.rawLog'), component: <RawLogTab analysisId={selected.id} levelCounts={selected.levelCounts} /> },
       { key: 'threadView', label: t('logAnalyzer.tabs.threadView'), component: <ThreadViewTab analysisId={selected.id} /> },
     ]
     if (selected.jobExecutionCount > 0) list.push({ key: 'jobs', label: t('logAnalyzer.tabs.jobs'), component: <JobsTab analysisId={selected.id} /> })
     if (selected.repeatedFailureCount > 0) list.push({ key: 'failures', label: t('logAnalyzer.tabs.failures'), component: <FailuresTab analysisId={selected.id} /> })
+    if (selected.customFields) {
+      for (const cf of selected.customFields) {
+        if (cf.matchCount > 0 && !cf.countOnly) {
+          list.push({
+            key: `custom-${cf.fieldName}`,
+            label: cf.fieldName,
+            component: <CustomFieldTab analysisId={selected.id} fieldName={cf.fieldName} />,
+          })
+        }
+      }
+    }
     return list
   }, [selected, t, presetObj])
 
@@ -171,6 +192,7 @@ export default function LogAnalyzerPage() {
                 failureRegex: p.failureRegex ?? undefined,
                 sensitiveFieldNames: p.sensitiveFieldNames?.join(','),
               })
+              setCustomFieldInputs(p.customFields?.map(cf => ({ name: cf.name, regex: cf.regex, countOnly: cf.countOnly })) ?? [])
             }}
             isOptionEqualToValue={(o, v) => o.name === v.name}
             renderInput={(params) => <TextField {...params} label={t('logAnalyzer.upload.preset')} />}
@@ -207,6 +229,29 @@ export default function LogAnalyzerPage() {
             <TextField size="small" fullWidth label={t('logAnalyzer.upload.sensitiveFields')}
               value={customRegex.sensitiveFieldNames ?? ''} onChange={(e) => setCustomRegex(r => ({ ...r, sensitiveFieldNames: e.target.value }))}
               helperText={t('logAnalyzer.upload.sensitiveFieldsHelp')} />
+            <Typography variant="subtitle2" sx={{ mt: 2 }}>{t('logAnalyzer.upload.customFields')}</Typography>
+            {customFieldInputs.map((cf, idx) => (
+              <Stack key={idx} direction="row" spacing={1} alignItems="center">
+                <TextField size="small" label={t('logAnalyzer.customFields.name')} placeholder="Entity Changes" value={cf.name}
+                  onChange={(e) => { const next = [...customFieldInputs]; next[idx] = { ...next[idx], name: e.target.value }; setCustomFieldInputs(next) }}
+                  sx={{ flex: 1 }} />
+                <TextField size="small" label={t('logAnalyzer.customFields.regex')} placeholder="Updated -> (?<entity>\w+):" value={cf.regex}
+                  onChange={(e) => { const next = [...customFieldInputs]; next[idx] = { ...next[idx], regex: e.target.value }; setCustomFieldInputs(next) }}
+                  sx={{ flex: 2 }}
+                  helperText={t('logAnalyzer.customFields.regexHelp')} />
+                <FormControlLabel
+                  control={<Switch size="small" checked={cf.countOnly}
+                    onChange={(_, v) => { const next = [...customFieldInputs]; next[idx] = { ...next[idx], countOnly: v }; setCustomFieldInputs(next) }} />}
+                  label={<Typography variant="body2">{t('logAnalyzer.customFields.countOnly')}</Typography>}
+                />
+                <IconButton size="small" onClick={() => setCustomFieldInputs(customFieldInputs.filter((_, i) => i !== idx))}>
+                  <Clear sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Stack>
+            ))}
+            <Button size="small" onClick={() => setCustomFieldInputs([...customFieldInputs, { name: '', regex: '', countOnly: false }])}>
+              + {t('logAnalyzer.upload.addCustomField')}
+            </Button>
           </Stack>
         </Collapse>
 
@@ -268,6 +313,9 @@ export default function LogAnalyzerPage() {
             {selected.repeatedFailureCount > 0 && (
               <SummaryCard label={t('logAnalyzer.dashboard.failures')} value={selected.repeatedFailureCount} color="warning.main" />
             )}
+            {selected.customFields?.filter(cf => cf.matchCount > 0).map(cf => (
+              <SummaryCard key={cf.fieldName} label={cf.fieldName} value={cf.matchCount.toLocaleString()} color="primary.main" />
+            ))}
           </Stack>
 
           {/* Level counts */}

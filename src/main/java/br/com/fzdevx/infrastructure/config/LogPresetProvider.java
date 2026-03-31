@@ -46,6 +46,9 @@ public class LogPresetProvider {
             defaultValue = "token,senha,password,secret,authorization")
     String wildflySensitiveFields;
 
+    @Inject @ConfigProperty(name = "log.analyzer.preset.wildfly.custom-fields")
+    Optional<String> wildflyCustomFields;
+
     // ---- Quarkus ----
     @Inject @ConfigProperty(name = "log.analyzer.preset.quarkus.log-line-regex",
             defaultValue = "^(?<timestamp>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2},\\d{3})\\s+(?<level>\\w+)\\s+\\[(?<logger>[^\\]]+)\\]\\s+\\((?<thread>[^)]+)\\)\\s+(?<message>.*)$")
@@ -71,6 +74,9 @@ public class LogPresetProvider {
     @Inject @ConfigProperty(name = "log.analyzer.preset.quarkus.sensitive-field-names",
             defaultValue = "token,password,secret,authorization")
     String quarkusSensitiveFields;
+
+    @Inject @ConfigProperty(name = "log.analyzer.preset.quarkus.custom-fields")
+    Optional<String> quarkusCustomFields;
 
     // ---- Spring Boot ----
     @Inject @ConfigProperty(name = "log.analyzer.preset.spring-boot.log-line-regex",
@@ -98,6 +104,9 @@ public class LogPresetProvider {
             defaultValue = "token,password,secret,authorization")
     String springBootSensitiveFields;
 
+    @Inject @ConfigProperty(name = "log.analyzer.preset.spring-boot.custom-fields")
+    Optional<String> springBootCustomFields;
+
     void onStart(@Observes StartupEvent ev) {
         buildPresets();
     }
@@ -106,19 +115,22 @@ public class LogPresetProvider {
         presets = List.of(
                 new LogPreset("WildFly", wildflyLogLineRegex, wildflyTimestampFormat,
                         wildflyApiCallRegex, wildflyJobStartRegex, wildflyJobEndRegex,
-                        wildflyFailureRegex, splitFields(wildflySensitiveFields)),
+                        wildflyFailureRegex, splitFields(wildflySensitiveFields),
+                        parseCustomFields(wildflyCustomFields.orElse(""))),
 
                 new LogPreset("Quarkus", quarkusLogLineRegex, quarkusTimestampFormat,
                         quarkusApiCallRegex, quarkusJobStartRegex.orElse(null),
                         quarkusJobEndRegex.orElse(null), quarkusFailureRegex.orElse(null),
-                        splitFields(quarkusSensitiveFields)),
+                        splitFields(quarkusSensitiveFields),
+                        parseCustomFields(quarkusCustomFields.orElse(""))),
 
                 new LogPreset("Spring Boot", springBootLogLineRegex, springBootTimestampFormat,
                         springBootApiCallRegex, springBootJobStartRegex.orElse(null),
                         springBootJobEndRegex.orElse(null), springBootFailureRegex.orElse(null),
-                        splitFields(springBootSensitiveFields)),
+                        splitFields(springBootSensitiveFields),
+                        parseCustomFields(springBootCustomFields.orElse(""))),
 
-                new LogPreset("Custom", "", "", "", null, null, null, List.of())
+                new LogPreset("Custom", "", "", "", null, null, null, List.of(), List.of())
         );
     }
 
@@ -137,5 +149,31 @@ public class LogPresetProvider {
     private List<String> splitFields(String csv) {
         if (csv == null || csv.isBlank()) return List.of();
         return Arrays.stream(csv.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+    }
+
+    /**
+     * Parses custom fields from a semicolon-separated string.
+     * Each entry has format: name|regex|countOnly
+     * Example: "SQL Queries|(?&lt;query&gt;SELECT .+)|false;Error Codes|code=(?&lt;code&gt;\\d+)|true"
+     *
+     * Note: Config-defined regex patterns are trusted (admin-only) and bypass the ReDoS safety check
+     * that is applied to user-submitted patterns in CustomFieldExtractor and LogFileParser.
+     */
+    private List<LogPreset.CustomField> parseCustomFields(String csv) {
+        if (csv == null || csv.isBlank()) return List.of();
+        List<LogPreset.CustomField> result = new ArrayList<>();
+        for (String entry : csv.split(";")) {
+            String trimmed = entry.trim();
+            if (trimmed.isEmpty()) continue;
+            String[] parts = trimmed.split("\\|", 3);
+            if (parts.length < 2) continue;
+            String name = parts[0].trim();
+            String regex = parts[1].trim();
+            boolean countOnly = parts.length >= 3 && Boolean.parseBoolean(parts[2].trim());
+            if (!name.isEmpty() && !regex.isEmpty()) {
+                result.add(new LogPreset.CustomField(name, regex, countOnly));
+            }
+        }
+        return result;
     }
 }
