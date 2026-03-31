@@ -22,6 +22,17 @@ class LogFileParserTest {
     @BeforeEach
     void setUp() {
         parser = new LogFileParser();
+        setField("maxStoredLines", 500_000);
+    }
+
+    private void setField(String name, Object value) {
+        try {
+            java.lang.reflect.Field f = LogFileParser.class.getDeclaredField(name);
+            f.setAccessible(true);
+            f.set(parser, value);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     // ---- Log line parsing ----
@@ -598,6 +609,75 @@ class LogFileParserTest {
         assertEquals(2, result.getEndpoints().size());
         assertTrue(result.getEndpoints().contains("OrderWS/getOrders"));
         assertTrue(result.getEndpoints().contains("AplicativoWS/getApk"));
+    }
+
+    // ---- Max stored lines ----
+
+    @Test
+    void maxStoredLines_trimsToLastNLines() throws IOException {
+        setField("maxStoredLines", 3);
+        var lines = new String[5];
+        for (int i = 0; i < 5; i++) {
+            lines[i] = String.format("2026-03-30 00:00:%02d,000 INFO  [a] (t1) line-%d", i, i + 1);
+        }
+        Path file = writeLog(lines);
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+
+        assertEquals(5, result.getTotalLineCount());
+        assertEquals(3, result.getAllLines().size());
+        assertEquals("line-3", result.getAllLines().get(0).message());
+        assertEquals("line-4", result.getAllLines().get(1).message());
+        assertEquals("line-5", result.getAllLines().get(2).message());
+    }
+
+    @Test
+    void maxStoredLines_zeroKeepsAll() throws IOException {
+        setField("maxStoredLines", 0);
+        var lines = new String[10];
+        for (int i = 0; i < 10; i++) {
+            lines[i] = String.format("2026-03-30 00:00:%02d,000 INFO  [a] (t1) line-%d", i, i + 1);
+        }
+        Path file = writeLog(lines);
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+
+        assertEquals(10, result.getTotalLineCount());
+        assertEquals(10, result.getAllLines().size());
+    }
+
+    @Test
+    void maxStoredLines_belowLimit_noTrimming() throws IOException {
+        setField("maxStoredLines", 100);
+        Path file = writeLog(
+                "2026-03-30 00:00:01,000 INFO  [a] (t1) first",
+                "2026-03-30 00:00:02,000 INFO  [a] (t1) second"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+
+        assertEquals(2, result.getTotalLineCount());
+        assertEquals(2, result.getAllLines().size());
+    }
+
+    @Test
+    void maxStoredLines_analysisRunsOnAllLinesBeforeTrimming() throws IOException {
+        setField("maxStoredLines", 2);
+        Path file = writeLog(
+                "2026-03-30 00:00:01,000 INFO  [stdout] (t1) OrderWS/getOrders Request = r1",
+                "2026-03-30 00:00:01,100 INFO  [stdout] (t1) OrderWS/getOrders Response = []",
+                "2026-03-30 00:00:02,000 INFO  [stdout] (t1) AplicativoWS/getApk Request = v",
+                "2026-03-30 00:00:02,010 INFO  [stdout] (t1) AplicativoWS/getApk Response = ok"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+
+        // All 4 lines were analyzed for API calls
+        assertEquals(2, result.getApiCalls().size());
+        assertEquals(2, result.getEndpointStats().size());
+        // But only last 2 lines stored for browsing
+        assertEquals(4, result.getTotalLineCount());
+        assertEquals(2, result.getAllLines().size());
     }
 
     // ---- Helpers ----

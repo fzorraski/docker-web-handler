@@ -4,6 +4,8 @@ import br.com.fzdevx.application.port.LogAnalysisPort;
 import br.com.fzdevx.domain.model.*;
 import br.com.fzdevx.domain.shared.EndpointStatsCalculator;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -25,7 +27,9 @@ public class LogFileParser implements LogAnalysisPort {
 
     private static final Logger LOG = Logger.getLogger(LogFileParser.class.getName());
     private static final Set<String> ERROR_LEVELS = Set.of("ERROR", "SEVERE", "FATAL");
-    static final int MAX_STORED_LINES = 500_000;
+    @Inject
+    @ConfigProperty(name = "log.analyzer.max-stored-lines", defaultValue = "500000")
+    int maxStoredLines;
     private static final long REGEX_SAFETY_TIMEOUT_MS = 2000;
 
     @Override
@@ -113,8 +117,8 @@ public class LogFileParser implements LogAnalysisPort {
                 .orElse(null);
 
         int totalLineCount = allLines.size();
-        if (allLines.size() > MAX_STORED_LINES) {
-            allLines = new ArrayList<>(allLines.subList(allLines.size() - MAX_STORED_LINES, allLines.size()));
+        if (maxStoredLines > 0 && allLines.size() > maxStoredLines) {
+            allLines = new ArrayList<>(allLines.subList(allLines.size() - maxStoredLines, allLines.size()));
         }
 
         return new LogAnalysis(
