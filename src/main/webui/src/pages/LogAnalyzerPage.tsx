@@ -17,6 +17,7 @@ import { RawLogTab } from '../components/log-analyzer/RawLogTab'
 import { ThreadViewTab } from '../components/log-analyzer/ThreadViewTab'
 import { JobsTab } from '../components/log-analyzer/JobsTab'
 import { FailuresTab } from '../components/log-analyzer/FailuresTab'
+import { CriticalIssuesTab } from '../components/log-analyzer/CriticalIssuesTab'
 import { CustomFieldTab } from '../components/log-analyzer/CustomFieldTab'
 import { PerformanceInsightsTab } from '../components/log-analyzer/PerformanceInsightsTab'
 import type {
@@ -165,6 +166,7 @@ export default function LogAnalyzerPage() {
       { key: 'rawLog', label: t('logAnalyzer.tabs.rawLog'), component: null },
       { key: 'threadView', label: t('logAnalyzer.tabs.threadView'), component: <ThreadViewTab analysisId={selected.id} /> },
     ]
+    if (selected.criticalIssueCount > 0) list.push({ key: 'criticalIssues', label: t('logAnalyzer.tabs.criticalIssues'), component: <CriticalIssuesTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.jobExecutionCount > 0) list.push({ key: 'jobs', label: t('logAnalyzer.tabs.jobs'), component: <JobsTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.repeatedFailureCount > 0) list.push({ key: 'failures', label: t('logAnalyzer.tabs.failures'), component: <FailuresTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.customFields) {
@@ -222,7 +224,7 @@ export default function LogAnalyzerPage() {
             disableClearable
             options={presets}
             getOptionLabel={(p) => p.name}
-            value={presets.find(p => p.name.toUpperCase() === selectedPreset.toUpperCase()) ?? presets[0] ?? undefined}
+            value={presets.find(p => p.name.toUpperCase() === selectedPreset.toUpperCase()) ?? presets[0] ?? null}
             onChange={(_, p) => {
               if (!p) return
               setSelectedPreset(p.name.toUpperCase())
@@ -355,6 +357,9 @@ export default function LogAnalyzerPage() {
             )}
             {selected.repeatedFailureCount > 0 && (
               <SummaryCard label={t('logAnalyzer.dashboard.failures')} value={selected.repeatedFailureCount} color="warning.main" />
+            )}
+            {selected.criticalIssueCount > 0 && (
+              <SummaryCard label={t('logAnalyzer.dashboard.criticalIssues')} value={selected.criticalIssueCount} color="warning.main" />
             )}
             {selected.customFields?.filter(cf => cf.matchCount > 0).map(cf => (
               <SummaryCard key={cf.fieldName} label={cf.fieldName} value={cf.matchCount.toLocaleString()} color="primary.main" />

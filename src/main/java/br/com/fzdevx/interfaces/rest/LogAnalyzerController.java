@@ -6,6 +6,7 @@ import br.com.fzdevx.domain.model.*;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.domain.shared.PerformanceInsightsCalculator;
 import br.com.fzdevx.infrastructure.config.LogPresetProvider;
+import br.com.fzdevx.infrastructure.log.CriticalIssueDetector;
 import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -38,6 +39,9 @@ public class LogAnalyzerController {
 
     @Inject
     LogPresetProvider logPresetProvider;
+
+    @Inject
+    CriticalIssueDetector criticalIssueDetector;
 
     @Inject
     @ConfigProperty(name = "log.analyzer.enabled", defaultValue = "false")
@@ -467,6 +471,110 @@ public class LogAnalyzerController {
     }
 
     @GET
+    @Path("/{id}/critical-issues")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getCriticalIssues(@PathParam("id") String id,
+                                      @QueryParam("category") String category) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+
+        var summaries = analysis.getCriticalIssues();
+        if (category != null && !category.isBlank()) {
+            summaries = summaries.stream()
+                    .filter(s -> s.category().equalsIgnoreCase(category))
+                    .toList();
+        }
+        return Response.ok(summaries).build();
+    }
+
+    @GET
+    @Path("/{id}/critical-issues/bursts")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getCriticalBursts(@PathParam("id") String id,
+                                      @QueryParam("threshold") Integer threshold,
+                                      @QueryParam("window") Integer windowMinutes) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+        List<CriticalIssueSummary> withBursts;
+        if (threshold != null || windowMinutes != null) {
+            // Custom params — bypass cache, compute fresh
+            withBursts = criticalIssueDetector.computeBursts(analysis.getCriticalIssues(),
+                    threshold != null ? Math.clamp(threshold, 2, 1000) : 10,
+                    windowMinutes != null ? Math.clamp(windowMinutes, 1, 60) : 5);
+        } else {
+            withBursts = getOrComputeBursts(analysis);
+        }
+        // Return only category-level summaries (no individual bursts — those are fetched on demand)
+        var result = withBursts.stream()
+                .filter(s -> !s.bursts().isEmpty())
+                .map(s -> Map.of(
+                        "category", (Object) s.category(),
+                        "severity", (Object) s.severity(),
+                        "burstCount", (Object) s.bursts().size(),
+                        "totalBurstIssues", (Object) s.bursts().stream().mapToInt(CriticalBurst::issueCount).sum(),
+                        "firstStart", (Object) s.bursts().stream().map(CriticalBurst::burstStart).filter(Objects::nonNull).min(Comparator.naturalOrder()).map(Object::toString).orElse(""),
+                        "lastEnd", (Object) s.bursts().stream().map(CriticalBurst::burstEnd).filter(Objects::nonNull).max(Comparator.naturalOrder()).map(Object::toString).orElse("")
+                ))
+                .toList();
+        return Response.ok(result).build();
+    }
+
+    @GET
+    @Path("/{id}/critical-issues/bursts/{category}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getCriticalBurstsByCategory(@PathParam("id") String id,
+                                                @PathParam("category") String category,
+                                                @QueryParam("page") @DefaultValue("0") int page,
+                                                @QueryParam("size") @DefaultValue("10") int size) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+        var withBursts = getOrComputeBursts(analysis);
+        var categorySummary = withBursts.stream()
+                .filter(s -> s.category().equalsIgnoreCase(category))
+                .findFirst();
+        if (categorySummary.isEmpty()) {
+            return Response.ok(Map.of("data", List.of(), "total", 0, "page", 0, "size", size)).build();
+        }
+        var allBursts = categorySummary.get().bursts();
+        int total = allBursts.size();
+        int from = Math.min(page * size, total);
+        int to = Math.min(from + size, total);
+        var burstMetas = allBursts.subList(from, to).stream().map(b -> Map.of(
+                "burstStart", (Object)(b.burstStart() != null ? b.burstStart().toString() : ""),
+                "burstEnd", (Object)(b.burstEnd() != null ? b.burstEnd().toString() : ""),
+                "issueCount", (Object) b.issueCount()
+        )).toList();
+        return Response.ok(Map.of("data", burstMetas, "total", total, "page", page, "size", size)).build();
+    }
+
+    @GET
+    @Path("/{id}/critical-issues/bursts/{category}/{burstIndex}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getCriticalBurstIssues(@PathParam("id") String id,
+                                           @PathParam("category") String category,
+                                           @PathParam("burstIndex") int burstIndex,
+                                           @QueryParam("page") @DefaultValue("0") int page,
+                                           @QueryParam("size") @DefaultValue("25") int size) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+        var withBursts = getOrComputeBursts(analysis);
+        var categorySummary = withBursts.stream()
+                .filter(s -> s.category().equalsIgnoreCase(category))
+                .findFirst();
+        if (categorySummary.isEmpty() || burstIndex < 0 || burstIndex >= categorySummary.get().bursts().size()) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", "Burst not found"))
+                    .build();
+        }
+        var burst = categorySummary.get().bursts().get(burstIndex);
+        return paginatedResponse(burst.issues(), page, size);
+    }
+
+    @GET
     @Path("/{id}/custom-fields/{fieldName}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getCustomFieldMatches(@PathParam("id") String id,
@@ -535,6 +643,14 @@ public class LogAnalyzerController {
         return Response.ok(Map.of("data", all.subList(from, to), "total", total, "page", page, "size", size)).build();
     }
 
+    private List<CriticalIssueSummary> getOrComputeBursts(LogAnalysis analysis) {
+        var cached = analysis.getCachedBursts();
+        if (cached != null) return cached;
+        var computed = criticalIssueDetector.computeBursts(analysis.getCriticalIssues());
+        analysis.setCachedBursts(computed);
+        return computed;
+    }
+
     private boolean matchesLevelGroup(String filter, String lineLevel) {
         if (lineLevel == null) return false;
         return switch (filter.toUpperCase()) {
@@ -548,6 +664,24 @@ public class LogAnalyzerController {
         var customFieldsSummary = a.getCustomFieldResults().stream()
                 .map(cf -> Map.of("fieldName", (Object) cf.fieldName(), "matchCount", (Object) cf.matchCount(),
                         "countOnly", (Object) cf.countOnly()))
+                .toList();
+
+        int criticalIssueCount = a.getCriticalIssues().stream()
+                .mapToInt(CriticalIssueSummary::count).sum();
+
+        // burstCount not computed eagerly; use on-demand endpoint
+
+        var criticalIssueSummaries = a.getCriticalIssues().stream()
+                .map(s -> {
+                    var map = new LinkedHashMap<String, Object>();
+                    map.put("category", s.category());
+                    map.put("severity", s.severity());
+                    map.put("count", s.count());
+                    map.put("firstSeen", s.firstSeen() != null ? s.firstSeen().toString() : null);
+                    map.put("lastSeen", s.lastSeen() != null ? s.lastSeen().toString() : null);
+                    map.put("burstCount", s.bursts().size());
+                    return map;
+                })
                 .toList();
 
         return Map.ofEntries(
@@ -564,7 +698,9 @@ public class LogAnalyzerController {
                 Map.entry("levelCounts", a.getLevelCounts()),
                 Map.entry("jobExecutionCount", a.getJobExecutions().size()),
                 Map.entry("repeatedFailureCount", a.getRepeatedFailures().size()),
-                Map.entry("customFields", customFieldsSummary)
+                Map.entry("customFields", customFieldsSummary),
+                Map.entry("criticalIssueCount", criticalIssueCount),
+                Map.entry("criticalIssueSummaries", criticalIssueSummaries)
         );
     }
 

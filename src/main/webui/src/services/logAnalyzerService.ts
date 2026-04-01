@@ -66,6 +66,8 @@ export interface AnalysisSummary {
   levelCounts: Record<string, number>
   jobExecutionCount: number
   repeatedFailureCount: number
+  criticalIssueCount: number
+  criticalIssueSummaries: { category: string; severity: string; count: number }[]
   customFields: CustomFieldSummary[]
 }
 
@@ -124,6 +126,35 @@ export interface RepeatedFailure {
   firstSeen: string
   lastSeen: string
   details: { timestamp: string; lineNumber: number; message: string; sourceFile: string }[]
+}
+
+export interface CriticalIssue {
+  category: string
+  severity: string
+  pattern: string
+  lineNumber: number
+  timestamp: string | null
+  message: string
+  sourceFile: string
+}
+
+export interface CriticalBurst {
+  category: string
+  severity: string
+  burstStart: string | null
+  burstEnd: string | null
+  issueCount: number
+  issues: CriticalIssue[]
+}
+
+export interface CriticalIssueSummary {
+  category: string
+  severity: string
+  count: number
+  firstSeen: string | null
+  lastSeen: string | null
+  issues: CriticalIssue[]
+  bursts: CriticalBurst[]
 }
 
 export interface PaginatedResponse<T> {
@@ -335,6 +366,59 @@ export async function getPerformanceInsights(id: string, endpoint?: string): Pro
   if (endpoint) q.set('endpoint', endpoint)
   const qs = q.toString()
   const res = await fetchWithAuth(`${API}/${id}/performance-insights${qs ? '?' + qs : ''}`)
+  return handleResponse(res)
+}
+
+export async function getCriticalIssues(id: string): Promise<CriticalIssueSummary[]> {
+  const res = await fetchWithAuth(`${API}/${id}/critical-issues`)
+  return handleResponse(res)
+}
+
+export interface BurstCategorySummary {
+  category: string
+  severity: string
+  burstCount: number
+  totalBurstIssues: number
+  firstStart: string
+  lastEnd: string
+}
+
+export interface BurstMeta {
+  burstStart: string
+  burstEnd: string
+  issueCount: number
+}
+
+export async function getCriticalBursts(id: string, threshold?: number, windowMinutes?: number): Promise<BurstCategorySummary[]> {
+  const q = new URLSearchParams()
+  if (threshold != null) q.set('threshold', String(threshold))
+  if (windowMinutes != null) q.set('window', String(windowMinutes))
+  const qs = q.toString()
+  const res = await fetchWithAuth(`${API}/${id}/critical-issues/bursts${qs ? '?' + qs : ''}`)
+  return handleResponse(res)
+}
+
+export async function getCriticalBurstsByCategory(
+  id: string, category: string,
+  params: { page?: number; size?: number } = {},
+): Promise<PaginatedResponse<BurstMeta>> {
+  const q = new URLSearchParams()
+  if (params.page != null) q.set('page', String(params.page))
+  if (params.size != null) q.set('size', String(params.size))
+  const qs = q.toString()
+  const res = await fetchWithAuth(`${API}/${id}/critical-issues/bursts/${encodeURIComponent(category)}${qs ? '?' + qs : ''}`)
+  return handleResponse(res)
+}
+
+export async function getCriticalBurstIssues(
+  id: string, category: string, burstIndex: number,
+  params: { page?: number; size?: number } = {},
+): Promise<PaginatedResponse<CriticalIssue>> {
+  const q = new URLSearchParams()
+  if (params.page != null) q.set('page', String(params.page))
+  if (params.size != null) q.set('size', String(params.size))
+  const qs = q.toString()
+  const res = await fetchWithAuth(`${API}/${id}/critical-issues/bursts/${encodeURIComponent(category)}/${burstIndex}${qs ? '?' + qs : ''}`)
   return handleResponse(res)
 }
 

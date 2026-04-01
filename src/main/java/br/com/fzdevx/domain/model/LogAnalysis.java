@@ -24,6 +24,8 @@ public class LogAnalysis {
     private final List<RepeatedFailure> repeatedFailures;
     private final List<LogLine> allLines;
     private List<CustomFieldResult> customFieldResults;
+    private List<CriticalIssueSummary> criticalIssues;
+    private List<CriticalIssueSummary> cachedBursts;
 
     public LogAnalysis(List<SourceFile> sourceFiles, int totalLineCount,
                        LocalDateTime timeRangeStart, LocalDateTime timeRangeEnd,
@@ -48,6 +50,7 @@ public class LogAnalysis {
         this.repeatedFailures = repeatedFailures;
         this.allLines = allLines;
         this.customFieldResults = List.of();
+        this.criticalIssues = List.of();
     }
 
     public record SourceFile(String filename, long size) {}
@@ -72,4 +75,13 @@ public class LogAnalysis {
     public void setCustomFieldResults(List<CustomFieldResult> customFieldResults) {
         this.customFieldResults = customFieldResults != null ? customFieldResults : List.of();
     }
+
+    public List<CriticalIssueSummary> getCriticalIssues() { return criticalIssues; }
+
+    public void setCriticalIssues(List<CriticalIssueSummary> criticalIssues) {
+        this.criticalIssues = criticalIssues != null ? criticalIssues : List.of();
+    }
+
+    public List<CriticalIssueSummary> getCachedBursts() { return cachedBursts; }
+    public void setCachedBursts(List<CriticalIssueSummary> cachedBursts) { this.cachedBursts = cachedBursts; }
 }

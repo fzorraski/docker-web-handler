@@ -3,6 +3,7 @@ package br.com.fzdevx.application.usecase;
 import br.com.fzdevx.application.port.CustomFieldExtractorPort;
 import br.com.fzdevx.application.port.LogAnalysisPort;
 import br.com.fzdevx.domain.model.*;
+import br.com.fzdevx.infrastructure.log.CriticalIssueDetector;
 import br.com.fzdevx.domain.shared.EndpointStatsCalculator;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -30,6 +31,9 @@ public class AnalyzeLogFileUseCase {
 
     @Inject
     CustomFieldExtractorPort customFieldExtractorPort;
+
+    @Inject
+    CriticalIssueDetector criticalIssueDetector;
 
     @Inject
     @ConfigProperty(name = "log.analyzer.max-files", defaultValue = "5")
@@ -69,6 +73,8 @@ public class AnalyzeLogFileUseCase {
                     customFieldExtractorPort.extract(analysis.getAllLines(), preset.customFields())
             );
         }
+
+        analysis.setCriticalIssues(criticalIssueDetector.detect(analysis.getAllLines()));
 
         analyses.put(analysis.getId(), new AnalysisEntry(analysis, Instant.now()));
         LOG.info(String.format("Log analysis '%s' created: %d lines, %d API calls, %d endpoints from %d file(s)",
@@ -207,6 +213,7 @@ public class AnalyzeLogFileUseCase {
                 jobExecs, failures, allLines
         );
         merged.setCustomFieldResults(mergedCustomFields);
+        merged.setCriticalIssues(criticalIssueDetector.detect(allLines));
         analyses.put(merged.getId(), new AnalysisEntry(merged, Instant.now()));
         return merged;
     }
