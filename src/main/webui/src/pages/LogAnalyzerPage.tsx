@@ -39,6 +39,7 @@ export default function LogAnalyzerPage() {
   const [activeTab, setActiveTab] = useState(0)
   const [jumpToLine, setJumpToLine] = useState<number | null>(null)
   const [insightsEndpoint, setInsightsEndpoint] = useState<string | null>(null)
+  const [insightsTimestamp, setInsightsTimestamp] = useState<string | null>(null)
 
   // Upload form
   const [selectedPreset, setSelectedPreset] = useState('')
@@ -142,14 +143,23 @@ export default function LogAnalyzerPage() {
 
   const handleViewInsights = useCallback((endpoint: string) => {
     setInsightsEndpoint(endpoint)
+    setInsightsTimestamp(null)
   }, [])
 
-  const handleInsightsConsumed = useCallback(() => setInsightsEndpoint(null), [])
+  const handleViewInsightsForCall = useCallback((endpoint: string, timestamp: string) => {
+    setInsightsEndpoint(null)
+    setInsightsTimestamp(timestamp)
+  }, [])
+
+  const handleInsightsConsumed = useCallback(() => {
+    setInsightsEndpoint(null)
+    setInsightsTimestamp(null)
+  }, [])
 
   const tabs = useMemo(() => {
     if (!selected) return []
     const list = [
-      { key: 'apiCalls', label: t('logAnalyzer.tabs.apiCalls'), component: <ApiCallsTab analysisId={selected.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} onJumpToLine={handleJumpToLine} /> },
+      { key: 'apiCalls', label: t('logAnalyzer.tabs.apiCalls'), component: <ApiCallsTab analysisId={selected.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} onJumpToLine={handleJumpToLine} onViewInsights={handleViewInsightsForCall} /> },
       { key: 'stats', label: t('logAnalyzer.tabs.endpointStats'), component: <EndpointStatsTab analysisId={selected.id} onViewInsights={handleViewInsights} /> },
       { key: 'insights', label: t('logAnalyzer.tabs.performanceInsights'), component: null },
       { key: 'rawLog', label: t('logAnalyzer.tabs.rawLog'), component: null },
@@ -183,10 +193,10 @@ export default function LogAnalyzerPage() {
 
   // Switch to insights tab when endpoint is selected from stats
   useEffect(() => {
-    if (insightsEndpoint != null && insightsTabIndex >= 0) {
+    if ((insightsEndpoint != null || insightsTimestamp != null) && insightsTabIndex >= 0) {
       setActiveTab(insightsTabIndex)
     }
-  }, [insightsEndpoint, insightsTabIndex])
+  }, [insightsEndpoint, insightsTimestamp, insightsTabIndex])
 
   return (
     <Box sx={{ maxWidth: 1600, mx: 'auto', p: 3 }}>
@@ -369,7 +379,7 @@ export default function LogAnalyzerPage() {
                 {tab.key === 'rawLog'
                   ? <RawLogTab analysisId={selected!.id} levelCounts={selected!.levelCounts} jumpToLine={jumpToLine} onJumpComplete={handleJumpComplete} />
                   : tab.key === 'insights'
-                    ? <PerformanceInsightsTab analysisId={selected!.id} initialEndpoint={insightsEndpoint} onEndpointConsumed={handleInsightsConsumed} />
+                    ? <PerformanceInsightsTab analysisId={selected!.id} initialEndpoint={insightsEndpoint} initialTimestamp={insightsTimestamp} onEndpointConsumed={handleInsightsConsumed} active={idx === activeTab} />
                     : tab.component}
               </Box>
             ))}

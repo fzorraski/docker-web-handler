@@ -9,7 +9,7 @@ import { QueryStats, Refresh, InfoOutlined, Visibility } from '@mui/icons-materi
 import { useTranslation } from 'react-i18next'
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer, Legend, Brush,
+  CartesianGrid, Tooltip, ResponsiveContainer, Legend, Brush, ReferenceLine,
 } from 'recharts'
 import { formatDuration } from '../../utils/formatDuration'
 import { CHART_COLORS } from '../../utils/chartColors'
@@ -38,8 +38,8 @@ function formatTimeRange(timestamp: string, bucketWidth: string): string {
   return `${fmt(d)} — ${fmt(end)}`
 }
 
-export function PerformanceInsightsTab({ analysisId, initialEndpoint, onEndpointConsumed }: {
-  analysisId: string; initialEndpoint?: string | null; onEndpointConsumed?: () => void
+export function PerformanceInsightsTab({ analysisId, initialEndpoint, initialTimestamp, onEndpointConsumed, active }: {
+  analysisId: string; initialEndpoint?: string | null; initialTimestamp?: string | null; onEndpointConsumed?: () => void; active?: boolean
 }) {
   const { t } = useTranslation()
   const theme = useTheme()
@@ -99,6 +99,7 @@ export function PerformanceInsightsTab({ analysisId, initialEndpoint, onEndpoint
   }, [data])
 
   const selectedBucket = data && selectedBucketIdx != null ? data.timeBuckets[selectedBucketIdx] : null
+  const selectedBucketLabel = selectedBucket && data ? formatTime(selectedBucket.timestamp, data.bucketWidth) : null
 
   const sortedBucketEndpoints = useMemo(() => {
     const sorted = [...(selectedBucket?.endpoints ?? [])]
@@ -120,13 +121,29 @@ export function PerformanceInsightsTab({ analysisId, initialEndpoint, onEndpoint
     logService.getEndpoints(analysisId).then(setEndpoints).catch(() => {})
   }, [analysisId])
 
-  const generate = useCallback(async (endpoint?: string) => {
+  const generate = useCallback(async (endpoint?: string, autoSelectTimestamp?: string) => {
     setState('loading')
     setError('')
     try {
       const result = await logService.getPerformanceInsights(analysisId, endpoint || undefined)
       setData(result)
-      setSelectedBucketIdx(null)
+      // Auto-select bucket matching the given timestamp
+      if (autoSelectTimestamp && result.timeBuckets.length > 0) {
+        let idx = -1
+        for (let i = 0; i < result.timeBuckets.length; i++) {
+          const bStart = result.timeBuckets[i].timestamp
+          const bEnd = i + 1 < result.timeBuckets.length
+            ? result.timeBuckets[i + 1].timestamp
+            : null
+          if (autoSelectTimestamp >= bStart && (bEnd == null || autoSelectTimestamp < bEnd)) {
+            idx = i
+            break
+          }
+        }
+        setSelectedBucketIdx(idx >= 0 && result.timeBuckets[idx].requestCount > 0 ? idx : null)
+      } else {
+        setSelectedBucketIdx(null)
+      }
       setState('loaded')
     } catch (err) {
       setError(err instanceof Error ? err.message : t('logAnalyzer.insights.error'))
@@ -141,6 +158,22 @@ export function PerformanceInsightsTab({ analysisId, initialEndpoint, onEndpoint
     generate(initialEndpoint)
     onEndpointConsumed?.()
   }, [initialEndpoint, generate, onEndpointConsumed])
+
+  // Auto-generate when navigated from API Calls context menu (all endpoints, auto-select bucket)
+  useEffect(() => {
+    if (initialTimestamp == null) return
+    setSelectedEndpoint('')
+    generate(undefined, initialTimestamp)
+    onEndpointConsumed?.()
+  }, [initialTimestamp, generate, onEndpointConsumed])
+
+  const prevActiveRef = useRef(active)
+  useEffect(() => {
+    if (prevActiveRef.current && !active) {
+      setSelectedBucketIdx(null)
+    }
+    prevActiveRef.current = active
+  }, [active])
 
   const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'
   const textColor = isDark ? '#E8ECF1' : '#424242'
@@ -237,6 +270,7 @@ export function PerformanceInsightsTab({ analysisId, initialEndpoint, onEndpoint
             <YAxis tick={{ fontSize: 11, fill: textColor }} />
             <Tooltip contentStyle={{ backgroundColor: tooltipBg, border: 'none', fontSize: 12 }} />
             <Area type="monotone" dataKey="requestCount" stroke="#FF6D00" fill="#FF6D00" fillOpacity={0.3} name={t('logAnalyzer.insights.requests')} />
+            {selectedBucketLabel && <ReferenceLine x={selectedBucketLabel} stroke="#FF6D00" strokeDasharray="4 4" strokeWidth={2} />}
             <Brush dataKey="time" height={25} stroke="#FF6D00" fill={isDark ? '#1A1D27' : '#f5f5f5'} travellerWidth={10} />
           </AreaChart>
         </ResponsiveContainer>
@@ -263,6 +297,7 @@ export function PerformanceInsightsTab({ analysisId, initialEndpoint, onEndpoint
             <Line type="monotone" dataKey="avgDurationMs" stroke="#FF6D00" strokeWidth={2} dot={false} name={t('logAnalyzer.insights.avgDuration')} />
             <Line type="monotone" dataKey="p95DurationMs" stroke="#00BCD4" strokeWidth={2} dot={false} name={t('logAnalyzer.insights.p95Duration')} />
             <Line type="monotone" dataKey="maxDurationMs" stroke="#FF5252" strokeWidth={1} dot={false} strokeDasharray="5 5" name={t('logAnalyzer.insights.maxDuration')} />
+            {selectedBucketLabel && <ReferenceLine x={selectedBucketLabel} stroke="#FF6D00" strokeDasharray="4 4" strokeWidth={2} />}
           </LineChart>
         </ResponsiveContainer>
         </div>
@@ -284,6 +319,7 @@ export function PerformanceInsightsTab({ analysisId, initialEndpoint, onEndpoint
             <YAxis tick={{ fontSize: 11, fill: textColor }} />
             <Tooltip contentStyle={{ backgroundColor: tooltipBg, border: 'none', fontSize: 12 }} />
             <Area type="monotone" dataKey="concurrentPeak" stroke="#9C27B0" fill="#9C27B0" fillOpacity={0.3} name={t('logAnalyzer.insights.concurrentPeak')} />
+            {selectedBucketLabel && <ReferenceLine x={selectedBucketLabel} stroke="#FF6D00" strokeDasharray="4 4" strokeWidth={2} />}
           </AreaChart>
         </ResponsiveContainer>
         </div>

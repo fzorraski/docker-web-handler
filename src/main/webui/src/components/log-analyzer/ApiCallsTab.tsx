@@ -3,9 +3,10 @@ import {
   Autocomplete, Box, Typography, Chip, IconButton, Tooltip,
   TextField, TablePagination, Switch, FormControlLabel, LinearProgress, Stack,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
+  Menu, MenuItem, ListItemIcon, ListItemText,
   useTheme,
 } from '@mui/material'
-import { Clear, ContentCopy, Search } from '@mui/icons-material'
+import { Clear, ContentCopy, Search, QueryStats } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { usePaginatedFetch } from '../../hooks/usePaginatedFetch'
@@ -54,8 +55,8 @@ function PayloadBox({ label, payload, sensitiveFields, maskEnabled, isDark }: {
   )
 }
 
-export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine }: {
-  analysisId: string; sensitiveFields: string[]; onJumpToLine?: (line: number) => void
+export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onViewInsights }: {
+  analysisId: string; sensitiveFields: string[]; onJumpToLine?: (line: number) => void; onViewInsights?: (endpoint: string, timestamp: string) => void
 }) {
   const { t } = useTranslation()
   const theme = useTheme()
@@ -73,6 +74,7 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine }: {
   const [maskEnabled, setMaskEnabled] = useState(true)
   const [endpoints, setEndpoints] = useState<string[]>([])
   const [threads, setThreads] = useState<ThreadInfo[]>([])
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; endpoint: string; timestamp: string } | null>(null)
 
   useEffect(() => {
     logService.getEndpoints(analysisId).then(setEndpoints).catch(() => {})
@@ -164,7 +166,8 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine }: {
               return (
                 <Fragment key={globalIdx}>
                   <TableRow hover onClick={() => setExpandedRow(expandedRow === globalIdx ? null : globalIdx)}
-                    sx={{ cursor: 'pointer' }}>
+                    sx={{ cursor: 'pointer' }}
+                    onContextMenu={onViewInsights && call.requestTimestamp ? (e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, endpoint: call.endpoint, timestamp: call.requestTimestamp! }) } : undefined}>
                     <TableCell sx={{ px: 0.5 }}>
                       <Box sx={{ width: 4, height: 24, borderRadius: 2, bgcolor: color }} />
                     </TableCell>
@@ -219,6 +222,20 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine }: {
       <TablePagination component="div" count={total} page={page} onPageChange={(_, p) => setPage(p)}
         rowsPerPage={rowsPerPage} onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0) }}
         showFirstButton showLastButton />
+
+      {onViewInsights && (
+        <Menu
+          open={contextMenu !== null}
+          onClose={() => setContextMenu(null)}
+          anchorReference="anchorPosition"
+          anchorPosition={contextMenu ? { top: contextMenu.y, left: contextMenu.x } : undefined}
+        >
+          <MenuItem onClick={() => { if (contextMenu) onViewInsights(contextMenu.endpoint, contextMenu.timestamp); setContextMenu(null) }}>
+            <ListItemIcon><QueryStats fontSize="small" /></ListItemIcon>
+            <ListItemText>{t('logAnalyzer.insights.viewPerformance')}</ListItemText>
+          </MenuItem>
+        </Menu>
+      )}
     </Box>
   )
 }
