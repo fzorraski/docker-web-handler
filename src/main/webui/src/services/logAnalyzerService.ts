@@ -138,6 +138,39 @@ export interface ThreadInfo {
   lineCount: number
 }
 
+export interface EndpointBucket {
+  endpoint: string
+  count: number
+  avgDurationMs: number
+  p95DurationMs: number
+}
+
+export interface TimeBucket {
+  timestamp: string
+  requestCount: number
+  avgDurationMs: number
+  p95DurationMs: number
+  maxDurationMs: number
+  concurrentPeak: number
+  endpoints: EndpointBucket[]
+}
+
+export interface EndpointImpact {
+  endpoint: string
+  callCount: number
+  avgDurationMs: number
+  totalDurationMs: number
+  p95DurationMs: number
+  slowCount: number
+}
+
+export interface PerformanceInsightsResponse {
+  timeBuckets: TimeBucket[]
+  topEndpointsByImpact: EndpointImpact[]
+  bucketWidth: string
+  totalBuckets: number
+}
+
 // ---- API calls ----
 
 export async function getStatus(): Promise<AnalyzerStatus> {
@@ -294,6 +327,14 @@ export async function getFailures(
 
 export async function listAnalyses(): Promise<AnalysisSummary[]> {
   const res = await fetchWithAuth(`${API}/list`)
+  return handleResponse(res)
+}
+
+export async function getPerformanceInsights(id: string, endpoint?: string): Promise<PerformanceInsightsResponse> {
+  const q = new URLSearchParams()
+  if (endpoint) q.set('endpoint', endpoint)
+  const qs = q.toString()
+  const res = await fetchWithAuth(`${API}/${id}/performance-insights${qs ? '?' + qs : ''}`)
   return handleResponse(res)
 }
 

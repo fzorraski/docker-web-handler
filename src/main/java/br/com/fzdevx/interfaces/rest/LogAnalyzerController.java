@@ -4,6 +4,7 @@ import br.com.fzdevx.application.usecase.AnalyzeContainerLogsUseCase;
 import br.com.fzdevx.application.usecase.AnalyzeLogFileUseCase;
 import br.com.fzdevx.domain.model.*;
 import br.com.fzdevx.domain.shared.InputValidator;
+import br.com.fzdevx.domain.shared.PerformanceInsightsCalculator;
 import br.com.fzdevx.infrastructure.config.LogPresetProvider;
 import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
@@ -19,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
@@ -332,6 +334,60 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
         return Response.ok(analysis.getEndpointStats()).build();
+    }
+
+    @GET
+    @Path("/{id}/performance-insights")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getPerformanceInsights(@PathParam("id") String id,
+                                           @QueryParam("endpoint") String endpoint) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+        var calls = analysis.getApiCalls();
+        if (endpoint != null && !endpoint.isBlank()) {
+            calls = calls.stream().filter(c -> endpoint.equals(c.endpoint())).toList();
+        }
+        if (calls.isEmpty()) {
+            return Response.ok(new PerformanceInsights(List.of(), List.of(), "1m", 0)).build();
+        }
+        PerformanceInsights insights = PerformanceInsightsCalculator.compute(
+                calls,
+                analysis.getTimeRangeStart(),
+                analysis.getTimeRangeEnd()
+        );
+        return Response.ok(insights).build();
+    }
+
+    @GET
+    @Path("/{id}/bucket-endpoints")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getBucketEndpoints(@PathParam("id") String id,
+                                       @QueryParam("timestamp") String timestamp,
+                                       @QueryParam("endpoint") String endpoint,
+                                       @QueryParam("limit") @DefaultValue("7") int limit) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+        if (timestamp == null || timestamp.isBlank()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "timestamp query parameter is required"))
+                    .build();
+        }
+        limit = Math.clamp(limit, 1, 100);
+        var calls = analysis.getApiCalls();
+        if (endpoint != null && !endpoint.isBlank()) {
+            calls = calls.stream().filter(c -> endpoint.equals(c.endpoint())).toList();
+        }
+        try {
+            var bucketEndpoints = PerformanceInsightsCalculator.computeBucketEndpoints(
+                    calls, analysis.getTimeRangeStart(), analysis.getTimeRangeEnd(), timestamp, limit);
+            return Response.ok(bucketEndpoints).build();
+        } catch (DateTimeParseException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Invalid timestamp format. Expected ISO-8601 date-time."))
+                    .build();
+        }
     }
 
     @GET

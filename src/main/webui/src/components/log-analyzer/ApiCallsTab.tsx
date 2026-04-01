@@ -12,18 +12,10 @@ import { usePaginatedFetch } from '../../hooks/usePaginatedFetch'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { maskSensitiveFields, tryFormatJson } from '../../utils/jsonUtils'
 import { formatDuration } from '../../utils/formatDuration'
+import { chartColor } from '../../utils/chartColors'
 import { LineLink } from './LineLink'
 import type { ApiCallPair, ThreadInfo } from '../../services/logAnalyzerService'
 import * as logService from '../../services/logAnalyzerService'
-
-const RAINBOW = [
-  '#FF6D00', '#00BCD4', '#8BC34A', '#E91E63', '#FFC107',
-  '#9C27B0', '#03A9F4', '#FF5722', '#4CAF50', '#673AB7',
-]
-
-function rainbowColor(index: number): string {
-  return RAINBOW[index % RAINBOW.length]
-}
 
 function PayloadBox({ label, payload, sensitiveFields, maskEnabled, isDark }: {
   label: string; payload: string; sensitiveFields: string[]; maskEnabled: boolean; isDark: boolean
@@ -168,7 +160,7 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine }: {
           <TableBody>
             {data.map((call, idx) => {
               const globalIdx = page * rowsPerPage + idx
-              const color = rainbowColor(globalIdx)
+              const color = chartColor(globalIdx)
               return (
                 <Fragment key={globalIdx}>
                   <TableRow hover onClick={() => setExpandedRow(expandedRow === globalIdx ? null : globalIdx)}

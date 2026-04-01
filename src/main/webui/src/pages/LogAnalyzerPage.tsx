@@ -18,6 +18,7 @@ import { ThreadViewTab } from '../components/log-analyzer/ThreadViewTab'
 import { JobsTab } from '../components/log-analyzer/JobsTab'
 import { FailuresTab } from '../components/log-analyzer/FailuresTab'
 import { CustomFieldTab } from '../components/log-analyzer/CustomFieldTab'
+import { PerformanceInsightsTab } from '../components/log-analyzer/PerformanceInsightsTab'
 import type {
   AnalysisSummary, LogPreset, UploadOptions,
 } from '../services/logAnalyzerService'
@@ -37,6 +38,7 @@ export default function LogAnalyzerPage() {
   const [uploading, setUploading] = useState(false)
   const [activeTab, setActiveTab] = useState(0)
   const [jumpToLine, setJumpToLine] = useState<number | null>(null)
+  const [insightsEndpoint, setInsightsEndpoint] = useState<string | null>(null)
 
   // Upload form
   const [selectedPreset, setSelectedPreset] = useState('')
@@ -138,11 +140,18 @@ export default function LogAnalyzerPage() {
     setJumpToLine(lineNumber)
   }, [])
 
+  const handleViewInsights = useCallback((endpoint: string) => {
+    setInsightsEndpoint(endpoint)
+  }, [])
+
+  const handleInsightsConsumed = useCallback(() => setInsightsEndpoint(null), [])
+
   const tabs = useMemo(() => {
     if (!selected) return []
     const list = [
       { key: 'apiCalls', label: t('logAnalyzer.tabs.apiCalls'), component: <ApiCallsTab analysisId={selected.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} onJumpToLine={handleJumpToLine} /> },
-      { key: 'stats', label: t('logAnalyzer.tabs.endpointStats'), component: <EndpointStatsTab analysisId={selected.id} /> },
+      { key: 'stats', label: t('logAnalyzer.tabs.endpointStats'), component: <EndpointStatsTab analysisId={selected.id} onViewInsights={handleViewInsights} /> },
+      { key: 'insights', label: t('logAnalyzer.tabs.performanceInsights'), component: null },
       { key: 'rawLog', label: t('logAnalyzer.tabs.rawLog'), component: null },
       { key: 'threadView', label: t('logAnalyzer.tabs.threadView'), component: <ThreadViewTab analysisId={selected.id} /> },
     ]
@@ -163,13 +172,21 @@ export default function LogAnalyzerPage() {
   }, [selected, t, presetObj, handleJumpToLine])
 
   const rawLogTabIndex = useMemo(() => tabs.findIndex(t => t.key === 'rawLog'), [tabs])
+  const insightsTabIndex = useMemo(() => tabs.findIndex(t => t.key === 'insights'), [tabs])
 
-  // Switch to rawLog tab when jumpToLine is set (after handleJumpToLine is called)
+  // Switch to rawLog tab when jumpToLine is set
   useEffect(() => {
     if (jumpToLine != null && rawLogTabIndex >= 0) {
       setActiveTab(rawLogTabIndex)
     }
   }, [jumpToLine, rawLogTabIndex])
+
+  // Switch to insights tab when endpoint is selected from stats
+  useEffect(() => {
+    if (insightsEndpoint != null && insightsTabIndex >= 0) {
+      setActiveTab(insightsTabIndex)
+    }
+  }, [insightsEndpoint, insightsTabIndex])
 
   return (
     <Box sx={{ maxWidth: 1600, mx: 'auto', p: 3 }}>
@@ -351,7 +368,9 @@ export default function LogAnalyzerPage() {
               <Box key={tab.key} sx={{ p: 2, display: idx === activeTab ? 'block' : 'none' }}>
                 {tab.key === 'rawLog'
                   ? <RawLogTab analysisId={selected!.id} levelCounts={selected!.levelCounts} jumpToLine={jumpToLine} onJumpComplete={handleJumpComplete} />
-                  : tab.component}
+                  : tab.key === 'insights'
+                    ? <PerformanceInsightsTab analysisId={selected!.id} initialEndpoint={insightsEndpoint} onEndpointConsumed={handleInsightsConsumed} />
+                    : tab.component}
               </Box>
             ))}
           </Paper>

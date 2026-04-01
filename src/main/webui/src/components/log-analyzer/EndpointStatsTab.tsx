@@ -2,19 +2,22 @@ import { useState, useEffect, useMemo } from 'react'
 import {
   Autocomplete, Box, Typography, Chip, LinearProgress, TextField, Stack,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
+  Menu, MenuItem, ListItemIcon, ListItemText,
   useTheme,
 } from '@mui/material'
+import { QueryStats } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { formatDuration } from '../../utils/formatDuration'
 import type { EndpointStats } from '../../services/logAnalyzerService'
 import * as logService from '../../services/logAnalyzerService'
 
-export function EndpointStatsTab({ analysisId }: { analysisId: string }) {
+export function EndpointStatsTab({ analysisId, onViewInsights }: { analysisId: string; onViewInsights?: (endpoint: string) => void }) {
   const { t } = useTranslation()
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
   const headerTheme = useTableHeaderTheme()
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; endpoint: string } | null>(null)
 
   const [stats, setStats] = useState<EndpointStats[]>([])
   const [sortField, setSortField] = useState<keyof EndpointStats>('callCount')
@@ -84,7 +87,8 @@ export function EndpointStatsTab({ analysisId }: { analysisId: string }) {
           </TableHead>
           <TableBody>
             {sorted.map((s) => (
-              <TableRow key={s.endpoint} hover>
+              <TableRow key={s.endpoint} hover sx={{ cursor: onViewInsights ? 'context-menu' : undefined }}
+                onContextMenu={onViewInsights ? (e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, endpoint: s.endpoint }) } : undefined}>
                 <TableCell><Typography variant="body2" fontFamily="'JetBrains Mono', monospace" fontSize="0.8rem">{s.endpoint}</Typography></TableCell>
                 <TableCell>{s.callCount}</TableCell>
                 <TableCell>{formatDuration(Math.round(s.avgDurationMs))}</TableCell>
@@ -102,6 +106,20 @@ export function EndpointStatsTab({ analysisId }: { analysisId: string }) {
           </TableBody>
         </Table>
       </TableContainer>
+
+      {onViewInsights && (
+        <Menu
+          open={contextMenu !== null}
+          onClose={() => setContextMenu(null)}
+          anchorReference="anchorPosition"
+          anchorPosition={contextMenu ? { top: contextMenu.y, left: contextMenu.x } : undefined}
+        >
+          <MenuItem onClick={() => { if (contextMenu) onViewInsights(contextMenu.endpoint); setContextMenu(null) }}>
+            <ListItemIcon><QueryStats fontSize="small" /></ListItemIcon>
+            <ListItemText>{t('logAnalyzer.insights.viewPerformance')}</ListItemText>
+          </MenuItem>
+        </Menu>
+      )}
     </Box>
   )
 }
