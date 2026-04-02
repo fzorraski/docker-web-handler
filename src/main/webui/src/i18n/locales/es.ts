@@ -1001,6 +1001,11 @@ const es: typeof en = {
       exceptionAnalysisDesc: 'Analisis de otras excepciones Java (ClassCast, IllegalArgument, etc.)',
       customFields: 'Campos Personalizados',
       customFieldsDesc: 'Extractores regex definidos por el usuario',
+      threadView: 'Vista por Thread',
+      threadViewDesc: 'Ver lineas de log agrupadas por thread',
+      cost_low: 'Costo de procesamiento bajo',
+      cost_medium: 'Costo de procesamiento medio',
+      cost_high: 'Costo de procesamiento alto',
     },
     common: {
       all: 'Todos',

@@ -59,6 +59,7 @@ export default function LogAnalyzerPage() {
   // Analysis options dialog
   const [optionsDialogOpen, setOptionsDialogOpen] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [lastAnalysisOptions, setLastAnalysisOptions] = useState<AnalysisOptions | null>(null)
 
   // Compose
   const [composeIds, setComposeIds] = useState<Set<string>>(new Set())
@@ -94,15 +95,17 @@ export default function LogAnalyzerPage() {
 
   const handleStartAnalysis = useCallback(async (analysisOptions: AnalysisOptions) => {
     setOptionsDialogOpen(false)
+    setLastAnalysisOptions(analysisOptions)
     if (pendingFiles.length === 0) return
     setUploading(true)
     try {
       const currentPreset = presets.find(p => p.name.toUpperCase() === selectedPreset.toUpperCase())
+      const { threadView: _tv, ...backendOptions } = analysisOptions
       const opts: UploadOptions = {
         preset: selectedPreset,
         slowThresholdMs: slowThreshold,
         ...customRegex,
-        analysisOptions,
+        analysisOptions: backendOptions,
       }
       if (currentPreset && customRegex.logLineRegex && customRegex.logLineRegex !== currentPreset.logLineRegex) {
         opts.logLineRegex = customRegex.logLineRegex
@@ -187,7 +190,7 @@ export default function LogAnalyzerPage() {
       { key: 'stats', label: t('logAnalyzer.tabs.endpointStats'), component: <EndpointStatsTab analysisId={selected.id} onViewInsights={handleViewInsights} /> },
       { key: 'insights', label: t('logAnalyzer.tabs.performanceInsights'), component: null },
       { key: 'rawLog', label: t('logAnalyzer.tabs.rawLog'), component: null },
-      { key: 'threadView', label: t('logAnalyzer.tabs.threadView'), component: <ThreadViewTab analysisId={selected.id} /> },
+      ...(lastAnalysisOptions?.threadView !== false ? [{ key: 'threadView', label: t('logAnalyzer.tabs.threadView'), component: <ThreadViewTab analysisId={selected.id} /> }] : []),
     ]
     if (selected.criticalIssueCount > 0) list.push({ key: 'criticalIssues', label: t('logAnalyzer.tabs.criticalIssues'), component: <CriticalIssuesTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.npeAnalysisCount > 0) list.push({ key: 'npeAnalysis', label: t('logAnalyzer.tabs.npeAnalysis'), component: <NpeAnalysisTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })

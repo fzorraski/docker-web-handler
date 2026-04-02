@@ -1001,6 +1001,11 @@ const ptBR: typeof en = {
       exceptionAnalysisDesc: 'Analise de outras excecoes Java (ClassCast, IllegalArgument, etc.)',
       customFields: 'Campos Personalizados',
       customFieldsDesc: 'Extratores regex definidos pelo usuario',
+      threadView: 'Visao por Thread',
+      threadViewDesc: 'Visualizar linhas de log agrupadas por thread',
+      cost_low: 'Custo de processamento baixo',
+      cost_medium: 'Custo de processamento medio',
+      cost_high: 'Custo de processamento alto',
     },
     common: {
       all: 'Todos',

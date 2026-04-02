@@ -1000,6 +1000,11 @@ const en = {
       exceptionAnalysisDesc: 'Other Java exception analysis (ClassCast, IllegalArgument, etc.)',
       customFields: 'Custom Fields',
       customFieldsDesc: 'User-defined regex extractors',
+      threadView: 'Thread View',
+      threadViewDesc: 'View log lines grouped by thread',
+      cost_low: 'Low processing cost',
+      cost_medium: 'Medium processing cost',
+      cost_high: 'High processing cost',
     },
     common: {
       all: 'All',
