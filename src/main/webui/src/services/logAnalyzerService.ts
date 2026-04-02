@@ -70,6 +70,8 @@ export interface AnalysisSummary {
   criticalIssueSummaries: { category: string; severity: string; count: number }[]
   npeAnalysisCount: number
   npeLocationCount: number
+  exceptionAnalysisCount: number
+  exceptionTypeCount: number
   customFields: CustomFieldSummary[]
 }
 
@@ -152,6 +154,32 @@ export interface NpeLocationSummary {
   firstSeen: string | null
   lastSeen: string | null
   occurrences: NpeOccurrence[]
+}
+
+export interface ExceptionOccurrence {
+  exceptionType: string
+  originClass: string
+  method: string
+  sourceFile: string
+  sourceLine: number
+  message: string | null
+  timestamp: string | null
+  logLineNumber: number
+  logSourceFile: string
+  stackTrace: string[]
+}
+
+export interface ExceptionLocationSummary {
+  exceptionType: string
+  origin: string
+  originClass: string
+  method: string
+  sourceFile: string
+  sourceLine: number
+  count: number
+  firstSeen: string | null
+  lastSeen: string | null
+  occurrences: ExceptionOccurrence[]
 }
 
 export interface CriticalIssue {
@@ -468,6 +496,17 @@ export async function getNpeAnalysis(
   if (params.page != null) q.set('page', String(params.page))
   if (params.size != null) q.set('size', String(params.size))
   const res = await fetchWithAuth(`${API}/${id}/npe-analysis?${q}`)
+  return handleResponse(res)
+}
+
+export async function getExceptionAnalysis(
+  id: string,
+  params: { page?: number; size?: number } = {},
+): Promise<PaginatedResponse<ExceptionLocationSummary>> {
+  const q = new URLSearchParams()
+  if (params.page != null) q.set('page', String(params.page))
+  if (params.size != null) q.set('size', String(params.size))
+  const res = await fetchWithAuth(`${API}/${id}/exception-analysis?${q}`)
   return handleResponse(res)
 }
 

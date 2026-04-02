@@ -27,6 +27,7 @@ public class LogAnalysis {
     private List<CriticalIssueSummary> criticalIssues;
     private List<CriticalIssueSummary> cachedBursts;
     private List<NpeLocationSummary> npeAnalysis;
+    private List<ExceptionLocationSummary> exceptionAnalysis;
 
     public LogAnalysis(List<SourceFile> sourceFiles, int totalLineCount,
                        LocalDateTime timeRangeStart, LocalDateTime timeRangeEnd,
@@ -53,6 +54,7 @@ public class LogAnalysis {
         this.customFieldResults = List.of();
         this.criticalIssues = List.of();
         this.npeAnalysis = List.of();
+        this.exceptionAnalysis = List.of();
     }
 
     public record SourceFile(String filename, long size) {}
@@ -91,5 +93,11 @@ public class LogAnalysis {
 
     public void setNpeAnalysis(List<NpeLocationSummary> npeAnalysis) {
         this.npeAnalysis = npeAnalysis != null ? npeAnalysis : List.of();
+    }
+
+    public List<ExceptionLocationSummary> getExceptionAnalysis() { return exceptionAnalysis; }
+
+    public void setExceptionAnalysis(List<ExceptionLocationSummary> exceptionAnalysis) {
+        this.exceptionAnalysis = exceptionAnalysis != null ? exceptionAnalysis : List.of();
     }
 }
