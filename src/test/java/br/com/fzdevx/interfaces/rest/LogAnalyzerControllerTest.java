@@ -711,7 +711,7 @@ class LogAnalyzerControllerTest {
     @SuppressWarnings("unchecked")
     void compose_valid_returns200() {
         LogAnalysis composed = buildSampleAnalysis();
-        when(analyzeLogFileUseCase.compose(anyList(), any(LogPreset.class), anyInt())).thenReturn(composed);
+        when(analyzeLogFileUseCase.compose(anyList(), any(LogPreset.class), anyInt(), any())).thenReturn(composed);
 
         Response response = controller.compose(Map.of("ids", List.of("id1", "id2")));
 
