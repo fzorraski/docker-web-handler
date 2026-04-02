@@ -5,7 +5,8 @@ import {
   TablePagination, Collapse,
   useTheme,
 } from '@mui/material'
-import { ExpandMore, ExpandLess } from '@mui/icons-material'
+import { ExpandMore, ExpandLess, ContentCopy } from '@mui/icons-material'
+import { IconButton, Tooltip } from '@mui/material'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { LineLink } from './LineLink'
@@ -137,6 +138,7 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
                                         </Typography>
                                       )}
                                       {occ.stackTrace.length > 0 && (
+                                        <>
                                         <Button
                                           size="small"
                                           variant="text"
@@ -146,20 +148,39 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
                                         >
                                           {isTraceOpen ? t('logAnalyzer.npeAnalysis.hideTrace') : t('logAnalyzer.npeAnalysis.showTrace')}
                                         </Button>
+                                        <Tooltip title={t('logAnalyzer.npeAnalysis.copyOccurrence')} arrow>
+                                          <IconButton size="small" onClick={(e) => {
+                                            e.stopPropagation()
+                                            const text = `NullPointerException: ${occ.message ?? ''}\nTimestamp: ${occ.timestamp?.replace('T', ' ') ?? '-'}\nOrigin: ${occ.originClass}.${occ.method}(${occ.sourceFile}:${occ.sourceLine})\nLine: ${occ.logLineNumber}\n\n${occ.stackTrace.join('\n')}`
+                                            navigator.clipboard.writeText(text)
+                                          }}>
+                                            <ContentCopy sx={{ fontSize: 14 }} />
+                                          </IconButton>
+                                        </Tooltip>
+                                        </>
                                       )}
                                     </Stack>
                                     <Collapse in={isTraceOpen}>
-                                      <Box sx={{
-                                        mt: 0.5, p: 1, borderRadius: 1,
-                                        bgcolor: isDark ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.05)',
-                                        fontFamily: "'JetBrains Mono', monospace",
-                                        fontSize: '0.7rem',
-                                        whiteSpace: 'pre',
-                                        overflowX: 'auto',
-                                        maxHeight: 300,
-                                        overflowY: 'auto',
-                                      }}>
-                                        {occ.stackTrace.join('\n')}
+                                      <Box sx={{ mt: 0.5, position: 'relative' }}>
+                                        <Tooltip title={t('logAnalyzer.npeAnalysis.copyTrace')} arrow>
+                                          <IconButton size="small"
+                                            sx={{ position: 'absolute', top: 4, right: 4, opacity: 0.6, '&:hover': { opacity: 1 } }}
+                                            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(occ.stackTrace.join('\n')) }}>
+                                            <ContentCopy sx={{ fontSize: 14 }} />
+                                          </IconButton>
+                                        </Tooltip>
+                                        <Box sx={{
+                                          p: 1, borderRadius: 1,
+                                          bgcolor: isDark ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.05)',
+                                          fontFamily: "'JetBrains Mono', monospace",
+                                          fontSize: '0.7rem',
+                                          whiteSpace: 'pre',
+                                          overflowX: 'auto',
+                                          maxHeight: 300,
+                                          overflowY: 'auto',
+                                        }}>
+                                          {occ.stackTrace.join('\n')}
+                                        </Box>
                                       </Box>
                                     </Collapse>
                                   </Box>

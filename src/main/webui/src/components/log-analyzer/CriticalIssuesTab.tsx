@@ -5,7 +5,7 @@ import {
   TablePagination, TextField,
   useTheme,
 } from '@mui/material'
-import { BugReport, ErrorOutline, ExpandMore, ExpandLess, HelpOutline, TuneRounded } from '@mui/icons-material'
+import { BugReport, ErrorOutline, ExpandMore, ExpandLess, HelpOutline, TuneRounded, ContentCopy } from '@mui/icons-material'
 import Tooltip from '@mui/material/Tooltip'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
@@ -526,7 +526,14 @@ export function CriticalIssuesTab({ analysisId, onJumpToLine }: { analysisId: st
                       {isExpanded && (
                         <TableRow>
                           <TableCell colSpan={6} sx={{ bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)' }}>
-                            <Box sx={{ maxHeight: 300, overflowY: 'auto', p: 1 }}>
+                            <Box sx={{ maxHeight: 300, overflowY: 'auto', p: 1, position: 'relative' }}>
+                              <Tooltip title={t('logAnalyzer.criticalIssues.copyMessage')} arrow>
+                                <IconButton size="small"
+                                  sx={{ position: 'absolute', top: 4, right: 4, opacity: 0.6, '&:hover': { opacity: 1 } }}
+                                  onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(`[${issue.category}] ${issue.pattern}\nTimestamp: ${issue.timestamp?.replace('T', ' ') ?? '-'}\nLine: ${issue.lineNumber}\nSource: ${issue.sourceFile}\n\n${issue.message}`) }}>
+                                  <ContentCopy sx={{ fontSize: 14 }} />
+                                </IconButton>
+                              </Tooltip>
                               <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
                                 {t('logAnalyzer.criticalIssues.sourceFile')}: {issue.sourceFile}
                               </Typography>
