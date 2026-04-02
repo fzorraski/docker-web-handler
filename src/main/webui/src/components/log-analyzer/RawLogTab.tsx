@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   Autocomplete, Box, Typography, TextField, Chip, IconButton, Tooltip,
-  TablePagination, LinearProgress, InputAdornment, Dialog, AppBar, Toolbar,
+  TablePagination, LinearProgress, InputAdornment, Dialog,
   useTheme,
 } from '@mui/material'
-import { Search, ContentCopy, WrapText, KeyboardArrowUp, KeyboardArrowDown, BookmarkBorder, MyLocation, ClearAll, HighlightOff, Fullscreen, FullscreenExit, Close } from '@mui/icons-material'
+import { Search, ContentCopy, WrapText, KeyboardArrowUp, KeyboardArrowDown, MyLocation, ClearAll, HighlightOff, Fullscreen, FullscreenExit } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { List, useListRef, type RowComponentProps } from 'react-window'
 import { usePaginatedFetch } from '../../hooks/usePaginatedFetch'
@@ -105,11 +105,14 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
   const [scrollGen, setScrollGen] = useState(0)
   const [flashLine, setFlashLine] = useState<number | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
+  const [fullscreenHeight, setFullscreenHeight] = useState(VIEWER_HEIGHT)
   const firstVisibleIndexRef = useRef(0)
   const scrollAlignRef = useRef<'center' | 'start'>('center')
+  const wrapScrollRafRef = useRef(0)
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const listRef = useListRef(null)
   const wrapContainerRef = useRef<HTMLDivElement>(null)
+  const viewerWrapperRef = useRef<HTMLDivElement>(null)
 
   // Sync debounced search to active search (normal typing flow)
   useEffect(() => { setActiveSearch(debouncedSearch) }, [debouncedSearch])
@@ -120,7 +123,21 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
 
   useEffect(() => () => {
     if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
+    cancelAnimationFrame(wrapScrollRafRef.current)
   }, [])
+
+  // Measure available viewer height in fullscreen via ResizeObserver
+  useEffect(() => {
+    if (!fullscreen) return
+    const el = viewerWrapperRef.current
+    if (!el) return
+    const observer = new ResizeObserver(entries => {
+      const h = entries[0]?.contentRect.height
+      if (h && h > 0) setFullscreenHeight(Math.floor(h))
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [fullscreen])
 
   // Handle jump to line — clear filters immediately, go to correct page
   useEffect(() => {
@@ -280,20 +297,23 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
   }, [])
 
   const handleWrapScroll = useCallback(() => {
-    const container = wrapContainerRef.current
-    if (!container || lines.length === 0) return
-    const children = container.children
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i] as HTMLElement
-      if (child.offsetTop + child.offsetHeight > container.scrollTop) {
-        const lineNum = Number(child.dataset.line)
-        if (lineNum > 0) {
-          const idx = lines.findIndex(l => l.lineNumber === lineNum)
-          if (idx >= 0) firstVisibleIndexRef.current = idx
+    cancelAnimationFrame(wrapScrollRafRef.current)
+    wrapScrollRafRef.current = requestAnimationFrame(() => {
+      const container = wrapContainerRef.current
+      if (!container || lines.length === 0) return
+      const children = container.children
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i] as HTMLElement
+        if (child.offsetTop + child.offsetHeight > container.scrollTop) {
+          const lineNum = Number(child.dataset.line)
+          if (lineNum > 0) {
+            const idx = lines.findIndex(l => l.lineNumber === lineNum)
+            if (idx >= 0) firstVisibleIndexRef.current = idx
+          }
+          break
         }
-        break
       }
-    }
+    })
   }, [lines])
 
   const toggleFullscreen = useCallback(() => {
@@ -313,8 +333,7 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
 
   const wrapToggleColor = isDark ? '#4d96ff' : '#1565c0'
 
-  // In fullscreen, toolbar ~48px + pagination ~52px + progress ~4px
-  const viewerHeight = fullscreen ? window.innerHeight - 104 : VIEWER_HEIGHT
+  const viewerHeight = fullscreen ? fullscreenHeight : VIEWER_HEIGHT
 
   const toolbarContent = (
     <Box sx={{
@@ -479,7 +498,6 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
       fontSize: '0.8rem',
       bgcolor: lt.logViewerBg,
       borderRadius: fullscreen ? 0 : '0 0 4px 4px',
-      flex: fullscreen ? 1 : undefined,
     }}>
       {lines.length === 0 && !loading && (
         <Box sx={{ p: 3, textAlign: 'center', color: lt.emptyText }}>
@@ -556,15 +574,14 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
 
   if (fullscreen) {
     return (
-      <>
-        <Box>{/* placeholder to keep inline space */}</Box>
-        <Dialog fullScreen open onClose={toggleFullscreen} PaperProps={{ sx: { bgcolor: lt.logViewerBg, display: 'flex', flexDirection: 'column' } }}>
-          {loading && <LinearProgress sx={{ flexShrink: 0 }} />}
-          {toolbarContent}
+      <Dialog fullScreen open onClose={toggleFullscreen} PaperProps={{ sx: { bgcolor: lt.logViewerBg, display: 'flex', flexDirection: 'column' } }}>
+        {loading && <LinearProgress sx={{ flexShrink: 0 }} />}
+        {toolbarContent}
+        <Box ref={viewerWrapperRef} sx={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
           {logViewerContent}
-          {paginationContent}
-        </Dialog>
-      </>
+        </Box>
+        {paginationContent}
+      </Dialog>
     )
   }
 
