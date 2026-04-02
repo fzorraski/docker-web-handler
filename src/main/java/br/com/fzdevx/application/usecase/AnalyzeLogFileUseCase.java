@@ -36,6 +36,9 @@ public class AnalyzeLogFileUseCase {
     CriticalIssueDetector criticalIssueDetector;
 
     @Inject
+    br.com.fzdevx.infrastructure.persistence.ResourceCounterService resourceCounterService;
+
+    @Inject
     @ConfigProperty(name = "log.analyzer.max-files", defaultValue = "5")
     int maxFiles;
 
@@ -77,6 +80,7 @@ public class AnalyzeLogFileUseCase {
         analysis.setCriticalIssues(criticalIssueDetector.detect(analysis.getAllLines()));
 
         analyses.put(analysis.getId(), new AnalysisEntry(analysis, Instant.now()));
+        resourceCounterService.increment(br.com.fzdevx.infrastructure.persistence.ResourceCounterService.LOGS_ANALYZED);
         LOG.info(String.format("Log analysis '%s' created: %d lines, %d API calls, %d endpoints from %d file(s)",
                 analysis.getId(), analysis.getTotalLineCount(),
                 analysis.getApiCalls().size(), analysis.getEndpoints().size(),

@@ -51,6 +51,7 @@ const en = {
     snapshots: 'Snapshots',
     restores: 'Restores',
     schedulesExecuted: 'Schedules executed',
+    logsAnalyzed: 'Logs analyzed',
     cpuUsage: 'CPU: {{percent}}% ({{cores}} cores)',
     memoryUsage: 'Memory: {{used}} / {{total}} GB',
     diskUsage: 'Disk: {{used}} / {{total}} GB',

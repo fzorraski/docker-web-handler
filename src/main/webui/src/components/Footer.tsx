@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Box, Typography, Tooltip, useTheme, Dialog, DialogTitle, DialogContent, LinearProgress, IconButton, Table, TableBody, TableCell, TableRow, TableHead } from '@mui/material'
-import { Dns, DeleteSweep, Storage, CameraAlt, SettingsBackupRestore, Schedule, Memory, Speed, SdStorage, Close, Monitor, Assessment } from '@mui/icons-material'
+import { Dns, DeleteSweep, Storage, CameraAlt, SettingsBackupRestore, Schedule, Memory, Speed, SdStorage, Close, Monitor, Assessment, Description } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 
 interface Stats {
@@ -13,6 +13,7 @@ interface Stats {
   snapshots: number
   restores: number
   schedulesExecuted: number
+  logsAnalyzed: number
   startedAt: string
 }
 
@@ -111,6 +112,9 @@ export default function Footer() {
               )}
               {stats.schedulesExecuted > 0 && (
                 <StatItem icon={<Schedule />} label={t('footer.schedulesExecuted')} value={stats.schedulesExecuted} isDark={isDark} />
+              )}
+              {stats.logsAnalyzed > 0 && (
+                <StatItem icon={<Description />} label={t('footer.logsAnalyzed')} value={stats.logsAnalyzed} isDark={isDark} />
               )}
             </Box>
           </>
@@ -240,6 +244,9 @@ function StatsModal({ open, onClose, stats, isDark }: { open: boolean; onClose: 
   }
   if (stats.schedulesExecuted > 0) {
     rows.push({ icon: <Schedule color="action" />, label: t('footer.schedulesExecuted'), total: stats.schedulesExecuted })
+  }
+  if (stats.logsAnalyzed > 0) {
+    rows.push({ icon: <Description color="action" />, label: t('footer.logsAnalyzed'), total: stats.logsAnalyzed })
   }
 
   return (

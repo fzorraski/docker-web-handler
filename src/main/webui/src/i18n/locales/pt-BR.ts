@@ -53,6 +53,7 @@ const ptBR: typeof en = {
     snapshots: 'Snapshots',
     restores: 'Restauracoes',
     schedulesExecuted: 'Agendamentos executados',
+    logsAnalyzed: 'Logs analisados',
     cpuUsage: 'CPU: {{percent}}% ({{cores}} nucleos)',
     memoryUsage: 'Memoria: {{used}} / {{total}} GB',
     diskUsage: 'Disco: {{used}} / {{total}} GB',

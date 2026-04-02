@@ -39,6 +39,7 @@ public class ResourceCounterService {
     public static final String SNAPSHOTS = "snapshots";
     public static final String RESTORES = "restores";
     public static final String SCHEDULES_EXECUTED = "schedulesExecuted";
+    public static final String LOGS_ANALYZED = "logsAnalyzed";
     private static final String STARTED_AT_KEY = "_startedAt";
 
     private volatile String startedAt;
@@ -75,6 +76,7 @@ public class ResourceCounterService {
         result.put(SNAPSHOTS, get(SNAPSHOTS));
         result.put(RESTORES, get(RESTORES));
         result.put(SCHEDULES_EXECUTED, get(SCHEDULES_EXECUTED));
+        result.put(LOGS_ANALYZED, get(LOGS_ANALYZED));
         return result;
     }
 

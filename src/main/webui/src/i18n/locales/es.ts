@@ -53,6 +53,7 @@ const es: typeof en = {
     snapshots: 'Snapshots',
     restores: 'Restauraciones',
     schedulesExecuted: 'Programaciones ejecutadas',
+    logsAnalyzed: 'Logs analizados',
     cpuUsage: 'CPU: {{percent}}% ({{cores}} nucleos)',
     memoryUsage: 'Memoria: {{used}} / {{total}} GB',
     diskUsage: 'Disco: {{used}} / {{total}} GB',
