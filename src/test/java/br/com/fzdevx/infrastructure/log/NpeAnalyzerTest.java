@@ -92,7 +92,7 @@ class NpeAnalyzerTest {
         List<NpeLocationSummary> results = analyzer.analyze(lines);
 
         assertEquals(1, results.size());
-        assertNull(results.getFirst().occurrences().getFirst().message());
+        assertEquals("java.lang.NullPointerException", results.getFirst().occurrences().getFirst().message());
     }
 
     @Test

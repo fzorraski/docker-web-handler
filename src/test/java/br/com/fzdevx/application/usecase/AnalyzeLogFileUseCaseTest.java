@@ -3,6 +3,10 @@ package br.com.fzdevx.application.usecase;
 import br.com.fzdevx.application.port.CustomFieldExtractorPort;
 import br.com.fzdevx.application.port.LogAnalysisPort;
 import br.com.fzdevx.domain.model.*;
+import br.com.fzdevx.infrastructure.log.CriticalIssueDetector;
+import br.com.fzdevx.infrastructure.log.ExceptionAnalyzer;
+import br.com.fzdevx.infrastructure.log.NpeAnalyzer;
+import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +29,10 @@ class AnalyzeLogFileUseCaseTest {
 
     @Mock LogAnalysisPort logAnalysisPort;
     @Mock CustomFieldExtractorPort customFieldExtractorPort;
+    @Mock CriticalIssueDetector criticalIssueDetector;
+    @Mock NpeAnalyzer npeAnalyzer;
+    @Mock ExceptionAnalyzer exceptionAnalyzer;
+    @Mock ResourceCounterService resourceCounterService;
 
     @InjectMocks
     AnalyzeLogFileUseCase useCase;
@@ -71,18 +79,18 @@ class AnalyzeLogFileUseCaseTest {
     @Test
     void analyze_delegatesToPort() {
         LogAnalysis expected = makeAnalysis();
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt())).thenReturn(expected);
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(expected);
 
         LogAnalysis result = useCase.analyze(List.of(Path.of("/tmp/test.log")), List.of("test.log"), LogPreset.WILDFLY, 1000);
 
         assertNotNull(result);
         assertEquals(100, result.getTotalLineCount());
-        verify(logAnalysisPort).analyze(any(), eq(List.of("test.log")), eq(LogPreset.WILDFLY), eq(1000));
+        verify(logAnalysisPort).analyze(any(), eq(List.of("test.log")), eq(LogPreset.WILDFLY), eq(1000), any());
     }
 
     @Test
     void analyze_storesResultForRetrieval() {
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt())).thenReturn(makeAnalysis());
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(makeAnalysis());
 
         LogAnalysis result = useCase.analyze(List.of(Path.of("/tmp/test.log")), List.of("test.log"), LogPreset.WILDFLY, 1000);
 
@@ -92,7 +100,7 @@ class AnalyzeLogFileUseCaseTest {
 
     @Test
     void analyze_appearsInListAll() {
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt())).thenReturn(makeAnalysis());
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(makeAnalysis());
 
         useCase.analyze(List.of(Path.of("/tmp/test.log")), List.of("test.log"), LogPreset.WILDFLY, 1000);
 
@@ -110,7 +118,7 @@ class AnalyzeLogFileUseCaseTest {
 
     @Test
     void delete_existingAnalysis_returnsTrue() {
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt())).thenReturn(makeAnalysis());
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(makeAnalysis());
         LogAnalysis result = useCase.analyze(List.of(Path.of("/tmp/test.log")), List.of("test.log"), LogPreset.WILDFLY, 1000);
 
         assertTrue(useCase.delete(result.getId()));
@@ -124,7 +132,7 @@ class AnalyzeLogFileUseCaseTest {
 
     @Test
     void delete_removesFromList() {
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt())).thenReturn(makeAnalysis());
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(makeAnalysis());
         LogAnalysis result = useCase.analyze(List.of(Path.of("/tmp/test.log")), List.of("test.log"), LogPreset.WILDFLY, 1000);
 
         useCase.delete(result.getId());
@@ -142,7 +150,7 @@ class AnalyzeLogFileUseCaseTest {
         LogAnalysis a2 = makeAnalysis();
         LogAnalysis a3 = makeAnalysis();
 
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt()))
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any()))
                 .thenReturn(a1).thenReturn(a2).thenReturn(a3);
 
         useCase.analyze(List.of(Path.of("/tmp/1.log")), List.of("1.log"), LogPreset.WILDFLY, 1000);
@@ -157,7 +165,7 @@ class AnalyzeLogFileUseCaseTest {
 
     @Test
     void listAll_orderedByUploadTimeDescending() {
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt()))
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any()))
                 .thenReturn(makeAnalysis()).thenReturn(makeAnalysis());
 
         LogAnalysis first = useCase.analyze(List.of(Path.of("/tmp/1.log")), List.of("1.log"), LogPreset.WILDFLY, 1000);
@@ -178,10 +186,10 @@ class AnalyzeLogFileUseCaseTest {
 
     @Test
     void compose_mergesTwoAnalyses() {
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt())).thenReturn(makeAnalysis());
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(makeAnalysis());
         LogAnalysis a1 = useCase.analyze(List.of(Path.of("/tmp/1.log")), List.of("1.log"), LogPreset.WILDFLY, 1000);
 
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt())).thenReturn(makeAnalysis());
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(makeAnalysis());
         LogAnalysis a2 = useCase.analyze(List.of(Path.of("/tmp/2.log")), List.of("2.log"), LogPreset.WILDFLY, 1000);
 
         LogAnalysis composed = useCase.compose(List.of(a1.getId(), a2.getId()), LogPreset.WILDFLY, 1000);
@@ -194,10 +202,10 @@ class AnalyzeLogFileUseCaseTest {
 
     @Test
     void compose_addedToListAll() {
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt())).thenReturn(makeAnalysis());
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(makeAnalysis());
         LogAnalysis a1 = useCase.analyze(List.of(Path.of("/tmp/1.log")), List.of("1.log"), LogPreset.WILDFLY, 1000);
 
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt())).thenReturn(makeAnalysis());
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(makeAnalysis());
         LogAnalysis a2 = useCase.analyze(List.of(Path.of("/tmp/2.log")), List.of("2.log"), LogPreset.WILDFLY, 1000);
 
         useCase.compose(List.of(a1.getId(), a2.getId()), LogPreset.WILDFLY, 1000);

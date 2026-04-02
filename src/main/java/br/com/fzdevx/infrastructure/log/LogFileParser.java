@@ -1,5 +1,6 @@
 package br.com.fzdevx.infrastructure.log;
 
+import br.com.fzdevx.application.dto.AnalysisOptions;
 import br.com.fzdevx.application.port.LogAnalysisPort;
 import br.com.fzdevx.domain.model.*;
 import br.com.fzdevx.domain.shared.EndpointStatsCalculator;
@@ -33,15 +34,16 @@ public class LogFileParser implements LogAnalysisPort {
     private static final long REGEX_SAFETY_TIMEOUT_MS = 2000;
 
     @Override
-    public LogAnalysis analyze(List<Path> files, List<String> filenames, LogPreset preset, int slowThresholdMs) {
+    public LogAnalysis analyze(List<Path> files, List<String> filenames, LogPreset preset, int slowThresholdMs,
+                               AnalysisOptions options) {
         Pattern logLinePattern = compileAndValidate(preset.logLineRegex(), "logLineRegex");
-        Pattern apiCallPattern = preset.apiCallRegex() != null && !preset.apiCallRegex().isBlank()
+        Pattern apiCallPattern = options.apiCalls() && preset.apiCallRegex() != null && !preset.apiCallRegex().isBlank()
                 ? compileAndValidate(preset.apiCallRegex(), "apiCallRegex") : null;
-        Pattern jobStartPattern = preset.hasJobPatterns()
+        Pattern jobStartPattern = options.jobs() && preset.hasJobPatterns()
                 ? compileAndValidate(preset.jobStartRegex(), "jobStartRegex") : null;
-        Pattern jobEndPattern = preset.hasJobPatterns()
+        Pattern jobEndPattern = options.jobs() && preset.hasJobPatterns()
                 ? compileAndValidate(preset.jobEndRegex(), "jobEndRegex") : null;
-        Pattern failurePattern = preset.hasFailurePattern()
+        Pattern failurePattern = options.failures() && preset.hasFailurePattern()
                 ? compileAndValidate(preset.failureRegex(), "failureRegex") : null;
         DateTimeFormatter timestampFormatter = DateTimeFormatter.ofPattern(preset.timestampFormat());
 

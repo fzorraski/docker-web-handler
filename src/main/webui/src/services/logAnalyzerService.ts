@@ -272,6 +272,16 @@ export async function isLogAnalyzerEnabled(): Promise<boolean> {
   }
 }
 
+export interface AnalysisOptions {
+  apiCalls: boolean
+  jobs: boolean
+  failures: boolean
+  criticalIssues: boolean
+  npeAnalysis: boolean
+  exceptionAnalysis: boolean
+  customFields: boolean
+}
+
 export interface UploadOptions {
   preset?: string
   logLineRegex?: string
@@ -283,6 +293,7 @@ export interface UploadOptions {
   sensitiveFieldNames?: string
   slowThresholdMs?: number
   customFields?: string
+  analysisOptions?: AnalysisOptions
 }
 
 export async function uploadFiles(
@@ -301,6 +312,7 @@ export async function uploadFiles(
   if (options.sensitiveFieldNames) form.append('sensitiveFieldNames', options.sensitiveFieldNames)
   if (options.slowThresholdMs != null) form.append('slowThresholdMs', String(options.slowThresholdMs))
   if (options.customFields) form.append('customFields', options.customFields)
+  if (options.analysisOptions) form.append('options', JSON.stringify(options.analysisOptions))
 
   const res = await fetchWithAuth(`${API}/upload`, { method: 'POST', body: form })
   return handleResponse(res)

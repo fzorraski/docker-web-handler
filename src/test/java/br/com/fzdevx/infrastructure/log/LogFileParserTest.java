@@ -1,5 +1,6 @@
 package br.com.fzdevx.infrastructure.log;
 
+import br.com.fzdevx.application.dto.AnalysisOptions;
 import br.com.fzdevx.domain.model.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,7 +45,7 @@ class LogFileParserTest {
                 "2026-03-30 07:31:14,021 ERROR [org.hibernate] (default task-11155) Something failed"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(2, result.getTotalLineCount());
         assertEquals("INFO", result.getAllLines().get(0).level());
@@ -63,7 +64,7 @@ class LogFileParserTest {
                 "2026-03-30 00:00:04,000 ERROR [a] (t1) msg4"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(2, result.getLevelCounts().get("INFO"));
         assertEquals(1, result.getLevelCounts().get("WARNING"));
@@ -78,7 +79,7 @@ class LogFileParserTest {
                 "2026-03-30 00:00:03,000 INFO  [a] (thread-1) msg3"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(2, result.getThreads().size());
         assertTrue(result.getThreads().contains("thread-1"));
@@ -93,7 +94,7 @@ class LogFileParserTest {
                 "2026-03-30 00:00:03,000 FATAL [a] (t1) very bad"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(2, result.getErrors().size());
         assertEquals("bad", result.getErrors().get(0).message());
@@ -109,7 +110,7 @@ class LogFileParserTest {
                 "2026-03-30 07:31:14,021 INFO  [stdout] (default task-1) CustomerOrderResource/update 73938 Response = {\"id\":1,\"status\":\"ok\"}"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(1, result.getApiCalls().size());
         ApiCallPair pair = result.getApiCalls().getFirst();
@@ -131,7 +132,7 @@ class LogFileParserTest {
                 "2026-03-30 07:31:24,643 INFO  [stdout] (default task-1) AplicativoWS/getApk Response = ALREADY_WITH_LAST_VERSION"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(1, result.getApiCalls().size());
         ApiCallPair pair = result.getApiCalls().getFirst();
@@ -151,7 +152,7 @@ class LogFileParserTest {
                 "2026-03-30 07:31:01,200 INFO  [stdout] (task-1) OrderWS/getOrders Response = [2]"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(2, result.getApiCalls().size());
         assertEquals("{\"first\":true}", result.getApiCalls().get(0).requestPayload());
@@ -172,7 +173,7 @@ class LogFileParserTest {
                 "2026-03-30 07:31:00,200 INFO  [stdout] (task-1) OrderWS/getOrders Response = resp1"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(2, result.getApiCalls().size());
 
@@ -198,7 +199,7 @@ class LogFileParserTest {
                 "2026-03-30 07:31:02,500 INFO  [stdout] (task-1) AplicativoWS/doLogin Response = resp"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(1, result.getApiCalls().size());
         assertTrue(result.getApiCalls().getFirst().slow());
@@ -218,7 +219,7 @@ class LogFileParserTest {
                 "2026-03-30 07:31:02,010 INFO  [stdout] (t1) AplicativoWS/getApk Response = ok"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(2, result.getEndpointStats().size());
         EndpointStats ordersStats = result.getEndpointStats().stream()
@@ -238,7 +239,7 @@ class LogFileParserTest {
                 "2026-03-30 00:00:10,285 INFO  [org.quartz] (Worker-7) Job [Inicio de Ordem.Jobs_WMS] executou em  30/03/2026 00:00:10 and reports: null"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(1, result.getJobExecutions().size());
         JobExecution job = result.getJobExecutions().getFirst();
@@ -256,7 +257,7 @@ class LogFileParserTest {
                 "2026-03-30 00:00:10,285 INFO  [org.quartz] (Worker-7) Job [Test.Jobs] executou em  30/03/2026 00:00:10 and reports: null"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.QUARKUS, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.QUARKUS, 1000, AnalysisOptions.all());
 
         assertTrue(result.getJobExecutions().isEmpty());
     }
@@ -272,7 +273,7 @@ class LogFileParserTest {
                 "2026-03-30 00:00:04,796 INFO  [jobs] (W-7) ORDEM ORDER 252603 FALHA AO INICIAR NO_PRODUCTS_HAVE_STOCK: [ORDER 252603]"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(1, result.getRepeatedFailures().size());
         RepeatedFailure failure = result.getRepeatedFailures().getFirst();
@@ -288,7 +289,7 @@ class LogFileParserTest {
                 "2026-03-30 00:00:03,586 INFO  [jobs] (W-7) ORDEM ORDER 252730 FALHA AO INICIAR UNSUFFICIENT_AMOUNT: [0]"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.QUARKUS, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.QUARKUS, 1000, AnalysisOptions.all());
 
         assertTrue(result.getRepeatedFailures().isEmpty());
     }
@@ -308,7 +309,7 @@ class LogFileParserTest {
 
         LogAnalysis result = parser.analyze(
                 List.of(file1, file2), List.of("server1.log", "server2.log"),
-                LogPreset.WILDFLY, 1000
+                LogPreset.WILDFLY, 1000, AnalysisOptions.all()
         );
 
         assertEquals(4, result.getTotalLineCount());
@@ -330,7 +331,7 @@ class LogFileParserTest {
                 "2026-03-30 23:59:59,999 INFO  [a] (t1) last"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertNotNull(result.getTimeRangeStart());
         assertNotNull(result.getTimeRangeEnd());
@@ -348,7 +349,7 @@ class LogFileParserTest {
                 "random garbage"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(3, result.getTotalLineCount());
         assertNotNull(result.getAllLines().get(0).level());
@@ -363,7 +364,7 @@ class LogFileParserTest {
         Path file = tempDir.resolve("empty-" + System.nanoTime() + ".log");
         Files.writeString(file, "");
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("empty.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("empty.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(0, result.getTotalLineCount());
         assertTrue(result.getApiCalls().isEmpty());
@@ -381,7 +382,7 @@ class LogFileParserTest {
                 "2026-03-30 07:31:00,000 INFO  [stdout] (task-1) OrderWS/getOrders Response = []"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertTrue(result.getApiCalls().isEmpty());
     }
@@ -394,7 +395,7 @@ class LogFileParserTest {
                 "2026-03-30 07:31:00,000 INFO  [stdout] (task-1) OrderWS/getOrders Request = {}"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertTrue(result.getApiCalls().isEmpty());
     }
@@ -408,7 +409,7 @@ class LogFileParserTest {
                 "2026-03-30 07:31:00,100 INFO  [stdout] (task-1) CustomerOrderResource/update 222 Response = resp"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertTrue(result.getApiCalls().isEmpty());
     }
@@ -422,7 +423,7 @@ class LogFileParserTest {
                 "2026-03-30 07:31:01,000 INFO  [stdout] (t1) AplicativoWS/doLogin Response = r"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertTrue(result.getApiCalls().getFirst().slow());
         assertEquals(1000, result.getApiCalls().getFirst().durationMs());
@@ -435,7 +436,7 @@ class LogFileParserTest {
                 "2026-03-30 07:31:00,999 INFO  [stdout] (t1) AplicativoWS/doLogin Response = r"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertFalse(result.getApiCalls().getFirst().slow());
     }
@@ -451,7 +452,7 @@ class LogFileParserTest {
                 "2026-03-30 07:31:00,200 INFO  [stdout] (t1) OrderWS/getOrders Response = resp1"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(2, result.getApiCalls().size());
         ApiCallPair orderPair = result.getApiCalls().stream()
@@ -476,7 +477,7 @@ class LogFileParserTest {
                 "2026-03-30 07:31:00,150 INFO  [stdout] (t1) OrderWS/getOrders Response = r"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         EndpointStats stats = result.getEndpointStats().getFirst();
         assertEquals(150, stats.p95DurationMs());
@@ -495,7 +496,7 @@ class LogFileParserTest {
                 "2026-03-30 07:31:03,000 INFO  [stdout] (t1) OrderWS/getOrders Response = []"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         EndpointStats stats = result.getEndpointStats().getFirst();
         assertEquals(2, stats.callCount());
@@ -513,7 +514,7 @@ class LogFileParserTest {
                 "2026-03-30 00:00:48,000 INFO  [q] (W-1) Job [MyJob.Jobs] executou em  30/03/2026 00:00:48 and reports: ok"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(2, result.getJobExecutions().size());
         assertEquals(5000, result.getJobExecutions().get(0).durationMs());
@@ -530,7 +531,7 @@ class LogFileParserTest {
                 "2026-03-30 00:00:00,000 INFO  [j] (W-1) ORDEM ORDER 999 FALHA AO INICIAR UNSUFFICIENT_AMOUNT: [0, 123]"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertTrue(result.getRepeatedFailures().isEmpty());
     }
@@ -546,7 +547,7 @@ class LogFileParserTest {
                 "2026-03-30 00:00:03,000 INFO  [j] (W-1) ORDEM ORDER 100 FALHA AO INICIAR NO_PRODUCTS_HAVE_STOCK: [ORDER 100]"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(2, result.getRepeatedFailures().size());
         assertTrue(result.getRepeatedFailures().stream().allMatch(f -> f.occurrences() == 2));
@@ -560,7 +561,7 @@ class LogFileParserTest {
                 "2026-03-30T07:31:13.938-03:00 INFO  12345 --- [main] com.example.App : Application started"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.SPRING_BOOT, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.SPRING_BOOT, 1000, AnalysisOptions.all());
 
         assertEquals(1, result.getTotalLineCount());
         LogLine line = result.getAllLines().getFirst();
@@ -584,7 +585,7 @@ class LogFileParserTest {
 
         LogAnalysis result = parser.analyze(
                 List.of(file1, file2), List.of("a.log", "b.log"),
-                LogPreset.WILDFLY, 1000
+                LogPreset.WILDFLY, 1000, AnalysisOptions.all()
         );
 
         assertEquals(1, result.getApiCalls().size());
@@ -604,7 +605,7 @@ class LogFileParserTest {
                 "2026-03-30 07:31:01,010 INFO  [stdout] (t1) AplicativoWS/getApk Response = r"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(2, result.getEndpoints().size());
         assertTrue(result.getEndpoints().contains("OrderWS/getOrders"));
@@ -622,7 +623,7 @@ class LogFileParserTest {
         }
         Path file = writeLog(lines);
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(5, result.getTotalLineCount());
         assertEquals(3, result.getAllLines().size());
@@ -640,7 +641,7 @@ class LogFileParserTest {
         }
         Path file = writeLog(lines);
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(10, result.getTotalLineCount());
         assertEquals(10, result.getAllLines().size());
@@ -654,7 +655,7 @@ class LogFileParserTest {
                 "2026-03-30 00:00:02,000 INFO  [a] (t1) second"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertEquals(2, result.getTotalLineCount());
         assertEquals(2, result.getAllLines().size());
@@ -670,7 +671,7 @@ class LogFileParserTest {
                 "2026-03-30 00:00:02,010 INFO  [stdout] (t1) AplicativoWS/getApk Response = ok"
         );
 
-        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         // All 4 lines were analyzed for API calls
         assertEquals(2, result.getApiCalls().size());

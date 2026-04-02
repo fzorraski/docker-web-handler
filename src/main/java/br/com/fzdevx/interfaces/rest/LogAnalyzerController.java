@@ -1,5 +1,6 @@
 package br.com.fzdevx.interfaces.rest;
 
+import br.com.fzdevx.application.dto.AnalysisOptions;
 import br.com.fzdevx.application.usecase.AnalyzeContainerLogsUseCase;
 import br.com.fzdevx.application.usecase.AnalyzeLogFileUseCase;
 import br.com.fzdevx.domain.model.*;
@@ -178,7 +179,9 @@ public class LogAnalyzerController {
                 }
             }
 
-            LogAnalysis analysis = analyzeLogFileUseCase.analyze(tempFiles, filenames, preset, slowThresholdMs);
+            AnalysisOptions options = parseAnalysisOptions(extractString(form, "options"));
+
+            LogAnalysis analysis = analyzeLogFileUseCase.analyze(tempFiles, filenames, preset, slowThresholdMs, options);
             return Response.ok(analysisSummaryMap(analysis)).build();
 
         } catch (NumberFormatException e) {
@@ -269,7 +272,9 @@ public class LogAnalyzerController {
         Object slowObj = body.get("slowThresholdMs");
         int slowThresholdMs = slowObj instanceof Number n ? n.intValue() : defaultSlowThresholdMs;
 
-        LogAnalysis composed = analyzeLogFileUseCase.compose(ids, preset, slowThresholdMs);
+        AnalysisOptions options = parseAnalysisOptionsFromMap(body.get("options"));
+
+        LogAnalysis composed = analyzeLogFileUseCase.compose(ids, preset, slowThresholdMs, options);
         if (composed == null) {
             return Response.status(Response.Status.NOT_FOUND)
                     .entity(Map.of("error", "No valid analyses found for the given IDs."))
@@ -882,5 +887,44 @@ public class LogAnalyzerController {
             if (text.regionMatches(true, i, search, 0, search.length())) return true;
         }
         return false;
+    }
+
+    private AnalysisOptions parseAnalysisOptions(String json) {
+        if (json == null || json.isBlank()) return AnalysisOptions.all();
+        try {
+            Map<String, Object> map = OBJECT_MAPPER.readValue(json, new TypeReference<>() {});
+            return buildAnalysisOptions(map);
+        } catch (Exception e) {
+            Log.warnf("Failed to parse analysis options JSON, using defaults: %s", e.getMessage());
+            return AnalysisOptions.all();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private AnalysisOptions parseAnalysisOptionsFromMap(Object optionsObj) {
+        if (optionsObj == null) return AnalysisOptions.all();
+        if (optionsObj instanceof Map<?, ?> map) {
+            return buildAnalysisOptions((Map<String, Object>) map);
+        }
+        return AnalysisOptions.all();
+    }
+
+    private AnalysisOptions buildAnalysisOptions(Map<String, Object> map) {
+        return new AnalysisOptions(
+                optionFlag(map, "apiCalls"),
+                optionFlag(map, "jobs"),
+                optionFlag(map, "failures"),
+                optionFlag(map, "criticalIssues"),
+                optionFlag(map, "npeAnalysis"),
+                optionFlag(map, "exceptionAnalysis"),
+                optionFlag(map, "customFields")
+        );
+    }
+
+    private boolean optionFlag(Map<String, Object> map, String key) {
+        Object val = map.get(key);
+        if (val instanceof Boolean b) return b;
+        if (val instanceof String s) return !"false".equalsIgnoreCase(s);
+        return true; // default to enabled
     }
 }

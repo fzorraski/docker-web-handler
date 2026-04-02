@@ -10,6 +10,8 @@ import {
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
 import { useNotification } from '../components/NotificationProvider'
+import { AnalysisOptionsDialog } from '../components/log-analyzer/AnalysisOptionsDialog'
+import type { AnalysisOptions } from '../components/log-analyzer/AnalysisOptionsDialog'
 import { SummaryCard } from '../components/log-analyzer/SummaryCard'
 import { ApiCallsTab } from '../components/log-analyzer/ApiCallsTab'
 import { EndpointStatsTab } from '../components/log-analyzer/EndpointStatsTab'
@@ -54,6 +56,10 @@ export default function LogAnalyzerPage() {
   // Custom fields
   const [customFieldInputs, setCustomFieldInputs] = useState<Array<{ name: string; regex: string; countOnly: boolean }>>([])
 
+  // Analysis options dialog
+  const [optionsDialogOpen, setOptionsDialogOpen] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+
   // Compose
   const [composeIds, setComposeIds] = useState<Set<string>>(new Set())
 
@@ -80,16 +86,23 @@ export default function LogAnalyzerPage() {
     [analyses, selectedId],
   )
 
-  const handleUpload = useCallback(async (fileList: FileList | null) => {
+  const handleUpload = useCallback((fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return
+    setPendingFiles(Array.from(fileList))
+    setOptionsDialogOpen(true)
+  }, [])
+
+  const handleStartAnalysis = useCallback(async (analysisOptions: AnalysisOptions) => {
+    setOptionsDialogOpen(false)
+    if (pendingFiles.length === 0) return
     setUploading(true)
     try {
-      const files = Array.from(fileList)
       const currentPreset = presets.find(p => p.name.toUpperCase() === selectedPreset.toUpperCase())
       const opts: UploadOptions = {
         preset: selectedPreset,
         slowThresholdMs: slowThreshold,
         ...customRegex,
+        analysisOptions,
       }
       if (currentPreset && customRegex.logLineRegex && customRegex.logLineRegex !== currentPreset.logLineRegex) {
         opts.logLineRegex = customRegex.logLineRegex
@@ -100,7 +113,7 @@ export default function LogAnalyzerPage() {
           opts.customFields = JSON.stringify(validFields)
         }
       }
-      const result = await logService.uploadFiles(files, opts)
+      const result = await logService.uploadFiles(pendingFiles, opts)
       setSelectedId(result.id)
       refreshList()
       notify(t('logAnalyzer.upload.success'), 'success')
@@ -108,8 +121,9 @@ export default function LogAnalyzerPage() {
       notify(err instanceof Error ? err.message : t('logAnalyzer.upload.error'), 'error')
     } finally {
       setUploading(false)
+      setPendingFiles([])
     }
-  }, [selectedPreset, slowThreshold, customRegex, presets, refreshList, notify, t])
+  }, [pendingFiles, selectedPreset, slowThreshold, customRegex, presets, customFieldInputs, refreshList, notify, t])
 
   const handleDelete = useCallback(async (id: string) => {
     try {
@@ -196,6 +210,11 @@ export default function LogAnalyzerPage() {
 
   const rawLogTabIndex = useMemo(() => tabs.findIndex(t => t.key === 'rawLog'), [tabs])
   const insightsTabIndex = useMemo(() => tabs.findIndex(t => t.key === 'insights'), [tabs])
+
+  const goToTab = useCallback((key: string) => {
+    const idx = tabs.findIndex(t => t.key === key)
+    if (idx >= 0) setActiveTab(idx)
+  }, [tabs])
 
   // Switch to rawLog tab when jumpToLine is set
   useEffect(() => {
@@ -366,28 +385,28 @@ export default function LogAnalyzerPage() {
       {selected && (
         <>
           <Stack direction="row" spacing={2} mb={3} flexWrap="wrap" useFlexGap>
-            <SummaryCard label={t('logAnalyzer.dashboard.totalLines')} value={selected.totalLineCount.toLocaleString()} />
-            <SummaryCard label={t('logAnalyzer.dashboard.apiCalls')} value={selected.apiCallCount.toLocaleString()} />
-            <SummaryCard label={t('logAnalyzer.dashboard.threads')} value={selected.threadCount} />
-            <SummaryCard label={t('logAnalyzer.dashboard.endpoints')} value={selected.endpointCount} />
-            <SummaryCard label={t('logAnalyzer.dashboard.errors')} value={selected.errorCount} color="error.main" />
+            <SummaryCard label={t('logAnalyzer.dashboard.totalLines')} value={selected.totalLineCount.toLocaleString()} onClick={() => goToTab('rawLog')} />
+            <SummaryCard label={t('logAnalyzer.dashboard.apiCalls')} value={selected.apiCallCount.toLocaleString()} onClick={() => goToTab('apiCalls')} />
+            <SummaryCard label={t('logAnalyzer.dashboard.threads')} value={selected.threadCount} onClick={() => goToTab('threadView')} />
+            <SummaryCard label={t('logAnalyzer.dashboard.endpoints')} value={selected.endpointCount} onClick={() => goToTab('stats')} />
+            <SummaryCard label={t('logAnalyzer.dashboard.errors')} value={selected.errorCount} color="error.main" onClick={() => goToTab('rawLog')} />
             {selected.jobExecutionCount > 0 && (
-              <SummaryCard label={t('logAnalyzer.dashboard.jobs')} value={selected.jobExecutionCount} />
+              <SummaryCard label={t('logAnalyzer.dashboard.jobs')} value={selected.jobExecutionCount} onClick={() => goToTab('jobs')} />
             )}
             {selected.repeatedFailureCount > 0 && (
-              <SummaryCard label={t('logAnalyzer.dashboard.failures')} value={selected.repeatedFailureCount} color="warning.main" />
+              <SummaryCard label={t('logAnalyzer.dashboard.failures')} value={selected.repeatedFailureCount} color="warning.main" onClick={() => goToTab('failures')} />
             )}
             {selected.criticalIssueCount > 0 && (
-              <SummaryCard label={t('logAnalyzer.dashboard.criticalIssues')} value={selected.criticalIssueCount} color="warning.main" />
+              <SummaryCard label={t('logAnalyzer.dashboard.criticalIssues')} value={selected.criticalIssueCount} color="warning.main" onClick={() => goToTab('criticalIssues')} />
             )}
             {selected.npeAnalysisCount > 0 && (
-              <SummaryCard label={t('logAnalyzer.dashboard.npeAnalysis')} value={`${selected.npeAnalysisCount} (${selected.npeLocationCount})`} color="error.main" />
+              <SummaryCard label={t('logAnalyzer.dashboard.npeAnalysis')} value={`${selected.npeAnalysisCount} (${selected.npeLocationCount})`} color="error.main" onClick={() => goToTab('npeAnalysis')} />
             )}
             {selected.exceptionAnalysisCount > 0 && (
-              <SummaryCard label={t('logAnalyzer.dashboard.exceptionAnalysis')} value={`${selected.exceptionAnalysisCount} (${selected.exceptionTypeCount})`} color="error.main" />
+              <SummaryCard label={t('logAnalyzer.dashboard.exceptionAnalysis')} value={`${selected.exceptionAnalysisCount} (${selected.exceptionTypeCount})`} color="error.main" onClick={() => goToTab('exceptionAnalysis')} />
             )}
             {selected.customFields?.filter(cf => cf.matchCount > 0).map(cf => (
-              <SummaryCard key={cf.fieldName} label={cf.fieldName} value={cf.matchCount.toLocaleString()} color="primary.main" />
+              <SummaryCard key={cf.fieldName} label={cf.fieldName} value={cf.matchCount.toLocaleString()} color="primary.main" onClick={() => goToTab(cf.countOnly ? 'rawLog' : `custom-${cf.fieldName}`)} />
             ))}
           </Stack>
 
@@ -416,6 +435,12 @@ export default function LogAnalyzerPage() {
           </Paper>
         </>
       )}
+
+      <AnalysisOptionsDialog
+        open={optionsDialogOpen}
+        onClose={() => { setOptionsDialogOpen(false); setPendingFiles([]) }}
+        onStart={handleStartAnalysis}
+      />
     </Box>
   )
 }

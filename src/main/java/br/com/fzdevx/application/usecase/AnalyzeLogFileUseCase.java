@@ -1,5 +1,6 @@
 package br.com.fzdevx.application.usecase;
 
+import br.com.fzdevx.application.dto.AnalysisOptions;
 import br.com.fzdevx.application.port.CustomFieldExtractorPort;
 import br.com.fzdevx.application.port.LogAnalysisPort;
 import br.com.fzdevx.domain.model.*;
@@ -73,21 +74,32 @@ public class AnalyzeLogFileUseCase {
     }
 
     public LogAnalysis analyze(List<Path> files, List<String> filenames, LogPreset preset, int slowThresholdMs) {
+        return analyze(files, filenames, preset, slowThresholdMs, AnalysisOptions.all());
+    }
+
+    public LogAnalysis analyze(List<Path> files, List<String> filenames, LogPreset preset, int slowThresholdMs,
+                               AnalysisOptions options) {
         if (analyses.size() >= maxFiles) {
             evictOldest();
         }
 
-        LogAnalysis analysis = logAnalysisPort.analyze(files, filenames, preset, slowThresholdMs);
+        LogAnalysis analysis = logAnalysisPort.analyze(files, filenames, preset, slowThresholdMs, options);
 
-        if (preset.hasCustomFields()) {
+        if (options.customFields() && preset.hasCustomFields()) {
             analysis.setCustomFieldResults(
                     customFieldExtractorPort.extract(analysis.getAllLines(), preset.customFields())
             );
         }
 
-        analysis.setCriticalIssues(criticalIssueDetector.detect(analysis.getAllLines()));
-        analysis.setNpeAnalysis(npeAnalyzer.analyze(analysis.getAllLines()));
-        analysis.setExceptionAnalysis(exceptionAnalyzer.analyze(analysis.getAllLines()));
+        if (options.criticalIssues()) {
+            analysis.setCriticalIssues(criticalIssueDetector.detect(analysis.getAllLines()));
+        }
+        if (options.npeAnalysis()) {
+            analysis.setNpeAnalysis(npeAnalyzer.analyze(analysis.getAllLines()));
+        }
+        if (options.exceptionAnalysis()) {
+            analysis.setExceptionAnalysis(exceptionAnalyzer.analyze(analysis.getAllLines()));
+        }
 
         analyses.put(analysis.getId(), new AnalysisEntry(analysis, Instant.now()));
         resourceCounterService.increment(br.com.fzdevx.infrastructure.persistence.ResourceCounterService.LOGS_ANALYZED);
@@ -99,6 +111,11 @@ public class AnalyzeLogFileUseCase {
     }
 
     public LogAnalysis compose(List<String> analysisIds, LogPreset preset, int slowThresholdMs) {
+        return compose(analysisIds, preset, slowThresholdMs, AnalysisOptions.all());
+    }
+
+    public LogAnalysis compose(List<String> analysisIds, LogPreset preset, int slowThresholdMs,
+                               AnalysisOptions options) {
         List<LogAnalysis> toCompose = new ArrayList<>();
         for (String id : analysisIds) {
             AnalysisEntry entry = analyses.get(id);
@@ -110,10 +127,11 @@ public class AnalyzeLogFileUseCase {
             return null;
         }
 
-        return mergeAnalyses(toCompose, preset, slowThresholdMs);
+        return mergeAnalyses(toCompose, preset, slowThresholdMs, options);
     }
 
-    private LogAnalysis mergeAnalyses(List<LogAnalysis> sources, LogPreset preset, int slowThresholdMs) {
+    private LogAnalysis mergeAnalyses(List<LogAnalysis> sources, LogPreset preset, int slowThresholdMs,
+                                      AnalysisOptions options) {
         var mergedLines = new ArrayList<LogLine>();
         var mergedSourceFiles = new ArrayList<LogAnalysis.SourceFile>();
 
@@ -127,13 +145,14 @@ public class AnalyzeLogFileUseCase {
                 Comparator.nullsLast(Comparator.naturalOrder())
         ));
 
-        return buildMergedAnalysis(mergedSourceFiles, mergedLines, sources, preset, slowThresholdMs);
+        return buildMergedAnalysis(mergedSourceFiles, mergedLines, sources, preset, slowThresholdMs, options);
     }
 
     private LogAnalysis buildMergedAnalysis(List<LogAnalysis.SourceFile> sourceFiles,
                                             List<LogLine> allLines,
                                             List<LogAnalysis> sources,
-                                            LogPreset preset, int slowThresholdMs) {
+                                            LogPreset preset, int slowThresholdMs,
+                                            AnalysisOptions options) {
         var apiCalls = new ArrayList<ApiCallPair>();
         var jobExecs = new ArrayList<JobExecution>();
         var errors = new ArrayList<LogLine>();
@@ -227,9 +246,15 @@ public class AnalyzeLogFileUseCase {
                 jobExecs, failures, allLines
         );
         merged.setCustomFieldResults(mergedCustomFields);
-        merged.setCriticalIssues(criticalIssueDetector.detect(allLines));
-        merged.setNpeAnalysis(npeAnalyzer.analyze(allLines));
-        merged.setExceptionAnalysis(exceptionAnalyzer.analyze(allLines));
+        if (options.criticalIssues()) {
+            merged.setCriticalIssues(criticalIssueDetector.detect(allLines));
+        }
+        if (options.npeAnalysis()) {
+            merged.setNpeAnalysis(npeAnalyzer.analyze(allLines));
+        }
+        if (options.exceptionAnalysis()) {
+            merged.setExceptionAnalysis(exceptionAnalyzer.analyze(allLines));
+        }
         analyses.put(merged.getId(), new AnalysisEntry(merged, Instant.now()));
         return merged;
     }
