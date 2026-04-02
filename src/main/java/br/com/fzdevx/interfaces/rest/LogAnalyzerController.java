@@ -417,6 +417,30 @@ public class LogAnalyzerController {
     }
 
     @GET
+    @Path("/{id}/lines/range")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getLineRange(@PathParam("id") String id,
+                                  @QueryParam("from") @DefaultValue("0") int from,
+                                  @QueryParam("to") @DefaultValue("0") int to,
+                                  @QueryParam("level") String level,
+                                  @QueryParam("page") @DefaultValue("0") int page,
+                                  @QueryParam("size") @DefaultValue("500") int size) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+        if (from <= 0 || to <= 0 || from > to) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Invalid range. 'from' and 'to' must be positive and from <= to."))
+                    .build();
+        }
+        var rangeLines = analysis.getAllLines().stream()
+                .filter(l -> l.lineNumber() >= from && l.lineNumber() <= to)
+                .filter(l -> level == null || level.isBlank() || matchesLevelGroup(level, l.level()))
+                .toList();
+        return paginatedResponse(rangeLines, page, Math.clamp(size, 1, 1000));
+    }
+
+    @GET
     @Path("/{id}/threads")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getThreads(@PathParam("id") String id) {

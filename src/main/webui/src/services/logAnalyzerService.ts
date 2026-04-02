@@ -324,6 +324,18 @@ export async function getLines(
   return handleResponse(res)
 }
 
+export async function getLineRange(
+  id: string, from: number, to: number,
+  params: { level?: string; page?: number; size?: number } = {},
+): Promise<PaginatedResponse<LogLine>> {
+  const q = new URLSearchParams({ from: String(from), to: String(to) })
+  if (params.level) q.set('level', params.level)
+  if (params.page != null) q.set('page', String(params.page))
+  if (params.size != null) q.set('size', String(params.size))
+  const res = await fetchWithAuth(`${API}/${id}/lines/range?${q}`)
+  return handleResponse(res)
+}
+
 export async function getThreads(id: string): Promise<ThreadInfo[]> {
   const res = await fetchWithAuth(`${API}/${id}/threads`)
   return handleResponse(res)

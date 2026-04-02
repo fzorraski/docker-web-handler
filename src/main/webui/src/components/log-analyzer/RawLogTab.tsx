@@ -4,7 +4,7 @@ import {
   TablePagination, LinearProgress, InputAdornment,
   useTheme,
 } from '@mui/material'
-import { Search, ContentCopy, WrapText, KeyboardArrowUp, KeyboardArrowDown, BookmarkBorder, MyLocation, ClearAll } from '@mui/icons-material'
+import { Search, ContentCopy, WrapText, KeyboardArrowUp, KeyboardArrowDown, BookmarkBorder, MyLocation, ClearAll, HighlightOff } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { List, useListRef, type RowComponentProps } from 'react-window'
 import { usePaginatedFetch } from '../../hooks/usePaginatedFetch'
@@ -18,7 +18,10 @@ const TOGGLE_LEVELS: LogLevel[] = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE']
 const ROW_HEIGHT = 20
 const VIEWER_HEIGHT = 500
 
-function getLineBg(lineNumber: number, highlightLine: number | null, flashLine: number | null, markedLines: Set<number>, isDark: boolean): string | undefined {
+function getLineBg(lineNumber: number, highlightLine: number | null, flashLine: number | null, markedLines: Set<number>, isDark: boolean, highlightRange?: { from: number; to: number } | null): string | undefined {
+  if (highlightRange && lineNumber >= highlightRange.from && lineNumber <= highlightRange.to) {
+    return isDark ? 'rgba(156, 39, 176, 0.25)' : 'rgba(156, 39, 176, 0.15)'
+  }
   if (lineNumber === highlightLine) return isDark ? 'rgba(255, 109, 0, 0.35)' : 'rgba(255, 109, 0, 0.25)'
   if (lineNumber === flashLine) return isDark ? 'rgba(0, 188, 212, 0.30)' : 'rgba(0, 150, 136, 0.25)'
   if (markedLines.has(lineNumber)) return isDark ? 'rgba(0, 188, 212, 0.10)' : 'rgba(0, 150, 136, 0.08)'
@@ -34,13 +37,14 @@ interface RowCustomProps {
   markedLines: Set<number>
   onToggleMark: (lineNumber: number) => void
   isDark: boolean
+  highlightRange?: { from: number; to: number } | null
 }
 
-function VirtualRow({ index, style, lines, levelColor, chipInactive, highlightLine, flashLine, markedLines, onToggleMark, isDark }: RowComponentProps<RowCustomProps>) {
+function VirtualRow({ index, style, lines, levelColor, chipInactive, highlightLine, flashLine, markedLines, onToggleMark, isDark, highlightRange }: RowComponentProps<RowCustomProps>) {
   const line = lines[index]
   if (!line) return null
   const isMarked = markedLines.has(line.lineNumber)
-  const bg = getLineBg(line.lineNumber, highlightLine, flashLine, markedLines, isDark)
+  const bg = getLineBg(line.lineNumber, highlightLine, flashLine, markedLines, isDark, highlightRange)
   return (
     <Box component="div" style={style} data-line={line.lineNumber} sx={{
       display: 'flex', px: 2,
@@ -75,9 +79,10 @@ function VirtualRow({ index, style, lines, levelColor, chipInactive, highlightLi
   )
 }
 
-export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelCounts, jumpToLine, onJumpComplete }: {
+export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelCounts, jumpToLine, onJumpComplete, highlightRange, onRangeComplete }: {
   analysisId: string; initialThread?: string; levelCounts?: Record<string, number>
   jumpToLine?: number | null; onJumpComplete?: () => void
+  highlightRange?: { from: number; to: number } | null; onRangeComplete?: () => void
 }) {
   const { t } = useTranslation()
   const theme = useTheme()
@@ -124,7 +129,22 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
     const rpp = wordWrap ? Math.min(rowsPerPage, 1000) : rowsPerPage
     setPage(Math.floor((jumpToLine - 1) / rpp))
     setHighlightLine(jumpToLine)
+    setScrollTarget(jumpToLine)
+    setScrollGen(g => g + 1)
   }, [jumpToLine])
+
+  // Handle highlight range — clear filters and navigate to range start
+  useEffect(() => {
+    if (highlightRange == null) return
+    setFilterLevel('')
+    setFilterThread('')
+    setSearch('')
+    setActiveSearch('')
+    const rpp = wordWrap ? Math.min(rowsPerPage, 1000) : rowsPerPage
+    setPage(Math.floor((highlightRange.from - 1) / rpp))
+    setScrollTarget(highlightRange.from)
+    setScrollGen(g => g + 1)
+  }, [highlightRange])
 
   const effectiveRowsPerPage = wordWrap ? Math.min(rowsPerPage, 1000) : rowsPerPage
 
@@ -139,7 +159,7 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
   )
 
   // Scroll to target line after data loads (works for both highlight and bookmark navigation)
-  const activeScrollTarget = scrollTarget ?? highlightLine
+  const activeScrollTarget = scrollTarget
   useEffect(() => {
     if (activeScrollTarget == null || lines.length === 0) return
     const idx = lines.findIndex(l => l.lineNumber === activeScrollTarget)
@@ -251,8 +271,8 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
   }, [highlightLine, scrollToLine])
 
   const rowProps = useMemo<RowCustomProps>(
-    () => ({ lines, levelColor, chipInactive: lt.chipInactive, highlightLine, flashLine, markedLines, onToggleMark: toggleMark, isDark }),
-    [lines, levelColor, lt.chipInactive, highlightLine, flashLine, markedLines, toggleMark, isDark],
+    () => ({ lines, levelColor, chipInactive: lt.chipInactive, highlightLine, flashLine, markedLines, onToggleMark: toggleMark, isDark, highlightRange }),
+    [lines, levelColor, lt.chipInactive, highlightLine, flashLine, markedLines, toggleMark, isDark, highlightRange],
   )
 
   const wrapToggleColor = isDark ? '#4d96ff' : '#1565c0'
@@ -352,7 +372,7 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
               </IconButton>
             </Tooltip>
             <Tooltip title={t('logAnalyzer.rawLog.clearMarks')} arrow>
-              <IconButton size="small" onClick={() => { setMarkedLines(new Set()); setCurrentMarkIdx(-1) }} sx={{ color: lt.iconColor, ml: 0.25 }}>
+              <IconButton size="small" onClick={() => { setMarkedLines(new Set()); setCurrentMarkIdx(-1); setFlashLine(null) }} sx={{ color: lt.iconColor, ml: 0.25 }}>
                 <ClearAll sx={{ fontSize: 16 }} />
               </IconButton>
             </Tooltip>
@@ -366,6 +386,29 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
               <MyLocation sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
+        )}
+
+        {/* Clear all highlights */}
+        {(highlightLine != null || (highlightRange && highlightRange.from > 0)) && (
+          <>
+          <Tooltip title={t('logAnalyzer.rawLog.copyHighlighted')} arrow>
+            <IconButton size="small" onClick={() => {
+              const from = highlightRange?.from ?? highlightLine ?? 0
+              const to = highlightRange?.to ?? highlightLine ?? 0
+              if (from <= 0) return
+              const text = lines.filter(l => l.lineNumber >= from && l.lineNumber <= to)
+                .map(l => `${l.lineNumber}\t${l.message ?? ''}`).join('\n')
+              navigator.clipboard.writeText(text)
+            }} sx={{ color: '#9C27B0' }}>
+              <ContentCopy sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={t('logAnalyzer.rawLog.clearHighlights')} arrow>
+            <IconButton size="small" onClick={() => { setHighlightLine(null); setFlashLine(null); onJumpComplete?.(); onRangeComplete?.() }} sx={{ color: lt.iconColor }}>
+              <HighlightOff sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Tooltip>
+          </>
         )}
 
         <Box sx={{ flex: 1 }} />
@@ -406,7 +449,7 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
           <Box ref={wrapContainerRef} sx={{ maxHeight: VIEWER_HEIGHT, overflowY: 'auto' }}>
             {lines.map((line) => {
               const isMarked = markedLines.has(line.lineNumber)
-              const bg = getLineBg(line.lineNumber, highlightLine, flashLine, markedLines, isDark)
+              const bg = getLineBg(line.lineNumber, highlightLine, flashLine, markedLines, isDark, highlightRange)
               return (
                 <Box
                   key={`${line.sourceFile}-${line.lineNumber}`}

@@ -809,6 +809,13 @@ const es: typeof en = {
       sortByEndpoint: 'Por endpoint',
       maskSensitive: 'Enmascarar campos sensibles',
       searchContent: 'Buscar en payloads...',
+      viewInRawLog: 'Ver en Log Crudo',
+      viewContext: 'Ver Contexto',
+      contextTitle: '{{endpoint}} — Líneas {{from}} a {{to}}',
+      copyAll: 'Copiar al portapapeles',
+      copied: 'Copiado!',
+      noLinesFound: 'No se encontraron líneas',
+      allLines: 'Todos',
     },
     stats: {
       endpoint: 'Endpoint',
@@ -826,6 +833,8 @@ const es: typeof en = {
       nextMark: 'Siguiente marcador',
       clearMarks: 'Limpiar marcadores',
       goToHighlight: 'Ir a línea resaltada',
+      copyHighlighted: 'Copiar líneas resaltadas',
+      clearHighlights: 'Limpiar resaltados',
     },
     threads: {
       select: 'Seleccionar hilo',

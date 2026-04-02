@@ -808,6 +808,13 @@ const en = {
       sortByEndpoint: 'By endpoint',
       maskSensitive: 'Mask sensitive fields',
       searchContent: 'Search in payloads...',
+      viewInRawLog: 'View in Raw Log',
+      viewContext: 'View Context',
+      contextTitle: '{{endpoint}} — Lines {{from}} to {{to}}',
+      copyAll: 'Copy to clipboard',
+      copied: 'Copied!',
+      noLinesFound: 'No lines found',
+      allLines: 'All',
     },
     stats: {
       endpoint: 'Endpoint',
@@ -825,6 +832,8 @@ const en = {
       nextMark: 'Next bookmark',
       clearMarks: 'Clear all bookmarks',
       goToHighlight: 'Go to highlighted line',
+      copyHighlighted: 'Copy highlighted lines',
+      clearHighlights: 'Clear highlights',
     },
     threads: {
       select: 'Select thread',

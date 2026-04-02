@@ -6,7 +6,7 @@ import {
   Menu, MenuItem, ListItemIcon, ListItemText,
   useTheme,
 } from '@mui/material'
-import { Clear, ContentCopy, Search, QueryStats } from '@mui/icons-material'
+import { Clear, ContentCopy, Search, QueryStats, OpenInNew, Subject } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { usePaginatedFetch } from '../../hooks/usePaginatedFetch'
@@ -15,6 +15,7 @@ import { maskSensitiveFields, tryFormatJson } from '../../utils/jsonUtils'
 import { formatDuration } from '../../utils/formatDuration'
 import { chartColor } from '../../utils/chartColors'
 import { LineLink } from './LineLink'
+import { ApiCallContextDialog } from './ApiCallContextDialog'
 import type { ApiCallPair, ThreadInfo } from '../../services/logAnalyzerService'
 import * as logService from '../../services/logAnalyzerService'
 
@@ -55,8 +56,8 @@ function PayloadBox({ label, payload, sensitiveFields, maskEnabled, isDark }: {
   )
 }
 
-export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onViewInsights }: {
-  analysisId: string; sensitiveFields: string[]; onJumpToLine?: (line: number) => void; onViewInsights?: (endpoint: string, timestamp: string) => void
+export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onJumpToRange, onViewInsights }: {
+  analysisId: string; sensitiveFields: string[]; onJumpToLine?: (line: number) => void; onJumpToRange?: (from: number, to: number) => void; onViewInsights?: (endpoint: string, timestamp: string) => void
 }) {
   const { t } = useTranslation()
   const theme = useTheme()
@@ -75,6 +76,7 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onViewI
   const [endpoints, setEndpoints] = useState<string[]>([])
   const [threads, setThreads] = useState<ThreadInfo[]>([])
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; endpoint: string; timestamp: string } | null>(null)
+  const [contextDialog, setContextDialog] = useState<{ from: number; to: number; endpoint: string } | null>(null)
 
   useEffect(() => {
     logService.getEndpoints(analysisId).then(setEndpoints).catch(() => {})
@@ -197,13 +199,27 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onViewI
                     <TableRow>
                       <TableCell colSpan={6} sx={{ bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)', borderLeft: `3px solid ${color}` }}>
                         {onJumpToLine && (
-                          <Box sx={{ mb: 1, display: 'flex', gap: 2 }}>
+                          <Box sx={{ mb: 1, display: 'flex', gap: 2, alignItems: 'center' }}>
                             <Typography variant="caption" component="span">
                               Request <LineLink line={call.requestLineNumber} onClick={onJumpToLine} />
                             </Typography>
                             <Typography variant="caption" component="span">
                               Response <LineLink line={call.responseLineNumber} onClick={onJumpToLine} />
                             </Typography>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                              {onJumpToRange && (
+                                <Tooltip title={t('logAnalyzer.apiCalls.viewInRawLog')}>
+                                  <IconButton size="small" onClick={(e) => { e.stopPropagation(); onJumpToRange(call.requestLineNumber, call.responseLineNumber) }}>
+                                    <OpenInNew fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                              <Tooltip title={t('logAnalyzer.apiCalls.viewContext')}>
+                                <IconButton size="small" onClick={(e) => { e.stopPropagation(); setContextDialog({ from: call.requestLineNumber, to: call.responseLineNumber, endpoint: call.endpoint }) }}>
+                                  <Subject fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
                           </Box>
                         )}
                         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
@@ -236,6 +252,15 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onViewI
           </MenuItem>
         </Menu>
       )}
+
+      <ApiCallContextDialog
+        open={contextDialog !== null}
+        onClose={() => setContextDialog(null)}
+        analysisId={analysisId}
+        from={contextDialog?.from ?? 0}
+        to={contextDialog?.to ?? 0}
+        endpoint={contextDialog?.endpoint ?? ''}
+      />
     </Box>
   )
 }

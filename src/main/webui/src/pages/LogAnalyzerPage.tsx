@@ -39,6 +39,7 @@ export default function LogAnalyzerPage() {
   const [uploading, setUploading] = useState(false)
   const [activeTab, setActiveTab] = useState(0)
   const [jumpToLine, setJumpToLine] = useState<number | null>(null)
+  const [jumpToRange, setJumpToRange] = useState<{ from: number; to: number } | null>(null)
   const [insightsEndpoint, setInsightsEndpoint] = useState<string | null>(null)
   const [insightsTimestamp, setInsightsTimestamp] = useState<string | null>(null)
 
@@ -142,6 +143,12 @@ export default function LogAnalyzerPage() {
     setJumpToLine(lineNumber)
   }, [])
 
+  const handleJumpToRange = useCallback((from: number, to: number) => {
+    setJumpToRange({ from, to })
+  }, [])
+
+  const handleRangeComplete = useCallback(() => { setJumpToRange(null); setJumpToLine(null) }, [])
+
   const handleViewInsights = useCallback((endpoint: string) => {
     setInsightsEndpoint(endpoint)
     setInsightsTimestamp(null)
@@ -160,7 +167,7 @@ export default function LogAnalyzerPage() {
   const tabs = useMemo(() => {
     if (!selected) return []
     const list = [
-      { key: 'apiCalls', label: t('logAnalyzer.tabs.apiCalls'), component: <ApiCallsTab analysisId={selected.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} onJumpToLine={handleJumpToLine} onViewInsights={handleViewInsightsForCall} /> },
+      { key: 'apiCalls', label: t('logAnalyzer.tabs.apiCalls'), component: <ApiCallsTab analysisId={selected.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} onJumpToLine={handleJumpToLine} onJumpToRange={handleJumpToRange} onViewInsights={handleViewInsightsForCall} /> },
       { key: 'stats', label: t('logAnalyzer.tabs.endpointStats'), component: <EndpointStatsTab analysisId={selected.id} onViewInsights={handleViewInsights} /> },
       { key: 'insights', label: t('logAnalyzer.tabs.performanceInsights'), component: null },
       { key: 'rawLog', label: t('logAnalyzer.tabs.rawLog'), component: null },
@@ -192,6 +199,14 @@ export default function LogAnalyzerPage() {
       setActiveTab(rawLogTabIndex)
     }
   }, [jumpToLine, rawLogTabIndex])
+
+  // Switch to rawLog tab and scroll to range start when jumpToRange is set
+  useEffect(() => {
+    if (jumpToRange != null && rawLogTabIndex >= 0) {
+      setActiveTab(rawLogTabIndex)
+      setJumpToLine(jumpToRange.from)
+    }
+  }, [jumpToRange, rawLogTabIndex])
 
   // Switch to insights tab when endpoint is selected from stats
   useEffect(() => {
@@ -382,7 +397,7 @@ export default function LogAnalyzerPage() {
             {tabs.map((tab, idx) => (
               <Box key={tab.key} sx={{ p: 2, display: idx === activeTab ? 'block' : 'none' }}>
                 {tab.key === 'rawLog'
-                  ? <RawLogTab analysisId={selected!.id} levelCounts={selected!.levelCounts} jumpToLine={jumpToLine} onJumpComplete={handleJumpComplete} />
+                  ? <RawLogTab analysisId={selected!.id} levelCounts={selected!.levelCounts} jumpToLine={jumpToLine} onJumpComplete={handleJumpComplete} highlightRange={jumpToRange} onRangeComplete={handleRangeComplete} />
                   : tab.key === 'insights'
                     ? <PerformanceInsightsTab analysisId={selected!.id} initialEndpoint={insightsEndpoint} initialTimestamp={insightsTimestamp} onEndpointConsumed={handleInsightsConsumed} active={idx === activeTab} />
                     : tab.component}

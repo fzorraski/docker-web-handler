@@ -809,6 +809,13 @@ const ptBR: typeof en = {
       sortByEndpoint: 'Por endpoint',
       maskSensitive: 'Mascarar campos sensíveis',
       searchContent: 'Buscar nos payloads...',
+      viewInRawLog: 'Ver no Log Bruto',
+      viewContext: 'Ver Contexto',
+      contextTitle: '{{endpoint}} — Linhas {{from}} a {{to}}',
+      copyAll: 'Copiar para área de transferência',
+      copied: 'Copiado!',
+      noLinesFound: 'Nenhuma linha encontrada',
+      allLines: 'Todos',
     },
     stats: {
       endpoint: 'Endpoint',
@@ -826,6 +833,8 @@ const ptBR: typeof en = {
       nextMark: 'Próxima marcação',
       clearMarks: 'Limpar marcações',
       goToHighlight: 'Ir para linha destacada',
+      copyHighlighted: 'Copiar linhas destacadas',
+      clearHighlights: 'Limpar destaques',
     },
     threads: {
       select: 'Selecionar thread',
