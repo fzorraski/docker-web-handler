@@ -267,9 +267,11 @@ export function ExceptionAnalysisTab({ analysisId, onJumpToLine }: { analysisId:
                               })}
                             </Box>
                             {occTotal > 25 && (
-                              <TablePagination component="div" count={occTotal} page={occPage}
-                                onPageChange={(_, p) => { setOccPage(p); fetchOccurrences(`${loc.exceptionType}:${loc.origin}`, p) }}
-                                rowsPerPage={25} rowsPerPageOptions={[25]} showFirstButton showLastButton />
+                              <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                <TablePagination component="div" count={occTotal} page={occPage}
+                                  onPageChange={(_, p) => { setOccPage(p); fetchOccurrences(`${loc.exceptionType}:${loc.origin}`, p) }}
+                                  rowsPerPage={25} rowsPerPageOptions={[25]} showFirstButton showLastButton />
+                              </Box>
                             )}
                           </TableCell>
                         </TableRow>
