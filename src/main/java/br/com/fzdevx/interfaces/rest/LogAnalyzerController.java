@@ -4,10 +4,15 @@ import br.com.fzdevx.application.dto.AnalysisOptions;
 import br.com.fzdevx.application.usecase.AnalyzeContainerLogsUseCase;
 import br.com.fzdevx.application.usecase.AnalyzeLogFileUseCase;
 import br.com.fzdevx.domain.model.*;
+import br.com.fzdevx.domain.model.anomaly.*;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.domain.shared.PerformanceInsightsCalculator;
 import br.com.fzdevx.infrastructure.config.LogPresetProvider;
 import br.com.fzdevx.infrastructure.log.CriticalIssueDetector;
+import br.com.fzdevx.infrastructure.log.anomaly.AnomalyDetectorService;
+import br.com.fzdevx.infrastructure.log.anomaly.CorrelationDetector;
+import br.com.fzdevx.infrastructure.log.anomaly.SignalExtractor;
+import br.com.fzdevx.infrastructure.log.anomaly.TimeBucketAggregator;
 import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -43,6 +48,12 @@ public class LogAnalyzerController {
 
     @Inject
     CriticalIssueDetector criticalIssueDetector;
+
+    @Inject
+    SignalExtractor signalExtractor;
+
+    @Inject
+    AnomalyDetectorService anomalyDetectorService;
 
     @Inject
     @ConfigProperty(name = "log.analyzer.enabled", defaultValue = "false")
@@ -706,6 +717,115 @@ public class LogAnalyzerController {
     }
 
     @GET
+    @Path("/{id}/anomaly-detection")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAnomalyDetection(@PathParam("id") String id,
+                                         @QueryParam("signalType") @DefaultValue("ERROR_COUNT") String signalType,
+                                         @QueryParam("bucketSize") @DefaultValue("300") int bucketSize,
+                                         @QueryParam("threshold") @DefaultValue("3.0") double threshold,
+                                         @QueryParam("baselineWindow") @DefaultValue("8") int baselineWindow) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+
+        // Validate signalType
+        SignalType type;
+        try {
+            type = SignalType.valueOf(signalType);
+        } catch (IllegalArgumentException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Invalid signal type: " + signalType))
+                    .build();
+        }
+
+        // Clamp parameters
+        bucketSize = Math.clamp(bucketSize, 60, 3600);
+        threshold = Math.clamp(threshold, 1.5, 20.0);
+        baselineWindow = Math.clamp(baselineWindow, 2, 50);
+
+        // Extract signals
+        List<Signal> signals = signalExtractor.extract(analysis.getAllLines(), type);
+
+        if (analysis.getTimeRangeStart() == null || analysis.getTimeRangeEnd() == null) {
+            return Response.ok(new AnomalyDetectionResponse(
+                    signalType, bucketSize, threshold, 0, 0, 0, "", 0,
+                    List.of(), List.of(), List.of()
+            )).build();
+        }
+
+        // Aggregate into time buckets
+        List<BucketStats> buckets = TimeBucketAggregator.aggregate(
+                signals, bucketSize, analysis.getTimeRangeStart(), analysis.getTimeRangeEnd());
+
+        // Detect anomalies
+        AnomalyDetectorService.DetectionResult detection = anomalyDetectorService.detect(
+                buckets, threshold, baselineWindow, signalType);
+
+        List<BucketStats> updatedBuckets = detection.buckets();
+        List<AnomalyResult> anomalies = detection.anomalies();
+
+        // Compute summary stats
+        long peakValue = updatedBuckets.stream().mapToLong(BucketStats::count).max().orElse(0);
+        String peakBucketLabel = updatedBuckets.stream()
+                .max(Comparator.comparingLong(BucketStats::count))
+                .map(BucketStats::bucketLabel)
+                .orElse("");
+        long p95Value = computeP95FromBuckets(updatedBuckets);
+
+        // Correlation detection (extract all signal types and detect)
+        List<CorrelatedAnomaly> correlations = List.of();
+        if (!anomalies.isEmpty()) {
+            Map<SignalType, List<Signal>> allSignals = signalExtractor.extractAll(analysis.getAllLines());
+            Map<String, List<AnomalyResult>> allAnomaliesByType = new LinkedHashMap<>();
+            allAnomaliesByType.put(signalType, anomalies);
+
+            for (Map.Entry<SignalType, List<Signal>> entry : allSignals.entrySet()) {
+                if (entry.getKey().name().equals(signalType)) continue;
+
+                List<BucketStats> otherBuckets = TimeBucketAggregator.aggregate(
+                        entry.getValue(), bucketSize,
+                        analysis.getTimeRangeStart(), analysis.getTimeRangeEnd());
+                AnomalyDetectorService.DetectionResult otherDetection = anomalyDetectorService.detect(
+                        otherBuckets, threshold, baselineWindow, entry.getKey().name());
+
+                if (!otherDetection.anomalies().isEmpty()) {
+                    allAnomaliesByType.put(entry.getKey().name(), otherDetection.anomalies());
+                }
+            }
+
+            if (allAnomaliesByType.size() >= 2) {
+                correlations = CorrelationDetector.detect(allAnomaliesByType, 6);
+            }
+        }
+
+        return Response.ok(new AnomalyDetectionResponse(
+                signalType, bucketSize, threshold,
+                updatedBuckets.size(),
+                (int) updatedBuckets.stream().filter(b -> "ANOMALY".equals(b.status())).count(),
+                peakValue, peakBucketLabel, p95Value,
+                updatedBuckets, anomalies, correlations
+        )).build();
+    }
+
+    @GET
+    @Path("/{id}/anomaly-detection/signal-types")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAvailableSignalTypes(@PathParam("id") String id) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+
+        List<SignalType> types = signalExtractor.detectAvailableTypes(analysis.getAllLines());
+        List<Map<String, Object>> result = types.stream()
+                .map(t -> Map.<String, Object>of(
+                        "name", t.name(),
+                        "ordinal", t.ordinal()
+                ))
+                .toList();
+        return Response.ok(result).build();
+    }
+
+    @GET
     @Path("/list")
     @Produces(MediaType.APPLICATION_JSON)
     public Response listAnalyses() {
@@ -743,6 +863,17 @@ public class LogAnalyzerController {
         var computed = criticalIssueDetector.computeBursts(analysis.getCriticalIssues());
         analysis.setCachedBursts(computed);
         return computed;
+    }
+
+    private long computeP95FromBuckets(List<BucketStats> buckets) {
+        long[] counts = buckets.stream()
+                .mapToLong(BucketStats::count)
+                .filter(c -> c > 0)
+                .sorted()
+                .toArray();
+        if (counts.length == 0) return 0;
+        int idx = Math.max(0, (int) Math.ceil(counts.length * 0.95) - 1);
+        return counts[idx];
     }
 
     private boolean matchesLevelGroup(String filter, String lineLevel) {

@@ -256,6 +256,51 @@ export interface PerformanceInsightsResponse {
   totalBuckets: number
 }
 
+export interface BucketStats {
+  bucketLabel: string
+  bucketEpoch: number
+  count: number
+  sum: number
+  min: number
+  max: number
+  p95: number
+  status: string
+  baseline: number
+  ratio: number
+}
+
+export interface AnomalyResult {
+  signalType: string
+  bucketLabel: string
+  observedValue: number
+  baselineValue: number
+  ratio: number
+  count: number
+  maxInBucket: number
+}
+
+export interface CorrelatedAnomaly {
+  windowStart: string
+  windowEnd: string
+  signalTypes: string[]
+  score: number
+  anomalies: AnomalyResult[]
+}
+
+export interface AnomalyDetectionResponse {
+  signalType: string
+  bucketSize: number
+  threshold: number
+  totalBuckets: number
+  anomalyBuckets: number
+  peakValue: number
+  peakBucketLabel: string
+  p95Value: number
+  buckets: BucketStats[]
+  anomalies: AnomalyResult[]
+  correlations: CorrelatedAnomaly[]
+}
+
 // ---- API calls ----
 
 export async function getStatus(): Promise<AnalyzerStatus> {
@@ -553,5 +598,24 @@ export async function getCustomFieldResults(
   if (params.page != null) q.set('page', String(params.page))
   if (params.size != null) q.set('size', String(params.size))
   const res = await fetchWithAuth(`${API}/${id}/custom-fields/${encodeURIComponent(fieldName)}?${q}`)
+  return handleResponse(res)
+}
+
+export async function getAnomalyDetection(
+  id: string,
+  params: { signalType?: string; bucketSize?: number; threshold?: number; baselineWindow?: number } = {},
+): Promise<AnomalyDetectionResponse> {
+  const q = new URLSearchParams()
+  if (params.signalType) q.set('signalType', params.signalType)
+  if (params.bucketSize != null) q.set('bucketSize', String(params.bucketSize))
+  if (params.threshold != null) q.set('threshold', String(params.threshold))
+  if (params.baselineWindow != null) q.set('baselineWindow', String(params.baselineWindow))
+  const qs = q.toString()
+  const res = await fetchWithAuth(`${API}/${id}/anomaly-detection${qs ? '?' + qs : ''}`)
+  return handleResponse(res)
+}
+
+export async function getAnomalySignalTypes(id: string): Promise<string[]> {
+  const res = await fetchWithAuth(`${API}/${id}/anomaly-detection/signal-types`)
   return handleResponse(res)
 }

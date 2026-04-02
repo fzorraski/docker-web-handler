@@ -24,6 +24,7 @@ import { NpeAnalysisTab } from '../components/log-analyzer/NpeAnalysisTab'
 import { ExceptionAnalysisTab } from '../components/log-analyzer/ExceptionAnalysisTab'
 import { CustomFieldTab } from '../components/log-analyzer/CustomFieldTab'
 import { PerformanceInsightsTab } from '../components/log-analyzer/PerformanceInsightsTab'
+import { AnomalyDetectionTab } from '../components/log-analyzer/AnomalyDetectionTab'
 import type {
   AnalysisSummary, LogPreset, UploadOptions,
 } from '../services/logAnalyzerService'
@@ -189,6 +190,7 @@ export default function LogAnalyzerPage() {
       { key: 'apiCalls', label: t('logAnalyzer.tabs.apiCalls'), component: <ApiCallsTab analysisId={selected.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} onJumpToLine={handleJumpToLine} onJumpToRange={handleJumpToRange} onViewInsights={handleViewInsightsForCall} /> },
       { key: 'stats', label: t('logAnalyzer.tabs.endpointStats'), component: <EndpointStatsTab analysisId={selected.id} onViewInsights={handleViewInsights} /> },
       { key: 'insights', label: t('logAnalyzer.tabs.performanceInsights'), component: null },
+      { key: 'anomalyDetection', label: t('logAnalyzer.tabs.anomalyDetection'), component: <AnomalyDetectionTab analysisId={selected.id} /> },
       { key: 'rawLog', label: t('logAnalyzer.tabs.rawLog'), component: null },
       ...(lastAnalysisOptions?.threadView !== false ? [{ key: 'threadView', label: t('logAnalyzer.tabs.threadView'), component: <ThreadViewTab analysisId={selected.id} /> }] : []),
     ]
