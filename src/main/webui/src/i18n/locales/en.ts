@@ -839,6 +839,8 @@ const en = {
       goToHighlight: 'Go to highlighted line',
       copyHighlighted: 'Copy highlighted lines',
       clearHighlights: 'Clear highlights',
+      fullscreen: 'Fullscreen',
+      exitFullscreen: 'Exit fullscreen',
     },
     threads: {
       select: 'Select thread',

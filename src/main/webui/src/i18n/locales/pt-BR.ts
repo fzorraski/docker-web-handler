@@ -840,6 +840,8 @@ const ptBR: typeof en = {
       goToHighlight: 'Ir para linha destacada',
       copyHighlighted: 'Copiar linhas destacadas',
       clearHighlights: 'Limpar destaques',
+      fullscreen: 'Tela cheia',
+      exitFullscreen: 'Sair da tela cheia',
     },
     threads: {
       select: 'Selecionar thread',

@@ -67,6 +67,10 @@ public class NpeAnalyzer {
             if (npeMatcher.find()) {
                 npeMessage = npeMatcher.group(1); // may be null if no message after colon
             }
+            // Fall back to the full log line if no specific message was extracted
+            if (npeMessage == null || npeMessage.isBlank()) {
+                npeMessage = msg;
+            }
 
             // Determine timestamp: use line's own or inherit from nearest preceding
             LocalDateTime timestamp = line.timestamp() != null ? line.timestamp() : lastTimestamp;

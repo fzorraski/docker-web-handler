@@ -840,6 +840,8 @@ const es: typeof en = {
       goToHighlight: 'Ir a línea resaltada',
       copyHighlighted: 'Copiar líneas resaltadas',
       clearHighlights: 'Limpiar resaltados',
+      fullscreen: 'Pantalla completa',
+      exitFullscreen: 'Salir de pantalla completa',
     },
     threads: {
       select: 'Seleccionar hilo',

@@ -151,12 +151,12 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
                                           L{occ.logLineNumber}
                                         </Typography>
                                       )}
-                                      {occ.message && (
-                                        <Typography variant="body2" fontSize="0.75rem" sx={{ ml: 1 }}>
+                                      {occ.message && !isTraceOpen && (
+                                        <Typography variant="body2" fontSize="0.75rem" sx={{ ml: 1, maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                           {occ.message}
                                         </Typography>
                                       )}
-                                      {occ.stackTrace.length > 0 && (
+                                      {(occ.stackTrace.length > 0 || occ.message) && (
                                         <>
                                         <Button
                                           size="small"
@@ -170,7 +170,8 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
                                         <Tooltip title={t('logAnalyzer.npeAnalysis.copyOccurrence')} arrow>
                                           <IconButton size="small" onClick={(e) => {
                                             e.stopPropagation()
-                                            const text = `NullPointerException: ${occ.message ?? ''}\nTimestamp: ${occ.timestamp?.replace('T', ' ') ?? '-'}\nOrigin: ${occ.originClass}.${occ.method}(${occ.sourceFile}:${occ.sourceLine})\nLine: ${occ.logLineNumber}\n\n${occ.stackTrace.join('\n')}`
+                                            const traceText = occ.stackTrace.length > 0 ? occ.stackTrace.join('\n') : (occ.message ?? '')
+                                            const text = `NullPointerException: ${occ.message ?? ''}\nTimestamp: ${occ.timestamp?.replace('T', ' ') ?? '-'}\nOrigin: ${occ.originClass}.${occ.method}(${occ.sourceFile}:${occ.sourceLine})\nLine: ${occ.logLineNumber}\n\n${traceText}`
                                             navigator.clipboard.writeText(text)
                                           }}>
                                             <ContentCopy sx={{ fontSize: 14 }} />
@@ -184,7 +185,11 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
                                         <Tooltip title={t('logAnalyzer.npeAnalysis.copyTrace')} arrow>
                                           <IconButton size="small"
                                             sx={{ position: 'absolute', top: 4, right: 4, opacity: 0.6, '&:hover': { opacity: 1 } }}
-                                            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(occ.stackTrace.join('\n')) }}>
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              const text = occ.stackTrace.length > 0 ? occ.stackTrace.join('\n') : (occ.message ?? '')
+                                              navigator.clipboard.writeText(text)
+                                            }}>
                                             <ContentCopy sx={{ fontSize: 14 }} />
                                           </IconButton>
                                         </Tooltip>
@@ -193,12 +198,13 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
                                           bgcolor: isDark ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.05)',
                                           fontFamily: "'JetBrains Mono', monospace",
                                           fontSize: '0.7rem',
-                                          whiteSpace: 'pre',
+                                          whiteSpace: 'pre-wrap',
+                                          wordBreak: 'break-all',
                                           overflowX: 'auto',
                                           maxHeight: 300,
                                           overflowY: 'auto',
                                         }}>
-                                          {occ.stackTrace.join('\n')}
+                                          {occ.stackTrace.length > 0 ? occ.stackTrace.join('\n') : occ.message}
                                         </Box>
                                       </Box>
                                     </Collapse>
@@ -207,11 +213,10 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
                               })}
                             </Box>
                             {occTotal > 25 && (
-                              <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                                <TablePagination component="div" count={occTotal} page={occPage}
-                                  onPageChange={(_, p) => { setOccPage(p); fetchOccurrences(loc.origin, p) }}
-                                  rowsPerPage={25} rowsPerPageOptions={[25]} showFirstButton showLastButton />
-                              </Box>
+                              <TablePagination component="div" count={occTotal} page={occPage}
+                                onPageChange={(_, p) => { setOccPage(p); fetchOccurrences(loc.origin, p) }}
+                                rowsPerPage={25} rowsPerPageOptions={[25]} showFirstButton showLastButton
+                                sx={{ borderTop: '1px solid', borderColor: 'divider', overflow: 'visible' }} />
                             )}
                           </TableCell>
                         </TableRow>
