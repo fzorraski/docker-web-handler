@@ -32,6 +32,10 @@ export function ExceptionAnalysisTab({ analysisId, onJumpToLine }: { analysisId:
   const [traceOpen, setTraceOpen] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(false)
   const [filterType, setFilterType] = useState<string | null>(null)
+  const [occurrences, setOccurrences] = useState<import('../../services/logAnalyzerService').ExceptionOccurrence[]>([])
+  const [occTotal, setOccTotal] = useState(0)
+  const [occPage, setOccPage] = useState(0)
+  const [occLoading, setOccLoading] = useState(false)
   const fetchGenRef = useRef(0)
 
   useEffect(() => {
@@ -77,6 +81,23 @@ export function ExceptionAnalysisTab({ analysisId, onJumpToLine }: { analysisId:
 
   const toggleTrace = (key: string) => {
     setTraceOpen(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const fetchOccurrences = (origin: string, pg: number) => {
+    setOccLoading(true)
+    logService.getExceptionOccurrences(analysisId, origin, { page: pg, size: 25 })
+      .then(r => { setOccurrences(r.data); setOccTotal(r.total); setOccPage(r.page) })
+      .catch(() => { setOccurrences([]); setOccTotal(0) })
+      .finally(() => setOccLoading(false))
+  }
+
+  const handleExpandRow = (idx: number, loc: ExceptionLocationSummary) => {
+    if (expandedIdx === idx) {
+      setExpandedIdx(null); setOccurrences([]); setOccTotal(0); setOccPage(0)
+    } else {
+      const origin = `${loc.exceptionType}:${loc.origin}`
+      setExpandedIdx(idx); setOccPage(0); setTraceOpen({}); fetchOccurrences(origin, 0)
+    }
   }
 
   // Reset page when filter changes
@@ -138,9 +159,7 @@ export function ExceptionAnalysisTab({ analysisId, onJumpToLine }: { analysisId:
 
                   return (
                     <Fragment key={globalIdx}>
-                      <TableRow hover sx={{ cursor: 'pointer' }} onClick={() => {
-                        setExpandedIdx(isExpanded ? null : globalIdx)
-                      }}>
+                      <TableRow hover sx={{ cursor: 'pointer' }} onClick={() => handleExpandRow(globalIdx, loc)}>
                         <TableCell>
                           <Chip
                             size="small"
@@ -170,8 +189,9 @@ export function ExceptionAnalysisTab({ analysisId, onJumpToLine }: { analysisId:
                       {isExpanded && (
                         <TableRow>
                           <TableCell colSpan={5} sx={{ bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)' }}>
+                            {occLoading && <LinearProgress sx={{ mb: 1 }} />}
                             <Box sx={{ maxHeight: 500, overflowY: 'auto' }}>
-                              {loc.occurrences.map((occ, oi) => {
+                              {occurrences.map((occ, oi) => {
                                 const traceKey = `${globalIdx}-${oi}`
                                 const isTraceOpen = traceOpen[traceKey] ?? false
 
@@ -246,6 +266,11 @@ export function ExceptionAnalysisTab({ analysisId, onJumpToLine }: { analysisId:
                                 )
                               })}
                             </Box>
+                            {occTotal > 25 && (
+                              <TablePagination component="div" count={occTotal} page={occPage}
+                                onPageChange={(_, p) => { setOccPage(p); fetchOccurrences(`${loc.exceptionType}:${loc.origin}`, p) }}
+                                rowsPerPage={25} rowsPerPageOptions={[25]} showFirstButton showLastButton />
+                            )}
                           </TableCell>
                         </TableRow>
                       )}

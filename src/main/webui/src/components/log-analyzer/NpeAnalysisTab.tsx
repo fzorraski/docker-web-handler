@@ -25,6 +25,10 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
   const [traceOpen, setTraceOpen] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(false)
+  const [occurrences, setOccurrences] = useState<import('../../services/logAnalyzerService').NpeOccurrence[]>([])
+  const [occTotal, setOccTotal] = useState(0)
+  const [occPage, setOccPage] = useState(0)
+  const [occLoading, setOccLoading] = useState(false)
   const fetchGenRef = useRef(0)
 
   useEffect(() => {
@@ -50,6 +54,22 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
 
   const toggleTrace = (key: string) => {
     setTraceOpen(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const fetchOccurrences = (origin: string, pg: number) => {
+    setOccLoading(true)
+    logService.getNpeOccurrences(analysisId, origin, { page: pg, size: 25 })
+      .then(r => { setOccurrences(r.data); setOccTotal(r.total); setOccPage(r.page) })
+      .catch(() => { setOccurrences([]); setOccTotal(0) })
+      .finally(() => setOccLoading(false))
+  }
+
+  const handleExpandRow = (idx: number, origin: string) => {
+    if (expandedIdx === idx) {
+      setExpandedIdx(null); setOccurrences([]); setOccTotal(0); setOccPage(0)
+    } else {
+      setExpandedIdx(idx); setOccPage(0); setTraceOpen({}); fetchOccurrences(origin, 0)
+    }
   }
 
   return (
@@ -92,9 +112,7 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
 
                   return (
                     <Fragment key={globalIdx}>
-                      <TableRow hover sx={{ cursor: 'pointer' }} onClick={() => {
-                        setExpandedIdx(isExpanded ? null : globalIdx)
-                      }}>
+                      <TableRow hover sx={{ cursor: 'pointer' }} onClick={() => handleExpandRow(globalIdx, loc.origin)}>
                         <TableCell>
                           <Typography variant="body2" fontFamily="'JetBrains Mono', monospace" fontSize="0.8rem">{loc.origin}</Typography>
                         </TableCell>
@@ -111,8 +129,9 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
                       {isExpanded && (
                         <TableRow>
                           <TableCell colSpan={4} sx={{ bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)' }}>
+                            {occLoading && <LinearProgress sx={{ mb: 1 }} />}
                             <Box sx={{ maxHeight: 500, overflowY: 'auto' }}>
-                              {loc.occurrences.map((occ, oi) => {
+                              {occurrences.map((occ, oi) => {
                                 const traceKey = `${globalIdx}-${oi}`
                                 const isTraceOpen = traceOpen[traceKey] ?? false
 
@@ -187,6 +206,11 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
                                 )
                               })}
                             </Box>
+                            {occTotal > 25 && (
+                              <TablePagination component="div" count={occTotal} page={occPage}
+                                onPageChange={(_, p) => { setOccPage(p); fetchOccurrences(loc.origin, p) }}
+                                rowsPerPage={25} rowsPerPageOptions={[25]} showFirstButton showLastButton />
+                            )}
                           </TableCell>
                         </TableRow>
                       )}

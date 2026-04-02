@@ -499,6 +499,17 @@ export async function getNpeAnalysis(
   return handleResponse(res)
 }
 
+export async function getNpeOccurrences(
+  id: string, origin: string,
+  params: { page?: number; size?: number } = {},
+): Promise<PaginatedResponse<NpeOccurrence>> {
+  const q = new URLSearchParams()
+  if (params.page != null) q.set('page', String(params.page))
+  if (params.size != null) q.set('size', String(params.size))
+  const res = await fetchWithAuth(`${API}/${id}/npe-analysis/${encodeURIComponent(origin)}/occurrences?${q}`)
+  return handleResponse(res)
+}
+
 export async function getExceptionAnalysis(
   id: string,
   params: { page?: number; size?: number } = {},
@@ -507,6 +518,17 @@ export async function getExceptionAnalysis(
   if (params.page != null) q.set('page', String(params.page))
   if (params.size != null) q.set('size', String(params.size))
   const res = await fetchWithAuth(`${API}/${id}/exception-analysis?${q}`)
+  return handleResponse(res)
+}
+
+export async function getExceptionOccurrences(
+  id: string, origin: string,
+  params: { page?: number; size?: number } = {},
+): Promise<PaginatedResponse<ExceptionOccurrence>> {
+  const q = new URLSearchParams()
+  if (params.page != null) q.set('page', String(params.page))
+  if (params.size != null) q.set('size', String(params.size))
+  const res = await fetchWithAuth(`${API}/${id}/exception-analysis/${encodeURIComponent(origin)}/occurrences?${q}`)
   return handleResponse(res)
 }
 

@@ -607,7 +607,28 @@ public class LogAnalyzerController {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
-        return paginatedResponse(analysis.getNpeAnalysis(), page, size);
+        // Return summaries without occurrences (fetched on-demand via detail endpoint)
+        var stripped = analysis.getNpeAnalysis().stream()
+                .map(s -> new NpeLocationSummary(s.origin(), s.originClass(), s.method(), s.sourceFile(), s.sourceLine(),
+                        s.count(), s.firstSeen(), s.lastSeen(), List.of()))
+                .toList();
+        return paginatedResponse(stripped, page, size);
+    }
+
+    @GET
+    @Path("/{id}/npe-analysis/{origin}/occurrences")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getNpeOccurrences(@PathParam("id") String id,
+                                      @PathParam("origin") String origin,
+                                      @QueryParam("page") @DefaultValue("0") int page,
+                                      @QueryParam("size") @DefaultValue("25") int size) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+        var summary = analysis.getNpeAnalysis().stream()
+                .filter(s -> s.origin().equals(origin)).findFirst();
+        if (summary.isEmpty()) return Response.ok(Map.of("data", List.of(), "total", 0, "page", 0, "size", size)).build();
+        return paginatedResponse(summary.get().occurrences(), page, size);
     }
 
     @GET
@@ -619,7 +640,27 @@ public class LogAnalyzerController {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
-        return paginatedResponse(analysis.getExceptionAnalysis(), page, size);
+        var stripped = analysis.getExceptionAnalysis().stream()
+                .map(s -> new ExceptionLocationSummary(s.exceptionType(), s.origin(), s.originClass(), s.method(), s.sourceFile(), s.sourceLine(),
+                        s.count(), s.firstSeen(), s.lastSeen(), List.of()))
+                .toList();
+        return paginatedResponse(stripped, page, size);
+    }
+
+    @GET
+    @Path("/{id}/exception-analysis/{origin}/occurrences")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getExceptionOccurrences(@PathParam("id") String id,
+                                             @PathParam("origin") String origin,
+                                             @QueryParam("page") @DefaultValue("0") int page,
+                                             @QueryParam("size") @DefaultValue("25") int size) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+        var summary = analysis.getExceptionAnalysis().stream()
+                .filter(s -> (s.exceptionType() + ":" + s.origin()).equals(origin) || s.origin().equals(origin)).findFirst();
+        if (summary.isEmpty()) return Response.ok(Map.of("data", List.of(), "total", 0, "page", 0, "size", size)).build();
+        return paginatedResponse(summary.get().occurrences(), page, size);
     }
 
     @GET
