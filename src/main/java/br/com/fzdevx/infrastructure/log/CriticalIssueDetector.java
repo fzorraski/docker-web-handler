@@ -68,6 +68,9 @@ public class CriticalIssueDetector {
             new PatternDef("JDBC", "CRITICAL", "Pool empty", "Pool empty", true),
             new PatternDef("JDBC", "CRITICAL", "too many connections", "too many connections", true),
 
+            // NPE / HIGH
+            new PatternDef("NPE", "HIGH", "NullPointerException", "NullPointerException", true),
+
             // THREAD / HIGH
             new PatternDef("THREAD", "HIGH", "StackOverflowError", "StackOverflowError", true),
             new PatternDef("THREAD", "HIGH", "RejectedExecutionException", "RejectedExecutionException", true),

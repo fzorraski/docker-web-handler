@@ -68,6 +68,8 @@ export interface AnalysisSummary {
   repeatedFailureCount: number
   criticalIssueCount: number
   criticalIssueSummaries: { category: string; severity: string; count: number }[]
+  npeAnalysisCount: number
+  npeLocationCount: number
   customFields: CustomFieldSummary[]
 }
 
@@ -126,6 +128,30 @@ export interface RepeatedFailure {
   firstSeen: string
   lastSeen: string
   details: { timestamp: string; lineNumber: number; message: string; sourceFile: string }[]
+}
+
+export interface NpeOccurrence {
+  originClass: string
+  method: string
+  sourceFile: string
+  sourceLine: number
+  message: string | null
+  timestamp: string | null
+  logLineNumber: number
+  logSourceFile: string
+  stackTrace: string[]
+}
+
+export interface NpeLocationSummary {
+  origin: string
+  originClass: string
+  method: string
+  sourceFile: string
+  sourceLine: number
+  count: number
+  firstSeen: string | null
+  lastSeen: string | null
+  occurrences: NpeOccurrence[]
 }
 
 export interface CriticalIssue {
@@ -431,6 +457,17 @@ export async function getCriticalBurstIssues(
   if (params.size != null) q.set('size', String(params.size))
   const qs = q.toString()
   const res = await fetchWithAuth(`${API}/${id}/critical-issues/bursts/${encodeURIComponent(category)}/${burstIndex}${qs ? '?' + qs : ''}`)
+  return handleResponse(res)
+}
+
+export async function getNpeAnalysis(
+  id: string,
+  params: { page?: number; size?: number } = {},
+): Promise<PaginatedResponse<NpeLocationSummary>> {
+  const q = new URLSearchParams()
+  if (params.page != null) q.set('page', String(params.page))
+  if (params.size != null) q.set('size', String(params.size))
+  const res = await fetchWithAuth(`${API}/${id}/npe-analysis?${q}`)
   return handleResponse(res)
 }
 

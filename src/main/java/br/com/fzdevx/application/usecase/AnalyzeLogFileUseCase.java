@@ -4,6 +4,7 @@ import br.com.fzdevx.application.port.CustomFieldExtractorPort;
 import br.com.fzdevx.application.port.LogAnalysisPort;
 import br.com.fzdevx.domain.model.*;
 import br.com.fzdevx.infrastructure.log.CriticalIssueDetector;
+import br.com.fzdevx.infrastructure.log.NpeAnalyzer;
 import br.com.fzdevx.domain.shared.EndpointStatsCalculator;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -34,6 +35,9 @@ public class AnalyzeLogFileUseCase {
 
     @Inject
     CriticalIssueDetector criticalIssueDetector;
+
+    @Inject
+    NpeAnalyzer npeAnalyzer;
 
     @Inject
     br.com.fzdevx.infrastructure.persistence.ResourceCounterService resourceCounterService;
@@ -78,6 +82,7 @@ public class AnalyzeLogFileUseCase {
         }
 
         analysis.setCriticalIssues(criticalIssueDetector.detect(analysis.getAllLines()));
+        analysis.setNpeAnalysis(npeAnalyzer.analyze(analysis.getAllLines()));
 
         analyses.put(analysis.getId(), new AnalysisEntry(analysis, Instant.now()));
         resourceCounterService.increment(br.com.fzdevx.infrastructure.persistence.ResourceCounterService.LOGS_ANALYZED);
@@ -218,6 +223,7 @@ public class AnalyzeLogFileUseCase {
         );
         merged.setCustomFieldResults(mergedCustomFields);
         merged.setCriticalIssues(criticalIssueDetector.detect(allLines));
+        merged.setNpeAnalysis(npeAnalyzer.analyze(allLines));
         analyses.put(merged.getId(), new AnalysisEntry(merged, Instant.now()));
         return merged;
     }

@@ -599,6 +599,18 @@ public class LogAnalyzerController {
     }
 
     @GET
+    @Path("/{id}/npe-analysis")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getNpeAnalysis(@PathParam("id") String id,
+                                   @QueryParam("page") @DefaultValue("0") int page,
+                                   @QueryParam("size") @DefaultValue("50") int size) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+        return paginatedResponse(analysis.getNpeAnalysis(), page, size);
+    }
+
+    @GET
     @Path("/{id}/custom-fields/{fieldName}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getCustomFieldMatches(@PathParam("id") String id,
@@ -693,6 +705,10 @@ public class LogAnalyzerController {
         int criticalIssueCount = a.getCriticalIssues().stream()
                 .mapToInt(CriticalIssueSummary::count).sum();
 
+        int npeAnalysisCount = a.getNpeAnalysis().stream()
+                .mapToInt(NpeLocationSummary::count).sum();
+        int npeLocationCount = a.getNpeAnalysis().size();
+
         // burstCount not computed eagerly; use on-demand endpoint
 
         var criticalIssueSummaries = a.getCriticalIssues().stream()
@@ -724,7 +740,9 @@ public class LogAnalyzerController {
                 Map.entry("repeatedFailureCount", a.getRepeatedFailures().size()),
                 Map.entry("customFields", customFieldsSummary),
                 Map.entry("criticalIssueCount", criticalIssueCount),
-                Map.entry("criticalIssueSummaries", criticalIssueSummaries)
+                Map.entry("criticalIssueSummaries", criticalIssueSummaries),
+                Map.entry("npeAnalysisCount", npeAnalysisCount),
+                Map.entry("npeLocationCount", npeLocationCount)
         );
     }
 

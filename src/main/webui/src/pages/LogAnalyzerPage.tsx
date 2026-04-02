@@ -18,6 +18,7 @@ import { ThreadViewTab } from '../components/log-analyzer/ThreadViewTab'
 import { JobsTab } from '../components/log-analyzer/JobsTab'
 import { FailuresTab } from '../components/log-analyzer/FailuresTab'
 import { CriticalIssuesTab } from '../components/log-analyzer/CriticalIssuesTab'
+import { NpeAnalysisTab } from '../components/log-analyzer/NpeAnalysisTab'
 import { CustomFieldTab } from '../components/log-analyzer/CustomFieldTab'
 import { PerformanceInsightsTab } from '../components/log-analyzer/PerformanceInsightsTab'
 import type {
@@ -174,6 +175,7 @@ export default function LogAnalyzerPage() {
       { key: 'threadView', label: t('logAnalyzer.tabs.threadView'), component: <ThreadViewTab analysisId={selected.id} /> },
     ]
     if (selected.criticalIssueCount > 0) list.push({ key: 'criticalIssues', label: t('logAnalyzer.tabs.criticalIssues'), component: <CriticalIssuesTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
+    if (selected.npeAnalysisCount > 0) list.push({ key: 'npeAnalysis', label: t('logAnalyzer.tabs.npeAnalysis'), component: <NpeAnalysisTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.jobExecutionCount > 0) list.push({ key: 'jobs', label: t('logAnalyzer.tabs.jobs'), component: <JobsTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.repeatedFailureCount > 0) list.push({ key: 'failures', label: t('logAnalyzer.tabs.failures'), component: <FailuresTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.customFields) {
@@ -375,6 +377,9 @@ export default function LogAnalyzerPage() {
             )}
             {selected.criticalIssueCount > 0 && (
               <SummaryCard label={t('logAnalyzer.dashboard.criticalIssues')} value={selected.criticalIssueCount} color="warning.main" />
+            )}
+            {selected.npeAnalysisCount > 0 && (
+              <SummaryCard label={t('logAnalyzer.dashboard.npeAnalysis')} value={`${selected.npeAnalysisCount} (${selected.npeLocationCount})`} color="error.main" />
             )}
             {selected.customFields?.filter(cf => cf.matchCount > 0).map(cf => (
               <SummaryCard key={cf.fieldName} label={cf.fieldName} value={cf.matchCount.toLocaleString()} color="primary.main" />

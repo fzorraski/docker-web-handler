@@ -366,6 +366,15 @@ class CriticalIssueDetectorTest {
         assertEquals("HIGH", results.getFirst().severity());
     }
 
+    // ---- NPE ----
+
+    @Test
+    void detectsNullPointerException() {
+        var lines = List.of(line(1, "Caused by: java.lang.NullPointerException: parameter == null"));
+        var results = detector.detect(lines);
+        assertTrue(results.stream().anyMatch(s -> "NPE".equals(s.category())));
+    }
+
     // ---- Disabled returns empty ----
 
     @Test
