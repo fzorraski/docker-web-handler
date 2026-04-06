@@ -490,12 +490,43 @@ public class LogAnalyzerController {
     @Path("/{id}/jobs")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getJobs(@PathParam("id") String id,
+                            @QueryParam("jobName") String jobName,
+                            @QueryParam("thread") String thread,
+                            @QueryParam("sort") @DefaultValue("time") String sort,
                             @QueryParam("page") @DefaultValue("0") int page,
                             @QueryParam("size") @DefaultValue("50") int size) {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
-        return paginatedResponse(analysis.getJobExecutions(), page, size);
+
+        var jobs = analysis.getJobExecutions().stream();
+        if (jobName != null && !jobName.isBlank()) {
+            jobs = jobs.filter(j -> jobName.equals(j.jobName()));
+        }
+        if (thread != null && !thread.isBlank()) {
+            jobs = jobs.filter(j -> thread.equals(j.thread()));
+        }
+        List<JobExecution> result = switch (sort) {
+            case "duration" -> jobs.sorted(Comparator.comparingLong(JobExecution::durationMs).reversed()).toList();
+            case "name" -> jobs.sorted(Comparator.comparing(JobExecution::jobName)).toList();
+            case "time" -> jobs.toList();
+            default -> jobs.toList();
+        };
+        return paginatedResponse(result, page, size);
+    }
+
+    @GET
+    @Path("/{id}/jobs/filters")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getJobFilters(@PathParam("id") String id) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+
+        var executions = analysis.getJobExecutions();
+        var jobNames = executions.stream().map(JobExecution::jobName).distinct().sorted().toList();
+        var threads = executions.stream().map(JobExecution::thread).distinct().sorted().toList();
+        return Response.ok(Map.of("jobNames", jobNames, "threads", threads)).build();
     }
 
     @GET

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Autocomplete, Box, Typography, Chip, LinearProgress, TextField, Stack,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
@@ -21,31 +21,27 @@ export function JobsTab({ analysisId, onJumpToLine }: { analysisId: string; onJu
   const [filterJob, setFilterJob] = useState('')
   const [filterThread, setFilterThread] = useState('')
   const [sort, setSort] = useState('time')
+  const [jobNames, setJobNames] = useState<string[]>([])
+  const [threads, setThreads] = useState<string[]>([])
 
-  // Fetch all jobs (server-side paginated)
+  // Fetch distinct job names and threads once for filter dropdowns
+  useEffect(() => {
+    logService.getJobFilters(analysisId).then(res => {
+      setJobNames(res.jobNames)
+      setThreads(res.threads)
+    }).catch(() => {})
+  }, [analysisId])
+
+  // Server-side sort + filter + pagination
   const { data: jobs, total, loading } = usePaginatedFetch<JobExecution>(
-    () => logService.getJobs(analysisId, { page, size: rowsPerPage }),
-    [analysisId, page, rowsPerPage],
+    () => logService.getJobs(analysisId, {
+      jobName: filterJob || undefined,
+      thread: filterThread || undefined,
+      sort,
+      page, size: rowsPerPage,
+    }),
+    [analysisId, filterJob, filterThread, sort, page, rowsPerPage],
   )
-
-  // Extract unique job names and threads for filters
-  const jobNames = useMemo(() => [...new Set(jobs.map(j => j.jobName))].sort(), [jobs])
-  const threads = useMemo(() => [...new Set(jobs.map(j => j.thread))].sort(), [jobs])
-
-  // Client-side filter + sort on current page
-  const filtered = useMemo(() => {
-    let result = jobs
-    if (filterJob) result = result.filter(j => j.jobName === filterJob)
-    if (filterThread) result = result.filter(j => j.thread === filterThread)
-
-    return [...result].sort((a, b) => {
-      switch (sort) {
-        case 'duration': return b.durationMs - a.durationMs
-        case 'name': return a.jobName.localeCompare(b.jobName)
-        default: return 0 // time — already sorted by server
-      }
-    })
-  }, [jobs, filterJob, filterThread, sort])
 
   const lineLink = (line: number) => onJumpToLine
     ? <LineLink line={line} onClick={onJumpToLine} />
@@ -102,7 +98,7 @@ export function JobsTab({ analysisId, onJumpToLine }: { analysisId: string; onJu
             </TableRow>
           </TableHead>
           <TableBody>
-            {filtered.map((job, i) => (
+            {jobs.map((job, i) => (
               <TableRow key={i} hover>
                 <TableCell><Typography variant="body2" fontFamily="'JetBrains Mono', monospace" fontSize="0.8rem">{job.jobName}</Typography></TableCell>
                 <TableCell><Typography variant="body2" fontSize="0.8rem">{job.triggerName ?? '-'}</Typography></TableCell>

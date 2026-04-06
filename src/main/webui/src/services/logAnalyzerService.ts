@@ -457,11 +457,19 @@ export async function getEndpoints(id: string): Promise<string[]> {
   return handleResponse(res)
 }
 
+export async function getJobFilters(id: string): Promise<{ jobNames: string[]; threads: string[] }> {
+  const res = await fetchWithAuth(`${API}/${id}/jobs/filters`)
+  return handleResponse(res)
+}
+
 export async function getJobs(
   id: string,
-  params: { page?: number; size?: number } = {},
+  params: { jobName?: string; thread?: string; sort?: string; page?: number; size?: number } = {},
 ): Promise<PaginatedResponse<JobExecution>> {
   const q = new URLSearchParams()
+  if (params.jobName) q.set('jobName', params.jobName)
+  if (params.thread) q.set('thread', params.thread)
+  if (params.sort) q.set('sort', params.sort)
   if (params.page != null) q.set('page', String(params.page))
   if (params.size != null) q.set('size', String(params.size))
   const res = await fetchWithAuth(`${API}/${id}/jobs?${q}`)

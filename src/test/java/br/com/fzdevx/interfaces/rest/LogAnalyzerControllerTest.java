@@ -140,6 +140,26 @@ class LogAnalyzerControllerTest {
         return analysis;
     }
 
+    private LogAnalysis buildMultiJobAnalysis() {
+        LocalDateTime now = LocalDateTime.of(2025, 6, 15, 10, 0, 0);
+        var jobExecutions = List.of(
+                new JobExecution("CleanupJob", "dailyTrigger", "scheduler-1",
+                        now, now.plusSeconds(10), 10000, "SUCCESS", 10, 20, "server.log"),
+                new JobExecution("BackupJob", "nightlyTrigger", "scheduler-2",
+                        now.plusSeconds(20), now.plusSeconds(25), 5000, "SUCCESS", 30, 40, "server.log"),
+                new JobExecution("SyncJob", "hourlyTrigger", "scheduler-1",
+                        now.plusSeconds(40), now.plusSeconds(60), 20000, "FAILED", 50, 60, "server.log")
+        );
+        var analysis = new LogAnalysis(
+                List.of(new LogAnalysis.SourceFile("server.log", 1024)),
+                4, now, now.plusSeconds(60),
+                List.of("scheduler-1", "scheduler-2"), List.of(),
+                List.of(), List.of(), Map.of("INFO", 4), List.of(),
+                jobExecutions, List.of(), List.of()
+        );
+        return analysis;
+    }
+
     // ---- Helper: assert error response ----
 
     @SuppressWarnings("unchecked")
@@ -291,7 +311,7 @@ class LogAnalyzerControllerTest {
     void getJobs_disabled_returnsForbidden() {
         setField("enabled", false);
 
-        Response response = controller.getJobs(ANALYSIS_ID, 0, 50);
+        Response response = controller.getJobs(ANALYSIS_ID, null, null, "time", 0, 50);
 
         assertEquals(403, response.getStatus());
     }
@@ -394,7 +414,7 @@ class LogAnalyzerControllerTest {
     void getJobs_notFound_returns404() {
         when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
 
-        Response response = controller.getJobs("nonexistent", 0, 50);
+        Response response = controller.getJobs("nonexistent", null, null, "time", 0, 50);
 
         assertEquals(404, response.getStatus());
     }
@@ -652,7 +672,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getJobs(analysis.getId(), 0, 50);
+        Response response = controller.getJobs(analysis.getId(), null, null, "time", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -661,6 +681,120 @@ class LogAnalyzerControllerTest {
         assertEquals(1, entity.get("total"));
         assertEquals(0, entity.get("page"));
         assertEquals(50, entity.get("size"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getJobs_filterByJobName_returnsOnlyMatching() {
+        LogAnalysis analysis = buildMultiJobAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getJobs(analysis.getId(), "BackupJob", null, "time", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<JobExecution> data = (List<JobExecution>) entity.get("data");
+        assertEquals(1, data.size());
+        assertEquals("BackupJob", data.getFirst().jobName());
+        assertEquals(1, entity.get("total"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getJobs_filterByThread_returnsOnlyMatching() {
+        LogAnalysis analysis = buildMultiJobAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getJobs(analysis.getId(), null, "scheduler-2", "time", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<JobExecution> data = (List<JobExecution>) entity.get("data");
+        assertEquals(1, data.size());
+        assertEquals("scheduler-2", data.getFirst().thread());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getJobs_sortByDuration_returnsDescending() {
+        LogAnalysis analysis = buildMultiJobAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getJobs(analysis.getId(), null, null, "duration", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<JobExecution> data = (List<JobExecution>) entity.get("data");
+        assertEquals(3, data.size());
+        assertTrue(data.get(0).durationMs() >= data.get(1).durationMs());
+        assertTrue(data.get(1).durationMs() >= data.get(2).durationMs());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getJobs_sortByName_returnsAlphabetical() {
+        LogAnalysis analysis = buildMultiJobAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getJobs(analysis.getId(), null, null, "name", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<JobExecution> data = (List<JobExecution>) entity.get("data");
+        assertEquals(3, data.size());
+        assertEquals("BackupJob", data.get(0).jobName());
+        assertEquals("CleanupJob", data.get(1).jobName());
+        assertEquals("SyncJob", data.get(2).jobName());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getJobs_filterAndSort_combined() {
+        LogAnalysis analysis = buildMultiJobAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        // Filter by scheduler-1 (has CleanupJob and SyncJob), sort by duration
+        Response response = controller.getJobs(analysis.getId(), null, "scheduler-1", "duration", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<JobExecution> data = (List<JobExecution>) entity.get("data");
+        assertEquals(2, data.size());
+        assertTrue(data.get(0).durationMs() >= data.get(1).durationMs());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getJobFilters_returnsDistinctSortedNamesAndThreads() {
+        LogAnalysis analysis = buildMultiJobAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getJobFilters(analysis.getId());
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<String> jobNames = (List<String>) entity.get("jobNames");
+        List<String> threads = (List<String>) entity.get("threads");
+        assertEquals(List.of("BackupJob", "CleanupJob", "SyncJob"), jobNames);
+        assertEquals(List.of("scheduler-1", "scheduler-2"), threads);
+    }
+
+    @Test
+    void getJobFilters_disabled_returnsForbidden() {
+        setField("enabled", false);
+
+        Response response = controller.getJobFilters(ANALYSIS_ID);
+
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void getJobFilters_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+
+        Response response = controller.getJobFilters("nonexistent");
+
+        assertEquals(404, response.getStatus());
     }
 
     @Test
