@@ -1,6 +1,7 @@
 package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.application.dto.AnalysisOptions;
+import br.com.fzdevx.application.dto.AnalyzeLogFileRequest;
 import br.com.fzdevx.application.usecase.AnalyzeContainerLogsUseCase;
 import br.com.fzdevx.application.usecase.AnalyzeLogFileUseCase;
 import br.com.fzdevx.domain.model.*;
@@ -56,6 +57,9 @@ public class LogAnalyzerController {
     AnomalyDetectorService anomalyDetectorService;
 
     @Inject
+    br.com.fzdevx.interfaces.rest.util.LogAnalysisBroadcaster logAnalysisBroadcaster;
+
+    @Inject
     @ConfigProperty(name = "log.analyzer.enabled", defaultValue = "false")
     boolean enabled;
 
@@ -94,128 +98,122 @@ public class LogAnalyzerController {
     public Response uploadAndAnalyze(MultipartFormDataInput input) {
         if (!enabled) return featureDisabled();
 
-        List<java.nio.file.Path> tempFiles = new ArrayList<>();
-        List<java.nio.file.Path> tempDirs = new ArrayList<>();
+        AnalyzeLogFileRequest request = null;
         try {
-            Map<String, List<InputPart>> form = input.getFormDataMap();
-
-            String presetName = extractString(form, "preset");
-            LogPreset basePreset = presetName != null ? logPresetProvider.byName(presetName) : logPresetProvider.byName(defaultPresetName);
-
-            String customLogLineRegex = extractString(form, "logLineRegex");
-            String customApiCallRegex = extractString(form, "apiCallRegex");
-            String customTimestampFormat = extractString(form, "timestampFormat");
-            String customJobStartRegex = extractString(form, "jobStartRegex");
-            String customJobEndRegex = extractString(form, "jobEndRegex");
-            String customFailureRegex = extractString(form, "failureRegex");
-            String customSensitiveFields = extractString(form, "sensitiveFieldNames");
-            String customFieldsJson = extractString(form, "customFields");
-
-            List<LogPreset.CustomField> uploadCustomFields = parseCustomFieldsJson(customFieldsJson);
-            List<LogPreset.CustomField> mergedCustomFields = uploadCustomFields.isEmpty()
-                    ? basePreset.customFields()
-                    : uploadCustomFields;
-
-            LogPreset preset = new LogPreset(
-                    basePreset.name(),
-                    nonBlankOrDefault(customLogLineRegex, basePreset.logLineRegex()),
-                    nonBlankOrDefault(customTimestampFormat, basePreset.timestampFormat()),
-                    nonBlankOrDefault(customApiCallRegex, basePreset.apiCallRegex()),
-                    nonBlankOrDefault(customJobStartRegex, basePreset.jobStartRegex()),
-                    nonBlankOrDefault(customJobEndRegex, basePreset.jobEndRegex()),
-                    nonBlankOrDefault(customFailureRegex, basePreset.failureRegex()),
-                    customSensitiveFields != null && !customSensitiveFields.isBlank()
-                            ? Arrays.asList(customSensitiveFields.split(","))
-                            : basePreset.sensitiveFieldNames(),
-                    mergedCustomFields
-            );
-
-            if (preset.logLineRegex() == null || preset.logLineRegex().isBlank()) {
-                return Response.status(Response.Status.BAD_REQUEST)
-                        .entity(Map.of("error", "Log line regex is required."))
-                        .build();
-            }
-
-            String slowThresholdStr = extractString(form, "slowThresholdMs");
-            int slowThresholdMs = slowThresholdStr != null
-                    ? Integer.parseInt(slowThresholdStr)
-                    : defaultSlowThresholdMs;
-
-            List<InputPart> fileParts = form.get("files");
-            if (fileParts == null || fileParts.isEmpty()) {
-                fileParts = form.get("file");
-            }
-            if (fileParts == null || fileParts.isEmpty()) {
-                return Response.status(Response.Status.BAD_REQUEST)
-                        .entity(Map.of("error", "No file(s) provided."))
-                        .build();
-            }
-
-            List<String> filenames = new ArrayList<>();
-            long maxBytes = (long) maxFileSizeMb * 1024 * 1024;
-
-            for (InputPart filePart : fileParts) {
-                String filename = extractFilename(filePart);
-                if (filename == null || filename.isBlank()) {
-                    filename = "unknown-" + (filenames.size() + 1) + ".log";
-                }
-
-                Optional<String> filenameError = InputValidator.validateUploadFilename(filename);
-                if (filenameError.isPresent()) {
-                    return Response.status(Response.Status.BAD_REQUEST)
-                            .entity(Map.of("error", filenameError.get()))
-                            .build();
-                }
-
-                java.nio.file.Path tempDir = Files.createTempDirectory("log-analyzer-");
-                tempDirs.add(tempDir);
-                java.nio.file.Path tempFile = tempDir.resolve(filename);
-                tempFiles.add(tempFile);
-                filenames.add(filename);
-
-                try (InputStream is = filePart.getBody(InputStream.class, null);
-                     var out = Files.newOutputStream(tempFile)) {
-                    long size = 0;
-                    byte[] buf = new byte[8192];
-                    int read;
-                    while ((read = is.read(buf)) != -1) {
-                        size += read;
-                        if (size > maxBytes) {
-                            return Response.status(Response.Status.BAD_REQUEST)
-                                    .entity(Map.of("error", "File '" + filename + "' exceeds the maximum size of " + maxFileSizeMb + " MB."))
-                                    .build();
-                        }
-                        out.write(buf, 0, read);
-                    }
-                }
-            }
-
-            AnalysisOptions options = parseAnalysisOptions(extractString(form, "options"));
-
-            LogAnalysis analysis = analyzeLogFileUseCase.analyze(tempFiles, filenames, preset, slowThresholdMs, options);
+            request = parseUploadForm(input);
+            LogAnalysis analysis = analyzeLogFileUseCase.analyze(
+                    request.getTempFiles(), request.getFilenames(),
+                    request.getPreset(), request.getSlowThresholdMs(), request.getOptions());
             return Response.ok(analysisSummaryMap(analysis)).build();
-
-        } catch (NumberFormatException e) {
+        } catch (IllegalArgumentException e) {
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", "Invalid numeric parameter."))
-                    .build();
-        } catch (PatternSyntaxException e) {
-            return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", "Invalid regex pattern: " + e.getDescription()))
-                    .build();
+                    .entity(Map.of("error", e.getMessage())).build();
         } catch (Exception e) {
             Log.errorf("Log analysis failed: %s", e.getMessage());
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity(Map.of("error", "Log analysis failed. Please try again."))
-                    .build();
+                    .entity(Map.of("error", "Log analysis failed. Please try again.")).build();
         } finally {
-            for (java.nio.file.Path f : tempFiles) {
-                try { Files.deleteIfExists(f); } catch (Exception ignored) {}
+            if (request != null) request.cleanupTempFiles();
+        }
+    }
+
+    /**
+     * Parse multipart upload form into an AnalyzeLogFileRequest.
+     * Shared between the synchronous upload and the SSE prepare endpoint.
+     * Throws IllegalArgumentException for validation errors.
+     */
+    AnalyzeLogFileRequest parseUploadForm(MultipartFormDataInput input) throws Exception {
+        Map<String, List<InputPart>> form = input.getFormDataMap();
+
+        String presetName = extractString(form, "preset");
+        LogPreset basePreset = presetName != null ? logPresetProvider.byName(presetName) : logPresetProvider.byName(defaultPresetName);
+
+        String customLogLineRegex = extractString(form, "logLineRegex");
+        String customApiCallRegex = extractString(form, "apiCallRegex");
+        String customTimestampFormat = extractString(form, "timestampFormat");
+        String customJobStartRegex = extractString(form, "jobStartRegex");
+        String customJobEndRegex = extractString(form, "jobEndRegex");
+        String customFailureRegex = extractString(form, "failureRegex");
+        String customSensitiveFields = extractString(form, "sensitiveFieldNames");
+        String customFieldsJson = extractString(form, "customFields");
+
+        List<LogPreset.CustomField> uploadCustomFields = parseCustomFieldsJson(customFieldsJson);
+        List<LogPreset.CustomField> mergedCustomFields = uploadCustomFields.isEmpty()
+                ? basePreset.customFields()
+                : uploadCustomFields;
+
+        LogPreset preset = new LogPreset(
+                basePreset.name(),
+                nonBlankOrDefault(customLogLineRegex, basePreset.logLineRegex()),
+                nonBlankOrDefault(customTimestampFormat, basePreset.timestampFormat()),
+                nonBlankOrDefault(customApiCallRegex, basePreset.apiCallRegex()),
+                nonBlankOrDefault(customJobStartRegex, basePreset.jobStartRegex()),
+                nonBlankOrDefault(customJobEndRegex, basePreset.jobEndRegex()),
+                nonBlankOrDefault(customFailureRegex, basePreset.failureRegex()),
+                customSensitiveFields != null && !customSensitiveFields.isBlank()
+                        ? Arrays.asList(customSensitiveFields.split(","))
+                        : basePreset.sensitiveFieldNames(),
+                mergedCustomFields
+        );
+
+        if (preset.logLineRegex() == null || preset.logLineRegex().isBlank()) {
+            throw new IllegalArgumentException("Log line regex is required.");
+        }
+
+        String slowThresholdStr = extractString(form, "slowThresholdMs");
+        int slowThresholdMs = slowThresholdStr != null
+                ? Integer.parseInt(slowThresholdStr)
+                : defaultSlowThresholdMs;
+
+        List<InputPart> fileParts = form.get("files");
+        if (fileParts == null || fileParts.isEmpty()) {
+            fileParts = form.get("file");
+        }
+        if (fileParts == null || fileParts.isEmpty()) {
+            throw new IllegalArgumentException("No file(s) provided.");
+        }
+
+        List<java.nio.file.Path> tempFiles = new ArrayList<>();
+        List<java.nio.file.Path> tempDirs = new ArrayList<>();
+        List<String> filenames = new ArrayList<>();
+        long maxBytes = (long) maxFileSizeMb * 1024 * 1024;
+
+        for (InputPart filePart : fileParts) {
+            String filename = extractFilename(filePart);
+            if (filename == null || filename.isBlank()) {
+                filename = "unknown-" + (filenames.size() + 1) + ".log";
             }
-            for (java.nio.file.Path d : tempDirs) {
-                try { Files.deleteIfExists(d); } catch (Exception ignored) {}
+
+            Optional<String> filenameError = InputValidator.validateUploadFilename(filename);
+            if (filenameError.isPresent()) {
+                throw new IllegalArgumentException(filenameError.get());
+            }
+
+            java.nio.file.Path tempDir = Files.createTempDirectory("log-analyzer-");
+            tempDirs.add(tempDir);
+            java.nio.file.Path tempFile = tempDir.resolve(filename);
+            tempFiles.add(tempFile);
+            filenames.add(filename);
+
+            try (InputStream is = filePart.getBody(InputStream.class, null);
+                 var out = Files.newOutputStream(tempFile)) {
+                long size = 0;
+                byte[] buf = new byte[8192];
+                int read;
+                while ((read = is.read(buf)) != -1) {
+                    size += read;
+                    if (size > maxBytes) {
+                        throw new IllegalArgumentException(
+                                "File '" + filename + "' exceeds the maximum size of " + maxFileSizeMb + " MB.");
+                    }
+                    out.write(buf, 0, read);
+                }
             }
         }
+
+        AnalysisOptions options = parseAnalysisOptions(extractString(form, "options"));
+
+        return new AnalyzeLogFileRequest(tempFiles, tempDirs, filenames, preset, slowThresholdMs, options);
     }
 
     @POST
@@ -311,6 +309,7 @@ public class LogAnalyzerController {
         if (!enabled) return featureDisabled();
         boolean deleted = analyzeLogFileUseCase.delete(id);
         if (!deleted) return analysisNotFound();
+        logAnalysisBroadcaster.broadcastDeleted(id);
         return Response.ok(Map.of("deleted", true)).build();
     }
 

@@ -1,10 +1,16 @@
 package br.com.fzdevx.infrastructure.config;
 
+import br.com.fzdevx.application.dto.AnalysisOptions;
+import br.com.fzdevx.application.dto.AnalyzeLogFileRequest;
 import br.com.fzdevx.application.dto.RunContainerRequest;
 import br.com.fzdevx.application.dto.RestoreDumpRequest;
 import br.com.fzdevx.application.dto.CreateSnapshotRequest;
 import br.com.fzdevx.application.dto.PruneImagesRequest;
 import br.com.fzdevx.application.dto.RunMigrationRequest;
+import br.com.fzdevx.domain.model.LogPreset;
+
+import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -134,7 +140,54 @@ class RequestStashTest {
         assertNull(stash.retrievePrune(ticket));
         assertNull(stash.retrieveMigration(ticket));
         assertNull(stash.retrieveTerminal(ticket));
+        assertNull(stash.retrieveLogAnalysis(ticket));
         // Original should still be there
         assertNotNull(stash.retrieve(ticket));
+    }
+
+    // ---- Log Analysis Stash ----
+
+    @Test
+    void stashLogAnalysis_returnsTicket() {
+        var request = new AnalyzeLogFileRequest(
+                List.of(Path.of("/tmp/test.log")), List.of(Path.of("/tmp")),
+                List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+        String ticket = stash.stashLogAnalysis(request);
+
+        assertNotNull(ticket);
+        assertFalse(ticket.isBlank());
+    }
+
+    @Test
+    void retrieveLogAnalysis_returnsAndConsumesTicket() {
+        var request = new AnalyzeLogFileRequest(
+                List.of(Path.of("/tmp/test.log")), List.of(Path.of("/tmp")),
+                List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+        String ticket = stash.stashLogAnalysis(request);
+
+        AnalyzeLogFileRequest retrieved = stash.retrieveLogAnalysis(ticket);
+        assertNotNull(retrieved);
+        assertEquals("test.log", retrieved.getFilenames().getFirst());
+        assertEquals(1000, retrieved.getSlowThresholdMs());
+
+        // Consumed — second retrieval returns null
+        assertNull(stash.retrieveLogAnalysis(ticket));
+    }
+
+    @Test
+    void retrieveLogAnalysis_unknownTicket_returnsNull() {
+        assertNull(stash.retrieveLogAnalysis("nonexistent"));
+    }
+
+    @Test
+    void logAnalysisStash_isolatedFromOtherStashes() {
+        var request = new AnalyzeLogFileRequest(
+                List.of(Path.of("/tmp/test.log")), List.of(Path.of("/tmp")),
+                List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+        String ticket = stash.stashLogAnalysis(request);
+
+        assertNull(stash.retrieve(ticket));
+        assertNull(stash.retrieveRestore(ticket));
+        assertNotNull(stash.retrieveLogAnalysis(ticket));
     }
 }

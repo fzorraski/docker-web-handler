@@ -1,15 +1,19 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Autocomplete, Box, Typography, Button, Paper, Tabs, Tab,
   Chip, TextField, Collapse, IconButton, Switch, FormControlLabel,
-  LinearProgress, Stack,
+  Stack, Dialog, DialogTitle, DialogContent, DialogActions,
+  Alert, AlertTitle, LinearProgress, Tooltip, Badge,
 } from '@mui/material'
 import {
-  CloudUpload, ExpandMore, MergeType, Clear,
+  CloudUpload, ExpandMore, MergeType, Clear, Cancel, DeleteForever, Visibility,
 } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
 import { useNotification } from '../components/NotificationProvider'
+import { useSseOperation } from '../hooks/useSseOperation'
+import OperationProgress, { LOG_ANALYSIS_STEPS } from '../components/OperationProgress'
+import { prepareLogAnalysis, streamLogAnalysis, cancelLogAnalysis, subscribeLogAnalysisUpdates, setLogAnalysisViewing } from '../services/sseService'
 import { AnalysisOptionsDialog } from '../components/log-analyzer/AnalysisOptionsDialog'
 import type { AnalysisOptions } from '../components/log-analyzer/AnalysisOptionsDialog'
 import { SummaryCard } from '../components/log-analyzer/SummaryCard'
@@ -33,6 +37,7 @@ import * as logService from '../services/logAnalyzerService'
 export default function LogAnalyzerPage() {
   const { t } = useTranslation()
   const { notify } = useNotification()
+  const clientTokenRef = useRef(crypto.randomUUID())
 
   const [presets, setPresets] = useState<LogPreset[]>([])
   const [defaultPreset, setDefaultPreset] = useState('WILDFLY')
@@ -41,7 +46,8 @@ export default function LogAnalyzerPage() {
   const [selectedId, setSelectedId] = useState<string | null>(
     (location.state as { analysisId?: string } | null)?.analysisId ?? null
   )
-  const [uploading, setUploading] = useState(false)
+  const sse = useSseOperation()
+  const [analysisTicket, setAnalysisTicket] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState(0)
   const [jumpToLine, setJumpToLine] = useState<number | null>(null)
   const [jumpToRange, setJumpToRange] = useState<{ from: number; to: number } | null>(null)
@@ -62,6 +68,15 @@ export default function LogAnalyzerPage() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [lastAnalysisOptions, setLastAnalysisOptions] = useState<AnalysisOptions | null>(null)
 
+  // Active analyses from other users (broadcast)
+  const [activeAnalyses, setActiveAnalyses] = useState<string[]>([])
+
+  // Delete confirmation
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null)
+
+  // Viewer counts from broadcast (analysisId → number of viewers)
+  const [viewerCounts, setViewerCounts] = useState<Record<string, number>>({})
+
   // Compose
   const [composeIds, setComposeIds] = useState<Set<string>>(new Set())
 
@@ -79,9 +94,31 @@ export default function LogAnalyzerPage() {
     setActiveTab(0)
   }, [selectedId])
 
+  // Notify server which analysis this client is viewing
+  useEffect(() => {
+    setLogAnalysisViewing(clientTokenRef.current, selectedId)
+    return () => { setLogAnalysisViewing(clientTokenRef.current, null) }
+  }, [selectedId])
+
   const refreshList = useCallback(() => {
     logService.listAnalyses().then(setAnalyses).catch(() => {})
   }, [])
+
+  // Subscribe to log analysis broadcasts from other users
+  useEffect(() => {
+    return subscribeLogAnalysisUpdates(
+      (ev) => setActiveAnalyses(prev => [...prev, ev.filenames]),
+      (ev) => {
+        setActiveAnalyses(prev => prev.filter(f => f !== ev.filenames))
+        refreshList()
+      },
+      (ev) => {
+        if (ev.analysisId && selectedId === ev.analysisId) setSelectedId(null)
+        refreshList()
+      },
+      (counts) => setViewerCounts(counts),
+    )
+  }, [refreshList, selectedId])
 
   const selected = useMemo(
     () => analyses.find((a) => a.id === selectedId) ?? null,
@@ -98,38 +135,65 @@ export default function LogAnalyzerPage() {
     setOptionsDialogOpen(false)
     setLastAnalysisOptions(analysisOptions)
     if (pendingFiles.length === 0) return
-    setUploading(true)
+
+    const currentPreset = presets.find(p => p.name.toUpperCase() === selectedPreset.toUpperCase())
+    const { threadView: _tv, ...backendOptions } = analysisOptions
+    const regexKeys = ['logLineRegex', 'apiCallRegex', 'timestampFormat', 'jobStartRegex', 'jobEndRegex', 'failureRegex', 'sensitiveFieldNames'] as const
+    const formFields: Record<string, string | undefined> = {
+      preset: selectedPreset,
+      slowThresholdMs: String(slowThreshold),
+      options: JSON.stringify(backendOptions),
+    }
+    for (const key of regexKeys) {
+      const val = customRegex[key]
+      if (val != null) formFields[key] = String(val)
+    }
+    if (currentPreset && customRegex.logLineRegex && customRegex.logLineRegex !== currentPreset.logLineRegex) {
+      formFields.logLineRegex = customRegex.logLineRegex
+    }
+    if (customFieldInputs.length > 0) {
+      const validFields = customFieldInputs.filter(cf => cf.name.trim() && cf.regex.trim())
+      if (validFields.length > 0) {
+        formFields.customFields = JSON.stringify(validFields)
+      }
+    }
+
     try {
-      const currentPreset = presets.find(p => p.name.toUpperCase() === selectedPreset.toUpperCase())
-      const { threadView: _tv, ...backendOptions } = analysisOptions
-      const opts: UploadOptions = {
-        preset: selectedPreset,
-        slowThresholdMs: slowThreshold,
-        ...customRegex,
-        analysisOptions: backendOptions,
-      }
-      if (currentPreset && customRegex.logLineRegex && customRegex.logLineRegex !== currentPreset.logLineRegex) {
-        opts.logLineRegex = customRegex.logLineRegex
-      }
-      if (customFieldInputs.length > 0) {
-        const validFields = customFieldInputs.filter(cf => cf.name.trim() && cf.regex.trim())
-        if (validFields.length > 0) {
-          opts.customFields = JSON.stringify(validFields)
-        }
-      }
-      const result = await logService.uploadFiles(pendingFiles, opts)
-      setSelectedId(result.id)
-      refreshList()
-      notify(t('logAnalyzer.upload.success'), 'success')
+      const ticket = await prepareLogAnalysis(pendingFiles, formFields)
+      setAnalysisTicket(ticket)
+      sse.start(
+        (onEvent, onDone, onError) => streamLogAnalysis(ticket, onEvent, onDone, onError),
+        (event) => {
+          if (event.detail) {
+            setSelectedId(event.detail)
+            refreshList()
+          }
+          notify(t('logAnalyzer.upload.success'), 'success')
+          setPendingFiles([])
+          sse.reset()
+        },
+        () => {
+          setPendingFiles([])
+        },
+      )
     } catch (err) {
       notify(err instanceof Error ? err.message : t('logAnalyzer.upload.error'), 'error')
-    } finally {
-      setUploading(false)
       setPendingFiles([])
     }
-  }, [pendingFiles, selectedPreset, slowThreshold, customRegex, presets, customFieldInputs, refreshList, notify, t])
+  }, [pendingFiles, selectedPreset, slowThreshold, customRegex, presets, customFieldInputs, refreshList, notify, t, sse])
 
-  const handleDelete = useCallback(async (id: string) => {
+  const handleCancelAnalysis = useCallback(() => {
+    if (analysisTicket) cancelLogAnalysis(analysisTicket)
+  }, [analysisTicket])
+
+  const handleDeleteClick = useCallback((id: string, label: string) => {
+    setDeleteTarget({ id, label })
+  }, [])
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTarget) return
+    const { id } = deleteTarget
+    setDeleteTarget(null)
     try {
       await logService.deleteAnalysis(id)
       if (selectedId === id) setSelectedId(null)
@@ -137,7 +201,7 @@ export default function LogAnalyzerPage() {
     } catch (err) {
       notify(err instanceof Error ? err.message : String(err), 'error')
     }
-  }, [selectedId, refreshList, notify, t])
+  }, [deleteTarget, selectedId, refreshList, notify])
 
   const handleCompose = useCallback(async () => {
     if (composeIds.size < 2) return
@@ -249,6 +313,18 @@ export default function LogAnalyzerPage() {
         {t('logAnalyzer.title')}
       </Typography>
 
+      {activeAnalyses.length > 0 && (
+        <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
+          <AlertTitle>{t('logAnalyzer.broadcast.alertTitle')}</AlertTitle>
+          {activeAnalyses.map((filenames, i) => (
+            <Stack key={i} direction="row" alignItems="center" spacing={1}>
+              <LinearProgress sx={{ width: 80 }} />
+              <Typography variant="body2">{filenames}</Typography>
+            </Stack>
+          ))}
+        </Alert>
+      )}
+
       {/* ---- Upload Panel ---- */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="flex-start">
@@ -256,7 +332,7 @@ export default function LogAnalyzerPage() {
             variant="contained"
             component="label"
             startIcon={<CloudUpload />}
-            disabled={uploading}
+            disabled={sse.isRunning}
           >
             {t('logAnalyzer.upload.selectFiles')}
             <input type="file" hidden multiple accept=".log,.txt,.out" onChange={(e) => handleUpload(e.target.files)} />
@@ -298,7 +374,24 @@ export default function LogAnalyzerPage() {
             {t('logAnalyzer.upload.advanced')}
           </Button>
         </Stack>
-        {uploading && <LinearProgress sx={{ mt: 2 }} />}
+        <Dialog open={sse.isRunning || (sse.events.length > 0 && !sse.isDone)} maxWidth="sm" fullWidth
+          onClose={(_e, reason) => { if (reason !== 'backdropClick' || !sse.isRunning) { sse.reset() } }}>
+          <DialogTitle>{t('logAnalyzer.upload.analyzing')}</DialogTitle>
+          <DialogContent>
+            <OperationProgress events={sse.events} steps={LOG_ANALYSIS_STEPS} />
+          </DialogContent>
+          <DialogActions>
+            {sse.isRunning ? (
+              <Button color="error" startIcon={<Cancel />} onClick={handleCancelAnalysis}>
+                {t('logAnalyzer.upload.cancel')}
+              </Button>
+            ) : (
+              <Button variant="contained" onClick={() => sse.reset()}>
+                {t('logAnalyzer.upload.close')}
+              </Button>
+            )}
+          </DialogActions>
+        </Dialog>
 
         <Collapse in={advancedOpen}>
           <Stack spacing={2} sx={{ mt: 2 }}>
@@ -354,15 +447,26 @@ export default function LogAnalyzerPage() {
                 </Button>
               )}
             </Stack>
-            {analyses.map((a) => (
+            {analyses.map((a) => {
+              const vc = viewerCounts[a.id] ?? 0
+              const otherViewers = selectedId === a.id ? Math.max(0, vc - 1) : vc
+              return (
+              <Badge key={a.id} badgeContent={otherViewers > 0 ? otherViewers : undefined}
+                color="info" overlap="rectangular"
+                anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+                sx={{ mr: 1, mb: 1, '& .MuiBadge-badge': { fontSize: '0.65rem', height: 16, minWidth: 16, right: 4, top: 4 } }}>
               <Chip
-                key={a.id}
-                label={`${a.sourceFiles.map(f => f.filename).join(', ')} (${a.totalLineCount.toLocaleString()} lines)`}
+                label={
+                  <Stack direction="row" alignItems="center" spacing={0.5}>
+                    <span>{a.sourceFiles.map(f => f.filename).join(', ')} ({a.totalLineCount.toLocaleString()} lines)</span>
+                    {otherViewers > 0 && <Visibility sx={{ fontSize: 14, opacity: 0.7 }} />}
+                  </Stack>
+                }
                 onClick={() => setSelectedId(a.id)}
-                onDelete={() => handleDelete(a.id)}
+                onDelete={() => handleDeleteClick(a.id, a.sourceFiles.map(f => f.filename).join(', '))}
                 variant={selectedId === a.id ? 'filled' : 'outlined'}
                 color={selectedId === a.id ? 'primary' : 'default'}
-                sx={{ mr: 1, mb: 1, cursor: 'pointer' }}
+                sx={{ cursor: 'pointer' }}
                 icon={
                   <input
                     type="checkbox"
@@ -381,7 +485,9 @@ export default function LogAnalyzerPage() {
                   />
                 }
               />
-            ))}
+              </Badge>
+              )
+            })}
           </Box>
         )}
       </Paper>
@@ -446,6 +552,32 @@ export default function LogAnalyzerPage() {
         onClose={() => { setOptionsDialogOpen(false); setPendingFiles([]) }}
         onStart={handleStartAnalysis}
       />
+
+      <Dialog open={deleteTarget != null} onClose={() => setDeleteTarget(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <DeleteForever color="error" /> {t('logAnalyzer.delete.title')}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            {t('logAnalyzer.delete.confirm', { filename: deleteTarget?.label ?? '' })}
+          </Typography>
+          {deleteTarget && (() => {
+            const vc = viewerCounts[deleteTarget.id] ?? 0
+            const others = selectedId === deleteTarget.id ? Math.max(0, vc - 1) : vc
+            return others > 0 ? (
+              <Alert severity="warning" sx={{ mt: 2 }} icon={<Visibility />}>
+                {t('logAnalyzer.delete.viewerWarning', { count: others })}
+              </Alert>
+            ) : null
+          })()}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTarget(null)}>{t('logAnalyzer.upload.cancel')}</Button>
+          <Button variant="contained" color="error" onClick={handleDeleteConfirm}>
+            {t('logAnalyzer.delete.remove')}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

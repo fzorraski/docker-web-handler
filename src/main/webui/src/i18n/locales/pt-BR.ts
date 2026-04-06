@@ -769,6 +769,9 @@ const ptBR: typeof en = {
       customFields: 'Campos Personalizados',
       addCustomField: 'Adicionar Campo Personalizado',
       analyses: 'Análises',
+      analyzing: 'Analisando...',
+      cancel: 'Cancelar',
+      close: 'Fechar',
       success: 'Arquivo de log analisado com sucesso.',
       error: 'Falha ao analisar arquivo de log.',
     },
@@ -776,6 +779,15 @@ const ptBR: typeof en = {
       button: 'Compor',
       success: 'Análises compostas com sucesso.',
       error: 'Falha ao compor análises.',
+    },
+    broadcast: {
+      alertTitle: 'Análise em andamento',
+    },
+    delete: {
+      title: 'Remover Análise',
+      confirm: 'Tem certeza que deseja remover a análise de "{{filename}}"? Esta ação não pode ser desfeita.',
+      viewerWarning: '{{count}} outro(s) usuário(s) estão visualizando esta análise.',
+      remove: 'Remover',
     },
     dashboard: {
       totalLines: 'Total de Linhas',

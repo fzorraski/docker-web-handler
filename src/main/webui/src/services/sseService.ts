@@ -300,3 +300,73 @@ export function streamSnapshot(
 ): () => void {
   return streamSse(`/api/database/snapshots/sse/create/${ticket}`, onEvent, onDone, onError)
 }
+
+// ---- Log Analysis ----
+
+export async function prepareLogAnalysis(files: File[], options: Record<string, string | undefined>): Promise<string> {
+  const form = new FormData()
+  files.forEach((f) => form.append('files', f))
+  for (const [key, value] of Object.entries(options)) {
+    if (value != null) form.append(key, value)
+  }
+  const res = await fetchWithAuth('/api/logs/analyzer/sse/upload/prepare', { method: 'POST', body: form })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || res.statusText)
+  }
+  const data = await res.json()
+  return data.ticket
+}
+
+export function streamLogAnalysis(
+  ticket: string,
+  onEvent: (event: ContainerEvent) => void,
+  onDone: (event: ContainerEvent) => void,
+  onError: (message: string) => void,
+): () => void {
+  return streamSse(`/api/logs/analyzer/sse/upload/${ticket}`, onEvent, onDone, onError)
+}
+
+export async function cancelLogAnalysis(ticket: string): Promise<boolean> {
+  const res = await fetchWithAuth(`/api/logs/analyzer/sse/upload/cancel/${ticket}`, { method: 'POST' })
+  if (!res.ok) return false
+  const data = await res.json()
+  return data.cancelled
+}
+
+export interface LogAnalysisEvent {
+  user: string
+  filenames: string
+  analysisId?: string
+}
+
+export function subscribeLogAnalysisUpdates(
+  onStarted: (event: LogAnalysisEvent) => void,
+  onCompleted: (event: LogAnalysisEvent) => void,
+  onDeleted: (event: LogAnalysisEvent) => void,
+  onViewers: (counts: Record<string, number>) => void,
+): () => void {
+  const es = new EventSource('/api/logs/analyzer/sse/updates')
+  es.addEventListener('analysis-started', (e) => {
+    try { onStarted(JSON.parse((e as MessageEvent).data)) } catch { /* ignore */ }
+  })
+  es.addEventListener('analysis-completed', (e) => {
+    try { onCompleted(JSON.parse((e as MessageEvent).data)) } catch { /* ignore */ }
+  })
+  es.addEventListener('analysis-deleted', (e) => {
+    try { onDeleted(JSON.parse((e as MessageEvent).data)) } catch { /* ignore */ }
+  })
+  es.addEventListener('viewers', (e) => {
+    try { onViewers(JSON.parse((e as MessageEvent).data)) } catch { /* ignore */ }
+  })
+  es.onerror = () => { /* EventSource auto-reconnects */ }
+  return () => es.close()
+}
+
+export async function setLogAnalysisViewing(clientToken: string, analysisId: string | null): Promise<void> {
+  await fetchWithAuth('/api/logs/analyzer/sse/viewing', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clientToken, analysisId }),
+  }).catch(() => {})
+}

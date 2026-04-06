@@ -1,5 +1,6 @@
 package br.com.fzdevx.infrastructure.config;
 
+import br.com.fzdevx.application.dto.AnalyzeLogFileRequest;
 import br.com.fzdevx.application.dto.CreateSnapshotRequest;
 import br.com.fzdevx.application.dto.PruneImagesRequest;
 import br.com.fzdevx.application.dto.RestoreDumpRequest;
@@ -30,6 +31,7 @@ public class RequestStash {
     private final ConcurrentHashMap<String, StashedEntry<CreateSnapshotRequest>> snapshotStash = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, StashedEntry<PruneImagesRequest>> pruneStash = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, StashedEntry<RunMigrationRequest>> migrationStash = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, StashedEntry<AnalyzeLogFileRequest>> logAnalysisStash = new ConcurrentHashMap<>();
 
     private ScheduledExecutorService cleanupScheduler;
 
@@ -57,7 +59,8 @@ public class RequestStash {
                 + evictMap(snapshotStash, cutoff)
                 + evictMap(pruneStash, cutoff)
                 + evictMap(migrationStash, cutoff)
-                + evictMap(terminalStash, cutoff);
+                + evictMap(terminalStash, cutoff)
+                + evictLogAnalysisStash(cutoff);
         if (evicted > 0) {
             Log.infof("RequestStash: evicted %d expired ticket(s).", evicted);
         }
@@ -134,5 +137,27 @@ public class RequestStash {
 
     public String retrieveTerminal(String ticket) {
         return take(terminalStash, ticket);
+    }
+
+    public String stashLogAnalysis(AnalyzeLogFileRequest request) {
+        return put(logAnalysisStash, request);
+    }
+
+    public AnalyzeLogFileRequest retrieveLogAnalysis(String ticket) {
+        return take(logAnalysisStash, ticket);
+    }
+
+    private int evictLogAnalysisStash(Instant cutoff) {
+        int count = 0;
+        for (Map.Entry<String, StashedEntry<AnalyzeLogFileRequest>> entry : logAnalysisStash.entrySet()) {
+            if (entry.getValue().createdAt().isBefore(cutoff)) {
+                StashedEntry<AnalyzeLogFileRequest> removed = logAnalysisStash.remove(entry.getKey());
+                if (removed != null) {
+                    removed.request().cleanupTempFiles();
+                    count++;
+                }
+            }
+        }
+        return count;
     }
 }

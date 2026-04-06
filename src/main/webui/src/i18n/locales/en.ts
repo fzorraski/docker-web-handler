@@ -768,6 +768,9 @@ const en = {
       customFields: 'Custom Fields',
       addCustomField: 'Add Custom Field',
       analyses: 'Analyses',
+      analyzing: 'Analyzing...',
+      cancel: 'Cancel',
+      close: 'Close',
       success: 'Log file analyzed successfully.',
       error: 'Failed to analyze log file.',
     },
@@ -775,6 +778,15 @@ const en = {
       button: 'Compose',
       success: 'Analyses composed successfully.',
       error: 'Failed to compose analyses.',
+    },
+    broadcast: {
+      alertTitle: 'Analysis in progress',
+    },
+    delete: {
+      title: 'Remove Analysis',
+      confirm: 'Are you sure you want to remove the analysis for "{{filename}}"? This action cannot be undone.',
+      viewerWarning: '{{count}} other user(s) are currently viewing this analysis.',
+      remove: 'Remove',
     },
     dashboard: {
       totalLines: 'Total Lines',

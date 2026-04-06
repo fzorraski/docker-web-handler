@@ -4,6 +4,9 @@ import br.com.fzdevx.application.dto.AnalysisOptions;
 import br.com.fzdevx.application.port.LogAnalysisPort;
 import br.com.fzdevx.domain.model.*;
 import br.com.fzdevx.domain.shared.EndpointStatsCalculator;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -36,6 +39,12 @@ public class LogFileParser implements LogAnalysisPort {
     @Override
     public LogAnalysis analyze(List<Path> files, List<String> filenames, LogPreset preset, int slowThresholdMs,
                                AnalysisOptions options) {
+        return analyze(files, filenames, preset, slowThresholdMs, options, e -> {}, new AtomicBoolean(false));
+    }
+
+    @Override
+    public LogAnalysis analyze(List<Path> files, List<String> filenames, LogPreset preset, int slowThresholdMs,
+                               AnalysisOptions options, Consumer<ContainerEvent> progressSink, AtomicBoolean cancelled) {
         Pattern logLinePattern = compileAndValidate(preset.logLineRegex(), "logLineRegex");
         Pattern apiCallPattern = options.apiCalls() && preset.apiCallRegex() != null && !preset.apiCallRegex().isBlank()
                 ? compileAndValidate(preset.apiCallRegex(), "apiCallRegex") : null;
@@ -47,10 +56,18 @@ public class LogFileParser implements LogAnalysisPort {
                 ? compileAndValidate(preset.failureRegex(), "failureRegex") : null;
         DateTimeFormatter timestampFormatter = DateTimeFormatter.ofPattern(preset.timestampFormat());
 
+        // Estimate total lines from file sizes (avoid reading files twice)
+        long totalBytes = 0;
+        for (Path file : files) {
+            try { totalBytes += Files.size(file); } catch (IOException e) { /* ignore */ }
+        }
+
         List<LogLine> allLines = new ArrayList<>();
         List<LogAnalysis.SourceFile> sourceFiles = new ArrayList<>();
+        long bytesProcessed = 0;
 
         for (int i = 0; i < files.size(); i++) {
+            checkCancelled(cancelled);
             Path file = files.get(i);
             String filename = filenames.get(i);
             long fileSize;
@@ -60,29 +77,42 @@ public class LogFileParser implements LogAnalysisPort {
                 fileSize = 0;
             }
             sourceFiles.add(new LogAnalysis.SourceFile(filename, fileSize));
-            parseFile(file, filename, logLinePattern, timestampFormatter, allLines);
+            parseFile(file, filename, logLinePattern, timestampFormatter, allLines, progressSink, cancelled, bytesProcessed, totalBytes);
+            bytesProcessed += fileSize;
         }
 
         if (files.size() > 1) {
             allLines.sort(Comparator.comparing(LogLine::timestamp, Comparator.nullsLast(Comparator.naturalOrder())));
         }
 
+        checkCancelled(cancelled);
         List<String> sensitiveFieldNames = preset.sensitiveFieldNames() != null
                 ? preset.sensitiveFieldNames() : List.of();
-
         List<Map.Entry<Pattern, String>> redactionPatterns = compileRedactionPatterns(sensitiveFieldNames);
 
-        List<ApiCallPair> apiCalls = apiCallPattern != null
-                ? pairApiCalls(allLines, apiCallPattern, slowThresholdMs, redactionPatterns)
-                : List.of();
+        List<ApiCallPair> apiCalls = List.of();
+        if (apiCallPattern != null) {
+            progressSink.accept(ContainerEvent.info("API Calls", "Pairing API calls..."));
+            checkCancelled(cancelled);
+            apiCalls = pairApiCalls(allLines, apiCallPattern, slowThresholdMs, redactionPatterns);
+            progressSink.accept(ContainerEvent.info("API Calls", "Found " + apiCalls.size() + " API call pairs"));
+        }
 
-        List<JobExecution> jobExecutions = jobStartPattern != null
-                ? pairJobExecutions(allLines, jobStartPattern, jobEndPattern)
-                : List.of();
+        List<JobExecution> jobExecutions = List.of();
+        if (jobStartPattern != null) {
+            progressSink.accept(ContainerEvent.info("Jobs", "Pairing job executions..."));
+            checkCancelled(cancelled);
+            jobExecutions = pairJobExecutions(allLines, jobStartPattern, jobEndPattern);
+            progressSink.accept(ContainerEvent.info("Jobs", "Found " + jobExecutions.size() + " job executions"));
+        }
 
-        List<RepeatedFailure> repeatedFailures = failurePattern != null
-                ? detectRepeatedFailures(allLines, failurePattern)
-                : List.of();
+        List<RepeatedFailure> repeatedFailures = List.of();
+        if (failurePattern != null) {
+            progressSink.accept(ContainerEvent.info("Failures", "Detecting repeated failures..."));
+            checkCancelled(cancelled);
+            repeatedFailures = detectRepeatedFailures(allLines, failurePattern);
+            progressSink.accept(ContainerEvent.info("Failures", "Found " + repeatedFailures.size() + " repeated failures"));
+        }
 
         Map<String, Integer> levelCounts = new LinkedHashMap<>();
         Set<String> threadSet = new LinkedHashSet<>();
@@ -131,13 +161,30 @@ public class LogFileParser implements LogAnalysisPort {
         );
     }
 
+    private void checkCancelled(AtomicBoolean cancelled) {
+        if (cancelled.get()) throw new CancellationException("Analysis cancelled");
+    }
+
     private void parseFile(Path file, String filename, Pattern logLinePattern,
                            DateTimeFormatter formatter, List<LogLine> allLines) {
+        parseFile(file, filename, logLinePattern, formatter, allLines, e -> {}, new AtomicBoolean(false), 0, 0);
+    }
+
+    private void parseFile(Path file, String filename, Pattern logLinePattern,
+                           DateTimeFormatter formatter, List<LogLine> allLines,
+                           Consumer<ContainerEvent> progressSink, AtomicBoolean cancelled,
+                           long bytesProcessedBefore, long totalBytes) {
+        long fileSize;
+        try { fileSize = Files.size(file); } catch (IOException e) { fileSize = 0; }
+
         try (BufferedReader reader = Files.newBufferedReader(file)) {
             String line;
             int lineNumber = 0;
+            int lastReported = 0;
+            long bytesRead = 0;
             while ((line = reader.readLine()) != null) {
                 lineNumber++;
+                bytesRead += line.length() + 1; // approximate byte count
                 Matcher m = logLinePattern.matcher(line);
                 if (m.matches()) {
                     LocalDateTime timestamp = parseTimestamp(m.group("timestamp"), formatter);
@@ -150,7 +197,18 @@ public class LogFileParser implements LogAnalysisPort {
                 } else {
                     allLines.add(new LogLine(lineNumber, null, null, null, null, line, filename));
                 }
+                if (lineNumber - lastReported >= 2000) {
+                    lastReported = lineNumber;
+                    checkCancelled(cancelled);
+                    int pct = totalBytes > 0
+                            ? (int) ((bytesProcessedBefore + bytesRead) * 100 / totalBytes) : -1;
+                    progressSink.accept(ContainerEvent.progress("Parsing",
+                            "Parsing " + filename + "... " + lineNumber + " lines",
+                            Math.min(pct, 99)));
+                }
             }
+            progressSink.accept(ContainerEvent.info("Parsing",
+                    "Parsed " + filename + ": " + lineNumber + " lines"));
         } catch (IOException e) {
             LOG.log(Level.SEVERE, "Failed to parse log file ''{0}'': {1}",
                     new Object[]{filename, e.getMessage()});

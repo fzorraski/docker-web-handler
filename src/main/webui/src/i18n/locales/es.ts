@@ -769,6 +769,9 @@ const es: typeof en = {
       customFields: 'Campos Personalizados',
       addCustomField: 'Agregar Campo Personalizado',
       analyses: 'Análisis',
+      analyzing: 'Analizando...',
+      cancel: 'Cancelar',
+      close: 'Cerrar',
       success: 'Archivo de log analizado exitosamente.',
       error: 'Error al analizar archivo de log.',
     },
@@ -776,6 +779,15 @@ const es: typeof en = {
       button: 'Componer',
       success: 'Análisis compuestos exitosamente.',
       error: 'Error al componer análisis.',
+    },
+    broadcast: {
+      alertTitle: 'Análisis en progreso',
+    },
+    delete: {
+      title: 'Eliminar Análisis',
+      confirm: '¿Está seguro que desea eliminar el análisis de "{{filename}}"? Esta acción no se puede deshacer.',
+      viewerWarning: '{{count}} otro(s) usuario(s) están viendo este análisis.',
+      remove: 'Eliminar',
     },
     dashboard: {
       totalLines: 'Líneas Totales',

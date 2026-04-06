@@ -5,6 +5,11 @@ import {
   getAnomalyDetection,
   getAnomalySignalTypes,
 } from '../services/logAnalyzerService'
+import {
+  prepareLogAnalysis,
+  cancelLogAnalysis,
+  setLogAnalysisViewing,
+} from '../services/sseService'
 
 const mockFetch = vi.fn()
 global.fetch = mockFetch
@@ -168,6 +173,117 @@ describe('logAnalyzerService', () => {
       mockFetch.mockReturnValue(jsonResponse({ error: 'not found' }, false))
 
       await expect(getAnomalySignalTypes('bad')).rejects.toThrow('not found')
+    })
+  })
+
+  // ---- prepareLogAnalysis ----
+
+  describe('prepareLogAnalysis', () => {
+    it('sends multipart form with files and options', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ ticket: 'abc-123' }))
+
+      const file = new File(['log content'], 'test.log', { type: 'text/plain' })
+      const ticket = await prepareLogAnalysis([file], { preset: 'WILDFLY', slowThresholdMs: '1000' })
+
+      expect(ticket).toBe('abc-123')
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      const [url, init] = mockFetch.mock.calls[0]
+      expect(url).toBe('/api/logs/analyzer/sse/upload/prepare')
+      expect(init.method).toBe('POST')
+      expect(init.body).toBeInstanceOf(FormData)
+    })
+
+    it('includes all option fields in form data', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ ticket: 'xyz' }))
+
+      const file = new File(['data'], 'app.log')
+      await prepareLogAnalysis([file], {
+        preset: 'WILDFLY',
+        logLineRegex: '.*',
+        customFields: '[{"name":"Test","regex":".*","countOnly":false}]',
+      })
+
+      const formData = mockFetch.mock.calls[0][1].body as FormData
+      expect(formData.get('preset')).toBe('WILDFLY')
+      expect(formData.get('logLineRegex')).toBe('.*')
+      expect(formData.get('customFields')).toContain('Test')
+    })
+
+    it('skips undefined options', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ ticket: 'xyz' }))
+
+      await prepareLogAnalysis([new File([''], 'f.log')], { preset: 'WILDFLY', logLineRegex: undefined })
+
+      const formData = mockFetch.mock.calls[0][1].body as FormData
+      expect(formData.get('preset')).toBe('WILDFLY')
+      expect(formData.get('logLineRegex')).toBeNull()
+    })
+
+    it('throws on error response', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ error: 'disabled' }, false))
+
+      await expect(prepareLogAnalysis([new File([''], 'f.log')], {})).rejects.toThrow('disabled')
+    })
+  })
+
+  // ---- cancelLogAnalysis ----
+
+  describe('cancelLogAnalysis', () => {
+    it('sends POST to cancel endpoint', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ cancelled: true }))
+
+      const result = await cancelLogAnalysis('ticket-123')
+
+      expect(result).toBe(true)
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/logs/analyzer/sse/upload/cancel/ticket-123',
+        { method: 'POST' },
+      )
+    })
+
+    it('returns false on error', async () => {
+      mockFetch.mockReturnValue(jsonResponse({}, false))
+
+      const result = await cancelLogAnalysis('bad-ticket')
+
+      expect(result).toBe(false)
+    })
+  })
+
+  // ---- setLogAnalysisViewing ----
+
+  describe('setLogAnalysisViewing', () => {
+    it('sends viewing state to server', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ ok: true }))
+
+      await setLogAnalysisViewing('client-token-1', 'analysis-abc')
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/logs/analyzer/sse/viewing',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+      expect(body.clientToken).toBe('client-token-1')
+      expect(body.analysisId).toBe('analysis-abc')
+    })
+
+    it('sends null analysisId to clear viewing', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ ok: true }))
+
+      await setLogAnalysisViewing('client-token-1', null)
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+      expect(body.analysisId).toBeNull()
+    })
+
+    it('does not throw on network error', async () => {
+      mockFetch.mockRejectedValue(new Error('network error'))
+
+      // Should not throw — fire-and-forget
+      await expect(setLogAnalysisViewing('t', 'a')).resolves.toBeUndefined()
     })
   })
 })

@@ -1,5 +1,6 @@
 package br.com.fzdevx.application.usecase;
 
+import br.com.fzdevx.application.dto.AnalysisOptions;
 import br.com.fzdevx.application.port.CustomFieldExtractorPort;
 import br.com.fzdevx.application.port.LogAnalysisPort;
 import br.com.fzdevx.domain.model.*;
@@ -17,8 +18,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -211,5 +215,138 @@ class AnalyzeLogFileUseCaseTest {
         useCase.compose(List.of(a1.getId(), a2.getId()), LogPreset.WILDFLY, 1000);
 
         assertEquals(3, useCase.listAll().size());
+    }
+
+    // ---- analyzeWithProgress ----
+
+    @Test
+    void analyzeWithProgress_sendsEventsAndStoresResult() {
+        LogAnalysis expected = makeAnalysis();
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any(), any(), any())).thenReturn(expected);
+
+        List<ContainerEvent> events = new ArrayList<>();
+        useCase.analyzeWithProgress(
+                List.of(Path.of("/tmp/test.log")), List.of("test.log"),
+                LogPreset.WILDFLY, 1000, AnalysisOptions.all(),
+                events::add, "ticket-1");
+
+        // Should have at least a start INFO and a final SUCCESS
+        assertTrue(events.stream().anyMatch(e -> e.getType() == ContainerEvent.EventType.INFO));
+        assertTrue(events.stream().anyMatch(e -> e.getType() == ContainerEvent.EventType.SUCCESS));
+
+        // SUCCESS event should carry the analysis ID
+        ContainerEvent success = events.stream()
+                .filter(e -> e.getType() == ContainerEvent.EventType.SUCCESS).findFirst().orElseThrow();
+        assertEquals(expected.getId(), success.getDetail());
+
+        // Analysis should be stored
+        assertNotNull(useCase.get(expected.getId()));
+    }
+
+    @Test
+    void analyzeWithProgress_cancellation_sendsErrorEvent() {
+        // Simulate cancellation during parsing: the port throws CancellationException
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any(), any(), any()))
+                .thenThrow(new CancellationException("cancelled"));
+
+        List<ContainerEvent> events = new ArrayList<>();
+        useCase.analyzeWithProgress(
+                List.of(Path.of("/tmp/test.log")), List.of("test.log"),
+                LogPreset.WILDFLY, 1000, AnalysisOptions.all(),
+                events::add, "ticket-cancel");
+
+        assertTrue(events.stream()
+                .anyMatch(e -> e.getType() == ContainerEvent.EventType.ERROR
+                        && e.getMessage().toLowerCase().contains("cancel")));
+    }
+
+    @Test
+    void analyzeWithProgress_exception_sendsErrorEvent() {
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any(), any(), any()))
+                .thenThrow(new RuntimeException("disk full"));
+
+        List<ContainerEvent> events = new ArrayList<>();
+        useCase.analyzeWithProgress(
+                List.of(Path.of("/tmp/test.log")), List.of("test.log"),
+                LogPreset.WILDFLY, 1000, AnalysisOptions.all(),
+                events::add, "ticket-err");
+
+        assertTrue(events.stream()
+                .anyMatch(e -> e.getType() == ContainerEvent.EventType.ERROR
+                        && e.getMessage().contains("disk full")));
+    }
+
+    @Test
+    void analyzeWithProgress_sendsCustomFieldEvents() {
+        LogAnalysis expected = makeAnalysis();
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any(), any(), any())).thenReturn(expected);
+        when(customFieldExtractorPort.extract(any(), any())).thenReturn(List.of());
+
+        LogPreset presetWithFields = new LogPreset("WildFly",
+                LogPreset.WILDFLY.logLineRegex(), LogPreset.WILDFLY.timestampFormat(),
+                LogPreset.WILDFLY.apiCallRegex(), null, null, null, List.of(),
+                List.of(new LogPreset.CustomField("Test", ".*", false)));
+
+        List<ContainerEvent> events = new ArrayList<>();
+        useCase.analyzeWithProgress(
+                List.of(Path.of("/tmp/test.log")), List.of("test.log"),
+                presetWithFields, 1000, AnalysisOptions.all(),
+                events::add, "ticket-cf");
+
+        assertTrue(events.stream()
+                .anyMatch(e -> "Custom Fields".equals(e.getStep())));
+    }
+
+    // ---- cancel ----
+
+    @Test
+    void cancel_unknownTicket_returnsFalse() {
+        assertFalse(useCase.cancel("nonexistent"));
+    }
+
+    @Test
+    void cancel_activeTicket_returnsTrue() {
+        // Start an analysis that blocks so we can cancel it
+        AtomicBoolean parserStarted = new AtomicBoolean(false);
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any(), any(), any()))
+                .thenAnswer(inv -> {
+                    parserStarted.set(true);
+                    AtomicBoolean cancelled = inv.getArgument(6);
+                    // Wait until cancelled
+                    while (!cancelled.get()) {
+                        Thread.sleep(10);
+                    }
+                    throw new CancellationException("cancelled");
+                });
+
+        Thread analysisThread = new Thread(() ->
+                useCase.analyzeWithProgress(
+                        List.of(Path.of("/tmp/test.log")), List.of("test.log"),
+                        LogPreset.WILDFLY, 1000, AnalysisOptions.all(),
+                        e -> {}, "ticket-active"));
+        analysisThread.start();
+
+        // Wait for analysis to start
+        while (!parserStarted.get()) {
+            Thread.onSpinWait();
+        }
+
+        assertTrue(useCase.cancel("ticket-active"));
+
+        try { analysisThread.join(5000); } catch (InterruptedException ignored) {}
+        assertFalse(analysisThread.isAlive());
+    }
+
+    @Test
+    void cancel_afterCompletion_returnsFalse() {
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any(), any(), any())).thenReturn(makeAnalysis());
+
+        useCase.analyzeWithProgress(
+                List.of(Path.of("/tmp/test.log")), List.of("test.log"),
+                LogPreset.WILDFLY, 1000, AnalysisOptions.all(),
+                e -> {}, "ticket-done");
+
+        // Ticket removed from activeRuns after completion
+        assertFalse(useCase.cancel("ticket-done"));
     }
 }

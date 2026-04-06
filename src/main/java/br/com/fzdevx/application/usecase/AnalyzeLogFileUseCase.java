@@ -19,6 +19,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.logging.Logger;
 
 @ApplicationScoped
@@ -27,6 +29,7 @@ public class AnalyzeLogFileUseCase {
     private static final Logger LOG = Logger.getLogger(AnalyzeLogFileUseCase.class.getName());
 
     private final ConcurrentHashMap<String, AnalysisEntry> analyses = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, AtomicBoolean> activeRuns = new ConcurrentHashMap<>();
     private ScheduledExecutorService cleanupScheduler;
 
     @Inject
@@ -108,6 +111,79 @@ public class AnalyzeLogFileUseCase {
                 analysis.getApiCalls().size(), analysis.getEndpoints().size(),
                 analysis.getSourceFiles().size()));
         return analysis;
+    }
+
+    public void analyzeWithProgress(List<Path> files, List<String> filenames, LogPreset preset,
+                                     int slowThresholdMs, AnalysisOptions options,
+                                     Consumer<ContainerEvent> eventSink, String ticket) {
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        activeRuns.put(ticket, cancelled);
+        try {
+            if (analyses.size() >= maxFiles) {
+                evictOldest();
+            }
+
+            eventSink.accept(ContainerEvent.info("Parsing", "Starting analysis..."));
+            LogAnalysis analysis = logAnalysisPort.analyze(files, filenames, preset, slowThresholdMs, options, eventSink, cancelled);
+
+            if (cancelled.get()) {
+                eventSink.accept(ContainerEvent.error("Cancelled", "Analysis cancelled."));
+                return;
+            }
+
+            if (options.customFields() && preset.hasCustomFields()) {
+                eventSink.accept(ContainerEvent.info("Custom Fields", "Extracting custom fields..."));
+                checkCancelled(cancelled);
+                analysis.setCustomFieldResults(
+                        customFieldExtractorPort.extract(analysis.getAllLines(), preset.customFields())
+                );
+                eventSink.accept(ContainerEvent.info("Custom Fields",
+                        "Custom fields: " + analysis.getCustomFieldResults().size() + " field(s) processed"));
+            }
+
+            if (options.criticalIssues()) {
+                eventSink.accept(ContainerEvent.info("Critical Issues", "Detecting critical issues..."));
+                checkCancelled(cancelled);
+                analysis.setCriticalIssues(criticalIssueDetector.detect(analysis.getAllLines()));
+            }
+
+            if (options.npeAnalysis()) {
+                eventSink.accept(ContainerEvent.info("NPE Analysis", "Analyzing NullPointerExceptions..."));
+                checkCancelled(cancelled);
+                analysis.setNpeAnalysis(npeAnalyzer.analyze(analysis.getAllLines()));
+            }
+
+            if (options.exceptionAnalysis()) {
+                eventSink.accept(ContainerEvent.info("Exception Analysis", "Analyzing exceptions..."));
+                checkCancelled(cancelled);
+                analysis.setExceptionAnalysis(exceptionAnalyzer.analyze(analysis.getAllLines()));
+            }
+
+            analyses.put(analysis.getId(), new AnalysisEntry(analysis, Instant.now()));
+            resourceCounterService.increment(br.com.fzdevx.infrastructure.persistence.ResourceCounterService.LOGS_ANALYZED);
+
+            eventSink.accept(ContainerEvent.success("Complete",
+                    "Analysis complete: " + analysis.getTotalLineCount() + " lines, "
+                            + analysis.getApiCalls().size() + " API calls",
+                    analysis.getId()));
+        } catch (CancellationException e) {
+            eventSink.accept(ContainerEvent.error("Cancelled", "Analysis cancelled."));
+        } catch (Exception e) {
+            eventSink.accept(ContainerEvent.error("Error", "Analysis failed: " + e.getMessage()));
+        } finally {
+            activeRuns.remove(ticket);
+        }
+    }
+
+    public boolean cancel(String ticket) {
+        AtomicBoolean cancelled = activeRuns.get(ticket);
+        if (cancelled == null) return false;
+        cancelled.set(true);
+        return true;
+    }
+
+    private void checkCancelled(AtomicBoolean cancelled) {
+        if (cancelled.get()) throw new CancellationException("Analysis cancelled");
     }
 
     public LogAnalysis compose(List<String> analysisIds, LogPreset preset, int slowThresholdMs) {

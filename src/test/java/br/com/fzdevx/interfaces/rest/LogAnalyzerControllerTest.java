@@ -52,6 +52,9 @@ class LogAnalyzerControllerTest {
     @Mock
     AnomalyDetectorService anomalyDetectorService;
 
+    @Mock
+    br.com.fzdevx.interfaces.rest.util.LogAnalysisBroadcaster logAnalysisBroadcaster;
+
     @InjectMocks
     LogAnalyzerController controller;
 
