@@ -843,6 +843,8 @@ const ptBR: typeof en = {
       clearHighlights: 'Limpar destaques',
       fullscreen: 'Tela cheia',
       exitFullscreen: 'Sair da tela cheia',
+      showTimestamp: 'Mostrar horários',
+      hideTimestamp: 'Ocultar horários',
     },
     threads: {
       select: 'Selecionar thread',

@@ -4,7 +4,7 @@ import {
   TablePagination, LinearProgress, InputAdornment, Dialog,
   useTheme,
 } from '@mui/material'
-import { Search, ContentCopy, WrapText, KeyboardArrowUp, KeyboardArrowDown, MyLocation, ClearAll, HighlightOff, Fullscreen, FullscreenExit } from '@mui/icons-material'
+import { Search, ContentCopy, WrapText, KeyboardArrowUp, KeyboardArrowDown, MyLocation, ClearAll, HighlightOff, Fullscreen, FullscreenExit, AccessTime } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { List, useListRef, type RowComponentProps } from 'react-window'
 import { usePaginatedFetch } from '../../hooks/usePaginatedFetch'
@@ -28,6 +28,24 @@ function getLineBg(lineNumber: number, highlightLine: number | null, flashLine: 
   return undefined
 }
 
+function formatTime(ts: string | null): string {
+  if (!ts) return ''
+  // ts is ISO-like: "2026-03-30T10:00:00.49" or "2026-03-30 10:00:00,123"
+  const tIdx = ts.indexOf('T')
+  const spIdx = ts.indexOf(' ')
+  const sep = tIdx >= 0 ? tIdx + 1 : spIdx >= 0 ? spIdx + 1 : 0
+  let time = ts.substring(sep)
+  // Pad fractional seconds to 3 digits (Java trims trailing zeros: .49 → .490)
+  const dotIdx = time.indexOf('.')
+  const commaIdx = time.indexOf(',')
+  const fracIdx = dotIdx >= 0 ? dotIdx : commaIdx
+  if (fracIdx >= 0) {
+    const frac = time.substring(fracIdx + 1)
+    time = time.substring(0, fracIdx + 1) + frac.padEnd(3, '0')
+  }
+  return time
+}
+
 interface RowCustomProps {
   lines: LogLine[]
   levelColor: (level: string | null) => string
@@ -37,10 +55,11 @@ interface RowCustomProps {
   markedLines: Set<number>
   onToggleMark: (lineNumber: number) => void
   isDark: boolean
+  showTimestamp: boolean
   highlightRange?: { from: number; to: number } | null
 }
 
-function VirtualRow({ index, style, lines, levelColor, chipInactive, highlightLine, flashLine, markedLines, onToggleMark, isDark, highlightRange }: RowComponentProps<RowCustomProps>) {
+function VirtualRow({ index, style, lines, levelColor, chipInactive, highlightLine, flashLine, markedLines, onToggleMark, isDark, showTimestamp, highlightRange }: RowComponentProps<RowCustomProps>) {
   const line = lines[index]
   if (!line) return null
   const isMarked = markedLines.has(line.lineNumber)
@@ -65,6 +84,14 @@ function VirtualRow({ index, style, lines, levelColor, chipInactive, highlightLi
       >
         {line.lineNumber}
       </Box>
+      {showTimestamp && (
+        <Box sx={{
+          minWidth: 100, pr: 1, flexShrink: 0, lineHeight: `${ROW_HEIGHT}px`,
+          color: chipInactive, opacity: 0.7,
+        }}>
+          {formatTime(line.timestamp)}
+        </Box>
+      )}
       <Box sx={{
         color: levelColor(line.level),
         whiteSpace: 'pre',
@@ -98,6 +125,7 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
   const [filterThread, setFilterThread] = useState(initialThread ?? '')
   const [threads, setThreads] = useState<ThreadInfo[]>([])
   const [wordWrap, setWordWrap] = useState(false)
+  const [showTimestamp, setShowTimestamp] = useState(false)
   const [copySnackbar, setCopySnackbar] = useState(false)
   const [highlightLine, setHighlightLine] = useState<number | null>(null)
   const [markedLines, setMarkedLines] = useState<Set<number>>(new Set())
@@ -109,10 +137,12 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
   const firstVisibleIndexRef = useRef(0)
   const scrollAlignRef = useRef<'center' | 'start'>('center')
   const wrapScrollRafRef = useRef(0)
+  const prevPageRef = useRef(page)
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const listRef = useListRef(null)
   const wrapContainerRef = useRef<HTMLDivElement>(null)
-  const viewerWrapperRef = useRef<HTMLDivElement>(null)
+  const toolbarRef = useRef<HTMLDivElement>(null)
+  const paginationRef = useRef<HTMLDivElement>(null)
 
   // Sync debounced search to active search (normal typing flow)
   useEffect(() => { setActiveSearch(debouncedSearch) }, [debouncedSearch])
@@ -126,17 +156,19 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
     cancelAnimationFrame(wrapScrollRafRef.current)
   }, [])
 
-  // Measure available viewer height in fullscreen via ResizeObserver
+  // Measure available viewer height in fullscreen from toolbar + pagination
   useEffect(() => {
     if (!fullscreen) return
-    const el = viewerWrapperRef.current
-    if (!el) return
-    const observer = new ResizeObserver(entries => {
-      const h = entries[0]?.contentRect.height
-      if (h && h > 0) setFullscreenHeight(Math.floor(h))
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
+    const measure = () => {
+      const tbH = toolbarRef.current?.offsetHeight ?? 0
+      const pgH = paginationRef.current?.offsetHeight ?? 0
+      const h = window.innerHeight - tbH - pgH - 4 // 4px for LinearProgress
+      if (h > 0) setFullscreenHeight(h)
+    }
+    // Measure after dialog renders; retry once if refs aren't mounted yet
+    requestAnimationFrame(() => { measure(); setTimeout(measure, 50) })
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
   }, [fullscreen])
 
   // Handle jump to line — clear filters immediately, go to correct page
@@ -177,6 +209,23 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
     }),
     [analysisId, filterThread, filterLevel, activeSearch, page, effectiveRowsPerPage],
   )
+
+  // Scroll to top when page changes (but not when a scrollTarget is pending)
+  useEffect(() => {
+    if (page === prevPageRef.current || lines.length === 0) {
+      prevPageRef.current = page
+      return
+    }
+    prevPageRef.current = page
+    if (scrollTarget != null) return // a jump/fullscreen toggle is pending — let it handle scroll
+    requestAnimationFrame(() => {
+      if (!wordWrap && listRef.current) {
+        listRef.current.scrollToRow({ index: 0, align: 'start' })
+      } else if (wrapContainerRef.current) {
+        wrapContainerRef.current.scrollTop = 0
+      }
+    })
+  }, [page, lines, scrollTarget, wordWrap])
 
   // Scroll to target line after data loads (works for both highlight and bookmark navigation)
   const activeScrollTarget = scrollTarget
@@ -327,8 +376,8 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
   }, [lines])
 
   const rowProps = useMemo<RowCustomProps>(
-    () => ({ lines, levelColor, chipInactive: lt.chipInactive, highlightLine, flashLine, markedLines, onToggleMark: toggleMark, isDark, highlightRange }),
-    [lines, levelColor, lt.chipInactive, highlightLine, flashLine, markedLines, toggleMark, isDark, highlightRange],
+    () => ({ lines, levelColor, chipInactive: lt.chipInactive, highlightLine, flashLine, markedLines, onToggleMark: toggleMark, isDark, showTimestamp, highlightRange }),
+    [lines, levelColor, lt.chipInactive, highlightLine, flashLine, markedLines, toggleMark, isDark, showTimestamp, highlightRange],
   )
 
   const wrapToggleColor = isDark ? '#4d96ff' : '#1565c0'
@@ -336,7 +385,7 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
   const viewerHeight = fullscreen ? fullscreenHeight : VIEWER_HEIGHT
 
   const toolbarContent = (
-    <Box sx={{
+    <Box ref={toolbarRef} sx={{
       bgcolor: lt.toolbarBg,
       px: 1.5, py: 0.75,
       display: 'flex', flexWrap: 'wrap', gap: 0.75, alignItems: 'center',
@@ -474,6 +523,13 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
         </IconButton>
       </Tooltip>
 
+      <Tooltip title={showTimestamp ? t('logAnalyzer.rawLog.hideTimestamp') : t('logAnalyzer.rawLog.showTimestamp')} arrow>
+        <IconButton size="small" onClick={() => setShowTimestamp(v => !v)}
+          sx={{ color: showTimestamp ? wrapToggleColor : lt.iconColor }}>
+          <AccessTime sx={{ fontSize: 18 }} />
+        </IconButton>
+      </Tooltip>
+
       <Tooltip title={copySnackbar ? t('containers.logs.copied') : t('containers.logs.copyAll')} arrow>
         <IconButton size="small" onClick={handleCopyAll} sx={{ color: lt.iconColor }}>
           <ContentCopy sx={{ fontSize: 16 }} />
@@ -536,6 +592,14 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
                 >
                   {line.lineNumber}
                 </Box>
+                {showTimestamp && (
+                  <Box sx={{
+                    minWidth: 100, pr: 1, flexShrink: 0, lineHeight: '20px',
+                    color: lt.chipInactive, opacity: 0.7,
+                  }}>
+                    {formatTime(line.timestamp)}
+                  </Box>
+                )}
                 <Box sx={{
                   color: levelColor(line.level),
                   whiteSpace: 'pre-wrap',
@@ -566,20 +630,20 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
   )
 
   const paginationContent = (
-    <TablePagination component="div" count={total} page={page} onPageChange={(_, p) => setPage(p)}
-      rowsPerPage={rowsPerPage} onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0) }}
-      rowsPerPageOptions={[100, 500, 1000, 2000, 5000]}
-      showFirstButton showLastButton />
+    <Box ref={paginationRef}>
+      <TablePagination component="div" count={total} page={page} onPageChange={(_, p) => setPage(p)}
+        rowsPerPage={rowsPerPage} onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0) }}
+        rowsPerPageOptions={[100, 500, 1000, 2000, 5000]}
+        showFirstButton showLastButton />
+    </Box>
   )
 
   if (fullscreen) {
     return (
-      <Dialog fullScreen open onClose={toggleFullscreen} PaperProps={{ sx: { bgcolor: lt.logViewerBg, display: 'flex', flexDirection: 'column' } }}>
-        {loading && <LinearProgress sx={{ flexShrink: 0 }} />}
+      <Dialog fullScreen open onClose={toggleFullscreen} PaperProps={{ sx: { bgcolor: lt.logViewerBg } }}>
+        {loading && <LinearProgress />}
         {toolbarContent}
-        <Box ref={viewerWrapperRef} sx={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          {logViewerContent}
-        </Box>
+        {logViewerContent}
         {paginationContent}
       </Dialog>
     )

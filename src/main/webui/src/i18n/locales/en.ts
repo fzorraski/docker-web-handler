@@ -842,6 +842,8 @@ const en = {
       clearHighlights: 'Clear highlights',
       fullscreen: 'Fullscreen',
       exitFullscreen: 'Exit fullscreen',
+      showTimestamp: 'Show timestamps',
+      hideTimestamp: 'Hide timestamps',
     },
     threads: {
       select: 'Select thread',

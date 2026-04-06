@@ -843,6 +843,8 @@ const es: typeof en = {
       clearHighlights: 'Limpiar resaltados',
       fullscreen: 'Pantalla completa',
       exitFullscreen: 'Salir de pantalla completa',
+      showTimestamp: 'Mostrar marcas de tiempo',
+      hideTimestamp: 'Ocultar marcas de tiempo',
     },
     threads: {
       select: 'Seleccionar hilo',
