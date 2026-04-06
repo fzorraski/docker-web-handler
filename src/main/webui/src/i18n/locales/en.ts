@@ -773,6 +773,7 @@ const en = {
       close: 'Close',
       success: 'Log file analyzed successfully.',
       error: 'Failed to analyze log file.',
+      capacityFull: 'Maximum reached — the oldest analysis will be replaced on next upload.',
     },
     compose: {
       button: 'Compose',
@@ -787,6 +788,11 @@ const en = {
       confirm: 'Are you sure you want to remove the analysis for "{{filename}}"? This action cannot be undone.',
       viewerWarning: '{{count}} other user(s) are currently viewing this analysis.',
       remove: 'Remove',
+    },
+    capacity: {
+      title: 'Analysis Limit Reached',
+      message: 'You have reached the maximum of {{max}} analyses. Uploading a new file will replace the oldest one:',
+      proceed: 'Replace & Upload',
     },
     dashboard: {
       totalLines: 'Total Lines',

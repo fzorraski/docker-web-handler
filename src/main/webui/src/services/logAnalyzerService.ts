@@ -50,6 +50,8 @@ export interface AnalyzerStatus {
   presets: LogPreset[]
   defaultPreset: string
   containerTail: number
+  maxFiles: number
+  currentFiles: number
 }
 
 export interface AnalysisSummary {

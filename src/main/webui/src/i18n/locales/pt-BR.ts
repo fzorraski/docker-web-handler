@@ -774,6 +774,7 @@ const ptBR: typeof en = {
       close: 'Fechar',
       success: 'Arquivo de log analisado com sucesso.',
       error: 'Falha ao analisar arquivo de log.',
+      capacityFull: 'Capacidade máxima atingida — a análise mais antiga será substituída no próximo upload.',
     },
     compose: {
       button: 'Compor',
@@ -788,6 +789,11 @@ const ptBR: typeof en = {
       confirm: 'Tem certeza que deseja remover a análise de "{{filename}}"? Esta ação não pode ser desfeita.',
       viewerWarning: '{{count}} outro(s) usuário(s) estão visualizando esta análise.',
       remove: 'Remover',
+    },
+    capacity: {
+      title: 'Limite de Análises Atingido',
+      message: 'Você atingiu o máximo de {{max}} análises. Enviar um novo arquivo substituirá a mais antiga:',
+      proceed: 'Substituir e Enviar',
     },
     dashboard: {
       totalLines: 'Total de Linhas',

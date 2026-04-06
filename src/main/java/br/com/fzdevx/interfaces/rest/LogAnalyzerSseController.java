@@ -4,6 +4,7 @@ import br.com.fzdevx.application.dto.AnalyzeLogFileRequest;
 import br.com.fzdevx.application.usecase.AnalyzeLogFileUseCase;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.infrastructure.config.RequestStash;
+import br.com.fzdevx.interfaces.rest.util.LogAnalysisBroadcaster;
 import br.com.fzdevx.interfaces.rest.util.SseHelper;
 import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
@@ -31,8 +32,31 @@ public class LogAnalyzerSseController {
     RequestStash requestStash;
 
     @Inject
+    LogAnalysisBroadcaster broadcaster;
+
+    @Inject
     @ConfigProperty(name = "log.analyzer.enabled", defaultValue = "false")
     boolean enabled;
+
+    @GET
+    @Path("/updates")
+    @Produces(MediaType.SERVER_SENT_EVENTS)
+    public void subscribeToUpdates(@Context SseEventSink sink, @Context Sse sse) {
+        broadcaster.register(sink, sse);
+    }
+
+    @POST
+    @Path("/viewing")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Map<String, Object> setViewing(Map<String, String> body) {
+        String clientToken = body.getOrDefault("clientToken", "");
+        String analysisId = body.get("analysisId");
+        if (!clientToken.isBlank()) {
+            broadcaster.setViewing(clientToken, analysisId);
+        }
+        return Map.of("ok", true);
+    }
 
     @POST
     @Path("/upload/prepare")
@@ -69,12 +93,28 @@ public class LogAnalyzerSseController {
             SseHelper.closeSink(sink);
             return;
         }
+
+        String filenames = String.join(", ", request.getFilenames());
+        broadcaster.broadcastStarted("", filenames);
+
+        boolean[] succeeded = {false};
+        String[] analysisId = {null};
         try {
             analyzeLogFileUseCase.analyzeWithProgress(
                     request.getTempFiles(), request.getFilenames(),
                     request.getPreset(), request.getSlowThresholdMs(), request.getOptions(),
-                    event -> SseHelper.sendEvent(sink, sse, event), ticket);
+                    event -> {
+                        SseHelper.sendEvent(sink, sse, event);
+                        if (event.getType() == ContainerEvent.EventType.SUCCESS) {
+                            succeeded[0] = true;
+                            analysisId[0] = event.getDetail();
+                        }
+                    }, ticket,
+                    evictedId -> broadcaster.broadcastDeleted(evictedId));
         } finally {
+            if (succeeded[0]) {
+                broadcaster.broadcastCompleted("", filenames, analysisId[0] != null ? analysisId[0] : "");
+            }
             request.cleanupTempFiles();
             SseHelper.closeSink(sink);
         }

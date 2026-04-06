@@ -6,7 +6,7 @@ import {
   Alert, AlertTitle, LinearProgress, Tooltip, Badge,
 } from '@mui/material'
 import {
-  CloudUpload, ExpandMore, MergeType, Clear, Cancel, DeleteForever, Visibility,
+  CloudUpload, ExpandMore, MergeType, Clear, Cancel, DeleteForever, Visibility, Warning,
 } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
@@ -41,6 +41,7 @@ export default function LogAnalyzerPage() {
 
   const [presets, setPresets] = useState<LogPreset[]>([])
   const [defaultPreset, setDefaultPreset] = useState('WILDFLY')
+  const [maxFiles, setMaxFiles] = useState(5)
   const [analyses, setAnalyses] = useState<AnalysisSummary[]>([])
   const location = useLocation()
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -77,6 +78,10 @@ export default function LogAnalyzerPage() {
   // Viewer counts from broadcast (analysisId → number of viewers)
   const [viewerCounts, setViewerCounts] = useState<Record<string, number>>({})
 
+  // Capacity confirmation: when at max, ask before evicting the oldest
+  const [capacityConfirmOpen, setCapacityConfirmOpen] = useState(false)
+  const [pendingAnalysisOptions, setPendingAnalysisOptions] = useState<AnalysisOptions | null>(null)
+
   // Compose
   const [composeIds, setComposeIds] = useState<Set<string>>(new Set())
 
@@ -85,6 +90,7 @@ export default function LogAnalyzerPage() {
       setPresets(s.presets)
       setDefaultPreset(s.defaultPreset)
       setSelectedPreset(s.defaultPreset)
+      if (s.maxFiles) setMaxFiles(s.maxFiles)
     }).catch(() => {})
     refreshList()
   }, [])
@@ -131,8 +137,7 @@ export default function LogAnalyzerPage() {
     setOptionsDialogOpen(true)
   }, [])
 
-  const handleStartAnalysis = useCallback(async (analysisOptions: AnalysisOptions) => {
-    setOptionsDialogOpen(false)
+  const doStartAnalysis = useCallback(async (analysisOptions: AnalysisOptions) => {
     setLastAnalysisOptions(analysisOptions)
     if (pendingFiles.length === 0) return
 
@@ -181,6 +186,29 @@ export default function LogAnalyzerPage() {
       setPendingFiles([])
     }
   }, [pendingFiles, selectedPreset, slowThreshold, customRegex, presets, customFieldInputs, refreshList, notify, t, sse])
+
+  const handleStartAnalysis = useCallback(async (analysisOptions: AnalysisOptions) => {
+    setOptionsDialogOpen(false)
+    if (analyses.length >= maxFiles) {
+      setPendingAnalysisOptions(analysisOptions)
+      setCapacityConfirmOpen(true)
+    } else {
+      doStartAnalysis(analysisOptions)
+    }
+  }, [analyses.length, maxFiles, doStartAnalysis])
+
+  const handleCapacityConfirm = useCallback(() => {
+    setCapacityConfirmOpen(false)
+    if (pendingAnalysisOptions) {
+      doStartAnalysis(pendingAnalysisOptions)
+      setPendingAnalysisOptions(null)
+    }
+  }, [pendingAnalysisOptions, doStartAnalysis])
+
+  const handleCapacityCancel = useCallback(() => {
+    setCapacityConfirmOpen(false)
+    setPendingAnalysisOptions(null)
+  }, [])
 
   const handleCancelAnalysis = useCallback(() => {
     if (analysisTicket) cancelLogAnalysis(analysisTicket)
@@ -441,6 +469,10 @@ export default function LogAnalyzerPage() {
           <Box sx={{ mt: 2 }}>
             <Stack direction="row" alignItems="center" spacing={1} mb={1}>
               <Typography variant="subtitle2">{t('logAnalyzer.upload.analyses')}</Typography>
+              <Chip size="small" variant="outlined"
+                label={`${analyses.length}/${maxFiles}`}
+                color={analyses.length >= maxFiles ? 'warning' : 'default'}
+                title={analyses.length >= maxFiles ? t('logAnalyzer.upload.capacityFull') : ''} />
               {composeIds.size >= 2 && (
                 <Button size="small" startIcon={<MergeType />} onClick={handleCompose}>
                   {t('logAnalyzer.compose.button')} ({composeIds.size})
@@ -575,6 +607,36 @@ export default function LogAnalyzerPage() {
           <Button onClick={() => setDeleteTarget(null)}>{t('logAnalyzer.upload.cancel')}</Button>
           <Button variant="contained" color="error" onClick={handleDeleteConfirm}>
             {t('logAnalyzer.delete.remove')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={capacityConfirmOpen} onClose={handleCapacityCancel} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Warning color="warning" /> {t('logAnalyzer.capacity.title')}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" mb={2}>
+            {t('logAnalyzer.capacity.message', { max: maxFiles })}
+          </Typography>
+          {(() => {
+            const oldest = analyses.reduce((o, a) => a.uploadedAt < o.uploadedAt ? a : o, analyses[0])
+            return oldest ? (
+              <Alert severity="warning" variant="outlined">
+                <Typography variant="body2" fontWeight={500}>
+                  {oldest.sourceFiles.map(f => f.filename).join(', ')}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {oldest.totalLineCount.toLocaleString()} lines
+                </Typography>
+              </Alert>
+            ) : null
+          })()}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCapacityCancel}>{t('logAnalyzer.upload.cancel')}</Button>
+          <Button variant="contained" color="warning" onClick={handleCapacityConfirm}>
+            {t('logAnalyzer.capacity.proceed')}
           </Button>
         </DialogActions>
       </Dialog>

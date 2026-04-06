@@ -75,7 +75,7 @@ public class AnalyzeContainerLogsUseCase {
 
             return analyzeLogFileUseCase.analyze(
                     List.of(tempFile), List.of(filename), preset, slowThresholdMs
-            );
+            ).analysis();
         } finally {
             if (tempFile != null) {
                 try { Files.deleteIfExists(tempFile); } catch (Exception ignored) {}

@@ -28,6 +28,8 @@ public class AnalyzeLogFileUseCase {
 
     private static final Logger LOG = Logger.getLogger(AnalyzeLogFileUseCase.class.getName());
 
+    public record AnalysisResult(LogAnalysis analysis, String evictedId) {}
+
     private final ConcurrentHashMap<String, AnalysisEntry> analyses = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicBoolean> activeRuns = new ConcurrentHashMap<>();
     private ScheduledExecutorService cleanupScheduler;
@@ -76,14 +78,15 @@ public class AnalyzeLogFileUseCase {
         analyses.clear();
     }
 
-    public LogAnalysis analyze(List<Path> files, List<String> filenames, LogPreset preset, int slowThresholdMs) {
+    public AnalysisResult analyze(List<Path> files, List<String> filenames, LogPreset preset, int slowThresholdMs) {
         return analyze(files, filenames, preset, slowThresholdMs, AnalysisOptions.all());
     }
 
-    public LogAnalysis analyze(List<Path> files, List<String> filenames, LogPreset preset, int slowThresholdMs,
+    public AnalysisResult analyze(List<Path> files, List<String> filenames, LogPreset preset, int slowThresholdMs,
                                AnalysisOptions options) {
+        String evictedId = null;
         if (analyses.size() >= maxFiles) {
-            evictOldest();
+            evictedId = evictOldest();
         }
 
         LogAnalysis analysis = logAnalysisPort.analyze(files, filenames, preset, slowThresholdMs, options);
@@ -110,17 +113,19 @@ public class AnalyzeLogFileUseCase {
                 analysis.getId(), analysis.getTotalLineCount(),
                 analysis.getApiCalls().size(), analysis.getEndpoints().size(),
                 analysis.getSourceFiles().size()));
-        return analysis;
+        return new AnalysisResult(analysis, evictedId);
     }
 
     public void analyzeWithProgress(List<Path> files, List<String> filenames, LogPreset preset,
                                      int slowThresholdMs, AnalysisOptions options,
-                                     Consumer<ContainerEvent> eventSink, String ticket) {
+                                     Consumer<ContainerEvent> eventSink, String ticket,
+                                     Consumer<String> onEvicted) {
         AtomicBoolean cancelled = new AtomicBoolean(false);
         activeRuns.put(ticket, cancelled);
         try {
             if (analyses.size() >= maxFiles) {
-                evictOldest();
+                String evictedId = evictOldest();
+                if (evictedId != null) onEvicted.accept(evictedId);
             }
 
             eventSink.accept(ContainerEvent.info("Parsing", "Starting analysis..."));
@@ -356,14 +361,19 @@ public class AnalyzeLogFileUseCase {
         analyses.entrySet().removeIf(e -> e.getValue().createdAt.isBefore(cutoff));
     }
 
-    private void evictOldest() {
-        analyses.entrySet().stream()
+    private String evictOldest() {
+        return analyses.entrySet().stream()
                 .min(Map.Entry.comparingByValue(Comparator.comparing(e -> e.createdAt)))
-                .ifPresent(oldest -> {
+                .map(oldest -> {
                     analyses.remove(oldest.getKey());
                     LOG.info(String.format("Evicted oldest log analysis '%s' to make room", oldest.getKey()));
-                });
+                    return oldest.getKey();
+                }).orElse(null);
     }
+
+    public int getMaxFiles() { return maxFiles; }
+
+    public int getAnalysisCount() { return analyses.size(); }
 
     private record AnalysisEntry(LogAnalysis analysis, Instant createdAt) {}
 }

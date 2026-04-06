@@ -87,7 +87,9 @@ public class LogAnalyzerController {
                 "enabled", enabled,
                 "presets", logPresetProvider.allPresets().stream().map(this::presetToMap).toList(),
                 "defaultPreset", defaultPresetName,
-                "containerTail", defaultContainerTail
+                "containerTail", defaultContainerTail,
+                "maxFiles", analyzeLogFileUseCase.getMaxFiles(),
+                "currentFiles", analyzeLogFileUseCase.getAnalysisCount()
         )).build();
     }
 
@@ -101,10 +103,13 @@ public class LogAnalyzerController {
         AnalyzeLogFileRequest request = null;
         try {
             request = parseUploadForm(input);
-            LogAnalysis analysis = analyzeLogFileUseCase.analyze(
+            var result = analyzeLogFileUseCase.analyze(
                     request.getTempFiles(), request.getFilenames(),
                     request.getPreset(), request.getSlowThresholdMs(), request.getOptions());
-            return Response.ok(analysisSummaryMap(analysis)).build();
+            if (result.evictedId() != null) {
+                logAnalysisBroadcaster.broadcastDeleted(result.evictedId());
+            }
+            return Response.ok(analysisSummaryMap(result.analysis())).build();
         } catch (IllegalArgumentException e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", e.getMessage())).build();

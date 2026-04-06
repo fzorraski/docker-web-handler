@@ -774,6 +774,7 @@ const es: typeof en = {
       close: 'Cerrar',
       success: 'Archivo de log analizado exitosamente.',
       error: 'Error al analizar archivo de log.',
+      capacityFull: 'Capacidad máxima alcanzada — el análisis más antiguo será reemplazado en la próxima carga.',
     },
     compose: {
       button: 'Componer',
@@ -788,6 +789,11 @@ const es: typeof en = {
       confirm: '¿Está seguro que desea eliminar el análisis de "{{filename}}"? Esta acción no se puede deshacer.',
       viewerWarning: '{{count}} otro(s) usuario(s) están viendo este análisis.',
       remove: 'Eliminar',
+    },
+    capacity: {
+      title: 'Límite de Análisis Alcanzado',
+      message: 'Ha alcanzado el máximo de {{max}} análisis. Subir un nuevo archivo reemplazará el más antiguo:',
+      proceed: 'Reemplazar y Subir',
     },
     dashboard: {
       totalLines: 'Líneas Totales',

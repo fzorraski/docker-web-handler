@@ -85,7 +85,7 @@ class AnalyzeLogFileUseCaseTest {
         LogAnalysis expected = makeAnalysis();
         when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(expected);
 
-        LogAnalysis result = useCase.analyze(List.of(Path.of("/tmp/test.log")), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = useCase.analyze(List.of(Path.of("/tmp/test.log")), List.of("test.log"), LogPreset.WILDFLY, 1000).analysis();
 
         assertNotNull(result);
         assertEquals(100, result.getTotalLineCount());
@@ -96,7 +96,7 @@ class AnalyzeLogFileUseCaseTest {
     void analyze_storesResultForRetrieval() {
         when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(makeAnalysis());
 
-        LogAnalysis result = useCase.analyze(List.of(Path.of("/tmp/test.log")), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = useCase.analyze(List.of(Path.of("/tmp/test.log")), List.of("test.log"), LogPreset.WILDFLY, 1000).analysis();
 
         assertNotNull(useCase.get(result.getId()));
         assertEquals(result.getId(), useCase.get(result.getId()).getId());
@@ -123,7 +123,7 @@ class AnalyzeLogFileUseCaseTest {
     @Test
     void delete_existingAnalysis_returnsTrue() {
         when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(makeAnalysis());
-        LogAnalysis result = useCase.analyze(List.of(Path.of("/tmp/test.log")), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = useCase.analyze(List.of(Path.of("/tmp/test.log")), List.of("test.log"), LogPreset.WILDFLY, 1000).analysis();
 
         assertTrue(useCase.delete(result.getId()));
         assertNull(useCase.get(result.getId()));
@@ -137,7 +137,7 @@ class AnalyzeLogFileUseCaseTest {
     @Test
     void delete_removesFromList() {
         when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(makeAnalysis());
-        LogAnalysis result = useCase.analyze(List.of(Path.of("/tmp/test.log")), List.of("test.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis result = useCase.analyze(List.of(Path.of("/tmp/test.log")), List.of("test.log"), LogPreset.WILDFLY, 1000).analysis();
 
         useCase.delete(result.getId());
 
@@ -172,8 +172,8 @@ class AnalyzeLogFileUseCaseTest {
         when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any()))
                 .thenReturn(makeAnalysis()).thenReturn(makeAnalysis());
 
-        LogAnalysis first = useCase.analyze(List.of(Path.of("/tmp/1.log")), List.of("1.log"), LogPreset.WILDFLY, 1000);
-        LogAnalysis second = useCase.analyze(List.of(Path.of("/tmp/2.log")), List.of("2.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis first = useCase.analyze(List.of(Path.of("/tmp/1.log")), List.of("1.log"), LogPreset.WILDFLY, 1000).analysis();
+        LogAnalysis second = useCase.analyze(List.of(Path.of("/tmp/2.log")), List.of("2.log"), LogPreset.WILDFLY, 1000).analysis();
 
         List<LogAnalysis> list = useCase.listAll();
         assertEquals(2, list.size());
@@ -191,10 +191,10 @@ class AnalyzeLogFileUseCaseTest {
     @Test
     void compose_mergesTwoAnalyses() {
         when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(makeAnalysis());
-        LogAnalysis a1 = useCase.analyze(List.of(Path.of("/tmp/1.log")), List.of("1.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis a1 = useCase.analyze(List.of(Path.of("/tmp/1.log")), List.of("1.log"), LogPreset.WILDFLY, 1000).analysis();
 
         when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(makeAnalysis());
-        LogAnalysis a2 = useCase.analyze(List.of(Path.of("/tmp/2.log")), List.of("2.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis a2 = useCase.analyze(List.of(Path.of("/tmp/2.log")), List.of("2.log"), LogPreset.WILDFLY, 1000).analysis();
 
         LogAnalysis composed = useCase.compose(List.of(a1.getId(), a2.getId()), LogPreset.WILDFLY, 1000);
 
@@ -207,10 +207,10 @@ class AnalyzeLogFileUseCaseTest {
     @Test
     void compose_addedToListAll() {
         when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(makeAnalysis());
-        LogAnalysis a1 = useCase.analyze(List.of(Path.of("/tmp/1.log")), List.of("1.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis a1 = useCase.analyze(List.of(Path.of("/tmp/1.log")), List.of("1.log"), LogPreset.WILDFLY, 1000).analysis();
 
         when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any())).thenReturn(makeAnalysis());
-        LogAnalysis a2 = useCase.analyze(List.of(Path.of("/tmp/2.log")), List.of("2.log"), LogPreset.WILDFLY, 1000);
+        LogAnalysis a2 = useCase.analyze(List.of(Path.of("/tmp/2.log")), List.of("2.log"), LogPreset.WILDFLY, 1000).analysis();
 
         useCase.compose(List.of(a1.getId(), a2.getId()), LogPreset.WILDFLY, 1000);
 
@@ -228,7 +228,7 @@ class AnalyzeLogFileUseCaseTest {
         useCase.analyzeWithProgress(
                 List.of(Path.of("/tmp/test.log")), List.of("test.log"),
                 LogPreset.WILDFLY, 1000, AnalysisOptions.all(),
-                events::add, "ticket-1");
+                events::add, "ticket-1", evicted -> {});
 
         // Should have at least a start INFO and a final SUCCESS
         assertTrue(events.stream().anyMatch(e -> e.getType() == ContainerEvent.EventType.INFO));
@@ -253,7 +253,7 @@ class AnalyzeLogFileUseCaseTest {
         useCase.analyzeWithProgress(
                 List.of(Path.of("/tmp/test.log")), List.of("test.log"),
                 LogPreset.WILDFLY, 1000, AnalysisOptions.all(),
-                events::add, "ticket-cancel");
+                events::add, "ticket-cancel", evicted -> {});
 
         assertTrue(events.stream()
                 .anyMatch(e -> e.getType() == ContainerEvent.EventType.ERROR
@@ -269,7 +269,7 @@ class AnalyzeLogFileUseCaseTest {
         useCase.analyzeWithProgress(
                 List.of(Path.of("/tmp/test.log")), List.of("test.log"),
                 LogPreset.WILDFLY, 1000, AnalysisOptions.all(),
-                events::add, "ticket-err");
+                events::add, "ticket-err", evicted -> {});
 
         assertTrue(events.stream()
                 .anyMatch(e -> e.getType() == ContainerEvent.EventType.ERROR
@@ -291,7 +291,7 @@ class AnalyzeLogFileUseCaseTest {
         useCase.analyzeWithProgress(
                 List.of(Path.of("/tmp/test.log")), List.of("test.log"),
                 presetWithFields, 1000, AnalysisOptions.all(),
-                events::add, "ticket-cf");
+                events::add, "ticket-cf", evicted -> {});
 
         assertTrue(events.stream()
                 .anyMatch(e -> "Custom Fields".equals(e.getStep())));
@@ -323,7 +323,7 @@ class AnalyzeLogFileUseCaseTest {
                 useCase.analyzeWithProgress(
                         List.of(Path.of("/tmp/test.log")), List.of("test.log"),
                         LogPreset.WILDFLY, 1000, AnalysisOptions.all(),
-                        e -> {}, "ticket-active"));
+                        e -> {}, "ticket-active", evicted -> {}));
         analysisThread.start();
 
         // Wait for analysis to start
@@ -344,7 +344,7 @@ class AnalyzeLogFileUseCaseTest {
         useCase.analyzeWithProgress(
                 List.of(Path.of("/tmp/test.log")), List.of("test.log"),
                 LogPreset.WILDFLY, 1000, AnalysisOptions.all(),
-                e -> {}, "ticket-done");
+                e -> {}, "ticket-done", evicted -> {});
 
         // Ticket removed from activeRuns after completion
         assertFalse(useCase.cancel("ticket-done"));
