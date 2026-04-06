@@ -55,6 +55,7 @@ import {
   Divider,
   Menu,
   MenuItem,
+  Stack,
   ListItemIcon,
   ListItemText,
   TablePagination,
@@ -458,9 +459,12 @@ export default function DatabasePage() {
           <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
             <AlertTitle>{t('database.restoreInProgress')}</AlertTitle>
             {activeRestores.map((r, i) => (
-              <Typography key={i} variant="body2">
-                <span dangerouslySetInnerHTML={{ __html: t('database.restoringInto', { filename: r.dumpFilename, database: r.targetDatabase, repository: r.repository }) }} />
-              </Typography>
+              <Stack key={i} direction="row" alignItems="center" spacing={1}>
+                <LinearProgress sx={{ width: 80 }} />
+                <Typography variant="body2">
+                  <span dangerouslySetInnerHTML={{ __html: t('database.restoringInto', { filename: r.dumpFilename, database: r.targetDatabase, repository: r.repository }) }} />
+                </Typography>
+              </Stack>
             ))}
           </Alert>
         )}
@@ -469,9 +473,12 @@ export default function DatabasePage() {
           <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
             <AlertTitle>{t('database.snapshotInProgress')}</AlertTitle>
             {activeSnaps.map((s, i) => (
-              <Typography key={i} variant="body2">
-                <span dangerouslySetInnerHTML={{ __html: t('database.creatingSnapshotOf', { database: s.sourceDatabaseName, repository: s.repository }) }} />
-              </Typography>
+              <Stack key={i} direction="row" alignItems="center" spacing={1}>
+                <LinearProgress sx={{ width: 80 }} />
+                <Typography variant="body2">
+                  <span dangerouslySetInnerHTML={{ __html: t('database.creatingSnapshotOf', { database: s.sourceDatabaseName, repository: s.repository }) }} />
+                </Typography>
+              </Stack>
             ))}
           </Alert>
         )}
