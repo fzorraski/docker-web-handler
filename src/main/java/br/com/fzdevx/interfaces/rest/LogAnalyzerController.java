@@ -744,7 +744,7 @@ public class LogAnalyzerController {
         baselineWindow = Math.clamp(baselineWindow, 2, 50);
 
         // Extract signals
-        List<Signal> signals = signalExtractor.extract(analysis.getAllLines(), type);
+        List<Signal> signals = signalExtractor.extract(analysis.getAllLines(), type, analysis.getApiCalls());
 
         if (analysis.getTimeRangeStart() == null || analysis.getTimeRangeEnd() == null) {
             return Response.ok(new AnomalyDetectionResponse(
@@ -775,7 +775,7 @@ public class LogAnalyzerController {
         // Correlation detection (extract all signal types and detect)
         List<CorrelatedAnomaly> correlations = List.of();
         if (!anomalies.isEmpty()) {
-            Map<SignalType, List<Signal>> allSignals = signalExtractor.extractAll(analysis.getAllLines());
+            Map<SignalType, List<Signal>> allSignals = signalExtractor.extractAll(analysis.getAllLines(), analysis.getApiCalls());
             Map<String, List<AnomalyResult>> allAnomaliesByType = new LinkedHashMap<>();
             allAnomaliesByType.put(signalType, anomalies);
 
@@ -815,13 +815,8 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        List<SignalType> types = signalExtractor.detectAvailableTypes(analysis.getAllLines());
-        List<Map<String, Object>> result = types.stream()
-                .map(t -> Map.<String, Object>of(
-                        "name", t.name(),
-                        "ordinal", t.ordinal()
-                ))
-                .toList();
+        List<SignalType> types = signalExtractor.detectAvailableTypes(analysis.getAllLines(), analysis.getApiCalls());
+        List<String> result = types.stream().map(SignalType::name).toList();
         return Response.ok(result).build();
     }
 

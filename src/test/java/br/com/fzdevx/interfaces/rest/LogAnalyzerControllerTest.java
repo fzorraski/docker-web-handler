@@ -3,7 +3,10 @@ package br.com.fzdevx.interfaces.rest;
 import br.com.fzdevx.application.usecase.AnalyzeContainerLogsUseCase;
 import br.com.fzdevx.application.usecase.AnalyzeLogFileUseCase;
 import br.com.fzdevx.domain.model.*;
+import br.com.fzdevx.domain.model.anomaly.*;
 import br.com.fzdevx.infrastructure.config.LogPresetProvider;
+import br.com.fzdevx.infrastructure.log.anomaly.AnomalyDetectorService;
+import br.com.fzdevx.infrastructure.log.anomaly.SignalExtractor;
 import jakarta.ws.rs.core.Response;
 import org.jboss.resteasy.plugins.providers.multipart.InputPart;
 import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
@@ -42,6 +45,12 @@ class LogAnalyzerControllerTest {
 
     @Mock
     LogPresetProvider logPresetProvider;
+
+    @Mock
+    SignalExtractor signalExtractor;
+
+    @Mock
+    AnomalyDetectorService anomalyDetectorService;
 
     @InjectMocks
     LogAnalyzerController controller;
@@ -897,5 +906,177 @@ class LogAnalyzerControllerTest {
 
         assertEquals(400, response.getStatus());
         assertErrorContains(response, "log line regex is required");
+    }
+
+    // ---- Anomaly Detection ----
+
+    @Test
+    void getAnomalyDetection_disabled_returnsForbidden() {
+        setField("enabled", false);
+
+        Response response = controller.getAnomalyDetection(ANALYSIS_ID, "ERROR_COUNT", 300, 3.0, 8);
+
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void getAnomalyDetection_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+
+        Response response = controller.getAnomalyDetection("nonexistent", "ERROR_COUNT", 300, 3.0, 8);
+
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    void getAnomalyDetection_invalidSignalType_returns400() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getAnomalyDetection(analysis.getId(), "INVALID_TYPE", 300, 3.0, 8);
+
+        assertEquals(400, response.getStatus());
+    }
+
+    @Test
+    void getAnomalyDetection_nullTimeRange_returnsEmptyResponse() {
+        LocalDateTime now = LocalDateTime.of(2025, 6, 15, 10, 0, 0);
+        var analysis = new LogAnalysis(
+                List.of(new LogAnalysis.SourceFile("server.log", 1024)),
+                1, null, null,
+                List.of(), List.of(), List.of(), List.of(),
+                Map.of(), List.of(), List.of(), List.of(),
+                List.of(new LogLine(1, now, "INFO", "app", "main", "test", "server.log"))
+        );
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+        when(signalExtractor.extract(anyList(), eq(SignalType.ERROR_COUNT), anyList())).thenReturn(List.of());
+
+        Response response = controller.getAnomalyDetection(analysis.getId(), "ERROR_COUNT", 300, 3.0, 8);
+
+        assertEquals(200, response.getStatus());
+        AnomalyDetectionResponse body = (AnomalyDetectionResponse) response.getEntity();
+        assertEquals("ERROR_COUNT", body.signalType());
+        assertTrue(body.buckets().isEmpty());
+        assertTrue(body.anomalies().isEmpty());
+    }
+
+    @Test
+    void getAnomalyDetection_withTimeRange_returnsDetectionResults() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        var signals = List.of(
+                new Signal(SignalType.ERROR_COUNT, null, "error msg",
+                        analysis.getTimeRangeStart().plusMinutes(1), "main", "app")
+        );
+        when(signalExtractor.extract(anyList(), eq(SignalType.ERROR_COUNT), anyList())).thenReturn(signals);
+
+        var detectionResult = new AnomalyDetectorService.DetectionResult(
+                List.of(new BucketStats("10:00", 1000, 1, 1, 1, 1, 1, "normal", 0.0, 0.0)),
+                List.of()
+        );
+        when(anomalyDetectorService.detect(anyList(), anyDouble(), anyInt(), anyString())).thenReturn(detectionResult);
+
+        Response response = controller.getAnomalyDetection(analysis.getId(), "ERROR_COUNT", 300, 3.0, 8);
+
+        assertEquals(200, response.getStatus());
+        AnomalyDetectionResponse body = (AnomalyDetectionResponse) response.getEntity();
+        assertEquals("ERROR_COUNT", body.signalType());
+        assertEquals(300, body.bucketSize());
+        assertEquals(1, body.totalBuckets());
+        assertEquals(0, body.anomalyBuckets());
+    }
+
+    @Test
+    void getAnomalyDetection_apiLatencySignalType_passesApiCalls() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        when(signalExtractor.extract(anyList(), eq(SignalType.API_LATENCY), anyList())).thenReturn(List.of());
+
+        var detectionResult = new AnomalyDetectorService.DetectionResult(List.of(), List.of());
+        when(anomalyDetectorService.detect(anyList(), anyDouble(), anyInt(), anyString())).thenReturn(detectionResult);
+
+        Response response = controller.getAnomalyDetection(analysis.getId(), "API_LATENCY", 300, 3.0, 8);
+
+        assertEquals(200, response.getStatus());
+        verify(signalExtractor).extract(analysis.getAllLines(), SignalType.API_LATENCY, analysis.getApiCalls());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getAnomalyDetection_withAnomalies_triggersCorrelation() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        var signals = List.of(
+                new Signal(SignalType.ERROR_COUNT, null, "error",
+                        analysis.getTimeRangeStart().plusMinutes(1), "main", "app")
+        );
+        when(signalExtractor.extract(anyList(), eq(SignalType.ERROR_COUNT), anyList())).thenReturn(signals);
+
+        var anomaly = new AnomalyResult("ERROR_COUNT", "10:00", 10.0, 2.0, 5.0, 10, 15);
+        var detectionResult = new AnomalyDetectorService.DetectionResult(
+                List.of(new BucketStats("10:00", 1000, 10, 10, 1, 10, 10, "ANOMALY", 2.0, 5.0)),
+                List.of(anomaly)
+        );
+        when(anomalyDetectorService.detect(anyList(), anyDouble(), anyInt(), anyString())).thenReturn(detectionResult);
+        when(signalExtractor.extractAll(anyList(), anyList())).thenReturn(Map.of(SignalType.ERROR_COUNT, signals));
+
+        Response response = controller.getAnomalyDetection(analysis.getId(), "ERROR_COUNT", 300, 3.0, 8);
+
+        assertEquals(200, response.getStatus());
+        AnomalyDetectionResponse body = (AnomalyDetectionResponse) response.getEntity();
+        assertEquals(1, body.anomalyBuckets());
+        verify(signalExtractor).extractAll(analysis.getAllLines(), analysis.getApiCalls());
+    }
+
+    // ---- Signal Types ----
+
+    @Test
+    void getAvailableSignalTypes_disabled_returnsForbidden() {
+        setField("enabled", false);
+
+        Response response = controller.getAvailableSignalTypes(ANALYSIS_ID);
+
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void getAvailableSignalTypes_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+
+        Response response = controller.getAvailableSignalTypes("nonexistent");
+
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getAvailableSignalTypes_returnsStringList() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+        when(signalExtractor.detectAvailableTypes(anyList(), anyList()))
+                .thenReturn(List.of(SignalType.ERROR_COUNT, SignalType.API_LATENCY));
+
+        Response response = controller.getAvailableSignalTypes(analysis.getId());
+
+        assertEquals(200, response.getStatus());
+        List<String> types = (List<String>) response.getEntity();
+        assertEquals(2, types.size());
+        assertEquals("ERROR_COUNT", types.get(0));
+        assertEquals("API_LATENCY", types.get(1));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getAvailableSignalTypes_passesApiCallsToExtractor() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+        when(signalExtractor.detectAvailableTypes(anyList(), anyList())).thenReturn(List.of());
+
+        controller.getAvailableSignalTypes(analysis.getId());
+
+        verify(signalExtractor).detectAvailableTypes(analysis.getAllLines(), analysis.getApiCalls());
     }
 }

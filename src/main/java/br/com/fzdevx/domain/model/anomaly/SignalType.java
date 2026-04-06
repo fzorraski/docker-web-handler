@@ -11,5 +11,6 @@ public enum SignalType {
     THREAD_REJECTION,
     OOM,
     DEADLOCK,
-    ERROR_COUNT
+    ERROR_COUNT,
+    API_LATENCY
 }

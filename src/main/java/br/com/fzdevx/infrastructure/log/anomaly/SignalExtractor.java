@@ -1,5 +1,6 @@
 package br.com.fzdevx.infrastructure.log.anomaly;
 
+import br.com.fzdevx.domain.model.ApiCallPair;
 import br.com.fzdevx.domain.model.LogLine;
 import br.com.fzdevx.domain.model.anomaly.Signal;
 import br.com.fzdevx.domain.model.anomaly.SignalType;
@@ -45,6 +46,14 @@ public class SignalExtractor {
      * Extract signals of a specific type from log lines.
      */
     public List<Signal> extract(List<LogLine> lines, SignalType type) {
+        return extract(lines, type, List.of());
+    }
+
+    public List<Signal> extract(List<LogLine> lines, SignalType type, List<ApiCallPair> apiCalls) {
+        if (type == SignalType.API_LATENCY) {
+            return extractApiLatency(apiCalls);
+        }
+
         if (lines == null || lines.isEmpty()) return List.of();
 
         if (type == SignalType.ERROR_COUNT) {
@@ -60,25 +69,51 @@ public class SignalExtractor {
         return extractByPattern(lines, def);
     }
 
+    private List<Signal> extractApiLatency(List<ApiCallPair> apiCalls) {
+        if (apiCalls == null || apiCalls.isEmpty()) return List.of();
+        List<Signal> signals = new ArrayList<>();
+        for (ApiCallPair call : apiCalls) {
+            if (call.requestTimestamp() == null) continue;
+            if (signals.size() >= MAX_SIGNALS_PER_TYPE) break;
+            signals.add(new Signal(
+                    SignalType.API_LATENCY,
+                    call.durationMs(),
+                    call.endpoint() + " " + call.durationMs() + "ms",
+                    call.requestTimestamp(),
+                    call.thread(),
+                    call.endpoint()
+            ));
+        }
+        return signals;
+    }
+
     /**
      * Extract all signal types from log lines (for correlation detection).
      */
     public Map<SignalType, List<Signal>> extractAll(List<LogLine> lines) {
-        if (lines == null || lines.isEmpty()) return Map.of();
+        return extractAll(lines, List.of());
+    }
 
+    public Map<SignalType, List<Signal>> extractAll(List<LogLine> lines, List<ApiCallPair> apiCalls) {
         Map<SignalType, List<Signal>> result = new EnumMap<>(SignalType.class);
 
-        // ERROR_COUNT always included
-        List<Signal> errorSignals = extractErrorCount(lines);
-        if (!errorSignals.isEmpty()) {
-            result.put(SignalType.ERROR_COUNT, errorSignals);
+        if (lines != null && !lines.isEmpty()) {
+            List<Signal> errorSignals = extractErrorCount(lines);
+            if (!errorSignals.isEmpty()) {
+                result.put(SignalType.ERROR_COUNT, errorSignals);
+            }
+
+            for (PatternDef def : PATTERNS) {
+                List<Signal> signals = extractByPattern(lines, def);
+                if (!signals.isEmpty()) {
+                    result.put(def.type(), signals);
+                }
+            }
         }
 
-        for (PatternDef def : PATTERNS) {
-            List<Signal> signals = extractByPattern(lines, def);
-            if (!signals.isEmpty()) {
-                result.put(def.type(), signals);
-            }
+        List<Signal> apiSignals = extractApiLatency(apiCalls);
+        if (!apiSignals.isEmpty()) {
+            result.put(SignalType.API_LATENCY, apiSignals);
         }
 
         return result;
@@ -89,45 +124,50 @@ public class SignalExtractor {
      * Uses pre-filter strings for fast detection without full extraction.
      */
     public List<SignalType> detectAvailableTypes(List<LogLine> lines) {
-        if (lines == null || lines.isEmpty()) return List.of();
+        return detectAvailableTypes(lines, List.of());
+    }
+
+    public List<SignalType> detectAvailableTypes(List<LogLine> lines, List<ApiCallPair> apiCalls) {
 
         Set<SignalType> found = EnumSet.noneOf(SignalType.class);
 
-        // ERROR_COUNT: check if any error-level lines exist
-        for (LogLine line : lines) {
-            if (line.level() != null && ERROR_LEVELS.contains(line.level())) {
-                found.add(SignalType.ERROR_COUNT);
-                break;
+        if (lines != null && !lines.isEmpty()) {
+            for (LogLine line : lines) {
+                if (line.level() != null && ERROR_LEVELS.contains(line.level())) {
+                    found.add(SignalType.ERROR_COUNT);
+                    break;
+                }
             }
-        }
 
-        // Check each pattern's pre-filter
-        Set<PatternDef> remaining = new LinkedHashSet<>(PATTERNS);
-        for (LogLine line : lines) {
-            if (remaining.isEmpty()) break;
-            String msg = line.message();
-            if (msg == null) continue;
+            Set<PatternDef> remaining = new LinkedHashSet<>(PATTERNS);
+            for (LogLine line : lines) {
+                if (remaining.isEmpty()) break;
+                String msg = line.message();
+                if (msg == null) continue;
 
-            Iterator<PatternDef> it = remaining.iterator();
-            while (it.hasNext()) {
-                PatternDef def = it.next();
-                if (containsPreFilter(msg, def)) {
-                    // For HTTP_ERROR, verify it's actually >= 400
-                    if (def.type() == SignalType.HTTP_ERROR) {
-                        Matcher m = def.pattern().matcher(msg);
-                        if (m.find()) {
-                            int code = Integer.parseInt(m.group(1));
-                            if (code >= 400) {
-                                found.add(def.type());
-                                it.remove();
+                Iterator<PatternDef> it = remaining.iterator();
+                while (it.hasNext()) {
+                    PatternDef def = it.next();
+                    if (containsPreFilter(msg, def)) {
+                        if (def.type() == SignalType.HTTP_ERROR) {
+                            Matcher m = def.pattern().matcher(msg);
+                            if (m.find()) {
+                                int code = Integer.parseInt(m.group(1));
+                                if (code >= 400) {
+                                    found.add(def.type());
+                                    it.remove();
+                                }
                             }
+                        } else {
+                            found.add(def.type());
+                            it.remove();
                         }
-                    } else {
-                        found.add(def.type());
-                        it.remove();
                     }
                 }
             }
+        }
+        if (apiCalls != null && !apiCalls.isEmpty()) {
+            found.add(SignalType.API_LATENCY);
         }
 
         List<SignalType> result = new ArrayList<>(found);
