@@ -22,6 +22,7 @@ class CriticalIssueDetectorTest {
         detector = new CriticalIssueDetector();
         setField("enabled", true);
         setField("javaPatterns", true);
+        setField("maxMatches", 10_000);
         setField("burstThreshold", 10);
         setField("burstWindowMinutes", 5);
     }

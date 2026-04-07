@@ -16,9 +16,16 @@ class CustomFieldExtractorTest {
 
     private CustomFieldExtractor extractor;
 
+    private static final int DEFAULT_MAX_MATCHES = 10_000;
+
     @BeforeEach
     void setUp() {
         extractor = new CustomFieldExtractor();
+        try {
+            var f = CustomFieldExtractor.class.getDeclaredField("maxMatches");
+            f.setAccessible(true);
+            f.set(extractor, DEFAULT_MAX_MATCHES);
+        } catch (Exception e) { throw new RuntimeException(e); }
     }
 
     private LogLine line(int num, String message) {
@@ -193,7 +200,7 @@ class CustomFieldExtractorTest {
     @Test
     void matchesCappedAtMax() {
         var lines = new java.util.ArrayList<LogLine>();
-        for (int i = 0; i < CustomFieldExtractor.MAX_CUSTOM_FIELD_MATCHES + 100; i++) {
+        for (int i = 0; i < DEFAULT_MAX_MATCHES + 100; i++) {
             lines.add(line(i + 1, "match line " + i));
         }
         var fields = List.of(
@@ -203,8 +210,8 @@ class CustomFieldExtractorTest {
         List<CustomFieldResult> results = extractor.extract(lines, fields);
 
         assertEquals(1, results.size());
-        assertEquals(CustomFieldExtractor.MAX_CUSTOM_FIELD_MATCHES + 100, results.getFirst().matchCount());
-        assertEquals(CustomFieldExtractor.MAX_CUSTOM_FIELD_MATCHES, results.getFirst().matches().size());
+        assertEquals(DEFAULT_MAX_MATCHES + 100, results.getFirst().matchCount());
+        assertEquals(DEFAULT_MAX_MATCHES, results.getFirst().matches().size());
     }
 
     // ---- Multiple named groups ----

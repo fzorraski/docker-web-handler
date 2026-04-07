@@ -6,6 +6,8 @@ import br.com.fzdevx.domain.model.CustomFieldResult;
 import br.com.fzdevx.domain.model.LogLine;
 import br.com.fzdevx.domain.model.LogPreset;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -21,8 +23,11 @@ import java.util.regex.PatternSyntaxException;
 public class CustomFieldExtractor implements CustomFieldExtractorPort {
 
     private static final Logger LOG = Logger.getLogger(CustomFieldExtractor.class.getName());
-    static final int MAX_CUSTOM_FIELD_MATCHES = 10_000;
     private static final long REGEX_SAFETY_TIMEOUT_MS = 2000;
+
+    @Inject
+    @ConfigProperty(name = "log.analyzer.custom-fields.max-matches", defaultValue = "10000")
+    int maxMatches;
     private static final Pattern VALID_NAME_PATTERN = Pattern.compile("^[a-zA-Z0-9 \\-]{1,50}$");
 
     @Override
@@ -71,7 +76,7 @@ public class CustomFieldExtractor implements CustomFieldExtractorPort {
                 if (matcher.find()) {
                     matchCounts[i]++;
 
-                    if (!cf.field.countOnly() && matchLists[i].size() < MAX_CUSTOM_FIELD_MATCHES) {
+                    if (!cf.field.countOnly() && matchLists[i].size() < maxMatches) {
                         Map<String, String> groups = new LinkedHashMap<>();
                         for (String groupName : cf.namedGroups.keySet()) {
                             String value = matcher.group(groupName);

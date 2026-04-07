@@ -15,7 +15,7 @@ import java.util.*;
 @ApplicationScoped
 public class CriticalIssueDetector {
 
-    private static final int MAX_TOTAL_MATCHES = 10_000;
+    private static final int DEFAULT_MAX_MATCHES = 10_000;
 
     private record PatternDef(String category, String severity, String patternName, String matchString, boolean javaOnly) {}
 
@@ -170,6 +170,10 @@ public class CriticalIssueDetector {
     boolean javaPatterns;
 
     @Inject
+    @ConfigProperty(name = "log.analyzer.critical-issues.max-matches", defaultValue = "10000")
+    int maxMatches;
+
+    @Inject
     @ConfigProperty(name = "log.analyzer.critical-issues.burst-threshold", defaultValue = "10")
     int burstThreshold;
 
@@ -207,7 +211,7 @@ public class CriticalIssueDetector {
         int totalMatches = 0;
 
         for (LogLine line : lines) {
-            if (totalMatches >= MAX_TOTAL_MATCHES) {
+            if (totalMatches >= maxMatches) {
                 break;
             }
 
@@ -219,7 +223,7 @@ public class CriticalIssueDetector {
             // Pattern matching is intentionally case-sensitive: log messages preserve the
             // original casing from the throwing code, so exact-case matching avoids false positives.
             for (PatternDef pattern : activePatterns) {
-                if (totalMatches >= MAX_TOTAL_MATCHES) {
+                if (totalMatches >= maxMatches) {
                     break;
                 }
 
