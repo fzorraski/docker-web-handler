@@ -23,6 +23,7 @@ import { RawLogTab } from '../components/log-analyzer/RawLogTab'
 import { ThreadViewTab } from '../components/log-analyzer/ThreadViewTab'
 import { JobsTab } from '../components/log-analyzer/JobsTab'
 import { FailuresTab } from '../components/log-analyzer/FailuresTab'
+import { OrphanRequestsTab } from '../components/log-analyzer/OrphanRequestsTab'
 import { CriticalIssuesTab } from '../components/log-analyzer/CriticalIssuesTab'
 import { NpeAnalysisTab } from '../components/log-analyzer/NpeAnalysisTab'
 import { ExceptionAnalysisTab } from '../components/log-analyzer/ExceptionAnalysisTab'
@@ -279,7 +280,7 @@ export default function LogAnalyzerPage() {
   const tabs = useMemo(() => {
     if (!selected) return []
     const list = [
-      { key: 'apiCalls', label: t('logAnalyzer.tabs.apiCalls'), component: <ApiCallsTab analysisId={selected.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} onJumpToLine={handleJumpToLine} onJumpToRange={handleJumpToRange} onViewInsights={handleViewInsightsForCall} /> },
+      { key: 'apiCalls', label: t('logAnalyzer.tabs.apiCalls'), component: <ApiCallsTab analysisId={selected.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} onJumpToLine={handleJumpToLine} onJumpToRange={handleJumpToRange} onViewInsights={handleViewInsightsForCall} orphanRequestCount={selected.orphanRequestCount} onGoToOrphans={() => goToTab('orphanRequests')} /> },
       { key: 'stats', label: t('logAnalyzer.tabs.endpointStats'), component: <EndpointStatsTab analysisId={selected.id} onViewInsights={handleViewInsights} /> },
       { key: 'insights', label: t('logAnalyzer.tabs.performanceInsights'), component: null },
       { key: 'anomalyDetection', label: t('logAnalyzer.tabs.anomalyDetection'), component: <AnomalyDetectionTab analysisId={selected.id} /> },
@@ -291,6 +292,7 @@ export default function LogAnalyzerPage() {
     if (selected.exceptionAnalysisCount > 0) list.push({ key: 'exceptionAnalysis', label: t('logAnalyzer.tabs.exceptionAnalysis'), component: <ExceptionAnalysisTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.jobExecutionCount > 0) list.push({ key: 'jobs', label: t('logAnalyzer.tabs.jobs'), component: <JobsTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.repeatedFailureCount > 0) list.push({ key: 'failures', label: t('logAnalyzer.tabs.failures'), component: <FailuresTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
+    if (selected.orphanRequestCount > 0) list.push({ key: 'orphanRequests', label: t('logAnalyzer.tabs.orphanRequests'), component: <OrphanRequestsTab analysisId={selected.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} onJumpToLine={handleJumpToLine} /> })
     if (selected.customFields) {
       for (const cf of selected.customFields) {
         if (cf.matchCount > 0 && !cf.countOnly) {
@@ -534,6 +536,9 @@ export default function LogAnalyzerPage() {
           <Stack direction="row" spacing={2} mb={3} flexWrap="wrap" useFlexGap>
             <SummaryCard label={t('logAnalyzer.dashboard.totalLines')} value={selected.totalLineCount.toLocaleString()} onClick={() => goToTab('rawLog')} />
             <SummaryCard label={t('logAnalyzer.dashboard.apiCalls')} value={selected.apiCallCount.toLocaleString()} onClick={() => goToTab('apiCalls')} />
+            {selected.orphanRequestCount > 0 && (
+              <SummaryCard label={t('logAnalyzer.dashboard.orphanRequests')} value={selected.orphanRequestCount} color="warning.main" onClick={() => goToTab('orphanRequests')} />
+            )}
             <SummaryCard label={t('logAnalyzer.dashboard.threads')} value={selected.threadCount} onClick={() => goToTab('threadView')} />
             <SummaryCard label={t('logAnalyzer.dashboard.endpoints')} value={selected.endpointCount} onClick={() => goToTab('stats')} />
             <SummaryCard label={t('logAnalyzer.dashboard.errors')} value={selected.errorCount} color="error.main" onClick={() => goToTab('rawLog')} />

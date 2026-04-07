@@ -23,6 +23,7 @@ public class LogAnalysis {
     private final List<JobExecution> jobExecutions;
     private final List<RepeatedFailure> repeatedFailures;
     private final List<LogLine> allLines;
+    private final List<OrphanRequest> orphanRequests;
     private List<CustomFieldResult> customFieldResults;
     private List<CriticalIssueSummary> criticalIssues;
     private List<CriticalIssueSummary> cachedBursts;
@@ -35,7 +36,7 @@ public class LogAnalysis {
                        List<ApiCallPair> apiCalls, List<EndpointStats> endpointStats,
                        Map<String, Integer> levelCounts, List<LogLine> errors,
                        List<JobExecution> jobExecutions, List<RepeatedFailure> repeatedFailures,
-                       List<LogLine> allLines) {
+                       List<LogLine> allLines, List<OrphanRequest> orphanRequests) {
         this.id = UUID.randomUUID().toString();
         this.sourceFiles = sourceFiles;
         this.totalLineCount = totalLineCount;
@@ -51,10 +52,24 @@ public class LogAnalysis {
         this.jobExecutions = jobExecutions;
         this.repeatedFailures = repeatedFailures;
         this.allLines = allLines;
+        this.orphanRequests = orphanRequests != null ? orphanRequests : List.of();
         this.customFieldResults = List.of();
         this.criticalIssues = List.of();
         this.npeAnalysis = List.of();
         this.exceptionAnalysis = List.of();
+    }
+
+    /** Backwards-compatible constructor without orphanRequests. */
+    public LogAnalysis(List<SourceFile> sourceFiles, int totalLineCount,
+                       LocalDateTime timeRangeStart, LocalDateTime timeRangeEnd,
+                       List<String> threads, List<String> endpoints,
+                       List<ApiCallPair> apiCalls, List<EndpointStats> endpointStats,
+                       Map<String, Integer> levelCounts, List<LogLine> errors,
+                       List<JobExecution> jobExecutions, List<RepeatedFailure> repeatedFailures,
+                       List<LogLine> allLines) {
+        this(sourceFiles, totalLineCount, timeRangeStart, timeRangeEnd, threads, endpoints,
+                apiCalls, endpointStats, levelCounts, errors, jobExecutions, repeatedFailures,
+                allLines, List.of());
     }
 
     public record SourceFile(String filename, long size) {}
@@ -74,6 +89,7 @@ public class LogAnalysis {
     public List<JobExecution> getJobExecutions() { return jobExecutions; }
     public List<RepeatedFailure> getRepeatedFailures() { return repeatedFailures; }
     public List<LogLine> getAllLines() { return allLines; }
+    public List<OrphanRequest> getOrphanRequests() { return orphanRequests; }
     public List<CustomFieldResult> getCustomFieldResults() { return customFieldResults; }
 
     public void setCustomFieldResults(List<CustomFieldResult> customFieldResults) {

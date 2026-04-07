@@ -56,8 +56,9 @@ function PayloadBox({ label, payload, sensitiveFields, maskEnabled, isDark }: {
   )
 }
 
-export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onJumpToRange, onViewInsights }: {
+export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onJumpToRange, onViewInsights, orphanRequestCount, onGoToOrphans }: {
   analysisId: string; sensitiveFields: string[]; onJumpToLine?: (line: number) => void; onJumpToRange?: (from: number, to: number) => void; onViewInsights?: (endpoint: string, timestamp: string) => void
+  orphanRequestCount?: number; onGoToOrphans?: () => void
 }) {
   const { t } = useTranslation()
   const theme = useTheme()
@@ -235,9 +236,21 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onJumpT
           </TableBody>
         </Table>
       </TableContainer>
-      <TablePagination component="div" count={total} page={page} onPageChange={(_, p) => setPage(p)}
-        rowsPerPage={rowsPerPage} onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0) }}
-        showFirstButton showLastButton />
+      <Stack direction="row" alignItems="center">
+        {orphanRequestCount != null && orphanRequestCount > 0 && onGoToOrphans && (
+          <Chip
+            size="small"
+            label={`${orphanRequestCount} ${t('logAnalyzer.apiCalls.orphanRequests')}`}
+            color="warning"
+            variant="outlined"
+            onClick={onGoToOrphans}
+            sx={{ cursor: 'pointer', fontSize: '0.75rem', ml: 1 }}
+          />
+        )}
+        <TablePagination component="div" count={total} page={page} onPageChange={(_, p) => setPage(p)}
+          rowsPerPage={rowsPerPage} onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0) }}
+          showFirstButton showLastButton sx={{ flex: 1 }} />
+      </Stack>
 
       {onViewInsights && (
         <Menu
