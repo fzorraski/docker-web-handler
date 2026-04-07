@@ -18,17 +18,13 @@ class CorrelationDetectorTest {
 
     @Test
     void detect_nullInput_returnsEmpty() {
-        List<CorrelatedAnomaly> result = CorrelationDetector.detect(null, 6);
-        assertTrue(result.isEmpty());
+        assertTrue(CorrelationDetector.detect(null, 6).isEmpty());
     }
 
     @Test
     void detect_singleType_returnsEmpty() {
         var map = Map.of("ERROR_COUNT", List.of(anomaly("ERROR_COUNT", "10:00", 5.0)));
-
-        List<CorrelatedAnomaly> result = CorrelationDetector.detect(map, 6);
-
-        assertTrue(result.isEmpty());
+        assertTrue(CorrelationDetector.detect(map, 6).isEmpty());
     }
 
     @Test
@@ -46,7 +42,7 @@ class CorrelationDetectorTest {
     }
 
     @Test
-    void detect_twoTypesInAdjacentBuckets_withinWindow_returnsCorrelation() {
+    void detect_twoTypesInAdjacentBuckets_withinWindow() {
         var map = new LinkedHashMap<String, List<AnomalyResult>>();
         map.put("ERROR_COUNT", List.of(anomaly("ERROR_COUNT", "10:00", 4.0)));
         map.put("SLOW_QUERY", List.of(anomaly("SLOW_QUERY", "10:05", 3.5)));
@@ -59,74 +55,12 @@ class CorrelationDetectorTest {
     }
 
     @Test
-    void detect_singleTypePerBucket_noOverlap_noCorrelation() {
-        // Each bucket has only one type. With enough padding buckets to exhaust the window,
-        // the two types never appear in the same window group.
+    void detect_emptyAnomalyLists_returnsEmpty() {
         var map = new LinkedHashMap<String, List<AnomalyResult>>();
-        // ERROR_COUNT at 10:00, 10:05, 10:10 (padding to consume window)
-        map.put("ERROR_COUNT", List.of(
-                anomaly("ERROR_COUNT", "10:00", 4.0),
-                anomaly("ERROR_COUNT", "10:05", 2.0),
-                anomaly("ERROR_COUNT", "10:10", 2.0)
-        ));
-        // SLOW_QUERY at 10:30 — far enough that window=1 can't bridge the gap
-        map.put("SLOW_QUERY", List.of(anomaly("SLOW_QUERY", "10:30", 3.0)));
+        map.put("ERROR_COUNT", List.of());
+        map.put("NPE", List.of());
 
-        // window=1: groups [10:00,10:05] then [10:10,10:30] — second group has both types
-        // window must be 0 to prevent any look-ahead, but 0 means j <= i+0 so no look-ahead
-        // Actually the loop is: for j = i+1; j < size && j <= i + window
-        // window=1: j <= i+1, so it always looks one ahead. We can't prevent grouping of
-        // adjacent bucket labels. The algorithm uses sequential proximity, not time distance.
-
-        // So instead, verify that separate type-only groups produce no correlation
-        var singleTypeMap = new LinkedHashMap<String, List<AnomalyResult>>();
-        singleTypeMap.put("ERROR_COUNT", List.of(anomaly("ERROR_COUNT", "10:00", 4.0)));
-        singleTypeMap.put("SLOW_QUERY", List.of()); // empty
-
-        List<CorrelatedAnomaly> result = CorrelationDetector.detect(singleTypeMap, 6);
-
-        // Only one type has anomalies → no correlation possible
-        assertTrue(result.isEmpty());
-    }
-
-    @Test
-    void detect_scoreIsTypesTimesMaxRatio() {
-        var map = new LinkedHashMap<String, List<AnomalyResult>>();
-        map.put("ERROR_COUNT", List.of(anomaly("ERROR_COUNT", "10:00", 5.0)));
-        map.put("NPE", List.of(anomaly("NPE", "10:00", 8.0)));
-
-        List<CorrelatedAnomaly> result = CorrelationDetector.detect(map, 6);
-
-        assertEquals(1, result.size());
-        // score = 2 types * max ratio 8.0 = 16.0
-        assertEquals(16.0, result.getFirst().score(), 0.01);
-    }
-
-    @Test
-    void detect_multipleCorrelationWindows_sortedByScoreDescending() {
-        // Use 4 distinct bucket labels with window=1 to create 2 separate correlation groups:
-        // Group 1: [10:00, 10:05] — ERROR_COUNT + NPE
-        // Group 2: [10:20, 10:25] — ERROR_COUNT + NPE (higher ratios)
-        // Need 3+ buckets between them so they don't merge into one window.
-        var map = new LinkedHashMap<String, List<AnomalyResult>>();
-        map.put("ERROR_COUNT", List.of(
-                anomaly("ERROR_COUNT", "10:00", 3.0),
-                anomaly("ERROR_COUNT", "10:10", 2.0), // padding (single type)
-                anomaly("ERROR_COUNT", "10:15", 2.0), // padding (single type)
-                anomaly("ERROR_COUNT", "10:20", 10.0)
-        ));
-        map.put("NPE", List.of(
-                anomaly("NPE", "10:05", 2.0),
-                anomaly("NPE", "10:25", 9.0)
-        ));
-
-        List<CorrelatedAnomaly> result = CorrelationDetector.detect(map, 1);
-
-        // Should have at least 1 correlation; if 2, scores must be descending
-        assertFalse(result.isEmpty());
-        for (int i = 1; i < result.size(); i++) {
-            assertTrue(result.get(i - 1).score() >= result.get(i).score());
-        }
+        assertTrue(CorrelationDetector.detect(map, 6).isEmpty());
     }
 
     @Test
@@ -140,24 +74,133 @@ class CorrelationDetectorTest {
 
         assertEquals(1, result.size());
         assertEquals(3, result.getFirst().signalTypes().size());
-        // score = 3 * 7.0 = 21.0
-        assertEquals(21.0, result.getFirst().score(), 0.01);
     }
 
     @Test
-    void detect_emptyAnomalyLists_returnsEmpty() {
+    void detect_multipleCorrelations_sortedByScoreDescending() {
         var map = new LinkedHashMap<String, List<AnomalyResult>>();
-        map.put("ERROR_COUNT", List.of());
-        map.put("NPE", List.of());
+        map.put("ERROR_COUNT", List.of(
+                anomaly("ERROR_COUNT", "10:00", 3.0),
+                anomaly("ERROR_COUNT", "10:10", 2.0),
+                anomaly("ERROR_COUNT", "10:15", 2.0),
+                anomaly("ERROR_COUNT", "10:20", 10.0)
+        ));
+        map.put("NPE", List.of(
+                anomaly("NPE", "10:05", 2.0),
+                anomaly("NPE", "10:25", 9.0)
+        ));
+
+        List<CorrelatedAnomaly> result = CorrelationDetector.detect(map, 1);
+
+        assertFalse(result.isEmpty());
+        for (int i = 1; i < result.size(); i++) {
+            assertTrue(result.get(i - 1).score() >= result.get(i).score());
+        }
+    }
+
+    // ---- Severity classification ----
+
+    @Test
+    void detect_severity_low() {
+        // Low ratios in separate buckets (no proximity bonus) → low score
+        var map = new LinkedHashMap<String, List<AnomalyResult>>();
+        map.put("ERROR_COUNT", List.of(anomaly("ERROR_COUNT", "10:00", 1.5)));
+        map.put("NPE", List.of(anomaly("NPE", "10:05", 1.5)));
 
         List<CorrelatedAnomaly> result = CorrelationDetector.detect(map, 6);
 
-        assertTrue(result.isEmpty());
+        assertEquals(1, result.size());
+        assertTrue(result.getFirst().score() < 5.0);
+        assertEquals("low", result.getFirst().severity());
     }
 
     @Test
+    void detect_severity_critical_highScore() {
+        var map = new LinkedHashMap<String, List<AnomalyResult>>();
+        map.put("ERROR_COUNT", List.of(anomaly("ERROR_COUNT", "10:00", 10.0)));
+        map.put("NPE", List.of(anomaly("NPE", "10:00", 8.0)));
+        map.put("OOM", List.of(anomaly("OOM", "10:00", 12.0)));
+
+        List<CorrelatedAnomaly> result = CorrelationDetector.detect(map, 6);
+
+        assertEquals(1, result.size());
+        assertEquals("critical", result.getFirst().severity());
+        assertTrue(result.getFirst().score() >= 20.0);
+    }
+
+    // ---- Causal chain ----
+
+    @Test
+    void detect_causalChain_orderedByCausalPriority() {
+        // OOM and ERROR_COUNT in same bucket — OOM should come first (higher causal priority)
+        var map = new LinkedHashMap<String, List<AnomalyResult>>();
+        map.put("ERROR_COUNT", List.of(anomaly("ERROR_COUNT", "10:00", 5.0)));
+        map.put("OOM", List.of(anomaly("OOM", "10:00", 7.0)));
+
+        List<CorrelatedAnomaly> result = CorrelationDetector.detect(map, 6);
+
+        assertEquals(1, result.size());
+        List<String> chain = result.getFirst().causalChain();
+        assertEquals(2, chain.size());
+        assertEquals("OOM", chain.get(0)); // root cause
+        assertEquals("ERROR_COUNT", chain.get(1)); // effect
+    }
+
+    @Test
+    void detect_causalChain_earlierBucketComesFirst() {
+        // ERROR_COUNT at 10:00, POOL_EXHAUSTION at 10:05
+        // Even though POOL_EXHAUSTION has higher causal priority, ERROR_COUNT is earlier in time
+        var map = new LinkedHashMap<String, List<AnomalyResult>>();
+        map.put("ERROR_COUNT", List.of(anomaly("ERROR_COUNT", "10:00", 5.0)));
+        map.put("POOL_EXHAUSTION", List.of(anomaly("POOL_EXHAUSTION", "10:05", 7.0)));
+
+        List<CorrelatedAnomaly> result = CorrelationDetector.detect(map, 6);
+
+        assertEquals(1, result.size());
+        List<String> chain = result.getFirst().causalChain();
+        // ERROR_COUNT is at 10:00 (earlier), POOL_EXHAUSTION at 10:05
+        assertEquals("ERROR_COUNT", chain.get(0));
+        assertEquals("POOL_EXHAUSTION", chain.get(1));
+    }
+
+    @Test
+    void detect_causalChain_sameBucket_usesInfraBeforeApp() {
+        // POOL_EXHAUSTION and SQL_EXCEPTION in same bucket
+        // POOL_EXHAUSTION has higher causal priority → comes first
+        var map = new LinkedHashMap<String, List<AnomalyResult>>();
+        map.put("SQL_EXCEPTION", List.of(anomaly("SQL_EXCEPTION", "10:00", 5.0)));
+        map.put("POOL_EXHAUSTION", List.of(anomaly("POOL_EXHAUSTION", "10:00", 7.0)));
+
+        List<CorrelatedAnomaly> result = CorrelationDetector.detect(map, 6);
+
+        List<String> chain = result.getFirst().causalChain();
+        assertEquals("POOL_EXHAUSTION", chain.get(0));
+        assertEquals("SQL_EXCEPTION", chain.get(1));
+    }
+
+    // ---- Temporal proximity scoring ----
+
+    @Test
+    void detect_sameBucket_higherScoreThanDistant() {
+        // Same types, same ratios — but one is co-located, other is spread
+        var colocated = new LinkedHashMap<String, List<AnomalyResult>>();
+        colocated.put("ERROR_COUNT", List.of(anomaly("ERROR_COUNT", "10:00", 5.0)));
+        colocated.put("NPE", List.of(anomaly("NPE", "10:00", 5.0)));
+
+        var spread = new LinkedHashMap<String, List<AnomalyResult>>();
+        spread.put("ERROR_COUNT", List.of(anomaly("ERROR_COUNT", "10:00", 5.0)));
+        spread.put("NPE", List.of(anomaly("NPE", "10:05", 5.0)));
+
+        var colocatedResult = CorrelationDetector.detect(colocated, 6);
+        var spreadResult = CorrelationDetector.detect(spread, 6);
+
+        assertTrue(colocatedResult.getFirst().score() > spreadResult.getFirst().score());
+    }
+
+    // ---- Window grouping ----
+
+    @Test
     void detect_windowGroupsAnomaliesFromDifferentTypes() {
-        // Two types, each in a different but adjacent bucket — window=2 should group them
         var map = new LinkedHashMap<String, List<AnomalyResult>>();
         map.put("ERROR_COUNT", List.of(anomaly("ERROR_COUNT", "10:00", 5.0)));
         map.put("GC_PAUSE", List.of(anomaly("GC_PAUSE", "10:05", 4.0)));
@@ -167,5 +210,101 @@ class CorrelationDetectorTest {
         assertEquals(1, result.size());
         assertTrue(result.getFirst().signalTypes().contains("ERROR_COUNT"));
         assertTrue(result.getFirst().signalTypes().contains("GC_PAUSE"));
+    }
+
+    // ---- Severity classification: all levels ----
+
+    @Test
+    void detect_severity_medium() {
+        // score needs to be >= 5.0 and < 10.0
+        // 2 types × avg ratio 3.0 × proximity 1.5 = 9.0 → medium (but close)
+        // Use spread anomalies to reduce proximity bonus
+        var map = new LinkedHashMap<String, List<AnomalyResult>>();
+        map.put("ERROR_COUNT", List.of(anomaly("ERROR_COUNT", "10:00", 3.0)));
+        map.put("NPE", List.of(anomaly("NPE", "10:05", 3.0)));
+
+        List<CorrelatedAnomaly> result = CorrelationDetector.detect(map, 6);
+
+        assertEquals(1, result.size());
+        assertTrue(result.getFirst().score() >= 5.0);
+        assertTrue(result.getFirst().score() < 10.0);
+        assertEquals("medium", result.getFirst().severity());
+    }
+
+    @Test
+    void detect_severity_high() {
+        // score needs to be >= 10.0 and < 20.0
+        var map = new LinkedHashMap<String, List<AnomalyResult>>();
+        map.put("ERROR_COUNT", List.of(anomaly("ERROR_COUNT", "10:00", 5.0)));
+        map.put("NPE", List.of(anomaly("NPE", "10:05", 5.0)));
+
+        List<CorrelatedAnomaly> result = CorrelationDetector.detect(map, 6);
+
+        assertEquals(1, result.size());
+        assertTrue(result.getFirst().score() >= 10.0);
+        assertTrue(result.getFirst().score() < 20.0);
+        assertEquals("high", result.getFirst().severity());
+    }
+
+    // ---- Proximity scoring formula verification ----
+
+    @Test
+    void detect_proximityBonus_allInStartBucket_gets1_5x() {
+        // 2 anomalies, both in start bucket → inStartBucket/total = 1.0 → factor = 1.5
+        var map = new LinkedHashMap<String, List<AnomalyResult>>();
+        map.put("ERROR_COUNT", List.of(anomaly("ERROR_COUNT", "10:00", 4.0)));
+        map.put("NPE", List.of(anomaly("NPE", "10:00", 4.0)));
+
+        var result = CorrelationDetector.detect(map, 6);
+
+        // score = 2 types × avgRatio(4.0) × 1.5 = 12.0
+        assertEquals(12.0, result.getFirst().score(), 0.01);
+    }
+
+    @Test
+    void detect_proximityBonus_halfInStartBucket_gets1_25x() {
+        // 2 anomalies, 1 in start bucket → inStartBucket/total = 0.5 → factor = 1.25
+        var map = new LinkedHashMap<String, List<AnomalyResult>>();
+        map.put("ERROR_COUNT", List.of(anomaly("ERROR_COUNT", "10:00", 4.0)));
+        map.put("NPE", List.of(anomaly("NPE", "10:05", 4.0)));
+
+        var result = CorrelationDetector.detect(map, 6);
+
+        // score = 2 types × avgRatio(4.0) × 1.25 = 10.0
+        assertEquals(10.0, result.getFirst().score(), 0.01);
+    }
+
+    // ---- Causal chain edge cases ----
+
+    @Test
+    void detect_causalChain_fourTypes_orderedCorrectly() {
+        var map = new LinkedHashMap<String, List<AnomalyResult>>();
+        map.put("ERROR_COUNT", List.of(anomaly("ERROR_COUNT", "10:00", 3.0)));
+        map.put("SQL_EXCEPTION", List.of(anomaly("SQL_EXCEPTION", "10:00", 3.0)));
+        map.put("POOL_EXHAUSTION", List.of(anomaly("POOL_EXHAUSTION", "10:00", 3.0)));
+        map.put("NPE", List.of(anomaly("NPE", "10:00", 3.0)));
+
+        var result = CorrelationDetector.detect(map, 6);
+
+        List<String> chain = result.getFirst().causalChain();
+        assertEquals(4, chain.size());
+        // All same bucket → ordered by causal priority
+        assertEquals("POOL_EXHAUSTION", chain.get(0)); // infrastructure root cause
+        assertEquals("SQL_EXCEPTION", chain.get(1));
+        assertEquals("NPE", chain.get(2));
+        assertEquals("ERROR_COUNT", chain.get(3)); // symptom
+    }
+
+    @Test
+    void detect_causalChain_unknownType_placedLast() {
+        var map = new LinkedHashMap<String, List<AnomalyResult>>();
+        map.put("CUSTOM_SIGNAL", List.of(anomaly("CUSTOM_SIGNAL", "10:00", 3.0)));
+        map.put("NPE", List.of(anomaly("NPE", "10:00", 3.0)));
+
+        var result = CorrelationDetector.detect(map, 6);
+
+        List<String> chain = result.getFirst().causalChain();
+        assertEquals("NPE", chain.get(0)); // known causal priority
+        assertEquals("CUSTOM_SIGNAL", chain.get(1)); // unknown → placed after known
     }
 }

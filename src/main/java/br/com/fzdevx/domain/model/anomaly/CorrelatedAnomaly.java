@@ -7,5 +7,7 @@ public record CorrelatedAnomaly(
         String windowEnd,
         List<String> signalTypes,
         double score,
+        String severity,
+        List<String> causalChain,
         List<AnomalyResult> anomalies
 ) {}
