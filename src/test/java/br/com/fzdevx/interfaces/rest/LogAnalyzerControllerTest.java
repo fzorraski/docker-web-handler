@@ -6,6 +6,7 @@ import br.com.fzdevx.domain.model.*;
 import br.com.fzdevx.domain.model.anomaly.*;
 import br.com.fzdevx.infrastructure.config.LogPresetProvider;
 import br.com.fzdevx.infrastructure.log.anomaly.AnomalyDetectorService;
+import br.com.fzdevx.infrastructure.log.anomaly.DetectionStrategy;
 import br.com.fzdevx.infrastructure.log.anomaly.SignalExtractor;
 import jakarta.ws.rs.core.Response;
 import org.jboss.resteasy.plugins.providers.multipart.InputPart;
@@ -161,6 +162,21 @@ class LogAnalyzerControllerTest {
                 jobExecutions, List.of(), List.of()
         );
         return analysis;
+    }
+
+    private LogAnalysis buildAnalysisWithOrphans() {
+        LocalDateTime now = LocalDateTime.of(2025, 6, 15, 10, 0, 0);
+        var orphans = List.of(
+                new OrphanRequest("UserWS/getUser", "http-thread-1", now, "{\"id\":1}", 10, "server.log"),
+                new OrphanRequest("OrderWS/create", "http-thread-2", now.plusSeconds(5), "{\"item\":1}", 20, "server.log")
+        );
+        return new LogAnalysis(
+                List.of(new LogAnalysis.SourceFile("server.log", 1024)),
+                4, now, now.plusSeconds(30),
+                List.of("http-thread-1", "http-thread-2"), List.of(),
+                List.of(), List.of(), Map.of("INFO", 4), List.of(),
+                List.of(), List.of(), List.of(), orphans
+        );
     }
 
     // ---- Helper: assert error response ----
@@ -817,6 +833,71 @@ class LogAnalyzerControllerTest {
         assertEquals(50, entity.get("size"));
     }
 
+    // ---- Orphan Requests ----
+
+    @Test
+    void getOrphanRequests_disabled_returnsForbidden() {
+        setField("enabled", false);
+
+        Response response = controller.getOrphanRequests(ANALYSIS_ID, null, null, 0, 50);
+
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void getOrphanRequests_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+
+        Response response = controller.getOrphanRequests("nonexistent", null, null, 0, 50);
+
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getOrphanRequests_found_returns200WithPagination() {
+        LogAnalysis analysis = buildAnalysisWithOrphans();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getOrphanRequests(analysis.getId(), null, null, 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertEquals(2, data.size());
+        assertEquals(2, entity.get("total"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getOrphanRequests_filterByEndpoint() {
+        LogAnalysis analysis = buildAnalysisWithOrphans();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getOrphanRequests(analysis.getId(), "OrderWS/create", null, 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<OrphanRequest> data = (List<OrphanRequest>) entity.get("data");
+        assertEquals(1, data.size());
+        assertEquals("OrderWS/create", data.getFirst().endpoint());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getOrphanRequests_filterByThread() {
+        LogAnalysis analysis = buildAnalysisWithOrphans();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getOrphanRequests(analysis.getId(), null, "http-thread-2", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<OrphanRequest> data = (List<OrphanRequest>) entity.get("data");
+        assertEquals(1, data.size());
+        assertEquals("http-thread-2", data.getFirst().thread());
+    }
+
     @Test
     @SuppressWarnings("unchecked")
     void listAnalyses_returns200() {
@@ -1051,7 +1132,7 @@ class LogAnalyzerControllerTest {
     void getAnomalyDetection_disabled_returnsForbidden() {
         setField("enabled", false);
 
-        Response response = controller.getAnomalyDetection(ANALYSIS_ID, "ERROR_COUNT", 300, 3.0, 8);
+        Response response = controller.getAnomalyDetection(ANALYSIS_ID, "ERROR_COUNT", 300, 3.0, 8, "count", "ratio");
 
         assertEquals(403, response.getStatus());
     }
@@ -1060,7 +1141,7 @@ class LogAnalyzerControllerTest {
     void getAnomalyDetection_notFound_returns404() {
         when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
 
-        Response response = controller.getAnomalyDetection("nonexistent", "ERROR_COUNT", 300, 3.0, 8);
+        Response response = controller.getAnomalyDetection("nonexistent", "ERROR_COUNT", 300, 3.0, 8, "count", "ratio");
 
         assertEquals(404, response.getStatus());
     }
@@ -1070,7 +1151,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getAnomalyDetection(analysis.getId(), "INVALID_TYPE", 300, 3.0, 8);
+        Response response = controller.getAnomalyDetection(analysis.getId(), "INVALID_TYPE", 300, 3.0, 8, "count", "ratio");
 
         assertEquals(400, response.getStatus());
     }
@@ -1088,7 +1169,7 @@ class LogAnalyzerControllerTest {
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
         when(signalExtractor.extract(anyList(), eq(SignalType.ERROR_COUNT), anyList())).thenReturn(List.of());
 
-        Response response = controller.getAnomalyDetection(analysis.getId(), "ERROR_COUNT", 300, 3.0, 8);
+        Response response = controller.getAnomalyDetection(analysis.getId(), "ERROR_COUNT", 300, 3.0, 8, "count", "ratio");
 
         assertEquals(200, response.getStatus());
         AnomalyDetectionResponse body = (AnomalyDetectionResponse) response.getEntity();
@@ -1108,13 +1189,13 @@ class LogAnalyzerControllerTest {
         );
         when(signalExtractor.extract(anyList(), eq(SignalType.ERROR_COUNT), anyList())).thenReturn(signals);
 
-        var detectionResult = new AnomalyDetectorService.DetectionResult(
+        var detectionResult = new DetectionStrategy.DetectionResult(
                 List.of(new BucketStats("10:00", 1000, 1, 1, 1, 1, 1, "normal", 0.0, 0.0)),
                 List.of()
         );
-        when(anomalyDetectorService.detect(anyList(), anyDouble(), anyInt(), anyString())).thenReturn(detectionResult);
+        when(anomalyDetectorService.detect(anyList(), anyDouble(), anyInt(), anyString(), anyString(), anyString())).thenReturn(detectionResult);
 
-        Response response = controller.getAnomalyDetection(analysis.getId(), "ERROR_COUNT", 300, 3.0, 8);
+        Response response = controller.getAnomalyDetection(analysis.getId(), "ERROR_COUNT", 300, 3.0, 8, "count", "ratio");
 
         assertEquals(200, response.getStatus());
         AnomalyDetectionResponse body = (AnomalyDetectionResponse) response.getEntity();
@@ -1131,10 +1212,10 @@ class LogAnalyzerControllerTest {
 
         when(signalExtractor.extract(anyList(), eq(SignalType.API_LATENCY), anyList())).thenReturn(List.of());
 
-        var detectionResult = new AnomalyDetectorService.DetectionResult(List.of(), List.of());
-        when(anomalyDetectorService.detect(anyList(), anyDouble(), anyInt(), anyString())).thenReturn(detectionResult);
+        var detectionResult = new DetectionStrategy.DetectionResult(List.of(), List.of());
+        when(anomalyDetectorService.detect(anyList(), anyDouble(), anyInt(), anyString(), anyString(), anyString())).thenReturn(detectionResult);
 
-        Response response = controller.getAnomalyDetection(analysis.getId(), "API_LATENCY", 300, 3.0, 8);
+        Response response = controller.getAnomalyDetection(analysis.getId(), "API_LATENCY", 300, 3.0, 8, "count", "ratio");
 
         assertEquals(200, response.getStatus());
         verify(signalExtractor).extract(analysis.getAllLines(), SignalType.API_LATENCY, analysis.getApiCalls());
@@ -1153,14 +1234,14 @@ class LogAnalyzerControllerTest {
         when(signalExtractor.extract(anyList(), eq(SignalType.ERROR_COUNT), anyList())).thenReturn(signals);
 
         var anomaly = new AnomalyResult("ERROR_COUNT", "10:00", 10.0, 2.0, 5.0, 10, 15);
-        var detectionResult = new AnomalyDetectorService.DetectionResult(
+        var detectionResult = new DetectionStrategy.DetectionResult(
                 List.of(new BucketStats("10:00", 1000, 10, 10, 1, 10, 10, "ANOMALY", 2.0, 5.0)),
                 List.of(anomaly)
         );
-        when(anomalyDetectorService.detect(anyList(), anyDouble(), anyInt(), anyString())).thenReturn(detectionResult);
+        when(anomalyDetectorService.detect(anyList(), anyDouble(), anyInt(), anyString(), anyString(), anyString())).thenReturn(detectionResult);
         when(signalExtractor.extractAll(anyList(), anyList())).thenReturn(Map.of(SignalType.ERROR_COUNT, signals));
 
-        Response response = controller.getAnomalyDetection(analysis.getId(), "ERROR_COUNT", 300, 3.0, 8);
+        Response response = controller.getAnomalyDetection(analysis.getId(), "ERROR_COUNT", 300, 3.0, 8, "count", "ratio");
 
         assertEquals(200, response.getStatus());
         AnomalyDetectionResponse body = (AnomalyDetectionResponse) response.getEntity();

@@ -12,6 +12,7 @@ import br.com.fzdevx.infrastructure.config.LogPresetProvider;
 import br.com.fzdevx.infrastructure.log.CriticalIssueDetector;
 import br.com.fzdevx.infrastructure.log.anomaly.AnomalyDetectorService;
 import br.com.fzdevx.infrastructure.log.anomaly.CorrelationDetector;
+import br.com.fzdevx.infrastructure.log.anomaly.MetricExtractor;
 import br.com.fzdevx.infrastructure.log.anomaly.SignalExtractor;
 import br.com.fzdevx.infrastructure.log.anomaly.TimeBucketAggregator;
 import io.quarkus.logging.Log;
@@ -549,6 +550,28 @@ public class LogAnalyzerController {
     }
 
     @GET
+    @Path("/{id}/orphan-requests")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getOrphanRequests(@PathParam("id") String id,
+                                      @QueryParam("endpoint") String endpoint,
+                                      @QueryParam("thread") String thread,
+                                      @QueryParam("page") @DefaultValue("0") int page,
+                                      @QueryParam("size") @DefaultValue("50") int size) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+
+        var orphans = analysis.getOrphanRequests().stream();
+        if (endpoint != null && !endpoint.isBlank()) {
+            orphans = orphans.filter(o -> endpoint.equals(o.endpoint()));
+        }
+        if (thread != null && !thread.isBlank()) {
+            orphans = orphans.filter(o -> thread.equals(o.thread()));
+        }
+        return paginatedResponse(orphans.toList(), page, size);
+    }
+
+    @GET
     @Path("/{id}/critical-issues")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getCriticalIssues(@PathParam("id") String id,
@@ -761,7 +784,9 @@ public class LogAnalyzerController {
                                          @QueryParam("signalType") @DefaultValue("ERROR_COUNT") String signalType,
                                          @QueryParam("bucketSize") @DefaultValue("300") int bucketSize,
                                          @QueryParam("threshold") @DefaultValue("3.0") double threshold,
-                                         @QueryParam("baselineWindow") @DefaultValue("8") int baselineWindow) {
+                                         @QueryParam("baselineWindow") @DefaultValue("8") int baselineWindow,
+                                         @QueryParam("metric") @DefaultValue("count") String metric,
+                                         @QueryParam("method") @DefaultValue("ratio") String method) {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
@@ -776,6 +801,18 @@ public class LogAnalyzerController {
                     .build();
         }
 
+        // Validate metric and method
+        if (!MetricExtractor.VALID_METRICS.contains(metric)) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Invalid metric: " + metric + ". Valid: count, p95, max, avg"))
+                    .build();
+        }
+        if (!AnomalyDetectorService.VALID_METHODS.contains(method)) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Invalid method: " + method + ". Valid: ratio, zscore"))
+                    .build();
+        }
+
         // Clamp parameters
         bucketSize = Math.clamp(bucketSize, 60, 3600);
         threshold = Math.clamp(threshold, 1.5, 20.0);
@@ -786,7 +823,7 @@ public class LogAnalyzerController {
 
         if (analysis.getTimeRangeStart() == null || analysis.getTimeRangeEnd() == null) {
             return Response.ok(new AnomalyDetectionResponse(
-                    signalType, bucketSize, threshold, 0, 0, 0, "", 0,
+                    signalType, metric, method, bucketSize, threshold, 0, 0, 0, "", 0,
                     List.of(), List.of(), List.of()
             )).build();
         }
@@ -796,19 +833,21 @@ public class LogAnalyzerController {
                 signals, bucketSize, analysis.getTimeRangeStart(), analysis.getTimeRangeEnd());
 
         // Detect anomalies
-        AnomalyDetectorService.DetectionResult detection = anomalyDetectorService.detect(
-                buckets, threshold, baselineWindow, signalType);
+        var detection = anomalyDetectorService.detect(
+                buckets, threshold, baselineWindow, signalType, metric, method);
 
         List<BucketStats> updatedBuckets = detection.buckets();
         List<AnomalyResult> anomalies = detection.anomalies();
 
-        // Compute summary stats
-        long peakValue = updatedBuckets.stream().mapToLong(BucketStats::count).max().orElse(0);
+        // Compute metric-aware summary stats
+        long peakValue = updatedBuckets.stream()
+                .mapToLong(b -> (long) MetricExtractor.extract(b, metric))
+                .max().orElse(0);
         String peakBucketLabel = updatedBuckets.stream()
-                .max(Comparator.comparingLong(BucketStats::count))
+                .max(Comparator.comparingDouble(b -> MetricExtractor.extract(b, metric)))
                 .map(BucketStats::bucketLabel)
                 .orElse("");
-        long p95Value = computeP95FromBuckets(updatedBuckets);
+        long p95Value = computeP95FromBuckets(updatedBuckets, metric);
 
         // Correlation detection (extract all signal types and detect)
         List<CorrelatedAnomaly> correlations = List.of();
@@ -823,8 +862,8 @@ public class LogAnalyzerController {
                 List<BucketStats> otherBuckets = TimeBucketAggregator.aggregate(
                         entry.getValue(), bucketSize,
                         analysis.getTimeRangeStart(), analysis.getTimeRangeEnd());
-                AnomalyDetectorService.DetectionResult otherDetection = anomalyDetectorService.detect(
-                        otherBuckets, threshold, baselineWindow, entry.getKey().name());
+                var otherDetection = anomalyDetectorService.detect(
+                        otherBuckets, threshold, baselineWindow, entry.getKey().name(), metric, method);
 
                 if (!otherDetection.anomalies().isEmpty()) {
                     allAnomaliesByType.put(entry.getKey().name(), otherDetection.anomalies());
@@ -837,7 +876,7 @@ public class LogAnalyzerController {
         }
 
         return Response.ok(new AnomalyDetectionResponse(
-                signalType, bucketSize, threshold,
+                signalType, metric, method, bucketSize, threshold,
                 updatedBuckets.size(),
                 (int) updatedBuckets.stream().filter(b -> "ANOMALY".equals(b.status())).count(),
                 peakValue, peakBucketLabel, p95Value,
@@ -898,15 +937,15 @@ public class LogAnalyzerController {
         return computed;
     }
 
-    private long computeP95FromBuckets(List<BucketStats> buckets) {
-        long[] counts = buckets.stream()
-                .mapToLong(BucketStats::count)
+    private long computeP95FromBuckets(List<BucketStats> buckets, String metric) {
+        long[] values = buckets.stream()
+                .mapToLong(b -> (long) MetricExtractor.extract(b, metric))
                 .filter(c -> c > 0)
                 .sorted()
                 .toArray();
-        if (counts.length == 0) return 0;
-        int idx = Math.max(0, (int) Math.ceil(counts.length * 0.95) - 1);
-        return counts[idx];
+        if (values.length == 0) return 0;
+        int idx = Math.max(0, (int) Math.ceil(values.length * 0.95) - 1);
+        return values[idx];
     }
 
     private boolean matchesLevelGroup(String filter, String lineLevel) {
@@ -963,6 +1002,7 @@ public class LogAnalyzerController {
                 Map.entry("threadCount", a.getThreads().size()),
                 Map.entry("endpointCount", a.getEndpoints().size()),
                 Map.entry("apiCallCount", a.getApiCalls().size()),
+                Map.entry("orphanRequestCount", a.getOrphanRequests().size()),
                 Map.entry("errorCount", a.getErrors().size()),
                 Map.entry("levelCounts", a.getLevelCounts()),
                 Map.entry("jobExecutionCount", a.getJobExecutions().size()),

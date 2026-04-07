@@ -65,6 +65,7 @@ export interface AnalysisSummary {
   threadCount: number
   endpointCount: number
   apiCallCount: number
+  orphanRequestCount: number
   errorCount: number
   levelCounts: Record<string, number>
   jobExecutionCount: number
@@ -110,6 +111,15 @@ export interface LogLine {
   logger: string | null
   thread: string | null
   message: string | null
+  sourceFile: string
+}
+
+export interface OrphanRequest {
+  endpoint: string
+  thread: string
+  timestamp: string | null
+  payload: string | null
+  lineNumber: number
   sourceFile: string
 }
 
@@ -287,11 +297,15 @@ export interface CorrelatedAnomaly {
   windowEnd: string
   signalTypes: string[]
   score: number
+  severity: string
+  causalChain: string[]
   anomalies: AnomalyResult[]
 }
 
 export interface AnomalyDetectionResponse {
   signalType: string
+  metric: string
+  method: string
   bucketSize: number
   threshold: number
   totalBuckets: number
@@ -491,6 +505,19 @@ export async function getFailures(
   return handleResponse(res)
 }
 
+export async function getOrphanRequests(
+  id: string,
+  params: { endpoint?: string; thread?: string; page?: number; size?: number } = {},
+): Promise<PaginatedResponse<OrphanRequest>> {
+  const q = new URLSearchParams()
+  if (params.endpoint) q.set('endpoint', params.endpoint)
+  if (params.thread) q.set('thread', params.thread)
+  if (params.page != null) q.set('page', String(params.page))
+  if (params.size != null) q.set('size', String(params.size))
+  const res = await fetchWithAuth(`${API}/${id}/orphan-requests?${q}`)
+  return handleResponse(res)
+}
+
 export async function listAnalyses(): Promise<AnalysisSummary[]> {
   const res = await fetchWithAuth(`${API}/list`)
   return handleResponse(res)
@@ -615,13 +642,15 @@ export async function getCustomFieldResults(
 
 export async function getAnomalyDetection(
   id: string,
-  params: { signalType?: string; bucketSize?: number; threshold?: number; baselineWindow?: number } = {},
+  params: { signalType?: string; bucketSize?: number; threshold?: number; baselineWindow?: number; metric?: string; method?: string } = {},
 ): Promise<AnomalyDetectionResponse> {
   const q = new URLSearchParams()
   if (params.signalType) q.set('signalType', params.signalType)
   if (params.bucketSize != null) q.set('bucketSize', String(params.bucketSize))
   if (params.threshold != null) q.set('threshold', String(params.threshold))
   if (params.baselineWindow != null) q.set('baselineWindow', String(params.baselineWindow))
+  if (params.metric) q.set('metric', params.metric)
+  if (params.method) q.set('method', params.method)
   const qs = q.toString()
   const res = await fetchWithAuth(`${API}/${id}/anomaly-detection${qs ? '?' + qs : ''}`)
   return handleResponse(res)
