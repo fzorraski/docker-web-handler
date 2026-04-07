@@ -468,6 +468,125 @@ class LogFileParserTest {
         assertEquals(50, apkPair.durationMs());
     }
 
+    // ---- Edge: stale request in FIFO queue, closest match preferred ----
+
+    @Test
+    void staleRequestInQueue_closestMatchPreferred() throws IOException {
+        // Simulates: old request at 07:00, new request at 07:10, response at 07:10.
+        // The response at 07:10 should pair with 07:10 request (closest), not 07:00 (FIFO oldest).
+        Path file = writeLog(
+                "2026-03-30 07:00:00,000 INFO  [stdout] (t1) OrderWS/getOrders Request = old-request",
+                "2026-03-30 07:10:00,000 INFO  [stdout] (t1) OrderWS/getOrders Request = new-request",
+                "2026-03-30 07:10:00,500 INFO  [stdout] (t1) OrderWS/getOrders Response = response-for-new"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+        // Should pair new-request with response (500ms), not old-request with response (10 min)
+        assertEquals(1, result.getApiCalls().size());
+        ApiCallPair pair = result.getApiCalls().getFirst();
+        assertEquals("new-request", pair.requestPayload());
+        assertEquals("response-for-new", pair.responsePayload());
+        assertEquals(500, pair.durationMs());
+    }
+
+    @Test
+    void multipleStaleRequests_closestMatchWins() throws IOException {
+        // 3 requests queued, response arrives close to the last one
+        Path file = writeLog(
+                "2026-03-30 07:00:00,000 INFO  [stdout] (t1) OrderWS/getOrders Request = req1",
+                "2026-03-30 07:05:00,000 INFO  [stdout] (t1) OrderWS/getOrders Request = req2",
+                "2026-03-30 07:10:00,000 INFO  [stdout] (t1) OrderWS/getOrders Request = req3",
+                "2026-03-30 07:10:00,200 INFO  [stdout] (t1) OrderWS/getOrders Response = resp3"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+        assertEquals(1, result.getApiCalls().size());
+        assertEquals("req3", result.getApiCalls().getFirst().requestPayload());
+        assertEquals(200, result.getApiCalls().getFirst().durationMs());
+    }
+
+    // ---- Orphan request collection ----
+
+    @Test
+    void orphanRequest_unparedRequestCollected() throws IOException {
+        // One request with no response → should become an orphan
+        Path file = writeLog(
+                "2026-03-30 07:31:00,000 INFO  [stdout] (t1) OrderWS/getOrders Request = orphan-payload"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+        assertTrue(result.getApiCalls().isEmpty());
+        assertEquals(1, result.getOrphanRequests().size());
+        assertEquals("OrderWS/getOrders", result.getOrphanRequests().getFirst().endpoint());
+        assertEquals("t1", result.getOrphanRequests().getFirst().thread());
+        assertEquals("orphan-payload", result.getOrphanRequests().getFirst().payload());
+        assertEquals(1, result.getOrphanRequests().getFirst().lineNumber());
+    }
+
+    @Test
+    void orphanRequest_pairedCallHasNoOrphan() throws IOException {
+        // One request + one response → no orphan
+        Path file = writeLog(
+                "2026-03-30 07:31:00,000 INFO  [stdout] (t1) OrderWS/getOrders Request = req",
+                "2026-03-30 07:31:00,100 INFO  [stdout] (t1) OrderWS/getOrders Response = resp"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+        assertEquals(1, result.getApiCalls().size());
+        assertTrue(result.getOrphanRequests().isEmpty());
+    }
+
+    @Test
+    void orphanRequest_staleRequestBecomesOrphan() throws IOException {
+        // Old request at 07:00, new request at 07:10 + response at 07:10.
+        // The 07:10 request pairs with response; the 07:00 request becomes orphan.
+        Path file = writeLog(
+                "2026-03-30 07:00:00,000 INFO  [stdout] (t1) OrderWS/getOrders Request = stale",
+                "2026-03-30 07:10:00,000 INFO  [stdout] (t1) OrderWS/getOrders Request = fresh",
+                "2026-03-30 07:10:00,500 INFO  [stdout] (t1) OrderWS/getOrders Response = resp"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+        assertEquals(1, result.getApiCalls().size());
+        assertEquals("fresh", result.getApiCalls().getFirst().requestPayload());
+        assertEquals(1, result.getOrphanRequests().size());
+        assertEquals("stale", result.getOrphanRequests().getFirst().payload());
+    }
+
+    @Test
+    void orphanRequest_multipleOrphansSortedByLineNumber() throws IOException {
+        // Two orphan requests on different threads
+        Path file = writeLog(
+                "2026-03-30 07:00:00,000 INFO  [stdout] (t1) OrderWS/getOrders Request = orphan1",
+                "2026-03-30 07:01:00,000 INFO  [stdout] (t2) UserWS/getUser Request = orphan2"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+        assertTrue(result.getApiCalls().isEmpty());
+        assertEquals(2, result.getOrphanRequests().size());
+        assertTrue(result.getOrphanRequests().get(0).lineNumber() < result.getOrphanRequests().get(1).lineNumber());
+    }
+
+    @Test
+    void orphanRequest_withCorrelationId_collected() throws IOException {
+        // Request with correlationId but no response
+        Path file = writeLog(
+                "2026-03-30 07:31:00,000 INFO  [stdout] (t1) OrderWS/getOrders 12345 Request = orphan-with-id"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+        assertTrue(result.getApiCalls().isEmpty());
+        assertEquals(1, result.getOrphanRequests().size());
+        assertEquals("orphan-with-id", result.getOrphanRequests().getFirst().payload());
+    }
+
     // ---- Edge: p95 with single call ----
 
     @Test

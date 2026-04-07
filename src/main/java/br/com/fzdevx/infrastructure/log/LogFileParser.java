@@ -91,11 +91,15 @@ public class LogFileParser implements LogAnalysisPort {
         List<Map.Entry<Pattern, String>> redactionPatterns = compileRedactionPatterns(sensitiveFieldNames);
 
         List<ApiCallPair> apiCalls = List.of();
+        List<OrphanRequest> orphanRequests = List.of();
         if (apiCallPattern != null) {
             progressSink.accept(ContainerEvent.info("API Calls", "Pairing API calls..."));
             checkCancelled(cancelled);
-            apiCalls = pairApiCalls(allLines, apiCallPattern, slowThresholdMs, redactionPatterns);
-            progressSink.accept(ContainerEvent.info("API Calls", "Found " + apiCalls.size() + " API call pairs"));
+            var pairingResult = pairApiCalls(allLines, apiCallPattern, slowThresholdMs, redactionPatterns);
+            apiCalls = pairingResult.pairs;
+            orphanRequests = pairingResult.orphans;
+            progressSink.accept(ContainerEvent.info("API Calls", "Found " + apiCalls.size() + " API call pairs" +
+                    (orphanRequests.isEmpty() ? "" : " (" + orphanRequests.size() + " orphan requests)")));
         }
 
         List<JobExecution> jobExecutions = List.of();
@@ -157,7 +161,7 @@ public class LogFileParser implements LogAnalysisPort {
                 sourceFiles, totalLineCount, start, end,
                 new ArrayList<>(threadSet), new ArrayList<>(endpointSet),
                 apiCalls, endpointStats, levelCounts, errors,
-                jobExecutions, repeatedFailures, allLines
+                jobExecutions, repeatedFailures, allLines, orphanRequests
         );
     }
 
@@ -223,7 +227,9 @@ public class LogFileParser implements LogAnalysisPort {
         }
     }
 
-    private List<ApiCallPair> pairApiCalls(List<LogLine> lines, Pattern apiCallPattern,
+    private record PairingResult(List<ApiCallPair> pairs, List<OrphanRequest> orphans) {}
+
+    private PairingResult pairApiCalls(List<LogLine> lines, Pattern apiCallPattern,
                                               int slowThresholdMs, List<Map.Entry<Pattern, String>> redactionPatterns) {
         // Key: thread + "|" + endpoint + "|" + correlationId (or empty)
         Map<String, Deque<PendingRequest>> pendingByCorrelation = new HashMap<>();
@@ -269,7 +275,7 @@ public class LogFileParser implements LogAnalysisPort {
                     String key = thread + "|" + endpoint;
                     Deque<PendingRequest> queue = pendingByThreadEndpoint.get(key);
                     if (queue != null && !queue.isEmpty()) {
-                        matched = queue.poll();
+                        matched = findClosestRequest(queue, line.timestamp());
                     }
                 }
 
@@ -286,7 +292,53 @@ public class LogFileParser implements LogAnalysisPort {
                 }
             }
         }
-        return pairs;
+
+        // Collect orphan requests (requests that never got a response)
+        List<OrphanRequest> orphans = new ArrayList<>();
+        for (Deque<PendingRequest> queue : pendingByCorrelation.values()) {
+            for (PendingRequest p : queue) {
+                orphans.add(new OrphanRequest(p.endpoint, p.thread, p.timestamp,
+                        redactPayload(p.payload, redactionPatterns), p.lineNumber, p.sourceFile));
+            }
+        }
+        for (Deque<PendingRequest> queue : pendingByThreadEndpoint.values()) {
+            for (PendingRequest p : queue) {
+                orphans.add(new OrphanRequest(p.endpoint, p.thread, p.timestamp,
+                        redactPayload(p.payload, redactionPatterns), p.lineNumber, p.sourceFile));
+            }
+        }
+        orphans.sort(Comparator.comparingInt(OrphanRequest::lineNumber));
+
+        return new PairingResult(pairs, orphans);
+    }
+
+    /**
+     * Find the pending request whose timestamp is closest to the response timestamp.
+     * Removes and returns the best match from the queue.
+     * Falls back to FIFO (oldest) if timestamps are null.
+     */
+    private PendingRequest findClosestRequest(Deque<PendingRequest> queue, LocalDateTime responseTimestamp) {
+        if (queue.size() == 1 || responseTimestamp == null) {
+            return queue.poll();
+        }
+
+        PendingRequest best = null;
+        long bestDistance = Long.MAX_VALUE;
+
+        for (PendingRequest pending : queue) {
+            if (pending.timestamp == null) continue;
+            long distance = Math.abs(Duration.between(pending.timestamp, responseTimestamp).toMillis());
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = pending;
+            }
+        }
+
+        if (best != null) {
+            queue.remove(best);
+            return best;
+        }
+        return queue.poll();
     }
 
     private List<JobExecution> pairJobExecutions(List<LogLine> lines, Pattern startPattern, Pattern endPattern) {
