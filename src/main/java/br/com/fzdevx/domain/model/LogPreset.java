@@ -11,7 +11,8 @@ public record LogPreset(
         String jobEndRegex,
         String failureRegex,
         List<String> sensitiveFieldNames,
-        List<CustomField> customFields
+        List<CustomField> customFields,
+        List<String> criticalIssueExclusions
 ) {
 
     public record CustomField(
@@ -29,6 +30,7 @@ public record LogPreset(
             "^Job \\[(?<jobName>.+?)\\] executou em .+ and reports: (?<result>.+)$",
             "ORDEM (?<entityId>ORDER \\d+) FALHA AO INICIAR (?<reason>\\w+):",
             List.of("token", "senha", "password", "secret", "authorization"),
+            List.of(),
             List.of()
     );
 
@@ -41,6 +43,7 @@ public record LogPreset(
             null,
             null,
             List.of("token", "password", "secret", "authorization"),
+            List.of(),
             List.of()
     );
 
@@ -53,6 +56,7 @@ public record LogPreset(
             null,
             null,
             List.of("token", "password", "secret", "authorization"),
+            List.of(),
             List.of()
     );
 
@@ -64,6 +68,7 @@ public record LogPreset(
             null,
             null,
             null,
+            List.of(),
             List.of(),
             List.of()
     );

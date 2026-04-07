@@ -285,7 +285,7 @@ class AnalyzeLogFileUseCaseTest {
         LogPreset presetWithFields = new LogPreset("WildFly",
                 LogPreset.WILDFLY.logLineRegex(), LogPreset.WILDFLY.timestampFormat(),
                 LogPreset.WILDFLY.apiCallRegex(), null, null, null, List.of(),
-                List.of(new LogPreset.CustomField("Test", ".*", false)));
+                List.of(new LogPreset.CustomField("Test", ".*", false)), List.of());
 
         List<ContainerEvent> events = new ArrayList<>();
         useCase.analyzeWithProgress(

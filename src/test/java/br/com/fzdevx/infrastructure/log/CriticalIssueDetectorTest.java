@@ -778,4 +778,68 @@ class CriticalIssueDetectorTest {
         assertEquals(1, results.size());
         assertTrue(results.getFirst().bursts().isEmpty());
     }
+
+    // ---- Exclusion filtering ----
+
+    @Test
+    void detect_withExclusion_skipsMatchingPatterns() {
+        var lines = List.of(
+                line(1, "could not prepare statement"),
+                line(2, "OutOfMemoryError: Java heap space"),
+                line(3, "could not prepare statement again")
+        );
+
+        var results = detector.detect(lines, List.of("could not prepare"));
+
+        // JDBC "could not prepare statement" excluded, OOM should remain
+        assertTrue(results.stream().noneMatch(s -> s.category().equals("JDBC")));
+        assertTrue(results.stream().anyMatch(s -> s.category().equals("OOM")));
+    }
+
+    @Test
+    void detect_withExclusion_caseInsensitive() {
+        var lines = List.of(line(1, "could not prepare statement"));
+
+        var results = detector.detect(lines, List.of("COULD NOT PREPARE"));
+
+        assertTrue(results.stream().noneMatch(s -> s.category().equals("JDBC")));
+    }
+
+    @Test
+    void detect_withExclusion_matchesPatternName() {
+        var lines = List.of(line(1, "could not prepare statement"));
+
+        // "could not prepare statement" is the patternName in CriticalIssueDetector
+        var results = detector.detect(lines, List.of("could not prepare statement"));
+
+        assertTrue(results.stream().noneMatch(s -> s.category().equals("JDBC")));
+    }
+
+    @Test
+    void detect_withEmptyExclusions_detectsAll() {
+        var lines = List.of(
+                line(1, "could not prepare statement"),
+                line(2, "OutOfMemoryError: Java heap space")
+        );
+
+        var results = detector.detect(lines, List.of());
+
+        assertTrue(results.stream().anyMatch(s -> s.category().equals("JDBC")));
+        assertTrue(results.stream().anyMatch(s -> s.category().equals("OOM")));
+    }
+
+    @Test
+    void detect_withMultipleExclusions_skipsAll() {
+        var lines = List.of(
+                line(1, "could not prepare statement"),
+                line(2, "OutOfMemoryError: Java heap space"),
+                line(3, "Connection refused")
+        );
+
+        var results = detector.detect(lines, List.of("could not prepare", "OutOfMemoryError"));
+
+        assertTrue(results.stream().noneMatch(s -> s.category().equals("JDBC")));
+        assertTrue(results.stream().noneMatch(s -> s.category().equals("OOM")));
+        assertTrue(results.stream().anyMatch(s -> s.category().equals("NETWORK")));
+    }
 }

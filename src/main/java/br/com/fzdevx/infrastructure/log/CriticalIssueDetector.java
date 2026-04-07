@@ -178,6 +178,10 @@ public class CriticalIssueDetector {
     int burstWindowMinutes;
 
     public List<CriticalIssueSummary> detect(List<LogLine> lines) {
+        return detect(lines, List.of());
+    }
+
+    public List<CriticalIssueSummary> detect(List<LogLine> lines, List<String> exclusions) {
         if (!enabled) {
             return List.of();
         }
@@ -185,6 +189,16 @@ public class CriticalIssueDetector {
         List<PatternDef> activePatterns = javaPatterns
                 ? PATTERNS
                 : PATTERNS.stream().filter(p -> !p.javaOnly()).toList();
+
+        if (exclusions != null && !exclusions.isEmpty()) {
+            List<String> lowerExclusions = exclusions.stream()
+                    .map(s -> s.trim().toLowerCase()).filter(s -> !s.isEmpty()).toList();
+            activePatterns = activePatterns.stream()
+                    .filter(p -> lowerExclusions.stream().noneMatch(excl ->
+                            p.matchString().toLowerCase().contains(excl)
+                            || p.patternName().toLowerCase().contains(excl)))
+                    .toList();
+        }
 
         // category -> list of issues
         var groups = new LinkedHashMap<String, List<CriticalIssue>>();

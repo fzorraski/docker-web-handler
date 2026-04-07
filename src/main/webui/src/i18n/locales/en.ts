@@ -765,6 +765,8 @@ const en = {
       failureRegex: 'Failure regex',
       sensitiveFields: 'Sensitive fields',
       sensitiveFieldsHelp: 'Comma-separated field names to mask (e.g. token,password,secret)',
+      criticalIssueExclusions: 'Exclude critical issue patterns',
+      criticalIssueExclusionsHelp: 'Comma-separated substrings to exclude (e.g. could not prepare statement,PSQLException)',
       customFields: 'Custom Fields',
       addCustomField: 'Add Custom Field',
       analyses: 'Analyses',

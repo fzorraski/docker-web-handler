@@ -141,6 +141,7 @@ public class LogAnalyzerController {
         String customFailureRegex = extractString(form, "failureRegex");
         String customSensitiveFields = extractString(form, "sensitiveFieldNames");
         String customFieldsJson = extractString(form, "customFields");
+        String customCriticalIssueExclusions = extractString(form, "criticalIssueExclusions");
 
         List<LogPreset.CustomField> uploadCustomFields = parseCustomFieldsJson(customFieldsJson);
         List<LogPreset.CustomField> mergedCustomFields = uploadCustomFields.isEmpty()
@@ -158,7 +159,10 @@ public class LogAnalyzerController {
                 customSensitiveFields != null && !customSensitiveFields.isBlank()
                         ? Arrays.asList(customSensitiveFields.split(","))
                         : basePreset.sensitiveFieldNames(),
-                mergedCustomFields
+                mergedCustomFields,
+                customCriticalIssueExclusions != null && !customCriticalIssueExclusions.isBlank()
+                        ? Arrays.asList(customCriticalIssueExclusions.split(","))
+                        : basePreset.criticalIssueExclusions()
         );
 
         if (preset.logLineRegex() == null || preset.logLineRegex().isBlank()) {
@@ -987,6 +991,7 @@ public class LogAnalyzerController {
         map.put("customFields", p.customFields().stream()
                 .map(cf -> Map.of("name", cf.name(), "regex", cf.regex(), "countOnly", cf.countOnly()))
                 .toList());
+        map.put("criticalIssueExclusions", p.criticalIssueExclusions());
         return map;
     }
 

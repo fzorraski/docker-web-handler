@@ -49,6 +49,9 @@ public class LogPresetProvider {
     @Inject @ConfigProperty(name = "log.analyzer.preset.wildfly.custom-fields")
     Optional<String> wildflyCustomFields;
 
+    @Inject @ConfigProperty(name = "log.analyzer.preset.wildfly.critical-issue-exclusions")
+    Optional<String> wildflyCriticalIssueExclusions;
+
     // ---- Quarkus ----
     @Inject @ConfigProperty(name = "log.analyzer.preset.quarkus.log-line-regex",
             defaultValue = "^(?<timestamp>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2},\\d{3})\\s+(?<level>\\w+)\\s+\\[(?<logger>[^\\]]+)\\]\\s+\\((?<thread>[^)]+)\\)\\s+(?<message>.*)$")
@@ -77,6 +80,9 @@ public class LogPresetProvider {
 
     @Inject @ConfigProperty(name = "log.analyzer.preset.quarkus.custom-fields")
     Optional<String> quarkusCustomFields;
+
+    @Inject @ConfigProperty(name = "log.analyzer.preset.quarkus.critical-issue-exclusions")
+    Optional<String> quarkusCriticalIssueExclusions;
 
     // ---- Spring Boot ----
     @Inject @ConfigProperty(name = "log.analyzer.preset.spring-boot.log-line-regex",
@@ -107,6 +113,9 @@ public class LogPresetProvider {
     @Inject @ConfigProperty(name = "log.analyzer.preset.spring-boot.custom-fields")
     Optional<String> springBootCustomFields;
 
+    @Inject @ConfigProperty(name = "log.analyzer.preset.spring-boot.critical-issue-exclusions")
+    Optional<String> springBootCriticalIssueExclusions;
+
     void onStart(@Observes StartupEvent ev) {
         buildPresets();
     }
@@ -116,21 +125,24 @@ public class LogPresetProvider {
                 new LogPreset("WildFly", wildflyLogLineRegex, wildflyTimestampFormat,
                         wildflyApiCallRegex, wildflyJobStartRegex, wildflyJobEndRegex,
                         wildflyFailureRegex, splitFields(wildflySensitiveFields),
-                        parseCustomFields(wildflyCustomFields.orElse(""))),
+                        parseCustomFields(wildflyCustomFields.orElse("")),
+                        splitFields(wildflyCriticalIssueExclusions.orElse(""))),
 
                 new LogPreset("Quarkus", quarkusLogLineRegex, quarkusTimestampFormat,
                         quarkusApiCallRegex, quarkusJobStartRegex.orElse(null),
                         quarkusJobEndRegex.orElse(null), quarkusFailureRegex.orElse(null),
                         splitFields(quarkusSensitiveFields),
-                        parseCustomFields(quarkusCustomFields.orElse(""))),
+                        parseCustomFields(quarkusCustomFields.orElse("")),
+                        splitFields(quarkusCriticalIssueExclusions.orElse(""))),
 
                 new LogPreset("Spring Boot", springBootLogLineRegex, springBootTimestampFormat,
                         springBootApiCallRegex, springBootJobStartRegex.orElse(null),
                         springBootJobEndRegex.orElse(null), springBootFailureRegex.orElse(null),
                         splitFields(springBootSensitiveFields),
-                        parseCustomFields(springBootCustomFields.orElse(""))),
+                        parseCustomFields(springBootCustomFields.orElse("")),
+                        splitFields(springBootCriticalIssueExclusions.orElse(""))),
 
-                new LogPreset("Custom", "", "", "", null, null, null, List.of(), List.of())
+                new LogPreset("Custom", "", "", "", null, null, null, List.of(), List.of(), List.of())
         );
     }
 

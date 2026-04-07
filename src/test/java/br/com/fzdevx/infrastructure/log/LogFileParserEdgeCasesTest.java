@@ -117,6 +117,7 @@ class LogFileParserEdgeCasesTest {
                 LogPreset.WILDFLY.apiCallRegex(),
                 null, null, null,
                 List.of(),
+                List.of(),
                 List.of()
         );
 
@@ -178,7 +179,7 @@ class LogFileParserEdgeCasesTest {
     void invalidLogLineRegexThrows() {
         LogPreset badPreset = new LogPreset(
                 "Bad", "[invalid(regex", "yyyy-MM-dd", null,
-                null, null, null, List.of(), List.of()
+                null, null, null, List.of(), List.of(), List.of()
         );
 
         assertThrows(PatternSyntaxException.class, () ->
@@ -372,6 +373,7 @@ class LogFileParserEdgeCasesTest {
                 LogPreset.WILDFLY.apiCallRegex(),
                 null, null, null,
                 null,
+                List.of(),
                 List.of()
         );
 

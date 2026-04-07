@@ -766,6 +766,8 @@ const ptBR: typeof en = {
       failureRegex: 'Regex de falha',
       sensitiveFields: 'Campos sensíveis',
       sensitiveFieldsHelp: 'Nomes de campos separados por vírgula para mascarar (ex: token,senha,secret)',
+      criticalIssueExclusions: 'Excluir padrões de problemas críticos',
+      criticalIssueExclusionsHelp: 'Substrings separadas por vírgula para excluir (ex: could not prepare statement,PSQLException)',
       customFields: 'Campos Personalizados',
       addCustomField: 'Adicionar Campo Personalizado',
       analyses: 'Análises',

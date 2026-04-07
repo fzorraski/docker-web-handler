@@ -766,6 +766,8 @@ const es: typeof en = {
       failureRegex: 'Regex de fallo',
       sensitiveFields: 'Campos sensibles',
       sensitiveFieldsHelp: 'Nombres de campos separados por coma para enmascarar (ej: token,password,secret)',
+      criticalIssueExclusions: 'Excluir patrones de problemas críticos',
+      criticalIssueExclusionsHelp: 'Subcadenas separadas por coma para excluir (ej: could not prepare statement,PSQLException)',
       customFields: 'Campos Personalizados',
       addCustomField: 'Agregar Campo Personalizado',
       analyses: 'Análisis',

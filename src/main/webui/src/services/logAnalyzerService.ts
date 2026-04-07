@@ -43,6 +43,7 @@ export interface LogPreset {
   failureRegex: string | null
   sensitiveFieldNames: string[]
   customFields: CustomField[]
+  criticalIssueExclusions: string[]
 }
 
 export interface AnalyzerStatus {
@@ -338,6 +339,7 @@ export interface UploadOptions {
   jobEndRegex?: string
   failureRegex?: string
   sensitiveFieldNames?: string
+  criticalIssueExclusions?: string
   slowThresholdMs?: number
   customFields?: string
   analysisOptions?: AnalysisOptions

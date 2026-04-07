@@ -143,7 +143,7 @@ export default function LogAnalyzerPage() {
 
     const currentPreset = presets.find(p => p.name.toUpperCase() === selectedPreset.toUpperCase())
     const { threadView: _tv, ...backendOptions } = analysisOptions
-    const regexKeys = ['logLineRegex', 'apiCallRegex', 'timestampFormat', 'jobStartRegex', 'jobEndRegex', 'failureRegex', 'sensitiveFieldNames'] as const
+    const regexKeys = ['logLineRegex', 'apiCallRegex', 'timestampFormat', 'jobStartRegex', 'jobEndRegex', 'failureRegex', 'sensitiveFieldNames', 'criticalIssueExclusions'] as const
     const formFields: Record<string, string | undefined> = {
       preset: selectedPreset,
       slowThresholdMs: String(slowThreshold),
@@ -383,6 +383,7 @@ export default function LogAnalyzerPage() {
                 jobEndRegex: p.jobEndRegex ?? undefined,
                 failureRegex: p.failureRegex ?? undefined,
                 sensitiveFieldNames: p.sensitiveFieldNames?.join(','),
+                criticalIssueExclusions: p.criticalIssueExclusions?.join(','),
               })
               setCustomFieldInputs(p.customFields?.map(cf => ({ name: cf.name, regex: cf.regex, countOnly: cf.countOnly })) ?? [])
             }}
@@ -438,6 +439,9 @@ export default function LogAnalyzerPage() {
             <TextField size="small" fullWidth label={t('logAnalyzer.upload.sensitiveFields')}
               value={customRegex.sensitiveFieldNames ?? ''} onChange={(e) => setCustomRegex(r => ({ ...r, sensitiveFieldNames: e.target.value }))}
               helperText={t('logAnalyzer.upload.sensitiveFieldsHelp')} />
+            <TextField size="small" fullWidth label={t('logAnalyzer.upload.criticalIssueExclusions')}
+              value={customRegex.criticalIssueExclusions ?? ''} onChange={(e) => setCustomRegex(r => ({ ...r, criticalIssueExclusions: e.target.value }))}
+              helperText={t('logAnalyzer.upload.criticalIssueExclusionsHelp')} />
             <Typography variant="subtitle2" sx={{ mt: 2 }}>{t('logAnalyzer.upload.customFields')}</Typography>
             {customFieldInputs.map((cf, idx) => (
               <Stack key={idx} direction="row" spacing={1} alignItems="center">

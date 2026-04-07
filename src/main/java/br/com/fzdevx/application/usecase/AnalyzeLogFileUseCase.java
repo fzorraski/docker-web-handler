@@ -98,7 +98,7 @@ public class AnalyzeLogFileUseCase {
         }
 
         if (options.criticalIssues()) {
-            analysis.setCriticalIssues(criticalIssueDetector.detect(analysis.getAllLines()));
+            analysis.setCriticalIssues(criticalIssueDetector.detect(analysis.getAllLines(), preset.criticalIssueExclusions()));
         }
         if (options.npeAnalysis()) {
             analysis.setNpeAnalysis(npeAnalyzer.analyze(analysis.getAllLines()));
@@ -149,7 +149,7 @@ public class AnalyzeLogFileUseCase {
             if (options.criticalIssues()) {
                 eventSink.accept(ContainerEvent.info("Critical Issues", "Detecting critical issues..."));
                 checkCancelled(cancelled);
-                analysis.setCriticalIssues(criticalIssueDetector.detect(analysis.getAllLines()));
+                analysis.setCriticalIssues(criticalIssueDetector.detect(analysis.getAllLines(), preset.criticalIssueExclusions()));
             }
 
             if (options.npeAnalysis()) {
@@ -328,7 +328,7 @@ public class AnalyzeLogFileUseCase {
         );
         merged.setCustomFieldResults(mergedCustomFields);
         if (options.criticalIssues()) {
-            merged.setCriticalIssues(criticalIssueDetector.detect(allLines));
+            merged.setCriticalIssues(criticalIssueDetector.detect(allLines, preset.criticalIssueExclusions()));
         }
         if (options.npeAnalysis()) {
             merged.setNpeAnalysis(npeAnalyzer.analyze(allLines));
