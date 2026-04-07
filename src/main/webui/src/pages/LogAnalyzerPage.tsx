@@ -363,7 +363,7 @@ export default function LogAnalyzerPage() {
             disabled={sse.isRunning}
           >
             {t('logAnalyzer.upload.selectFiles')}
-            <input type="file" hidden multiple accept=".log,.txt,.out" onChange={(e) => handleUpload(e.target.files)} />
+            <input type="file" hidden multiple accept=".log,.txt,.out" onChange={(e) => { handleUpload(e.target.files); e.target.value = '' }} />
           </Button>
           <Autocomplete
             size="small"
