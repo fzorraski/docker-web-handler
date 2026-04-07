@@ -267,7 +267,7 @@ log.analyzer.preset.wildfly.custom-fields=Entity Changes|Updated -> (?<entity>\\
 | Limit | Value | Description |
 |-------|-------|-------------|
 | **Field name** | Max 50 chars | Alphanumeric, spaces, and hyphens only |
-| **Match cap** | 10,000 per field | Count continues but detail storage stops after 10K matches |
+| **Match cap** | 10,000 per field (configurable) | Count continues but detail storage stops after the cap — see [Memory Limits](#memory-limits) |
 | **Regex validation** | 2-second timeout | Each regex is tested against diverse strings to detect catastrophic backtracking |
 | **Count-only fields** | No tab created | Summary card shows count; no detail tab is rendered |
 
@@ -288,6 +288,21 @@ Invalid field names or unsafe regex patterns are silently skipped with a server-
 | `log.analyzer.default-preset` | `WILDFLY` | Default parsing preset |
 
 All properties can be overridden via environment variables (dots/hyphens become underscores, all uppercase).
+
+### Memory Limits
+
+Each analysis stores match details in server memory. To prevent a single noisy log from exhausting the JVM heap — especially with multiple concurrent users — each analyzer caps the number of stored detail objects. **Counts are always accurate**; only the browsable detail rows are capped.
+
+| Property | Default | What it caps |
+|----------|---------|-------------|
+| `log.analyzer.critical-issues.max-matches` | `10000` | Total critical issue matches across all categories |
+| `log.analyzer.custom-fields.max-matches` | `10000` | Stored matches per custom field (count-only fields unaffected) |
+| `log.analyzer.npe-analysis.max-occurrences` | `5000` | NPE occurrences with stack traces |
+| `log.analyzer.exception-analysis.max-occurrences` | `5000` | Exception occurrences with stack traces |
+
+**Why these limits exist:** A 2M-line log with 500K "could not prepare statement" errors would create 500K `CriticalIssue` objects (~500 bytes each = ~250 MB). With 5 concurrent analyses, that's 1.25 GB for critical issues alone. Stack trace analyzers (NPE, Exception) are even heavier — each occurrence stores multi-line stack traces at 1-5 KB each.
+
+The caps are a safety net, not a feature limitation. If you have 7K+ identical errors, the summary still reports the exact count — you just can't browse all 7K individually in the table (the first N are enough to understand the pattern). Increase the caps if your server has sufficient memory and you need full detail browsability.
 
 ---
 

@@ -517,8 +517,7 @@ public class LogAnalyzerController {
         List<JobExecution> result = switch (sort) {
             case "duration" -> jobs.sorted(Comparator.comparingLong(JobExecution::durationMs).reversed()).toList();
             case "name" -> jobs.sorted(Comparator.comparing(JobExecution::jobName)).toList();
-            case "time" -> jobs.toList();
-            default -> jobs.toList();
+            default -> jobs.sorted(Comparator.comparing(JobExecution::startTimestamp, Comparator.nullsLast(Comparator.naturalOrder()))).toList();
         };
         return paginatedResponse(result, page, size);
     }
