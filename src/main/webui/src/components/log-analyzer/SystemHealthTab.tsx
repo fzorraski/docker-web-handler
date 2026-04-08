@@ -39,12 +39,16 @@ export function SystemHealthTab({ analysisId }: { analysisId: string }) {
   const [selectedBucketSize, setSelectedBucketSize] = useState(300)
   const [selectedMetric, setSelectedMetric] = useState('count')
   const [hiddenSignals, setHiddenSignals] = useState<Set<string>>(new Set())
+  const [pinnedLeftSignal, setPinnedLeftSignal] = useState<string | null>(null)
+  const [pinnedRightSignal, setPinnedRightSignal] = useState<string | null>(null)
 
   useEffect(() => {
     setState('idle')
     setData(null)
     setError('')
     setHiddenSignals(new Set())
+    setPinnedLeftSignal(null)
+    setPinnedRightSignal(null)
   }, [analysisId])
 
   const analyze = useCallback(async () => {
@@ -57,6 +61,8 @@ export function SystemHealthTab({ analysisId }: { analysisId: string }) {
       })
       setData(result)
       setHiddenSignals(new Set())
+      setPinnedLeftSignal(null)
+      setPinnedRightSignal(null)
       setState('loaded')
     } catch (err) {
       setError(err instanceof Error ? err.message : t('logAnalyzer.systemHealth.error'))
@@ -88,12 +94,36 @@ export function SystemHealthTab({ analysisId }: { analysisId: string }) {
     return maxes
   }, [data])
 
-  // Split signals into left axis (dominant = highest max) and right axis (rest)
-  const { leftSignal, rightSignals } = useMemo(() => {
-    if (!data || data.signalTypes.length === 0) return { leftSignal: '', rightSignals: [] as string[] }
-    const sorted = [...data.signalTypes].sort((a, b) => (signalMaxes[b] ?? 0) - (signalMaxes[a] ?? 0))
-    return { leftSignal: sorted[0], rightSignals: sorted.slice(1) }
-  }, [data, signalMaxes])
+  // Split signals: pinned left/right get their own axis, rest go on left axis
+  const { leftSignals, rightSignals, primaryLeft, primaryRight } = useMemo(() => {
+    if (!data || data.signalTypes.length === 0) return { leftSignals: [] as string[], rightSignals: [] as string[], primaryLeft: '', primaryRight: '' }
+    const visible = data.signalTypes.filter(s => !hiddenSignals.has(s))
+    if (visible.length === 0) return { leftSignals: [] as string[], rightSignals: [] as string[], primaryLeft: '', primaryRight: '' }
+
+    const pLeft = pinnedLeftSignal && visible.includes(pinnedLeftSignal) ? pinnedLeftSignal : null
+    const pRight = pinnedRightSignal && visible.includes(pinnedRightSignal) && pinnedRightSignal !== pLeft ? pinnedRightSignal : null
+
+    if (pLeft && pRight) {
+      // Both pinned: each gets own axis, remaining go on left
+      const rest = visible.filter(s => s !== pLeft && s !== pRight)
+      return { leftSignals: [pLeft, ...rest], rightSignals: [pRight], primaryLeft: pLeft, primaryRight: pRight }
+    }
+    if (pRight) {
+      // Only right pinned: auto-select left, right gets its own axis
+      const autoLeft = [...visible].filter(s => s !== pRight).sort((a, b) => (signalMaxes[b] ?? 0) - (signalMaxes[a] ?? 0))[0] ?? ''
+      const rest = visible.filter(s => s !== autoLeft && s !== pRight)
+      return { leftSignals: [autoLeft, ...rest], rightSignals: [pRight], primaryLeft: autoLeft, primaryRight: pRight }
+    }
+    // Only left pinned (or auto): left gets own axis, rest share right
+    const left = pLeft ?? [...visible].sort((a, b) => (signalMaxes[b] ?? 0) - (signalMaxes[a] ?? 0))[0]
+    return { leftSignals: [left], rightSignals: visible.filter(s => s !== left), primaryLeft: left, primaryRight: '' }
+  }, [data, signalMaxes, hiddenSignals, pinnedLeftSignal, pinnedRightSignal])
+
+  const axisLabel = (primary: string, signals: string[]) => {
+    if (!primary || signals.length === 0) return ''
+    const unit = selectedMetric !== 'count' && durationSignals.has(primary) ? 'ms' : 'count'
+    return `${primary} (${unit})`
+  }
 
   // Raw chart data — no normalization
   const chartData = useMemo(() => {
@@ -121,6 +151,18 @@ export function SystemHealthTab({ analysisId }: { analysisId: string }) {
   const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'
   const textColor = isDark ? '#E8ECF1' : '#424242'
 
+  const leftAxisOptions = useMemo(() => {
+    const auto = { value: '', label: t('logAnalyzer.systemHealth.leftAxisAuto') }
+    if (!data) return [auto]
+    return [auto, ...data.signalTypes.filter(s => s !== pinnedRightSignal).map(s => ({ value: s, label: s }))]
+  }, [data, t, pinnedRightSignal])
+
+  const rightAxisOptions = useMemo(() => {
+    const none = { value: '', label: t('logAnalyzer.systemHealth.rightAxisNone') }
+    if (!data) return [none]
+    return [none, ...data.signalTypes.filter(s => s !== pinnedLeftSignal).map(s => ({ value: s, label: s }))]
+  }, [data, t, pinnedLeftSignal])
+
   const controls = (compact: boolean) => (
     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
       <Autocomplete
@@ -145,6 +187,30 @@ export function SystemHealthTab({ analysisId }: { analysisId: string }) {
         isOptionEqualToValue={(o, v) => o.value === v.value}
         renderInput={(params) => <TextField {...params} label={t('logAnalyzer.anomalyDetection.bucketSize')} />}
       />
+      {data && data.signalTypes.length > 1 && (<>
+        <Autocomplete
+          size="small"
+          sx={{ minWidth: compact ? 150 : 180 }}
+          disableClearable
+          options={leftAxisOptions}
+          getOptionLabel={(o) => o.label}
+          value={leftAxisOptions.find(o => o.value === (pinnedLeftSignal ?? '')) ?? leftAxisOptions[0]}
+          onChange={(_, v) => setPinnedLeftSignal(v.value || null)}
+          isOptionEqualToValue={(o, v) => o.value === v.value}
+          renderInput={(params) => <TextField {...params} label={t('logAnalyzer.systemHealth.leftAxis')} />}
+        />
+        <Autocomplete
+          size="small"
+          sx={{ minWidth: compact ? 150 : 180 }}
+          disableClearable
+          options={rightAxisOptions}
+          getOptionLabel={(o) => o.label}
+          value={rightAxisOptions.find(o => o.value === (pinnedRightSignal ?? '')) ?? rightAxisOptions[0]}
+          onChange={(_, v) => setPinnedRightSignal(v.value || null)}
+          isOptionEqualToValue={(o, v) => o.value === v.value}
+          renderInput={(params) => <TextField {...params} label={t('logAnalyzer.systemHealth.rightAxis')} />}
+        />
+      </>)}
     </Stack>
   )
 
@@ -235,23 +301,27 @@ export function SystemHealthTab({ analysisId }: { analysisId: string }) {
       {/* Timeline chart — dual Y axis: left = dominant signal, right = others */}
       <Paper sx={{ p: 2 }}>
         <Typography variant="subtitle2" mb={1}>{t('logAnalyzer.systemHealth.timeline')}</Typography>
+        {(() => {
+          const leftAxisColor = leftSignals.length === 1 ? (signalColors[primaryLeft] ?? textColor) : textColor
+          const rightAxisColor = rightSignals.length === 1 ? (signalColors[primaryRight] ?? textColor) : textColor
+          return (
         <ResponsiveContainer width="100%" height={400}>
           <ComposedChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
             <XAxis dataKey="time" tick={{ fontSize: 10, fill: textColor }} interval="preserveStartEnd" />
             <YAxis
               yAxisId="left"
-              tick={{ fontSize: 11, fill: signalColors[leftSignal] ?? textColor }}
-              stroke={signalColors[leftSignal] ?? textColor}
-              label={{ value: `${leftSignal} (${selectedMetric !== 'count' && durationSignals.has(leftSignal) ? 'ms' : 'count'})`, angle: -90, position: 'insideLeft', style: { fontSize: 10, fill: signalColors[leftSignal] ?? textColor } }}
+              tick={{ fontSize: 11, fill: leftAxisColor }}
+              stroke={leftAxisColor}
+              label={{ value: axisLabel(primaryLeft, leftSignals), angle: -90, position: 'insideLeft', style: { fontSize: 10, fill: leftAxisColor } }}
             />
             {rightSignals.length > 0 && (
               <YAxis
                 yAxisId="right"
                 orientation="right"
-                tick={{ fontSize: 11, fill: textColor }}
-                stroke={textColor}
-                label={{ value: 'count', angle: 90, position: 'insideRight', style: { fontSize: 10, fill: textColor } }}
+                tick={{ fontSize: 11, fill: rightAxisColor }}
+                stroke={rightAxisColor}
+                label={{ value: axisLabel(primaryRight, rightSignals), angle: 90, position: 'insideRight', style: { fontSize: 10, fill: rightAxisColor } }}
               />
             )}
             <Tooltip
@@ -276,22 +346,49 @@ export function SystemHealthTab({ analysisId }: { analysisId: string }) {
                 )
               }}
             />
-            {/* Dominant signal as filled area on left axis */}
-            {visibleSignals.includes(leftSignal) && (
+            {/* Primary left signal as filled area */}
+            {primaryLeft && visibleSignals.includes(primaryLeft) && (
               <Area
                 yAxisId="left"
                 type="monotone"
-                dataKey={leftSignal}
-                stroke={signalColors[leftSignal]}
-                fill={signalColors[leftSignal]}
+                dataKey={primaryLeft}
+                stroke={signalColors[primaryLeft]}
+                fill={signalColors[primaryLeft]}
                 fillOpacity={0.1}
                 strokeWidth={2}
                 dot={false}
                 connectNulls
               />
             )}
-            {/* Other signals as lines on right axis */}
-            {visibleSignals.filter(s => s !== leftSignal).map(type => (
+            {/* Other left-axis signals as lines */}
+            {leftSignals.filter(s => s !== primaryLeft && visibleSignals.includes(s)).map(type => (
+              <Line
+                key={type}
+                yAxisId="left"
+                type="monotone"
+                dataKey={type}
+                stroke={signalColors[type]}
+                strokeWidth={1.5}
+                dot={false}
+                connectNulls
+              />
+            ))}
+            {/* Primary right signal as filled area */}
+            {primaryRight && visibleSignals.includes(primaryRight) && (
+              <Area
+                yAxisId="right"
+                type="monotone"
+                dataKey={primaryRight}
+                stroke={signalColors[primaryRight]}
+                fill={signalColors[primaryRight]}
+                fillOpacity={0.1}
+                strokeWidth={2}
+                dot={false}
+                connectNulls
+              />
+            )}
+            {/* Other right-axis signals as lines */}
+            {rightSignals.filter(s => s !== primaryRight && visibleSignals.includes(s)).map(type => (
               <Line
                 key={type}
                 yAxisId="right"
@@ -305,6 +402,8 @@ export function SystemHealthTab({ analysisId }: { analysisId: string }) {
             ))}
           </ComposedChart>
         </ResponsiveContainer>
+          )
+        })()}
       </Paper>
     </Box>
   )
