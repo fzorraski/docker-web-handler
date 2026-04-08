@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Log Analyzer allows you to upload log files or analyze container logs directly from the browser. It parses log lines, pairs API request/response calls with timing data, tracks job executions, detects repeated failures, and supports user-defined custom field extraction — all without modifying application code.
+The Log Analyzer allows you to upload log files or analyze container logs directly from the browser. It parses log lines, pairs API request/response calls with timing data, tracks job executions, detects repeated failures, provides anomaly detection with correlation analysis, multi-signal system health monitoring, performance insights, orphan request tracking, and user-defined custom field extraction — all without modifying application code.
 
 The feature is disabled by default. Enable it with:
 
@@ -73,6 +73,51 @@ ORDEM ORDER 252730 FALHA AO INICIAR UNSUFFICIENT_AMOUNT: [0, 34603]
 
 Shows occurrence count, first/last seen timestamps, time span, and paginated detail expansion.
 
+### Performance Insights
+
+Time-bucketed analysis of API call performance over the log timeline:
+
+- **Endpoint selection:** Analyze all endpoints or drill into a specific one
+- **Time buckets:** Auto-bucketed timeline showing request count, average response time, and P95
+- **Drill-down:** Click a bucket bar to see per-endpoint breakdown for that time window; right-click to open the detail dialog
+- **Sortable detail dialog:** Sort endpoints by count, avg duration, or P95 within a selected time bucket
+- **Cross-tab navigation:** Jump to Performance Insights from the Endpoint Stats tab or the API Calls context menu with auto-selected endpoint/timestamp
+
+### Anomaly Detection (Experimental)
+
+Statistical anomaly detection across multiple signal types extracted from log patterns:
+
+- **Signal types:** Select which signal to analyze — errors, latency, GC pauses, pool issues, deadlocks, job durations, orphan requests, and more (see [Signal Types](#signal-types) below)
+- **Detection methods:**
+  - **Ratio (variable baseline):** Compares each bucket to a rolling baseline window; flags buckets where the ratio exceeds the threshold
+  - **Z-Score:** Compares each bucket to the global mean/standard deviation; flags buckets beyond N standard deviations
+- **Metrics:** Analyze by count, P95, max, or avg
+- **Bucket sizes:** 5 min, 15 min, 30 min, or 1 hour
+- **Threshold:** Configurable sensitivity (1.5 to 20.0)
+- **Baseline window:** Number of preceding buckets used for ratio baseline (2–50)
+- **Correlation detection:** When anomalies are found, the system automatically extracts all other signal types and detects correlated anomalies — showing causal chains with severity scoring and temporal overlap across signal types
+- **Visualization:** Bucket timeline chart with color-coded bars (normal, elevated, anomaly) and a list of detected anomalies with baseline comparisons
+
+### System Health (Experimental)
+
+Multi-signal timeline showing all detected signal types on a single dual-axis chart:
+
+- **Automatic signal discovery:** Extracts all available signals from the log and displays them together
+- **Dual-axis chart:** Dominant signal on the left Y-axis, secondary signals on the right — prevents high-count signals from squashing low-count ones
+- **Signal toggling:** Click signal chips to hide/show individual signals
+- **Duration-aware:** Signals with meaningful duration values (API_LATENCY, SLOW_QUERY, GC_PAUSE, POOL_EXHAUSTION, JOB_DURATION) display in milliseconds when using P95/max/avg metrics
+- **Metrics and bucket sizes:** Same configurable options as Anomaly Detection
+
+### Orphan Requests
+
+Tracks API requests that were logged but never received a matching response:
+
+- **Dashboard card:** Shows orphan request count with warning color; also shown as a chip on the API Calls tab
+- **Paginated table:** Endpoint, thread, request timestamp, and payload preview
+- **Filters:** Filter by endpoint or thread
+- **Expandable rows:** Click to see the full request payload
+- **Cross-tab navigation:** Click the orphan chip on the API Calls tab to jump directly to this tab
+
 ### Custom Fields
 
 User-defined regex extractors for domain-specific log patterns. See [Custom Fields](#custom-fields-1) section below for full documentation.
@@ -137,6 +182,31 @@ Or via environment variables:
 ```bash
 LOG_ANALYZER_PRESET_WILDFLY_API_CALL_REGEX="^(?<endpoint>\\w+/\\w+)..."
 ```
+
+---
+
+## Signal Types
+
+Signal types are the categories of events that the Anomaly Detection and System Health features can extract and analyze. Available types depend on what patterns are found in the log.
+
+| Signal Type | Source | Duration? | Description |
+|-------------|--------|-----------|-------------|
+| `ERROR_COUNT` | Log lines with level ERROR | No | General error frequency |
+| `API_LATENCY` | API call pairs | Yes (ms) | Response time of paired API calls |
+| `JOB_DURATION` | Job executions | Yes (ms) | Duration of detected job executions |
+| `SLOW_QUERY` | Log messages | Yes (ms) | Slow database query warnings |
+| `GC_PAUSE` | Log messages | Yes (ms) | Garbage collection pause events |
+| `POOL_EXHAUSTION` | Log messages | Yes (ms) | Connection pool exhaustion events |
+| `POOL_LEAK` | Log messages | No | Connection pool leak detections |
+| `THREAD_REJECTION` | Log messages | No | Thread pool task rejection events |
+| `OOM` | Log messages | No | Out-of-memory errors |
+| `DEADLOCK` | Log messages | No | Deadlock detections |
+| `NPE` | Log messages | No | NullPointerException occurrences |
+| `SQL_EXCEPTION` | Log messages | No | Database exception events |
+| `HTTP_ERROR` | Log messages | No | HTTP error responses |
+| `ORPHAN_REQUEST` | API call pairing | No | Requests without matching responses |
+
+Duration signals display values in milliseconds when using P95/max/avg metrics. Non-duration signals use count-based analysis.
 
 ---
 
@@ -341,11 +411,32 @@ Query params:
 GET /api/logs/analyzer/{id}/api-calls?endpoint=&thread=&search=&sort=time&page=0&size=50
 GET /api/logs/analyzer/{id}/api-stats
 GET /api/logs/analyzer/{id}/lines?thread=&level=&search=&page=0&size=500
+GET /api/logs/analyzer/{id}/lines/range?from=0&to=100
 GET /api/logs/analyzer/{id}/threads
 GET /api/logs/analyzer/{id}/endpoints
-GET /api/logs/analyzer/{id}/jobs?page=0&size=50
+GET /api/logs/analyzer/{id}/jobs?jobName=&page=0&size=50
+GET /api/logs/analyzer/{id}/jobs/filters
 GET /api/logs/analyzer/{id}/failures?page=0&size=50
+GET /api/logs/analyzer/{id}/orphan-requests?endpoint=&thread=&page=0&size=50
+GET /api/logs/analyzer/{id}/critical-issues?category=
+GET /api/logs/analyzer/{id}/critical-issues/bursts?threshold=&windowSize=
+GET /api/logs/analyzer/{id}/critical-issues/bursts/{category}?page=0&size=20
+GET /api/logs/analyzer/{id}/critical-issues/bursts/{category}/{burstIndex}?page=0&size=50
+GET /api/logs/analyzer/{id}/npe-analysis?page=0&size=50
+GET /api/logs/analyzer/{id}/npe-analysis/{origin}/occurrences?page=0&size=20
+GET /api/logs/analyzer/{id}/exception-analysis?page=0&size=50
+GET /api/logs/analyzer/{id}/exception-analysis/{origin}/occurrences?page=0&size=20
 GET /api/logs/analyzer/{id}/custom-fields/{fieldName}?page=0&size=100
+```
+
+### Performance & Anomaly Analysis
+
+```
+GET /api/logs/analyzer/{id}/performance-insights?endpoint=
+GET /api/logs/analyzer/{id}/bucket-endpoints?timestamp=&endpoint=&limit=
+GET /api/logs/analyzer/{id}/anomaly-detection?signalType=ERROR_COUNT&bucketSize=300&threshold=3.0&baselineWindow=8&metric=count&method=ratio
+GET /api/logs/analyzer/{id}/anomaly-detection/signal-types
+GET /api/logs/analyzer/{id}/system-health?bucketSize=300&metric=count
 ```
 
 ### Management
@@ -365,12 +456,22 @@ DELETE /api/logs/analyzer/{id}          - Remove analysis
 1. Navigate to the **Log Analyzer** page (visible in the navbar when the feature is enabled)
 2. **Upload** a log file or click **Deep Analysis** from the Container Logs Dialog
 3. Optionally select a preset, adjust the slow threshold, and add custom fields in the Advanced section
-4. After upload, the **dashboard** shows summary cards (Total Lines, API Calls, Threads, Endpoints, Errors, Jobs, Failures, and any custom field counts)
+4. After upload, the **dashboard** shows summary cards (Total Lines, API Calls, Orphan Requests, Threads, Endpoints, Errors, Jobs, Failures, Critical Issues, Exceptions, and any custom field counts)
 5. **Tabs** provide detailed views:
-   - **API Calls** — paired requests/responses with rainbow brackets, expandable JSON payloads, content search, and sensitive field masking
-   - **Endpoint Stats** — sortable table with response time metrics and visual bars
+
+   **Always visible:**
+   - **API Calls** — paired requests/responses with rainbow brackets, expandable JSON payloads, content search, sensitive field masking, and orphan request count chip
+   - **Endpoint Stats** — sortable table with response time metrics, visual bars, and link to Performance Insights
+   - **Performance Insights** — time-bucketed response time analysis with drill-down by endpoint and time window
+   - **Anomaly Detection** — statistical anomaly detection with configurable signal types, methods, and correlation analysis (experimental)
+   - **System Health** — multi-signal dual-axis timeline showing all detected signals over time (experimental)
    - **Raw Log** — virtualized log viewer with level chips, search, thread filter, word wrap, and copy
-   - **Thread View** — select a thread to see its isolated log flow
+
+   **Conditional (shown when data exists):**
+   - **Critical Issues** — grouped critical log patterns with burst detection (if critical issues found)
+   - **NPE Analysis** — NullPointerException grouping by origin with stack traces (if NPEs found)
+   - **Exception Analysis** — exception grouping by type/origin with stack traces (if exceptions found)
    - **Jobs** — job executions with duration and trigger/result (if preset has job patterns)
    - **Failures** — repeated failures grouped by entity with detail expansion (if preset has failure pattern)
+   - **Orphan Requests** — API requests without matching responses (if orphans detected)
    - **Custom field tabs** — one tab per custom field with matches > 0 (named after the field)

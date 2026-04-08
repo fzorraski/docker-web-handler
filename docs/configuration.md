@@ -215,6 +215,31 @@ The application uses a multi-tier password system:
 
 ---
 
+## Log Analyzer
+
+| Property | Description | Default |
+|----------|-------------|---------|
+| `log.analyzer.enabled` | Enable the Log Analyzer feature | `false` |
+| `log.analyzer.max-file-size-mb` | Maximum upload size per file (MB) | `500` |
+| `log.analyzer.max-files` | Maximum analyses kept in memory | `5` |
+| `log.analyzer.file-ttl-minutes` | Auto-eviction time (minutes) | `120` |
+| `log.analyzer.slow-threshold-ms` | API call slow threshold (ms) | `1000` |
+| `log.analyzer.container-tail` | Lines fetched for container analysis | `10000` |
+| `log.analyzer.default-preset` | Default parsing preset | `WILDFLY` |
+
+### Memory Limits
+
+| Property | Description | Default |
+|----------|-------------|---------|
+| `log.analyzer.critical-issues.max-matches` | Total critical issue matches across all categories | `10000` |
+| `log.analyzer.custom-fields.max-matches` | Stored matches per custom field | `10000` |
+| `log.analyzer.npe-analysis.max-occurrences` | NPE occurrences with stack traces | `5000` |
+| `log.analyzer.exception-analysis.max-occurrences` | Exception occurrences with stack traces | `5000` |
+
+See [Log Analyzer](log-analyzer.md) for full feature documentation.
+
+---
+
 ## UI / Server
 
 | Property | Description | Default |
