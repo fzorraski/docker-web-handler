@@ -53,6 +53,8 @@ const SEVERITY_COLORS: Record<string, string> = {
   low: '#4caf50',
 }
 
+const DURATION_SIGNALS = new Set(['API_LATENCY', 'SLOW_QUERY', 'GC_PAUSE', 'POOL_EXHAUSTION', 'JOB_DURATION'])
+
 const STATUS_LABELS = {
   normal: 'logAnalyzer.anomalyDetection.normal' as const,
   elevated: 'logAnalyzer.anomalyDetection.elevated' as const,
@@ -75,6 +77,9 @@ export function AnomalyDetectionTab({ analysisId }: { analysisId: string }) {
   const [availableSignalTypes, setAvailableSignalTypes] = useState<string[]>([])
 
   useEffect(() => {
+    setState('idle')
+    setData(null)
+    setError('')
     logService.getAnomalySignalTypes(analysisId)
       .then(setAvailableSignalTypes)
       .catch(() => {})
@@ -105,6 +110,7 @@ export function AnomalyDetectionTab({ analysisId }: { analysisId: string }) {
   }, [availableSignalTypes])
 
   const chartMetricKey = selectedMetric === 'avg' ? 'avg' : selectedMetric
+  const unitSuffix = selectedMetric !== 'count' && DURATION_SIGNALS.has(selectedSignalType) ? 'ms' : ''
   const [expandedCorrelation, setExpandedCorrelation] = useState<number | null>(null)
 
   const correlationBuckets = useMemo(() => {
@@ -266,7 +272,7 @@ export function AnomalyDetectionTab({ analysisId }: { analysisId: string }) {
         <Paper sx={{ p: 2, minWidth: 140, textAlign: 'center' }}>
           <Typography variant="caption" color="text.secondary">{t('logAnalyzer.anomalyDetection.peakValue')}</Typography>
           <Typography variant="h5" fontWeight={700} sx={{ color: '#ff6d00' }}>
-            {data.peakValue}
+            {data.peakValue}{unitSuffix}
           </Typography>
           {data.peakBucketLabel && (
             <Typography variant="caption" color="text.secondary">@ {data.peakBucketLabel}</Typography>
@@ -274,7 +280,7 @@ export function AnomalyDetectionTab({ analysisId }: { analysisId: string }) {
         </Paper>
         <Paper sx={{ p: 2, minWidth: 140, textAlign: 'center' }}>
           <Typography variant="caption" color="text.secondary">{t('logAnalyzer.anomalyDetection.p95Value')}</Typography>
-          <Typography variant="h5" fontWeight={700}>{data.p95Value}</Typography>
+          <Typography variant="h5" fontWeight={700}>{data.p95Value}{unitSuffix}</Typography>
         </Paper>
       </Stack>
 
@@ -299,7 +305,7 @@ export function AnomalyDetectionTab({ analysisId }: { analysisId: string }) {
                     <Typography variant="body2" fontWeight={600}>{label}</Typography>
                     <Typography variant="body2">Count: {bucket.count}</Typography>
                     {selectedMetric !== 'count' && (
-                      <Typography variant="body2">{selectedMetric}: {chartMetricKey === 'avg' ? bucket.avg : bucket[chartMetricKey]}</Typography>
+                      <Typography variant="body2">{selectedMetric}: {chartMetricKey === 'avg' ? bucket.avg : bucket[chartMetricKey]}{unitSuffix}</Typography>
                     )}
                     <Typography variant="body2">Baseline: {bucket.baseline?.toFixed(1)}</Typography>
                     <Typography variant="body2">{scoreLabel}: {bucket.ratio?.toFixed(2)}</Typography>
@@ -474,7 +480,7 @@ export function AnomalyDetectionTab({ analysisId }: { analysisId: string }) {
                             {typeAnomalies.map((a, ai) => (
                               <Box key={ai} sx={{ pl: 2, py: 0.25 }}>
                                 <Typography variant="caption" fontFamily="'JetBrains Mono', monospace" fontSize="0.7rem">
-                                  {a.bucketLabel} — {Math.round(a.observedValue)} (baseline {a.baselineValue.toFixed(1)}, {scoreLabel} {a.ratio.toFixed(1)})
+                                  {a.bucketLabel} — {Math.round(a.observedValue)}{unitSuffix} (baseline {a.baselineValue.toFixed(1)}{unitSuffix}, {scoreLabel} {a.ratio.toFixed(1)})
                                 </Typography>
                               </Box>
                             ))}

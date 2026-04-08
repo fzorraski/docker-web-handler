@@ -1167,7 +1167,7 @@ class LogAnalyzerControllerTest {
                 List.of(new LogLine(1, now, "INFO", "app", "main", "test", "server.log"))
         );
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
-        when(signalExtractor.extract(anyList(), eq(SignalType.ERROR_COUNT), anyList(), anyList())).thenReturn(List.of());
+        when(signalExtractor.extract(anyList(), eq(SignalType.ERROR_COUNT), anyList(), anyList(), anyList())).thenReturn(List.of());
 
         Response response = controller.getAnomalyDetection(analysis.getId(), "ERROR_COUNT", 300, 3.0, 8, "count", "ratio");
 
@@ -1187,7 +1187,7 @@ class LogAnalyzerControllerTest {
                 new Signal(SignalType.ERROR_COUNT, null, "error msg",
                         analysis.getTimeRangeStart().plusMinutes(1), "main", "app")
         );
-        when(signalExtractor.extract(anyList(), eq(SignalType.ERROR_COUNT), anyList(), anyList())).thenReturn(signals);
+        when(signalExtractor.extract(anyList(), eq(SignalType.ERROR_COUNT), anyList(), anyList(), anyList())).thenReturn(signals);
 
         var detectionResult = new DetectionStrategy.DetectionResult(
                 List.of(new BucketStats("10:00", 1000, 1, 1, 1, 1, 1, "normal", 0.0, 0.0)),
@@ -1210,7 +1210,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        when(signalExtractor.extract(anyList(), eq(SignalType.API_LATENCY), anyList(), anyList())).thenReturn(List.of());
+        when(signalExtractor.extract(anyList(), eq(SignalType.API_LATENCY), anyList(), anyList(), anyList())).thenReturn(List.of());
 
         var detectionResult = new DetectionStrategy.DetectionResult(List.of(), List.of());
         when(anomalyDetectorService.detect(anyList(), anyDouble(), anyInt(), anyString(), anyString(), anyString())).thenReturn(detectionResult);
@@ -1218,7 +1218,7 @@ class LogAnalyzerControllerTest {
         Response response = controller.getAnomalyDetection(analysis.getId(), "API_LATENCY", 300, 3.0, 8, "count", "ratio");
 
         assertEquals(200, response.getStatus());
-        verify(signalExtractor).extract(analysis.getAllLines(), SignalType.API_LATENCY, analysis.getApiCalls(), analysis.getOrphanRequests());
+        verify(signalExtractor).extract(analysis.getAllLines(), SignalType.API_LATENCY, analysis.getApiCalls(), analysis.getJobExecutions(), analysis.getOrphanRequests());
     }
 
     @Test
@@ -1231,7 +1231,7 @@ class LogAnalyzerControllerTest {
                 new Signal(SignalType.ERROR_COUNT, null, "error",
                         analysis.getTimeRangeStart().plusMinutes(1), "main", "app")
         );
-        when(signalExtractor.extract(anyList(), eq(SignalType.ERROR_COUNT), anyList(), anyList())).thenReturn(signals);
+        when(signalExtractor.extract(anyList(), eq(SignalType.ERROR_COUNT), anyList(), anyList(), anyList())).thenReturn(signals);
 
         var anomaly = new AnomalyResult("ERROR_COUNT", "10:00", 10.0, 2.0, 5.0, 10, 15);
         var detectionResult = new DetectionStrategy.DetectionResult(
@@ -1239,14 +1239,14 @@ class LogAnalyzerControllerTest {
                 List.of(anomaly)
         );
         when(anomalyDetectorService.detect(anyList(), anyDouble(), anyInt(), anyString(), anyString(), anyString())).thenReturn(detectionResult);
-        when(signalExtractor.extractAll(anyList(), anyList(), anyList())).thenReturn(Map.of(SignalType.ERROR_COUNT, signals));
+        when(signalExtractor.extractAll(anyList(), anyList(), anyList(), anyList())).thenReturn(Map.of(SignalType.ERROR_COUNT, signals));
 
         Response response = controller.getAnomalyDetection(analysis.getId(), "ERROR_COUNT", 300, 3.0, 8, "count", "ratio");
 
         assertEquals(200, response.getStatus());
         AnomalyDetectionResponse body = (AnomalyDetectionResponse) response.getEntity();
         assertEquals(1, body.anomalyBuckets());
-        verify(signalExtractor).extractAll(analysis.getAllLines(), analysis.getApiCalls(), analysis.getOrphanRequests());
+        verify(signalExtractor).extractAll(analysis.getAllLines(), analysis.getApiCalls(), analysis.getJobExecutions(), analysis.getOrphanRequests());
     }
 
     // ---- Signal Types ----
@@ -1274,7 +1274,7 @@ class LogAnalyzerControllerTest {
     void getAvailableSignalTypes_returnsStringList() {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
-        when(signalExtractor.detectAvailableTypes(anyList(), anyList(), anyList()))
+        when(signalExtractor.detectAvailableTypes(anyList(), anyList(), anyList(), anyList()))
                 .thenReturn(List.of(SignalType.ERROR_COUNT, SignalType.API_LATENCY));
 
         Response response = controller.getAvailableSignalTypes(analysis.getId());
@@ -1291,11 +1291,11 @@ class LogAnalyzerControllerTest {
     void getAvailableSignalTypes_passesApiCallsToExtractor() {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
-        when(signalExtractor.detectAvailableTypes(anyList(), anyList(), anyList())).thenReturn(List.of());
+        when(signalExtractor.detectAvailableTypes(anyList(), anyList(), anyList(), anyList())).thenReturn(List.of());
 
         controller.getAvailableSignalTypes(analysis.getId());
 
-        verify(signalExtractor).detectAvailableTypes(analysis.getAllLines(), analysis.getApiCalls(), analysis.getOrphanRequests());
+        verify(signalExtractor).detectAvailableTypes(analysis.getAllLines(), analysis.getApiCalls(), analysis.getJobExecutions(), analysis.getOrphanRequests());
     }
 
     // ---- System Health ----
@@ -1360,7 +1360,7 @@ class LogAnalyzerControllerTest {
                         new Signal(SignalType.API_LATENCY, 500L, "endpoint 500ms",
                                 analysis.getTimeRangeStart().plusMinutes(1), "main", "app"))
         );
-        when(signalExtractor.extractAll(anyList(), anyList(), anyList())).thenReturn(signals);
+        when(signalExtractor.extractAll(anyList(), anyList(), anyList(), anyList())).thenReturn(signals);
 
         Response response = controller.getSystemHealth(analysis.getId(), 300, "count");
 
@@ -1385,7 +1385,7 @@ class LogAnalyzerControllerTest {
                         new Signal(SignalType.API_LATENCY, 500L, "ep 500ms",
                                 analysis.getTimeRangeStart().plusMinutes(1), "main", "app"))
         );
-        when(signalExtractor.extractAll(anyList(), anyList(), anyList())).thenReturn(signals);
+        when(signalExtractor.extractAll(anyList(), anyList(), anyList(), anyList())).thenReturn(signals);
 
         Response response = controller.getSystemHealth(analysis.getId(), 300, "avg");
 

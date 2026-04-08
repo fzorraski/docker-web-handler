@@ -13,7 +13,7 @@ public record SystemHealthResponse(
 ) {
     /** Signal types that have meaningful numeric duration values (ms). */
     public static final Set<String> DURATION_SIGNAL_TYPES = Set.of(
-            "API_LATENCY", "SLOW_QUERY", "GC_PAUSE", "POOL_EXHAUSTION"
+            "API_LATENCY", "SLOW_QUERY", "GC_PAUSE", "POOL_EXHAUSTION", "JOB_DURATION"
     );
 
     public record HealthBucket(

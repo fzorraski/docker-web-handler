@@ -819,7 +819,7 @@ public class LogAnalyzerController {
         baselineWindow = Math.clamp(baselineWindow, 2, 50);
 
         // Extract signals
-        List<Signal> signals = signalExtractor.extract(analysis.getAllLines(), type, analysis.getApiCalls(), analysis.getOrphanRequests());
+        List<Signal> signals = signalExtractor.extract(analysis.getAllLines(), type, analysis.getApiCalls(), analysis.getJobExecutions(), analysis.getOrphanRequests());
 
         if (analysis.getTimeRangeStart() == null || analysis.getTimeRangeEnd() == null) {
             return Response.ok(new AnomalyDetectionResponse(
@@ -852,7 +852,7 @@ public class LogAnalyzerController {
         // Correlation detection (extract all signal types and detect)
         List<CorrelatedAnomaly> correlations = List.of();
         if (!anomalies.isEmpty()) {
-            Map<SignalType, List<Signal>> allSignals = signalExtractor.extractAll(analysis.getAllLines(), analysis.getApiCalls(), analysis.getOrphanRequests());
+            Map<SignalType, List<Signal>> allSignals = signalExtractor.extractAll(analysis.getAllLines(), analysis.getApiCalls(), analysis.getJobExecutions(), analysis.getOrphanRequests());
             Map<String, List<AnomalyResult>> allAnomaliesByType = new LinkedHashMap<>();
             allAnomaliesByType.put(signalType, anomalies);
 
@@ -892,7 +892,7 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        List<SignalType> types = signalExtractor.detectAvailableTypes(analysis.getAllLines(), analysis.getApiCalls(), analysis.getOrphanRequests());
+        List<SignalType> types = signalExtractor.detectAvailableTypes(analysis.getAllLines(), analysis.getApiCalls(), analysis.getJobExecutions(), analysis.getOrphanRequests());
         List<String> result = types.stream().map(SignalType::name).toList();
         return Response.ok(result).build();
     }
@@ -918,7 +918,7 @@ public class LogAnalyzerController {
         }
 
         Map<SignalType, List<Signal>> allSignals = signalExtractor.extractAll(
-                analysis.getAllLines(), analysis.getApiCalls(), analysis.getOrphanRequests());
+                analysis.getAllLines(), analysis.getApiCalls(), analysis.getJobExecutions(), analysis.getOrphanRequests());
 
         // Bucket each signal type independently
         Map<String, List<BucketStats>> bucketsByType = new LinkedHashMap<>();

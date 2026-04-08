@@ -1,6 +1,7 @@
 package br.com.fzdevx.infrastructure.log.anomaly;
 
 import br.com.fzdevx.domain.model.ApiCallPair;
+import br.com.fzdevx.domain.model.JobExecution;
 import br.com.fzdevx.domain.model.LogLine;
 import br.com.fzdevx.domain.model.OrphanRequest;
 import br.com.fzdevx.domain.model.anomaly.Signal;
@@ -56,8 +57,16 @@ public class SignalExtractor {
 
     public List<Signal> extract(List<LogLine> lines, SignalType type, List<ApiCallPair> apiCalls,
                                 List<OrphanRequest> orphans) {
+        return extract(lines, type, apiCalls, List.of(), orphans);
+    }
+
+    public List<Signal> extract(List<LogLine> lines, SignalType type, List<ApiCallPair> apiCalls,
+                                List<JobExecution> jobs, List<OrphanRequest> orphans) {
         if (type == SignalType.API_LATENCY) {
             return extractApiLatency(apiCalls);
+        }
+        if (type == SignalType.JOB_DURATION) {
+            return extractJobDuration(jobs);
         }
         if (type == SignalType.ORPHAN_REQUEST) {
             return extractOrphanRequests(orphans);
@@ -96,6 +105,24 @@ public class SignalExtractor {
         return signals;
     }
 
+    private List<Signal> extractJobDuration(List<JobExecution> jobs) {
+        if (jobs == null || jobs.isEmpty()) return List.of();
+        List<Signal> signals = new ArrayList<>();
+        for (JobExecution job : jobs) {
+            if (job.startTimestamp() == null) continue;
+            if (signals.size() >= MAX_SIGNALS_PER_TYPE) break;
+            signals.add(new Signal(
+                    SignalType.JOB_DURATION,
+                    job.durationMs(),
+                    job.jobName() + " " + job.durationMs() + "ms",
+                    job.startTimestamp(),
+                    job.thread(),
+                    job.jobName()
+            ));
+        }
+        return signals;
+    }
+
     private List<Signal> extractOrphanRequests(List<OrphanRequest> orphans) {
         if (orphans == null || orphans.isEmpty()) return List.of();
         List<Signal> signals = new ArrayList<>();
@@ -127,6 +154,11 @@ public class SignalExtractor {
 
     public Map<SignalType, List<Signal>> extractAll(List<LogLine> lines, List<ApiCallPair> apiCalls,
                                                      List<OrphanRequest> orphans) {
+        return extractAll(lines, apiCalls, List.of(), orphans);
+    }
+
+    public Map<SignalType, List<Signal>> extractAll(List<LogLine> lines, List<ApiCallPair> apiCalls,
+                                                     List<JobExecution> jobs, List<OrphanRequest> orphans) {
         Map<SignalType, List<Signal>> result = new EnumMap<>(SignalType.class);
 
         if (lines != null && !lines.isEmpty()) {
@@ -146,6 +178,11 @@ public class SignalExtractor {
         List<Signal> apiSignals = extractApiLatency(apiCalls);
         if (!apiSignals.isEmpty()) {
             result.put(SignalType.API_LATENCY, apiSignals);
+        }
+
+        List<Signal> jobSignals = extractJobDuration(jobs);
+        if (!jobSignals.isEmpty()) {
+            result.put(SignalType.JOB_DURATION, jobSignals);
         }
 
         List<Signal> orphanSignals = extractOrphanRequests(orphans);
@@ -170,6 +207,11 @@ public class SignalExtractor {
 
     public List<SignalType> detectAvailableTypes(List<LogLine> lines, List<ApiCallPair> apiCalls,
                                                   List<OrphanRequest> orphans) {
+        return detectAvailableTypes(lines, apiCalls, List.of(), orphans);
+    }
+
+    public List<SignalType> detectAvailableTypes(List<LogLine> lines, List<ApiCallPair> apiCalls,
+                                                  List<JobExecution> jobs, List<OrphanRequest> orphans) {
         Set<SignalType> found = EnumSet.noneOf(SignalType.class);
 
         if (lines != null && !lines.isEmpty()) {
@@ -209,6 +251,9 @@ public class SignalExtractor {
         }
         if (apiCalls != null && !apiCalls.isEmpty()) {
             found.add(SignalType.API_LATENCY);
+        }
+        if (jobs != null && !jobs.isEmpty()) {
+            found.add(SignalType.JOB_DURATION);
         }
         if (orphans != null && !orphans.isEmpty()) {
             found.add(SignalType.ORPHAN_REQUEST);
