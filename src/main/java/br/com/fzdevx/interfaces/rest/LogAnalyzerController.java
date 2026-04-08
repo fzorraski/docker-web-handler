@@ -819,7 +819,7 @@ public class LogAnalyzerController {
         baselineWindow = Math.clamp(baselineWindow, 2, 50);
 
         // Extract signals
-        List<Signal> signals = signalExtractor.extract(analysis.getAllLines(), type, analysis.getApiCalls());
+        List<Signal> signals = signalExtractor.extract(analysis.getAllLines(), type, analysis.getApiCalls(), analysis.getOrphanRequests());
 
         if (analysis.getTimeRangeStart() == null || analysis.getTimeRangeEnd() == null) {
             return Response.ok(new AnomalyDetectionResponse(
@@ -852,7 +852,7 @@ public class LogAnalyzerController {
         // Correlation detection (extract all signal types and detect)
         List<CorrelatedAnomaly> correlations = List.of();
         if (!anomalies.isEmpty()) {
-            Map<SignalType, List<Signal>> allSignals = signalExtractor.extractAll(analysis.getAllLines(), analysis.getApiCalls());
+            Map<SignalType, List<Signal>> allSignals = signalExtractor.extractAll(analysis.getAllLines(), analysis.getApiCalls(), analysis.getOrphanRequests());
             Map<String, List<AnomalyResult>> allAnomaliesByType = new LinkedHashMap<>();
             allAnomaliesByType.put(signalType, anomalies);
 
@@ -892,9 +892,66 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        List<SignalType> types = signalExtractor.detectAvailableTypes(analysis.getAllLines(), analysis.getApiCalls());
+        List<SignalType> types = signalExtractor.detectAvailableTypes(analysis.getAllLines(), analysis.getApiCalls(), analysis.getOrphanRequests());
         List<String> result = types.stream().map(SignalType::name).toList();
         return Response.ok(result).build();
+    }
+
+    @GET
+    @Path("/{id}/system-health")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getSystemHealth(@PathParam("id") String id,
+                                     @QueryParam("bucketSize") @DefaultValue("300") int bucketSize,
+                                     @QueryParam("metric") @DefaultValue("count") String metric) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+
+        if (!MetricExtractor.VALID_METRICS.contains(metric)) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Invalid metric: " + metric)).build();
+        }
+        bucketSize = Math.clamp(bucketSize, 60, 3600);
+
+        if (analysis.getTimeRangeStart() == null || analysis.getTimeRangeEnd() == null) {
+            return Response.ok(new SystemHealthResponse(bucketSize, metric, List.of(), List.of(), List.of())).build();
+        }
+
+        Map<SignalType, List<Signal>> allSignals = signalExtractor.extractAll(
+                analysis.getAllLines(), analysis.getApiCalls(), analysis.getOrphanRequests());
+
+        // Bucket each signal type independently
+        Map<String, List<BucketStats>> bucketsByType = new LinkedHashMap<>();
+        for (var entry : allSignals.entrySet()) {
+            List<BucketStats> typeBuckets = TimeBucketAggregator.aggregate(
+                    entry.getValue(), bucketSize,
+                    analysis.getTimeRangeStart(), analysis.getTimeRangeEnd());
+            bucketsByType.put(entry.getKey().name(), typeBuckets);
+        }
+
+        // Merge by epoch into unified timeline
+        var epochMap = new TreeMap<Long, Map<String, Double>>();
+        var labelMap = new TreeMap<Long, String>();
+        for (var entry : bucketsByType.entrySet()) {
+            String typeName = entry.getKey();
+            // Use selected metric for duration signals, always count for the rest
+            String effectiveMetric = SystemHealthResponse.DURATION_SIGNAL_TYPES.contains(typeName) ? metric : "count";
+            for (BucketStats b : entry.getValue()) {
+                epochMap.computeIfAbsent(b.bucketEpoch(), _ -> new LinkedHashMap<>())
+                        .put(typeName, MetricExtractor.extract(b, effectiveMetric));
+                labelMap.putIfAbsent(b.bucketEpoch(), b.bucketLabel());
+            }
+        }
+
+        List<String> signalTypes = new ArrayList<>(bucketsByType.keySet());
+        List<SystemHealthResponse.HealthBucket> healthBuckets = epochMap.entrySet().stream()
+                .map(e -> new SystemHealthResponse.HealthBucket(
+                        labelMap.get(e.getKey()), e.getKey(), e.getValue()))
+                .toList();
+
+        List<String> durationSignals = signalTypes.stream()
+                .filter(SystemHealthResponse.DURATION_SIGNAL_TYPES::contains).toList();
+        return Response.ok(new SystemHealthResponse(bucketSize, metric, signalTypes, durationSignals, healthBuckets)).build();
     }
 
     @GET

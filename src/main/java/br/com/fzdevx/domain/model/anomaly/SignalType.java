@@ -12,5 +12,6 @@ public enum SignalType {
     OOM,
     DEADLOCK,
     ERROR_COUNT,
-    API_LATENCY
+    API_LATENCY,
+    ORPHAN_REQUEST
 }

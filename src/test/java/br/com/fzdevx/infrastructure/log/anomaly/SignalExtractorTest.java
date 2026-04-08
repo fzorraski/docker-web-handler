@@ -2,6 +2,7 @@ package br.com.fzdevx.infrastructure.log.anomaly;
 
 import br.com.fzdevx.domain.model.ApiCallPair;
 import br.com.fzdevx.domain.model.LogLine;
+import br.com.fzdevx.domain.model.OrphanRequest;
 import br.com.fzdevx.domain.model.anomaly.Signal;
 import br.com.fzdevx.domain.model.anomaly.SignalType;
 import org.junit.jupiter.api.BeforeEach;
@@ -192,5 +193,93 @@ class SignalExtractorTest {
         List<SignalType> types = extractor.detectAvailableTypes(lines);
 
         assertFalse(types.contains(SignalType.API_LATENCY));
+    }
+
+    // ---- ORPHAN_REQUEST extraction ----
+
+    @Test
+    void extract_orphanRequest_returnsSignals() {
+        var orphans = List.of(
+                new OrphanRequest("OrderWS/getOrders", "http-1", now, "{\"id\":1}", 42, "server.log"),
+                new OrphanRequest("UserWS/getUser", "http-2", now.plusSeconds(5), "{\"id\":2}", 50, "server.log")
+        );
+
+        List<Signal> signals = extractor.extract(List.of(), SignalType.ORPHAN_REQUEST, List.of(), orphans);
+
+        assertEquals(2, signals.size());
+        assertEquals(SignalType.ORPHAN_REQUEST, signals.get(0).signalType());
+        assertEquals("OrderWS/getOrders", signals.get(0).loggerName());
+        assertEquals("http-1", signals.get(0).threadName());
+        assertEquals(now, signals.get(0).timestamp());
+    }
+
+    @Test
+    void extract_orphanRequest_skipsNullTimestamp() {
+        var orphans = List.of(
+                new OrphanRequest("OrderWS/get", "t1", null, "{}", 10, "server.log"),
+                new OrphanRequest("UserWS/get", "t1", now, "{}", 20, "server.log")
+        );
+
+        List<Signal> signals = extractor.extract(List.of(), SignalType.ORPHAN_REQUEST, List.of(), orphans);
+
+        assertEquals(1, signals.size());
+        assertEquals("UserWS/get", signals.getFirst().loggerName());
+    }
+
+    @Test
+    void extract_orphanRequest_emptyList_returnsEmpty() {
+        List<Signal> signals = extractor.extract(List.of(), SignalType.ORPHAN_REQUEST, List.of(), List.of());
+        assertTrue(signals.isEmpty());
+    }
+
+    @Test
+    void extract_orphanRequest_nullList_returnsEmpty() {
+        List<Signal> signals = extractor.extract(List.of(), SignalType.ORPHAN_REQUEST, List.of(), null);
+        assertTrue(signals.isEmpty());
+    }
+
+    @Test
+    void extractAll_includesOrphanRequestWithOtherSignals() {
+        var lines = List.of(
+                new LogLine(1, now, "ERROR", "t1", "app", "NullPointerException", "server.log")
+        );
+        var orphans = List.of(
+                new OrphanRequest("OrderWS/get", "t1", now, "{}", 10, "server.log")
+        );
+
+        Map<SignalType, List<Signal>> result = extractor.extractAll(lines, List.of(), orphans);
+
+        assertTrue(result.containsKey(SignalType.ORPHAN_REQUEST));
+        assertTrue(result.containsKey(SignalType.ERROR_COUNT));
+        assertEquals(1, result.get(SignalType.ORPHAN_REQUEST).size());
+    }
+
+    @Test
+    void extractAll_noOrphans_excludesOrphanRequest() {
+        var lines = List.of(
+                new LogLine(1, now, "ERROR", "t1", "app", "fail", "server.log")
+        );
+
+        Map<SignalType, List<Signal>> result = extractor.extractAll(lines, List.of(), List.of());
+
+        assertFalse(result.containsKey(SignalType.ORPHAN_REQUEST));
+    }
+
+    @Test
+    void detectAvailableTypes_includesOrphanRequestWhenOrphansPresent() {
+        var orphans = List.of(
+                new OrphanRequest("OrderWS/get", "t1", now, "{}", 10, "server.log")
+        );
+
+        List<SignalType> types = extractor.detectAvailableTypes(List.of(), List.of(), orphans);
+
+        assertTrue(types.contains(SignalType.ORPHAN_REQUEST));
+    }
+
+    @Test
+    void detectAvailableTypes_excludesOrphanRequestWhenNoOrphans() {
+        List<SignalType> types = extractor.detectAvailableTypes(List.of(), List.of(), List.of());
+
+        assertFalse(types.contains(SignalType.ORPHAN_REQUEST));
     }
 }

@@ -2,6 +2,7 @@ package br.com.fzdevx.infrastructure.log.anomaly;
 
 import br.com.fzdevx.domain.model.ApiCallPair;
 import br.com.fzdevx.domain.model.LogLine;
+import br.com.fzdevx.domain.model.OrphanRequest;
 import br.com.fzdevx.domain.model.anomaly.Signal;
 import br.com.fzdevx.domain.model.anomaly.SignalType;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -50,8 +51,16 @@ public class SignalExtractor {
     }
 
     public List<Signal> extract(List<LogLine> lines, SignalType type, List<ApiCallPair> apiCalls) {
+        return extract(lines, type, apiCalls, List.of());
+    }
+
+    public List<Signal> extract(List<LogLine> lines, SignalType type, List<ApiCallPair> apiCalls,
+                                List<OrphanRequest> orphans) {
         if (type == SignalType.API_LATENCY) {
             return extractApiLatency(apiCalls);
+        }
+        if (type == SignalType.ORPHAN_REQUEST) {
+            return extractOrphanRequests(orphans);
         }
 
         if (lines == null || lines.isEmpty()) return List.of();
@@ -87,6 +96,24 @@ public class SignalExtractor {
         return signals;
     }
 
+    private List<Signal> extractOrphanRequests(List<OrphanRequest> orphans) {
+        if (orphans == null || orphans.isEmpty()) return List.of();
+        List<Signal> signals = new ArrayList<>();
+        for (OrphanRequest orphan : orphans) {
+            if (orphan.timestamp() == null) continue;
+            if (signals.size() >= MAX_SIGNALS_PER_TYPE) break;
+            signals.add(new Signal(
+                    SignalType.ORPHAN_REQUEST,
+                    null,
+                    orphan.endpoint() + " (no response)",
+                    orphan.timestamp(),
+                    orphan.thread(),
+                    orphan.endpoint()
+            ));
+        }
+        return signals;
+    }
+
     /**
      * Extract all signal types from log lines (for correlation detection).
      */
@@ -95,6 +122,11 @@ public class SignalExtractor {
     }
 
     public Map<SignalType, List<Signal>> extractAll(List<LogLine> lines, List<ApiCallPair> apiCalls) {
+        return extractAll(lines, apiCalls, List.of());
+    }
+
+    public Map<SignalType, List<Signal>> extractAll(List<LogLine> lines, List<ApiCallPair> apiCalls,
+                                                     List<OrphanRequest> orphans) {
         Map<SignalType, List<Signal>> result = new EnumMap<>(SignalType.class);
 
         if (lines != null && !lines.isEmpty()) {
@@ -116,6 +148,11 @@ public class SignalExtractor {
             result.put(SignalType.API_LATENCY, apiSignals);
         }
 
+        List<Signal> orphanSignals = extractOrphanRequests(orphans);
+        if (!orphanSignals.isEmpty()) {
+            result.put(SignalType.ORPHAN_REQUEST, orphanSignals);
+        }
+
         return result;
     }
 
@@ -128,7 +165,11 @@ public class SignalExtractor {
     }
 
     public List<SignalType> detectAvailableTypes(List<LogLine> lines, List<ApiCallPair> apiCalls) {
+        return detectAvailableTypes(lines, apiCalls, List.of());
+    }
 
+    public List<SignalType> detectAvailableTypes(List<LogLine> lines, List<ApiCallPair> apiCalls,
+                                                  List<OrphanRequest> orphans) {
         Set<SignalType> found = EnumSet.noneOf(SignalType.class);
 
         if (lines != null && !lines.isEmpty()) {
@@ -168,6 +209,9 @@ public class SignalExtractor {
         }
         if (apiCalls != null && !apiCalls.isEmpty()) {
             found.add(SignalType.API_LATENCY);
+        }
+        if (orphans != null && !orphans.isEmpty()) {
+            found.add(SignalType.ORPHAN_REQUEST);
         }
 
         List<SignalType> result = new ArrayList<>(found);
