@@ -1039,6 +1039,7 @@ const ptBR: typeof en = {
       elevated: 'elevado',
       anomaly: 'ANOMALIA',
       generating: 'Analisando...',
+      experimental: 'Esta funcionalidade é experimental. Os resultados podem variar dependendo do formato e volume dos logs.',
       error: 'Falha ao analisar anomalias.',
       method: 'Metodo',
       metric: 'Metrica',

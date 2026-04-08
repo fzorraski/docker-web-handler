@@ -1038,6 +1038,7 @@ const en = {
       elevated: 'elevated',
       anomaly: 'ANOMALY',
       generating: 'Analyzing...',
+      experimental: 'This feature is experimental. Results may vary depending on log format and volume.',
       error: 'Failed to analyze anomalies.',
       method: 'Method',
       metric: 'Metric',

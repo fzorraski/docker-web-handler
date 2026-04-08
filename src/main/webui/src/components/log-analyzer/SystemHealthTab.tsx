@@ -1,9 +1,9 @@
 import { useState, useCallback, useMemo } from 'react'
 import {
-  Autocomplete, Box, Typography, Button, LinearProgress, Alert, Paper, Stack, TextField, Chip,
+  Autocomplete, Alert, Box, Typography, Button, LinearProgress, Paper, Stack, TextField, Chip,
   useTheme,
 } from '@mui/material'
-import { MonitorHeart, Refresh } from '@mui/icons-material'
+import { MonitorHeart, Refresh, Science } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import {
   ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -149,6 +149,9 @@ export function SystemHealthTab({ analysisId }: { analysisId: string }) {
         <Typography variant="body2" color="text.secondary" textAlign="center" maxWidth={500}>
           {t('logAnalyzer.systemHealth.description')}
         </Typography>
+        <Alert severity="info" icon={<Science />} variant="outlined" sx={{ maxWidth: 500 }}>
+          {t('logAnalyzer.anomalyDetection.experimental')}
+        </Alert>
         {controls(false)}
         <Button variant="outlined" size="large" startIcon={<MonitorHeart />} onClick={analyze}>
           {t('logAnalyzer.anomalyDetection.analyze')}

@@ -20,7 +20,6 @@ import { SummaryCard } from '../components/log-analyzer/SummaryCard'
 import { ApiCallsTab } from '../components/log-analyzer/ApiCallsTab'
 import { EndpointStatsTab } from '../components/log-analyzer/EndpointStatsTab'
 import { RawLogTab } from '../components/log-analyzer/RawLogTab'
-import { ThreadViewTab } from '../components/log-analyzer/ThreadViewTab'
 import { JobsTab } from '../components/log-analyzer/JobsTab'
 import { FailuresTab } from '../components/log-analyzer/FailuresTab'
 import { OrphanRequestsTab } from '../components/log-analyzer/OrphanRequestsTab'
@@ -144,7 +143,7 @@ export default function LogAnalyzerPage() {
     if (pendingFiles.length === 0) return
 
     const currentPreset = presets.find(p => p.name.toUpperCase() === selectedPreset.toUpperCase())
-    const { threadView: _tv, ...backendOptions } = analysisOptions
+    const backendOptions = analysisOptions
     const regexKeys = ['logLineRegex', 'apiCallRegex', 'timestampFormat', 'jobStartRegex', 'jobEndRegex', 'failureRegex', 'sensitiveFieldNames', 'criticalIssueExclusions'] as const
     const formFields: Record<string, string | undefined> = {
       preset: selectedPreset,
@@ -287,7 +286,6 @@ export default function LogAnalyzerPage() {
       { key: 'anomalyDetection', label: t('logAnalyzer.tabs.anomalyDetection'), component: <AnomalyDetectionTab analysisId={selected.id} /> },
       { key: 'systemHealth', label: t('logAnalyzer.tabs.systemHealth'), component: <SystemHealthTab analysisId={selected.id} /> },
       { key: 'rawLog', label: t('logAnalyzer.tabs.rawLog'), component: null },
-      ...(lastAnalysisOptions?.threadView !== false ? [{ key: 'threadView', label: t('logAnalyzer.tabs.threadView'), component: <ThreadViewTab analysisId={selected.id} /> }] : []),
     ]
     if (selected.criticalIssueCount > 0) list.push({ key: 'criticalIssues', label: t('logAnalyzer.tabs.criticalIssues'), component: <CriticalIssuesTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.npeAnalysisCount > 0) list.push({ key: 'npeAnalysis', label: t('logAnalyzer.tabs.npeAnalysis'), component: <NpeAnalysisTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
@@ -541,7 +539,7 @@ export default function LogAnalyzerPage() {
             {selected.orphanRequestCount > 0 && (
               <SummaryCard label={t('logAnalyzer.dashboard.orphanRequests')} value={selected.orphanRequestCount} color="warning.main" onClick={() => goToTab('orphanRequests')} />
             )}
-            <SummaryCard label={t('logAnalyzer.dashboard.threads')} value={selected.threadCount} onClick={() => goToTab('threadView')} />
+            <SummaryCard label={t('logAnalyzer.dashboard.threads')} value={selected.threadCount} onClick={() => goToTab('rawLog')} />
             <SummaryCard label={t('logAnalyzer.dashboard.endpoints')} value={selected.endpointCount} onClick={() => goToTab('stats')} />
             <SummaryCard label={t('logAnalyzer.dashboard.errors')} value={selected.errorCount} color="error.main" onClick={() => goToTab('rawLog')} />
             {selected.jobExecutionCount > 0 && (

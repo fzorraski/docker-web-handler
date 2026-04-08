@@ -1039,6 +1039,7 @@ const es: typeof en = {
       elevated: 'elevado',
       anomaly: 'ANOMALÍA',
       generating: 'Analizando...',
+      experimental: 'Esta funcionalidad es experimental. Los resultados pueden variar segun el formato y volumen de los logs.',
       error: 'Error al analizar anomalías.',
       method: 'Metodo',
       metric: 'Metrica',

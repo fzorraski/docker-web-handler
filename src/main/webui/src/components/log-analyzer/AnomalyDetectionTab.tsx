@@ -4,7 +4,7 @@ import {
   Chip, Collapse, IconButton,
   useTheme,
 } from '@mui/material'
-import { TroubleshootOutlined, Refresh, ExpandMore, ExpandLess, ArrowForward } from '@mui/icons-material'
+import { TroubleshootOutlined, Refresh, ExpandMore, ExpandLess, ArrowForward, Science } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -204,6 +204,9 @@ export function AnomalyDetectionTab({ analysisId }: { analysisId: string }) {
         <Typography variant="body2" color="text.secondary" textAlign="center" maxWidth={500}>
           {t('logAnalyzer.anomalyDetection.description')}
         </Typography>
+        <Alert severity="info" icon={<Science />} variant="outlined" sx={{ maxWidth: 500 }}>
+          {t('logAnalyzer.anomalyDetection.experimental')}
+        </Alert>
         {controlsRow(false)}
         <Button variant="outlined" size="large" startIcon={<TroubleshootOutlined />} onClick={analyze}>
           {t('logAnalyzer.anomalyDetection.analyze')}

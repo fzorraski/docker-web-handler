@@ -4,7 +4,7 @@ import {
   Box, Typography, Switch, Stack, Tooltip,
 } from '@mui/material'
 import {
-  SyncAlt, Work, ErrorOutline, WarningAmber, BugReport, Code, Extension, AccountTree,
+  SyncAlt, Work, ErrorOutline, WarningAmber, BugReport, Code, Extension,
 } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 
@@ -16,7 +16,6 @@ export interface AnalysisOptions {
   npeAnalysis: boolean
   exceptionAnalysis: boolean
   customFields: boolean
-  threadView: boolean
 }
 
 const STORAGE_KEY = 'log-analyzer-options'
@@ -25,7 +24,6 @@ const ALL_ON: AnalysisOptions = {
   apiCalls: true, jobs: true, failures: true,
   criticalIssues: true, npeAnalysis: true,
   exceptionAnalysis: true, customFields: true,
-  threadView: true,
 }
 
 function loadOptions(): AnalysisOptions {
@@ -55,7 +53,6 @@ const OPTION_ROWS = [
   { key: 'npeAnalysis' as const, icon: <BugReport />, cost: 'high' as CostLevel, labelKey: 'logAnalyzer.analysisOptions.npeAnalysis' as const, descKey: 'logAnalyzer.analysisOptions.npeAnalysisDesc' as const },
   { key: 'exceptionAnalysis' as const, icon: <Code />, cost: 'high' as CostLevel, labelKey: 'logAnalyzer.analysisOptions.exceptionAnalysis' as const, descKey: 'logAnalyzer.analysisOptions.exceptionAnalysisDesc' as const },
   { key: 'customFields' as const, icon: <Extension />, cost: 'medium' as CostLevel, labelKey: 'logAnalyzer.analysisOptions.customFields' as const, descKey: 'logAnalyzer.analysisOptions.customFieldsDesc' as const },
-  { key: 'threadView' as const, icon: <AccountTree />, cost: 'medium' as CostLevel, labelKey: 'logAnalyzer.analysisOptions.threadView' as const, descKey: 'logAnalyzer.analysisOptions.threadViewDesc' as const },
 ]
 
 export function AnalysisOptionsDialog({ open, onClose, onStart }: {
@@ -81,7 +78,6 @@ export function AnalysisOptionsDialog({ open, onClose, onStart }: {
     apiCalls: false, jobs: false, failures: false,
     criticalIssues: false, npeAnalysis: false,
     exceptionAnalysis: false, customFields: false,
-    threadView: false,
   }), [])
 
   const handleStart = useCallback(() => {
