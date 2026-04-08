@@ -1393,4 +1393,28 @@ class LogAnalyzerControllerTest {
         assertTrue(body.durationSignals().contains("API_LATENCY"));
         assertFalse(body.durationSignals().contains("ERROR_COUNT"));
     }
+
+    @Test
+    void getSystemHealth_includesJobDurationAsDurationSignal() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        var signals = Map.of(
+                SignalType.JOB_DURATION, List.of(
+                        new Signal(SignalType.JOB_DURATION, 10000L, "CleanupJob 10000ms",
+                                analysis.getTimeRangeStart().plusMinutes(1), "sched-1", "CleanupJob")),
+                SignalType.ERROR_COUNT, List.of(
+                        new Signal(SignalType.ERROR_COUNT, null, "error",
+                                analysis.getTimeRangeStart().plusMinutes(1), "main", "app"))
+        );
+        when(signalExtractor.extractAll(anyList(), anyList(), anyList(), anyList())).thenReturn(signals);
+
+        Response response = controller.getSystemHealth(analysis.getId(), 300, "avg");
+
+        assertEquals(200, response.getStatus());
+        SystemHealthResponse body = (SystemHealthResponse) response.getEntity();
+        assertTrue(body.durationSignals().contains("JOB_DURATION"));
+        assertTrue(body.signalTypes().contains("JOB_DURATION"));
+        assertFalse(body.buckets().isEmpty());
+    }
 }
