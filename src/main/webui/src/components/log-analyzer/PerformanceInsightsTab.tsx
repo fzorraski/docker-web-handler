@@ -118,6 +118,11 @@ export function PerformanceInsightsTab({ analysisId, initialEndpoint, initialTim
   }, [dialogSortKey])
 
   useEffect(() => {
+    setState('idle')
+    setData(null)
+    setError('')
+    setSelectedEndpoint('')
+    setSelectedBucketIdx(null)
     logService.getEndpoints(analysisId).then(setEndpoints).catch(() => {})
   }, [analysisId])
 

@@ -107,6 +107,19 @@ export default function LogAnalyzerPage() {
     return () => { setLogAnalysisViewing(clientTokenRef.current, null) }
   }, [selectedId])
 
+  // Clear viewer entry on page unload (reload/close) via sendBeacon
+  useEffect(() => {
+    const token = clientTokenRef.current
+    const handleUnload = () => {
+      navigator.sendBeacon(
+        '/api/logs/analyzer/sse/viewing',
+        new Blob([JSON.stringify({ clientToken: token, analysisId: null })], { type: 'application/json' }),
+      )
+    }
+    window.addEventListener('beforeunload', handleUnload)
+    return () => window.removeEventListener('beforeunload', handleUnload)
+  }, [])
+
   const refreshList = useCallback(() => {
     logService.listAnalyses().then(setAnalyses).catch(() => {})
   }, [])

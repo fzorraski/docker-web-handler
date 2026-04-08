@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Autocomplete, Alert, Box, Typography, Button, LinearProgress, Paper, Stack, TextField, Chip,
   useTheme,
@@ -39,6 +39,13 @@ export function SystemHealthTab({ analysisId }: { analysisId: string }) {
   const [selectedBucketSize, setSelectedBucketSize] = useState(300)
   const [selectedMetric, setSelectedMetric] = useState('count')
   const [hiddenSignals, setHiddenSignals] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    setState('idle')
+    setData(null)
+    setError('')
+    setHiddenSignals(new Set())
+  }, [analysisId])
 
   const analyze = useCallback(async () => {
     setState('loading')
