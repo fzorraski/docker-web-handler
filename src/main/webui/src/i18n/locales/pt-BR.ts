@@ -822,6 +822,7 @@ const ptBR: typeof en = {
       criticalIssues: 'Problemas Críticos',
       performanceInsights: 'Insights de Performance',
       anomalyDetection: 'Detecção de Anomalias',
+      systemHealth: 'Saude do Sistema',
       npeAnalysis: 'Análise NPE',
       exceptionAnalysis: 'Análise de Exceções',
     },
@@ -1057,6 +1058,13 @@ const ptBR: typeof en = {
         '1800': '30 min',
         '3600': '1 hora',
       },
+    },
+    systemHealth: {
+      title: 'Saude do Sistema',
+      description: 'Sobreponha multiplos tipos de sinal em uma unica linha do tempo para identificar quando a performance degrada no sistema.',
+      timeline: 'Linha do Tempo de Sinais',
+      noData: 'Nenhum dado de sinal disponivel.',
+      error: 'Falha ao carregar dados de saude do sistema.',
     },
     analysisOptions: {
       title: 'Opcoes de Analise',

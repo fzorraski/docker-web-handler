@@ -822,6 +822,7 @@ const es: typeof en = {
       criticalIssues: 'Problemas Críticos',
       performanceInsights: 'Insights de Rendimiento',
       anomalyDetection: 'Detección de Anomalías',
+      systemHealth: 'Salud del Sistema',
       npeAnalysis: 'Análisis NPE',
       exceptionAnalysis: 'Análisis de Excepciones',
     },
@@ -1057,6 +1058,13 @@ const es: typeof en = {
         '1800': '30 min',
         '3600': '1 hora',
       },
+    },
+    systemHealth: {
+      title: 'Salud del Sistema',
+      description: 'Superponga multiples tipos de senal en una unica linea de tiempo para identificar cuando el rendimiento se degrada en el sistema.',
+      timeline: 'Linea de Tiempo de Senales',
+      noData: 'No hay datos de senal disponibles.',
+      error: 'Error al cargar datos de salud del sistema.',
     },
     analysisOptions: {
       title: 'Opciones de Analisis',

@@ -30,6 +30,7 @@ import { ExceptionAnalysisTab } from '../components/log-analyzer/ExceptionAnalys
 import { CustomFieldTab } from '../components/log-analyzer/CustomFieldTab'
 import { PerformanceInsightsTab } from '../components/log-analyzer/PerformanceInsightsTab'
 import { AnomalyDetectionTab } from '../components/log-analyzer/AnomalyDetectionTab'
+import { SystemHealthTab } from '../components/log-analyzer/SystemHealthTab'
 import type {
   AnalysisSummary, LogPreset, UploadOptions,
 } from '../services/logAnalyzerService'
@@ -284,6 +285,7 @@ export default function LogAnalyzerPage() {
       { key: 'stats', label: t('logAnalyzer.tabs.endpointStats'), component: <EndpointStatsTab analysisId={selected.id} onViewInsights={handleViewInsights} /> },
       { key: 'insights', label: t('logAnalyzer.tabs.performanceInsights'), component: null },
       { key: 'anomalyDetection', label: t('logAnalyzer.tabs.anomalyDetection'), component: <AnomalyDetectionTab analysisId={selected.id} /> },
+      { key: 'systemHealth', label: t('logAnalyzer.tabs.systemHealth'), component: <SystemHealthTab analysisId={selected.id} /> },
       { key: 'rawLog', label: t('logAnalyzer.tabs.rawLog'), component: null },
       ...(lastAnalysisOptions?.threadView !== false ? [{ key: 'threadView', label: t('logAnalyzer.tabs.threadView'), component: <ThreadViewTab analysisId={selected.id} /> }] : []),
     ]

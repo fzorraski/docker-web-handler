@@ -821,6 +821,7 @@ const en = {
       criticalIssues: 'Critical Issues',
       performanceInsights: 'Performance Insights',
       anomalyDetection: 'Anomaly Detection',
+      systemHealth: 'System Health',
       npeAnalysis: 'NPE Analysis',
       exceptionAnalysis: 'Exception Analysis',
     },
@@ -1056,6 +1057,13 @@ const en = {
         '1800': '30 min',
         '3600': '1 hour',
       },
+    },
+    systemHealth: {
+      title: 'System Health',
+      description: 'Overlay multiple signal types on a single timeline to spot when performance degrades across the system.',
+      timeline: 'Signal Timeline',
+      noData: 'No signal data available.',
+      error: 'Failed to load system health data.',
     },
     analysisOptions: {
       title: 'Analysis Options',

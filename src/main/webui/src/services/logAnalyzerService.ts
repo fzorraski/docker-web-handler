@@ -660,3 +660,23 @@ export async function getAnomalySignalTypes(id: string): Promise<string[]> {
   const res = await fetchWithAuth(`${API}/${id}/anomaly-detection/signal-types`)
   return handleResponse(res)
 }
+
+export interface SystemHealthResponse {
+  bucketSize: number
+  metric: string
+  signalTypes: string[]
+  durationSignals: string[]
+  buckets: { time: string; epoch: number; values: Record<string, number> }[]
+}
+
+export async function getSystemHealth(
+  id: string,
+  params: { bucketSize?: number; metric?: string } = {},
+): Promise<SystemHealthResponse> {
+  const q = new URLSearchParams()
+  if (params.bucketSize != null) q.set('bucketSize', String(params.bucketSize))
+  if (params.metric) q.set('metric', params.metric)
+  const qs = q.toString()
+  const res = await fetchWithAuth(`${API}/${id}/system-health${qs ? '?' + qs : ''}`)
+  return handleResponse(res)
+}
