@@ -10,6 +10,7 @@ import { IconButton, Tooltip } from '@mui/material'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { LineLink } from './LineLink'
+import { truncatedTooltipProps } from './tooltipStyles'
 import type { NpeLocationSummary } from '../../services/logAnalyzerService'
 import * as logService from '../../services/logAnalyzerService'
 
@@ -152,9 +153,12 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
                                         </Typography>
                                       )}
                                       {occ.message && !isTraceOpen && (
-                                        <Typography variant="body2" fontSize="0.75rem" sx={{ ml: 1, maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                          {occ.message}
-                                        </Typography>
+                                        <Tooltip title={occ.message} arrow enterDelay={300}
+                                          slotProps={truncatedTooltipProps}>
+                                          <Typography variant="body2" fontSize="0.75rem" sx={{ ml: 1, maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {occ.message}
+                                          </Typography>
+                                        </Tooltip>
                                       )}
                                       {(occ.stackTrace.length > 0 || occ.message) && (
                                         <>

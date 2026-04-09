@@ -10,6 +10,7 @@ import Tooltip from '@mui/material/Tooltip'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { LineLink } from './LineLink'
+import { truncatedTooltipProps } from './tooltipStyles'
 import type { CriticalIssueSummary, BurstCategorySummary, BurstMeta, CriticalIssue } from '../../services/logAnalyzerService'
 import * as logService from '../../services/logAnalyzerService'
 
@@ -357,14 +358,17 @@ export function CriticalIssuesTab({ analysisId, onJumpToLine }: { analysisId: st
                                                 )}
                                               </TableCell>
                                               <TableCell>
-                                                <Typography variant="body2" fontSize="0.8rem" sx={{
-                                                  maxWidth: 400,
-                                                  overflow: 'hidden',
-                                                  textOverflow: 'ellipsis',
-                                                  whiteSpace: 'nowrap',
-                                                }}>
-                                                  {issue.message}
-                                                </Typography>
+                                                <Tooltip title={issue.message} arrow enterDelay={300}
+                                                  slotProps={truncatedTooltipProps}>
+                                                  <Typography variant="body2" fontSize="0.8rem" sx={{
+                                                    maxWidth: 400,
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap',
+                                                  }}>
+                                                    {issue.message}
+                                                  </Typography>
+                                                </Tooltip>
                                               </TableCell>
                                             </TableRow>
                                           ))}
@@ -513,14 +517,17 @@ export function CriticalIssuesTab({ analysisId, onJumpToLine }: { analysisId: st
                           )}
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2" fontSize="0.8rem" sx={{
-                            maxWidth: 400,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}>
-                            {issue.message}
-                          </Typography>
+                          <Tooltip title={issue.message} arrow enterDelay={300}
+                            slotProps={truncatedTooltipProps}>
+                            <Typography variant="body2" fontSize="0.8rem" sx={{
+                              maxWidth: 400,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}>
+                              {issue.message}
+                            </Typography>
+                          </Tooltip>
                         </TableCell>
                       </TableRow>
                       {isExpanded && (
