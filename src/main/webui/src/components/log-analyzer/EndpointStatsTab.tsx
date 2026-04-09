@@ -6,7 +6,7 @@ import {
   Paper, IconButton, Tooltip,
   useTheme,
 } from '@mui/material'
-import { QueryStats, InfoOutlined } from '@mui/icons-material'
+import { QueryStats, InfoOutlined, Download } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { formatDuration } from '../../utils/formatDuration'
@@ -159,9 +159,16 @@ export function EndpointStatsTab({ analysisId, onViewInsights }: { analysisId: s
                 </TableSortLabel>
               </TableCell>
               <TableCell width="18%">
-                <Tooltip title={t('logAnalyzer.stats.barHelp')} arrow placement="left">
-                  <InfoOutlined sx={{ fontSize: 15, color: 'text.secondary', cursor: 'help' }} />
-                </Tooltip>
+                <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
+                  <Tooltip title={t('logAnalyzer.stats.barHelp')} arrow placement="left">
+                    <InfoOutlined sx={{ fontSize: 15, color: 'text.secondary', cursor: 'help' }} />
+                  </Tooltip>
+                  <Tooltip title={t('logAnalyzer.compare.export')} arrow>
+                    <IconButton size="small" onClick={() => window.open(logService.getStatsExportUrl(analysisId))} sx={{ opacity: 0.4, '&:hover': { opacity: 1 } }}>
+                      <Download sx={{ fontSize: 15 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
               </TableCell>
             </TableRow>
           </TableHead>
