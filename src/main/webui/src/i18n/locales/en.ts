@@ -776,6 +776,12 @@ const en = {
       success: 'Log file analyzed successfully.',
       error: 'Failed to analyze log file.',
       capacityFull: 'Maximum reached — the oldest analysis will be replaced on next upload.',
+      dropzone: 'Drag & drop log files here, or click to browse',
+      dropzoneActive: 'Drop files here to analyze',
+      dropzoneHint: 'or drag & drop files here',
+      supported: 'Supports .log, .txt, .out files',
+      viewers: '{{count}} other viewer(s)',
+      uploadedAt: 'Uploaded at',
     },
     compose: {
       button: 'Compose',
@@ -853,6 +859,10 @@ const en = {
       min: 'Min',
       max: 'Max',
       slow: 'Slow',
+      barHelp: 'Solid bar = average duration. Faded bar behind = P95 (95th percentile). The gap between them shows tail latency.',
+      totalCalls: 'Total Calls',
+      weightedAvg: 'Weighted Avg',
+      totalSlow: 'Total Slow',
     },
     rawLog: {
       search: 'Search logs...',
@@ -939,6 +949,7 @@ const en = {
       line: 'Line',
       timestamp: 'Timestamp',
       thread: 'Thread',
+      copy: 'Copy',
     },
     npeAnalysis: {
       title: 'NullPointerException Analysis',

@@ -777,6 +777,12 @@ const es: typeof en = {
       success: 'Archivo de log analizado exitosamente.',
       error: 'Error al analizar archivo de log.',
       capacityFull: 'Capacidad máxima alcanzada — el análisis más antiguo será reemplazado en la próxima carga.',
+      dropzone: 'Arrastra y suelta archivos de log aquí, o haz clic para seleccionar',
+      dropzoneActive: 'Suelta los archivos aquí para analizar',
+      dropzoneHint: 'o arrastra y suelta archivos aquí',
+      supported: 'Soporta archivos .log, .txt, .out',
+      viewers: '{{count}} otro(s) viendo',
+      uploadedAt: 'Subido el',
     },
     compose: {
       button: 'Componer',
@@ -854,6 +860,10 @@ const es: typeof en = {
       min: 'Mín',
       max: 'Máx',
       slow: 'Lentos',
+      barHelp: 'Barra sólida = duración promedio. Barra transparente detrás = P95 (percentil 95). La diferencia entre ellas muestra la latencia de cola.',
+      totalCalls: 'Total de Llamadas',
+      weightedAvg: 'Promedio Ponderado',
+      totalSlow: 'Total de Lentos',
     },
     rawLog: {
       search: 'Buscar en logs...',
@@ -940,6 +950,7 @@ const es: typeof en = {
       line: 'Línea',
       timestamp: 'Fecha/Hora',
       thread: 'Hilo',
+      copy: 'Copiar',
     },
     npeAnalysis: {
       title: 'Análisis de NullPointerException',

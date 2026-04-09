@@ -1,6 +1,6 @@
-import { useState, useMemo, Fragment } from 'react'
+import { useState, useEffect, useMemo, Fragment } from 'react'
 import {
-  Box, Typography, Table, TableHead, TableRow, TableCell, TableBody,
+  Alert, Box, Typography, Table, TableHead, TableRow, TableCell, TableBody,
   TableContainer, TablePagination, LinearProgress, IconButton, Tooltip,
   useTheme,
 } from '@mui/material'
@@ -21,20 +21,23 @@ export function CustomFieldTab({ analysisId, fieldName, onJumpToLine }: { analys
   const [rowsPerPage, setRowsPerPage] = useState(25)
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
 
-  const { data, total, loading } = usePaginatedFetch<CustomFieldMatch>(
+  useEffect(() => { setPage(0); setExpandedRow(null) }, [analysisId, fieldName])
+
+  const { data, total, loading, error } = usePaginatedFetch<CustomFieldMatch>(
     () => logService.getCustomFieldResults(analysisId, fieldName, { page, size: rowsPerPage }),
     [analysisId, fieldName, page, rowsPerPage],
   )
 
   const groupColumns = useMemo(() => {
     const keys = new Set<string>()
-    data.forEach(m => Object.keys(m.groups).forEach(k => keys.add(k)))
+    data.forEach(m => Object.keys(m.groups ?? {}).forEach(k => keys.add(k)))
     return Array.from(keys)
   }, [data])
 
   return (
     <Box>
       {loading && <LinearProgress sx={{ mb: 1 }} />}
+      {error && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
       <TableContainer>
         <Table size="small">
           <TableHead>
@@ -52,7 +55,16 @@ export function CustomFieldTab({ analysisId, fieldName, onJumpToLine }: { analys
               const globalIdx = page * rowsPerPage + i
               return (
                 <Fragment key={globalIdx}>
-                  <TableRow hover sx={{ cursor: 'pointer' }} onClick={() => setExpandedRow(expandedRow === globalIdx ? null : globalIdx)}>
+                  <TableRow
+                    hover
+                    sx={{
+                      cursor: 'pointer',
+                      ...(expandedRow === globalIdx && {
+                        '& td': { borderBottom: 'none' },
+                      }),
+                    }}
+                    onClick={() => setExpandedRow(expandedRow === globalIdx ? null : globalIdx)}
+                  >
                     <TableCell>
                       {onJumpToLine
                         ? <LineLink line={match.lineNumber} onClick={onJumpToLine} />
@@ -79,16 +91,29 @@ export function CustomFieldTab({ analysisId, fieldName, onJumpToLine }: { analys
                   </TableRow>
                   {expandedRow === globalIdx && (
                     <TableRow>
-                      <TableCell colSpan={3 + groupColumns.length} sx={{ position: 'relative', bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)' }}>
-                        <Tooltip title="Copy" arrow>
-                          <IconButton size="small" sx={{ position: 'absolute', top: 4, right: 4, opacity: 0.4, '&:hover': { opacity: 1 } }}
-                            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(match.fullMessage).catch(() => {}) }}>
-                            <ContentCopy sx={{ fontSize: 14 }} />
-                          </IconButton>
-                        </Tooltip>
-                        <Typography variant="body2" fontFamily="'JetBrains Mono', monospace" fontSize="0.75rem" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', pr: 4 }}>
-                          {match.fullMessage}
-                        </Typography>
+                      <TableCell colSpan={3 + groupColumns.length} sx={{ p: 0, border: 'none' }}>
+                        <Box sx={{
+                          position: 'relative',
+                          m: 1,
+                          mt: 0,
+                          p: 2,
+                          borderRadius: 1,
+                          border: `1px solid ${isDark ? 'rgba(255,109,0,0.3)' : 'rgba(255,109,0,0.25)'}`,
+                          borderLeft: `4px solid #FF6D00`,
+                          bgcolor: isDark ? 'rgba(255,109,0,0.06)' : 'rgba(255,109,0,0.03)',
+                          maxHeight: 300,
+                          overflow: 'auto',
+                        }}>
+                          <Tooltip title={t('logAnalyzer.customFields.copy')} arrow>
+                            <IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, opacity: 0.5, '&:hover': { opacity: 1 } }}
+                              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(match.fullMessage).catch(() => {}) }}>
+                              <ContentCopy sx={{ fontSize: 14 }} />
+                            </IconButton>
+                          </Tooltip>
+                          <Typography variant="body2" fontFamily="'JetBrains Mono', monospace" fontSize="0.75rem" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', pr: 4 }}>
+                            {match.fullMessage}
+                          </Typography>
+                        </Box>
                       </TableCell>
                     </TableRow>
                   )}
