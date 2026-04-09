@@ -88,6 +88,7 @@ export default function LogAnalyzerPage() {
   const [activeTab, setActiveTab] = useState(0)
   const [jumpToLine, setJumpToLine] = useState<number | null>(null)
   const [jumpToRange, setJumpToRange] = useState<{ from: number; to: number } | null>(null)
+  const [initialLevel, setInitialLevel] = useState<string | null>(null)
   const [insightsEndpoint, setInsightsEndpoint] = useState<string | null>(null)
   const [insightsTimestamp, setInsightsTimestamp] = useState<string | null>(null)
 
@@ -778,7 +779,8 @@ export default function LogAnalyzerPage() {
               {Object.entries(merged).map(([level, count]) => (
                 <Chip key={level} label={`${level}: ${count.toLocaleString()}`} size="small" variant="outlined"
                   color={level === 'ERROR' || level === 'FATAL' || level === 'SEVERE' ? 'error' : level === 'WARN' ? 'warning' : 'default'}
-                  sx={{ fontWeight: 500, fontSize: '0.72rem' }} />
+                  onClick={() => { setInitialLevel(level); goToTab('rawLog') }}
+                  sx={{ fontWeight: 500, fontSize: '0.72rem', cursor: 'pointer' }} />
               ))}
             </Stack>
             )
@@ -795,7 +797,7 @@ export default function LogAnalyzerPage() {
             {tabs.map((tab, idx) => (
               <Box key={tab.key} sx={{ p: 2, display: idx === activeTab ? 'block' : 'none' }}>
                 {tab.key === 'rawLog'
-                  ? <RawLogTab analysisId={selected!.id} levelCounts={selected!.levelCounts} jumpToLine={jumpToLine} onJumpComplete={handleJumpComplete} highlightRange={jumpToRange} onRangeComplete={handleRangeComplete} />
+                  ? <RawLogTab analysisId={selected!.id} initialLevel={initialLevel} levelCounts={selected!.levelCounts} jumpToLine={jumpToLine} onJumpComplete={handleJumpComplete} highlightRange={jumpToRange} onRangeComplete={handleRangeComplete} />
                   : tab.key === 'insights'
                     ? <PerformanceInsightsTab analysisId={selected!.id} initialEndpoint={insightsEndpoint} initialTimestamp={insightsTimestamp} onEndpointConsumed={handleInsightsConsumed} active={idx === activeTab} />
                     : tab.component}

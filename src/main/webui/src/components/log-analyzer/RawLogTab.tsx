@@ -106,8 +106,8 @@ function VirtualRow({ index, style, lines, levelColor, chipInactive, highlightLi
   )
 }
 
-export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelCounts, jumpToLine, onJumpComplete, highlightRange, onRangeComplete }: {
-  analysisId: string; initialThread?: string; levelCounts?: Record<string, number>
+export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts: globalLevelCounts, jumpToLine, onJumpComplete, highlightRange, onRangeComplete }: {
+  analysisId: string; initialThread?: string; initialLevel?: string | null; levelCounts?: Record<string, number>
   jumpToLine?: number | null; onJumpComplete?: () => void
   highlightRange?: { from: number; to: number } | null; onRangeComplete?: () => void
 }) {
@@ -121,7 +121,8 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search, 300)
   const [activeSearch, setActiveSearch] = useState('') // actual value sent to API
-  const [filterLevel, setFilterLevel] = useState('')
+  const [filterLevel, setFilterLevel] = useState(initialLevel ?? '')
+  useEffect(() => { if (initialLevel) { setFilterLevel(initialLevel); setPage(0) } }, [initialLevel])
   const [filterThread, setFilterThread] = useState(initialThread ?? '')
   const [threads, setThreads] = useState<ThreadInfo[]>([])
   const [wordWrap, setWordWrap] = useState(false)
