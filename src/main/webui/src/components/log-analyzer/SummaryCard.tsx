@@ -30,7 +30,7 @@ export function SummaryCard({ label, value, color, onClick, icon }: {
       {icon && (
         <Box sx={{
           position: 'absolute', top: 8, right: 10,
-          color: color || 'text.disabled', opacity: 0.15, fontSize: 28,
+          color: color || 'text.disabled', opacity: 0.15, fontSize: 20,
           display: 'flex', alignItems: 'center',
           '& svg': { fontSize: 'inherit' },
         }}>
