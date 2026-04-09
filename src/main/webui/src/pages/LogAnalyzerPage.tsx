@@ -138,12 +138,7 @@ export default function LogAnalyzerPage() {
         setCustomFieldInputs(cfi)
       }
     }).catch(() => {})
-    logService.listAnalyses().then((list) => {
-      setAnalyses(list)
-      if (list.length === 0 && !locationState?.analysisId && !locationState?.openUpload) {
-        setOptionsDialogOpen(true)
-      }
-    }).catch(() => {})
+    logService.listAnalyses().then(setAnalyses).catch(() => {})
   }, [])
 
   // Auto-open upload dialog when navigated with openUpload flag or container analysis
