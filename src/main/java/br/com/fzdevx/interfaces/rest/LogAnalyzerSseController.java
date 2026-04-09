@@ -112,8 +112,13 @@ public class LogAnalyzerSseController {
                     }, ticket,
                     evictedId -> broadcaster.broadcastDeleted(evictedId));
         } finally {
-            if (succeeded[0]) {
-                broadcaster.broadcastCompleted("", filenames, analysisId[0] != null ? analysisId[0] : "");
+            if (succeeded[0] && analysisId[0] != null) {
+                if (request.getLabel() != null && !request.getLabel().isBlank()) {
+                    String lbl = request.getLabel().trim();
+                    var analysis = analyzeLogFileUseCase.get(analysisId[0]);
+                    if (analysis != null) analysis.setLabel(lbl.length() > 50 ? lbl.substring(0, 50) : lbl);
+                }
+                broadcaster.broadcastCompleted("", filenames, analysisId[0]);
             }
             request.cleanupTempFiles();
             SseHelper.closeSink(sink);

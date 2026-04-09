@@ -754,7 +754,7 @@ const es: typeof en = {
   logAnalyzer: {
     title: 'Analizador de Logs',
     upload: {
-      selectFiles: 'Seleccionar archivos',
+      selectFiles: 'Seleccionar archivo',
       preset: 'Predefinido',
       slowThreshold: 'Lento (ms)',
       advanced: 'Avanzado',
@@ -1094,6 +1094,13 @@ const es: typeof en = {
     },
     analysisOptions: {
       title: 'Opciones de Analisis',
+      dialogTitle: 'Analizar archivo de log',
+      tabUpload: 'Upload',
+      tabAnalyses: 'Analisis',
+      tabAdvanced: 'Avanzado',
+      orDragDrop: 'o arrastra y suelta aqui',
+      labelField: 'Nombre (opcional)',
+      containerSource: 'Analizar logs del contenedor',
       description: 'Seleccione que analisis ejecutar. Desactive funciones no utilizadas para acelerar el procesamiento.',
       enableAll: 'Activar Todos',
       disableAll: 'Desactivar Todos',

@@ -754,7 +754,7 @@ const ptBR: typeof en = {
   logAnalyzer: {
     title: 'Analisador de Logs',
     upload: {
-      selectFiles: 'Selecionar arquivos',
+      selectFiles: 'Selecionar arquivo',
       preset: 'Predefinido',
       slowThreshold: 'Lento (ms)',
       advanced: 'Avançado',
@@ -1094,6 +1094,13 @@ const ptBR: typeof en = {
     },
     analysisOptions: {
       title: 'Opcoes de Analise',
+      dialogTitle: 'Analisar arquivo de log',
+      tabUpload: 'Upload',
+      tabAnalyses: 'Analises',
+      tabAdvanced: 'Avancado',
+      orDragDrop: 'ou arraste e solte aqui',
+      labelField: 'Nome (opcional)',
+      containerSource: 'Analisar logs do container',
       description: 'Selecione quais analises executar. Desative recursos nao utilizados para acelerar o processamento.',
       enableAll: 'Ativar Todos',
       disableAll: 'Desativar Todos',

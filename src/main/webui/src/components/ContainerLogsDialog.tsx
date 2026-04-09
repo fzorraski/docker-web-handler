@@ -856,22 +856,13 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
             <span>
               <Button
                 size="small"
-                startIcon={<Analytics sx={analyzing ? sparkleSpinSx : undefined} />}
-                disabled={analyzing}
-                sx={analyzing ? shimmerSx : undefined}
-                onClick={async () => {
-                  setAnalyzing(true)
-                  try {
-                    const result = await analyzeContainerLogs(containerId, { containerName })
-                    onClose()
-                    navigate('/logs', { state: { analysisId: result.id } })
-                  } catch (err) {
-                    setAnalyzing(false)
-                    setStreamError(err instanceof Error ? err.message : t('containers.logs.analyzing'))
-                  }
+                startIcon={<Analytics />}
+                onClick={() => {
+                  onClose()
+                  navigate('/logs', { state: { openUpload: true, containerId, containerName } })
                 }}
               >
-                {analyzing ? t('containers.logs.analyzing') : t('containers.logs.deepAnalysis')}
+                {t('containers.logs.deepAnalysis')}
               </Button>
             </span>
           </Tooltip>

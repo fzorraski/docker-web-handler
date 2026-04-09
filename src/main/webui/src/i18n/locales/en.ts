@@ -753,7 +753,7 @@ const en = {
   logAnalyzer: {
     title: 'Log Analyzer',
     upload: {
-      selectFiles: 'Select files',
+      selectFiles: 'Select file',
       preset: 'Preset',
       slowThreshold: 'Slow (ms)',
       advanced: 'Advanced',
@@ -1093,6 +1093,13 @@ const en = {
     },
     analysisOptions: {
       title: 'Analysis Options',
+      dialogTitle: 'Analyze log file',
+      tabUpload: 'Upload',
+      tabAnalyses: 'Analyses',
+      tabAdvanced: 'Advanced',
+      orDragDrop: 'or drag & drop here',
+      labelField: 'Label (optional)',
+      containerSource: 'Analyze container logs',
       description: 'Select which analyses to run. Disable unused features to speed up processing.',
       enableAll: 'Enable All',
       disableAll: 'Disable All',

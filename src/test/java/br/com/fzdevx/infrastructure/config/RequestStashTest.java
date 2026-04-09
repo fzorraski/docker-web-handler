@@ -151,7 +151,7 @@ class RequestStashTest {
     void stashLogAnalysis_returnsTicket() {
         var request = new AnalyzeLogFileRequest(
                 List.of(Path.of("/tmp/test.log")), List.of(Path.of("/tmp")),
-                List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+                List.of("test.log"), null, LogPreset.WILDFLY, 1000, AnalysisOptions.all());
         String ticket = stash.stashLogAnalysis(request);
 
         assertNotNull(ticket);
@@ -162,7 +162,7 @@ class RequestStashTest {
     void retrieveLogAnalysis_returnsAndConsumesTicket() {
         var request = new AnalyzeLogFileRequest(
                 List.of(Path.of("/tmp/test.log")), List.of(Path.of("/tmp")),
-                List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+                List.of("test.log"), null, LogPreset.WILDFLY, 1000, AnalysisOptions.all());
         String ticket = stash.stashLogAnalysis(request);
 
         AnalyzeLogFileRequest retrieved = stash.retrieveLogAnalysis(ticket);
@@ -183,7 +183,7 @@ class RequestStashTest {
     void logAnalysisStash_isolatedFromOtherStashes() {
         var request = new AnalyzeLogFileRequest(
                 List.of(Path.of("/tmp/test.log")), List.of(Path.of("/tmp")),
-                List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+                List.of("test.log"), null, LogPreset.WILDFLY, 1000, AnalysisOptions.all());
         String ticket = stash.stashLogAnalysis(request);
 
         assertNull(stash.retrieve(ticket));

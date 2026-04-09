@@ -107,6 +107,10 @@ public class LogAnalyzerController {
             var result = analyzeLogFileUseCase.analyze(
                     request.getTempFiles(), request.getFilenames(),
                     request.getPreset(), request.getSlowThresholdMs(), request.getOptions());
+            if (request.getLabel() != null && !request.getLabel().isBlank()) {
+                String lbl = request.getLabel().trim();
+                result.analysis().setLabel(lbl.length() > 50 ? lbl.substring(0, 50) : lbl);
+            }
             if (result.evictedId() != null) {
                 logAnalysisBroadcaster.broadcastDeleted(result.evictedId());
             }
@@ -131,6 +135,7 @@ public class LogAnalyzerController {
     AnalyzeLogFileRequest parseUploadForm(MultipartFormDataInput input) throws Exception {
         Map<String, List<InputPart>> form = input.getFormDataMap();
 
+        String label = extractString(form, "label");
         String presetName = extractString(form, "preset");
         LogPreset basePreset = presetName != null ? logPresetProvider.byName(presetName) : logPresetProvider.byName(defaultPresetName);
 
@@ -223,7 +228,7 @@ public class LogAnalyzerController {
 
         AnalysisOptions options = parseAnalysisOptions(extractString(form, "options"));
 
-        return new AnalyzeLogFileRequest(tempFiles, tempDirs, filenames, preset, slowThresholdMs, options);
+        return new AnalyzeLogFileRequest(tempFiles, tempDirs, filenames, label, preset, slowThresholdMs, options);
     }
 
     @POST
@@ -1088,29 +1093,30 @@ public class LogAnalyzerController {
                 })
                 .toList();
 
-        return Map.ofEntries(
-                Map.entry("id", a.getId()),
-                Map.entry("sourceFiles", a.getSourceFiles()),
-                Map.entry("totalLineCount", a.getTotalLineCount()),
-                Map.entry("uploadedAt", a.getUploadedAt().toString()),
-                Map.entry("timeRangeStart", a.getTimeRangeStart() != null ? a.getTimeRangeStart().toString() : ""),
-                Map.entry("timeRangeEnd", a.getTimeRangeEnd() != null ? a.getTimeRangeEnd().toString() : ""),
-                Map.entry("threadCount", a.getThreads().size()),
-                Map.entry("endpointCount", a.getEndpoints().size()),
-                Map.entry("apiCallCount", a.getApiCalls().size()),
-                Map.entry("orphanRequestCount", a.getOrphanRequests().size()),
-                Map.entry("errorCount", a.getErrors().size()),
-                Map.entry("levelCounts", a.getLevelCounts()),
-                Map.entry("jobExecutionCount", a.getJobExecutions().size()),
-                Map.entry("repeatedFailureCount", a.getRepeatedFailures().size()),
-                Map.entry("customFields", customFieldsSummary),
-                Map.entry("criticalIssueCount", criticalIssueCount),
-                Map.entry("criticalIssueSummaries", criticalIssueSummaries),
-                Map.entry("npeAnalysisCount", npeAnalysisCount),
-                Map.entry("npeLocationCount", npeLocationCount),
-                Map.entry("exceptionAnalysisCount", exceptionAnalysisCount),
-                Map.entry("exceptionTypeCount", exceptionTypeCount)
-        );
+        var map = new LinkedHashMap<String, Object>();
+        map.put("id", a.getId());
+        map.put("label", a.getLabel());
+        map.put("sourceFiles", a.getSourceFiles());
+        map.put("totalLineCount", a.getTotalLineCount());
+        map.put("uploadedAt", a.getUploadedAt().toString());
+        map.put("timeRangeStart", a.getTimeRangeStart() != null ? a.getTimeRangeStart().toString() : "");
+        map.put("timeRangeEnd", a.getTimeRangeEnd() != null ? a.getTimeRangeEnd().toString() : "");
+        map.put("threadCount", a.getThreads().size());
+        map.put("endpointCount", a.getEndpoints().size());
+        map.put("apiCallCount", a.getApiCalls().size());
+        map.put("orphanRequestCount", a.getOrphanRequests().size());
+        map.put("errorCount", a.getErrors().size());
+        map.put("levelCounts", a.getLevelCounts());
+        map.put("jobExecutionCount", a.getJobExecutions().size());
+        map.put("repeatedFailureCount", a.getRepeatedFailures().size());
+        map.put("customFields", customFieldsSummary);
+        map.put("criticalIssueCount", criticalIssueCount);
+        map.put("criticalIssueSummaries", criticalIssueSummaries);
+        map.put("npeAnalysisCount", npeAnalysisCount);
+        map.put("npeLocationCount", npeLocationCount);
+        map.put("exceptionAnalysisCount", exceptionAnalysisCount);
+        map.put("exceptionTypeCount", exceptionTypeCount);
+        return map;
     }
 
     private Map<String, Object> presetToMap(LogPreset p) {

@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
-  Autocomplete, Box, Typography, Button, Paper, Tabs, Tab,
-  Chip, TextField, Collapse, IconButton, Switch, FormControlLabel,
+  Box, Typography, Button, Paper, Tabs, Tab,
+  Chip, IconButton,
   Stack, Dialog, DialogTitle, DialogContent, DialogActions,
   Alert, AlertTitle, LinearProgress, Tooltip, Checkbox,
   alpha, useTheme,
 } from '@mui/material'
 import {
-  CloudUpload, ExpandMore, MergeType, Clear, Cancel, DeleteForever, Visibility, Warning,
+  CloudUpload, MergeType, Cancel, DeleteForever, Visibility, Warning,
   Description, CalendarToday,
   Article, SyncAlt, Hub, AccountTree, ErrorOutline, BugReport,
   Work, WarningAmber, HelpOutline, Code, Extension,
@@ -18,8 +18,8 @@ import { useNotification } from '../components/NotificationProvider'
 import { useSseOperation } from '../hooks/useSseOperation'
 import OperationProgress, { LOG_ANALYSIS_STEPS } from '../components/OperationProgress'
 import { prepareLogAnalysis, streamLogAnalysis, cancelLogAnalysis, subscribeLogAnalysisUpdates, setLogAnalysisViewing } from '../services/sseService'
-import { AnalysisOptionsDialog } from '../components/log-analyzer/AnalysisOptionsDialog'
-import type { AnalysisOptions } from '../components/log-analyzer/AnalysisOptionsDialog'
+import { AnalysisOptionsDialog, applyPreset } from '../components/log-analyzer/AnalysisOptionsDialog'
+import type { AnalysisConfiguration } from '../components/log-analyzer/AnalysisOptionsDialog'
 import { SummaryCard } from '../components/log-analyzer/SummaryCard'
 import { ApiCallsTab } from '../components/log-analyzer/ApiCallsTab'
 import { EndpointStatsTab } from '../components/log-analyzer/EndpointStatsTab'
@@ -79,8 +79,9 @@ export default function LogAnalyzerPage() {
   const [maxFiles, setMaxFiles] = useState(5)
   const [analyses, setAnalyses] = useState<AnalysisSummary[]>([])
   const location = useLocation()
+  const locationState = location.state as { analysisId?: string; openUpload?: boolean; containerId?: string; containerName?: string } | null
   const [selectedId, setSelectedId] = useState<string | null>(
-    (location.state as { analysisId?: string } | null)?.analysisId ?? null
+    locationState?.analysisId ?? null
   )
   const sse = useSseOperation()
   const [analysisTicket, setAnalysisTicket] = useState<string | null>(null)
@@ -93,7 +94,6 @@ export default function LogAnalyzerPage() {
   // Upload form
   const [selectedPreset, setSelectedPreset] = useState('')
   const [slowThreshold, setSlowThreshold] = useState(1000)
-  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [customRegex, setCustomRegex] = useState<Partial<UploadOptions>>({})
 
   // Custom fields
@@ -102,7 +102,8 @@ export default function LogAnalyzerPage() {
   // Analysis options dialog
   const [optionsDialogOpen, setOptionsDialogOpen] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
-  const [lastAnalysisOptions, setLastAnalysisOptions] = useState<AnalysisOptions | null>(null)
+  const [lastAnalysisOptions, setLastAnalysisOptions] = useState<AnalysisConfiguration | null>(null)
+  const [pendingContainer, setPendingContainer] = useState<{ id: string; name: string } | null>(null)
 
   // Active analyses from other users (broadcast)
   const [activeAnalyses, setActiveAnalyses] = useState<string[]>([])
@@ -115,7 +116,7 @@ export default function LogAnalyzerPage() {
 
   // Capacity confirmation
   const [capacityConfirmOpen, setCapacityConfirmOpen] = useState(false)
-  const [pendingAnalysisOptions, setPendingAnalysisOptions] = useState<AnalysisOptions | null>(null)
+  const [pendingAnalysisOptions, setPendingAnalysisOptions] = useState<AnalysisConfiguration | null>(null)
 
   // Compose
   const [composeIds, setComposeIds] = useState<Set<string>>(new Set())
@@ -124,41 +125,53 @@ export default function LogAnalyzerPage() {
   const [isDragging, setIsDragging] = useState(false)
   const dragCounter = useRef(0)
 
-  const handlePresetChange = useCallback((_: unknown, p: LogPreset | null) => {
-    if (!p) return
-    setSelectedPreset(p.name.toUpperCase())
-    setCustomRegex({
-      logLineRegex: p.logLineRegex,
-      apiCallRegex: p.apiCallRegex ?? undefined,
-      timestampFormat: p.timestampFormat,
-      jobStartRegex: p.jobStartRegex ?? undefined,
-      jobEndRegex: p.jobEndRegex ?? undefined,
-      failureRegex: p.failureRegex ?? undefined,
-      sensitiveFieldNames: p.sensitiveFieldNames?.join(','),
-      criticalIssueExclusions: p.criticalIssueExclusions?.join(','),
-    })
-    setCustomFieldInputs(p.customFields?.map(cf => ({ name: cf.name, regex: cf.regex, countOnly: cf.countOnly })) ?? [])
-  }, [])
-
   useEffect(() => {
     logService.getStatus().then((s) => {
       setPresets(s.presets)
       setDefaultPreset(s.defaultPreset)
       setSelectedPreset(s.defaultPreset)
       if (s.maxFiles) setMaxFiles(s.maxFiles)
+      const defaultP = s.presets.find(p => p.name.toUpperCase() === s.defaultPreset.toUpperCase())
+      if (defaultP) {
+        const { customRegex: cr, customFieldInputs: cfi } = applyPreset(defaultP)
+        setCustomRegex(cr)
+        setCustomFieldInputs(cfi)
+      }
     }).catch(() => {})
-    refreshList()
+    logService.listAnalyses().then((list) => {
+      setAnalyses(list)
+      if (list.length === 0 && !locationState?.analysisId && !locationState?.openUpload) {
+        setOptionsDialogOpen(true)
+      }
+    }).catch(() => {})
   }, [])
+
+  // Auto-open upload dialog when navigated with openUpload flag or container analysis
+  useEffect(() => {
+    if (locationState?.openUpload) {
+      if (locationState.containerId) {
+        setPendingContainer({ id: locationState.containerId, name: locationState.containerName ?? locationState.containerId })
+      }
+      setOptionsDialogOpen(true)
+      window.history.replaceState({}, '')
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset tab index when selectedId changes
   useEffect(() => {
     setActiveTab(0)
   }, [selectedId])
 
-  // Notify server which analysis this client is viewing
+  // Notify server which analysis this client is viewing + heartbeat every 60s
   useEffect(() => {
     setLogAnalysisViewing(clientTokenRef.current, selectedId)
-    return () => { setLogAnalysisViewing(clientTokenRef.current, null) }
+    const interval = selectedId
+      ? setInterval(() => setLogAnalysisViewing(clientTokenRef.current, selectedId), 60_000)
+      : undefined
+    return () => {
+      clearInterval(interval)
+      setLogAnalysisViewing(clientTokenRef.current, null)
+    }
   }, [selectedId])
 
   // Clear viewer entry on page unload (reload/close) via sendBeacon
@@ -201,7 +214,7 @@ export default function LogAnalyzerPage() {
 
   const handleUpload = useCallback((fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return
-    setPendingFiles(Array.from(fileList))
+    setPendingFiles([fileList[0]])
     setOptionsDialogOpen(true)
   }, [])
 
@@ -243,27 +256,52 @@ export default function LogAnalyzerPage() {
     }
   }, [handleUpload])
 
-  const doStartAnalysis = useCallback(async (analysisOptions: AnalysisOptions) => {
-    setLastAnalysisOptions(analysisOptions)
+  const doStartAnalysis = useCallback(async (config: AnalysisConfiguration) => {
+    setLastAnalysisOptions(config)
+
+    // Container log analysis (from Deep Analysis button)
+    if (pendingContainer) {
+      try {
+        const result = await logService.analyzeContainerLogs(pendingContainer.id, {
+          containerName: pendingContainer.name,
+          preset: config.selectedPreset,
+          slowThresholdMs: config.slowThreshold,
+        })
+        setPendingContainer(null)
+        setSelectedId(result.id)
+        refreshList()
+        notify(t('logAnalyzer.upload.success'), 'success')
+      } catch (err) {
+        notify(err instanceof Error ? err.message : t('logAnalyzer.upload.error'), 'error')
+      }
+      return
+    }
+
     if (pendingFiles.length === 0) return
 
-    const currentPreset = presets.find(p => p.name.toUpperCase() === selectedPreset.toUpperCase())
-    const backendOptions = analysisOptions
+    // Update page-level state from dialog config
+    setSelectedPreset(config.selectedPreset)
+    setSlowThreshold(config.slowThreshold)
+    setCustomRegex(config.customRegex)
+    setCustomFieldInputs(config.customFieldInputs)
+
+    const currentPreset = presets.find(p => p.name.toUpperCase() === config.selectedPreset.toUpperCase())
     const regexKeys = ['logLineRegex', 'apiCallRegex', 'timestampFormat', 'jobStartRegex', 'jobEndRegex', 'failureRegex', 'sensitiveFieldNames', 'criticalIssueExclusions'] as const
     const formFields: Record<string, string | undefined> = {
-      preset: selectedPreset,
-      slowThresholdMs: String(slowThreshold),
-      options: JSON.stringify(backendOptions),
+      label: config.label || undefined,
+      preset: config.selectedPreset,
+      slowThresholdMs: String(config.slowThreshold),
+      options: JSON.stringify(config.analysisOptions),
     }
     for (const key of regexKeys) {
-      const val = customRegex[key]
+      const val = config.customRegex[key]
       if (val != null) formFields[key] = String(val)
     }
-    if (currentPreset && customRegex.logLineRegex && customRegex.logLineRegex !== currentPreset.logLineRegex) {
-      formFields.logLineRegex = customRegex.logLineRegex
+    if (currentPreset && config.customRegex.logLineRegex && config.customRegex.logLineRegex !== currentPreset.logLineRegex) {
+      formFields.logLineRegex = config.customRegex.logLineRegex
     }
-    if (customFieldInputs.length > 0) {
-      const validFields = customFieldInputs.filter(cf => cf.name.trim() && cf.regex.trim())
+    if (config.customFieldInputs.length > 0) {
+      const validFields = config.customFieldInputs.filter(cf => cf.name.trim() && cf.regex.trim())
       if (validFields.length > 0) {
         formFields.customFields = JSON.stringify(validFields)
       }
@@ -291,15 +329,15 @@ export default function LogAnalyzerPage() {
       notify(err instanceof Error ? err.message : t('logAnalyzer.upload.error'), 'error')
       setPendingFiles([])
     }
-  }, [pendingFiles, selectedPreset, slowThreshold, customRegex, presets, customFieldInputs, refreshList, notify, t, sse])
+  }, [pendingContainer, pendingFiles, presets, refreshList, notify, t, sse])
 
-  const handleStartAnalysis = useCallback(async (analysisOptions: AnalysisOptions) => {
+  const handleStartAnalysis = useCallback(async (config: AnalysisConfiguration) => {
     setOptionsDialogOpen(false)
     if (analyses.length >= maxFiles) {
-      setPendingAnalysisOptions(analysisOptions)
+      setPendingAnalysisOptions(config)
       setCapacityConfirmOpen(true)
     } else {
-      doStartAnalysis(analysisOptions)
+      doStartAnalysis(config)
     }
   }, [analyses.length, maxFiles, doStartAnalysis])
 
@@ -463,7 +501,7 @@ export default function LogAnalyzerPage() {
       )}
 
       {/* ================================================================
-          UPLOAD ZONE — drag & drop with inline config
+          UPLOAD ZONE — simple drag & drop target
           ================================================================ */}
       <Paper
         elevation={0}
@@ -497,7 +535,7 @@ export default function LogAnalyzerPage() {
           </Box>
         )}
 
-        {/* Empty state — large centered upload prompt */}
+        {/* Empty state */}
         {!hasAnalyses && (
           <Stack alignItems="center" spacing={2} sx={{ opacity: isDragging ? 0.15 : 1, transition: 'opacity 0.2s' }}>
             <CloudUpload sx={{ fontSize: 56, color: 'text.disabled' }} />
@@ -507,15 +545,9 @@ export default function LogAnalyzerPage() {
             <Typography variant="body2" color="text.secondary">
               {t('logAnalyzer.upload.dropzone')}
             </Typography>
-            <Button
-              variant="contained"
-              component="label"
-              startIcon={<CloudUpload />}
-              disabled={sse.isRunning}
-              size="large"
-            >
+            <Button variant="contained" component="label" startIcon={<CloudUpload />} disabled={sse.isRunning} size="large">
               {t('logAnalyzer.upload.selectFiles')}
-              <input type="file" hidden multiple accept=".log,.txt,.out" onChange={(e) => { handleUpload(e.target.files); e.target.value = '' }} />
+              <input type="file" hidden accept=".log,.txt,.out" onChange={(e) => { handleUpload(e.target.files); e.target.value = '' }} />
             </Button>
             <Typography variant="caption" color="text.disabled">
               {t('logAnalyzer.upload.supported')}
@@ -523,147 +555,41 @@ export default function LogAnalyzerPage() {
           </Stack>
         )}
 
-        {/* Compact mode — when analyses already exist */}
+        {/* Compact mode */}
         {hasAnalyses && (
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center"
+          <Stack direction="row" spacing={2} alignItems="center"
             sx={{ opacity: isDragging ? 0.15 : 1, transition: 'opacity 0.2s' }}
           >
-            <Button
-              variant="contained"
-              component="label"
-              startIcon={<CloudUpload />}
-              disabled={sse.isRunning}
-              sx={{ whiteSpace: 'nowrap' }}
-            >
+            <Button variant="contained" component="label" startIcon={<CloudUpload />} disabled={sse.isRunning} sx={{ whiteSpace: 'nowrap' }}>
               {t('logAnalyzer.upload.selectFiles')}
-              <input type="file" hidden multiple accept=".log,.txt,.out" onChange={(e) => { handleUpload(e.target.files); e.target.value = '' }} />
+              <input type="file" hidden accept=".log,.txt,.out" onChange={(e) => { handleUpload(e.target.files); e.target.value = '' }} />
             </Button>
-            <Autocomplete
-              size="small"
-              sx={{ minWidth: 200 }}
-              disableClearable
-              options={presets}
-              getOptionLabel={(p) => p.name}
-              value={presets.find(p => p.name.toUpperCase() === selectedPreset.toUpperCase()) ?? presets[0] ?? null}
-              onChange={handlePresetChange}
-              isOptionEqualToValue={(o, v) => o.name === v.name}
-              renderInput={(params) => <TextField {...params} label={t('logAnalyzer.upload.preset')} />}
-            />
-            <TextField
-              size="small"
-              label={t('logAnalyzer.upload.slowThreshold')}
-              type="number"
-              value={slowThreshold}
-              onChange={(e) => setSlowThreshold(Number(e.target.value))}
-              sx={{ width: 130 }}
-              slotProps={{ htmlInput: { min: 0 } }}
-            />
-            <Button size="small" onClick={() => setAdvancedOpen(!advancedOpen)} endIcon={<ExpandMore sx={{ transform: advancedOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />}>
-              {t('logAnalyzer.upload.advanced')}
-            </Button>
-            <Box sx={{ flex: 1 }} />
-            <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap' }}>
+            <Typography variant="caption" color="text.disabled">
               {t('logAnalyzer.upload.dropzoneHint')}
             </Typography>
           </Stack>
         )}
-
-        {/* Empty state — preset and threshold controls */}
-        {!hasAnalyses && (
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" justifyContent="center" sx={{ mt: 3, opacity: isDragging ? 0.15 : 1, transition: 'opacity 0.2s' }}>
-            <Autocomplete
-              size="small"
-              sx={{ minWidth: 200 }}
-              disableClearable
-              options={presets}
-              getOptionLabel={(p) => p.name}
-              value={presets.find(p => p.name.toUpperCase() === selectedPreset.toUpperCase()) ?? presets[0] ?? null}
-              onChange={handlePresetChange}
-              isOptionEqualToValue={(o, v) => o.name === v.name}
-              renderInput={(params) => <TextField {...params} label={t('logAnalyzer.upload.preset')} />}
-            />
-            <TextField
-              size="small"
-              label={t('logAnalyzer.upload.slowThreshold')}
-              type="number"
-              value={slowThreshold}
-              onChange={(e) => setSlowThreshold(Number(e.target.value))}
-              sx={{ width: 130 }}
-              slotProps={{ htmlInput: { min: 0 } }}
-            />
-            <Button size="small" onClick={() => setAdvancedOpen(!advancedOpen)} endIcon={<ExpandMore sx={{ transform: advancedOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />}>
-              {t('logAnalyzer.upload.advanced')}
-            </Button>
-          </Stack>
-        )}
-
-        {/* SSE progress dialog */}
-        <Dialog open={sse.isRunning || (sse.events.length > 0 && !sse.isDone)} maxWidth="sm" fullWidth
-          onClose={(_e, reason) => { if (reason !== 'backdropClick' || !sse.isRunning) { sse.reset() } }}>
-          <DialogTitle>{t('logAnalyzer.upload.analyzing')}</DialogTitle>
-          <DialogContent>
-            <OperationProgress events={sse.events} steps={LOG_ANALYSIS_STEPS} />
-          </DialogContent>
-          <DialogActions>
-            {sse.isRunning ? (
-              <Button color="error" startIcon={<Cancel />} onClick={handleCancelAnalysis}>
-                {t('logAnalyzer.upload.cancel')}
-              </Button>
-            ) : (
-              <Button variant="contained" onClick={() => sse.reset()}>
-                {t('logAnalyzer.upload.close')}
-              </Button>
-            )}
-          </DialogActions>
-        </Dialog>
-
-        {/* Advanced options collapse */}
-        <Collapse in={advancedOpen}>
-          <Stack spacing={2} sx={{ mt: 2.5, ...(hasAnalyses ? {} : { textAlign: 'left', maxWidth: 900, mx: 'auto' }) }}>
-            <TextField size="small" fullWidth label={t('logAnalyzer.upload.logLineRegex')}
-              value={customRegex.logLineRegex ?? ''} onChange={(e) => setCustomRegex(r => ({ ...r, logLineRegex: e.target.value }))} />
-            <TextField size="small" fullWidth label={t('logAnalyzer.upload.apiCallRegex')}
-              value={customRegex.apiCallRegex ?? ''} onChange={(e) => setCustomRegex(r => ({ ...r, apiCallRegex: e.target.value }))} />
-            <TextField size="small" fullWidth label={t('logAnalyzer.upload.timestampFormat')}
-              value={customRegex.timestampFormat ?? ''} onChange={(e) => setCustomRegex(r => ({ ...r, timestampFormat: e.target.value }))} />
-            <TextField size="small" fullWidth label={t('logAnalyzer.upload.jobStartRegex')}
-              value={customRegex.jobStartRegex ?? ''} onChange={(e) => setCustomRegex(r => ({ ...r, jobStartRegex: e.target.value }))} />
-            <TextField size="small" fullWidth label={t('logAnalyzer.upload.jobEndRegex')}
-              value={customRegex.jobEndRegex ?? ''} onChange={(e) => setCustomRegex(r => ({ ...r, jobEndRegex: e.target.value }))} />
-            <TextField size="small" fullWidth label={t('logAnalyzer.upload.failureRegex')}
-              value={customRegex.failureRegex ?? ''} onChange={(e) => setCustomRegex(r => ({ ...r, failureRegex: e.target.value }))} />
-            <TextField size="small" fullWidth label={t('logAnalyzer.upload.sensitiveFields')}
-              value={customRegex.sensitiveFieldNames ?? ''} onChange={(e) => setCustomRegex(r => ({ ...r, sensitiveFieldNames: e.target.value }))}
-              helperText={t('logAnalyzer.upload.sensitiveFieldsHelp')} />
-            <TextField size="small" fullWidth label={t('logAnalyzer.upload.criticalIssueExclusions')}
-              value={customRegex.criticalIssueExclusions ?? ''} onChange={(e) => setCustomRegex(r => ({ ...r, criticalIssueExclusions: e.target.value }))}
-              helperText={t('logAnalyzer.upload.criticalIssueExclusionsHelp')} />
-            <Typography variant="subtitle2" sx={{ mt: 2 }}>{t('logAnalyzer.upload.customFields')}</Typography>
-            {customFieldInputs.map((cf, idx) => (
-              <Stack key={idx} direction="row" spacing={1} alignItems="center">
-                <TextField size="small" label={t('logAnalyzer.customFields.name')} placeholder="Entity Changes" value={cf.name}
-                  onChange={(e) => { const next = [...customFieldInputs]; next[idx] = { ...next[idx], name: e.target.value }; setCustomFieldInputs(next) }}
-                  sx={{ flex: 1 }} />
-                <TextField size="small" label={t('logAnalyzer.customFields.regex')} placeholder="Updated -> (?<entity>\w+):" value={cf.regex}
-                  onChange={(e) => { const next = [...customFieldInputs]; next[idx] = { ...next[idx], regex: e.target.value }; setCustomFieldInputs(next) }}
-                  sx={{ flex: 2 }}
-                  helperText={t('logAnalyzer.customFields.regexHelp')} />
-                <FormControlLabel
-                  control={<Switch size="small" checked={cf.countOnly}
-                    onChange={(_, v) => { const next = [...customFieldInputs]; next[idx] = { ...next[idx], countOnly: v }; setCustomFieldInputs(next) }} />}
-                  label={<Typography variant="body2">{t('logAnalyzer.customFields.countOnly')}</Typography>}
-                />
-                <IconButton size="small" onClick={() => setCustomFieldInputs(customFieldInputs.filter((_, i) => i !== idx))}>
-                  <Clear sx={{ fontSize: 16 }} />
-                </IconButton>
-              </Stack>
-            ))}
-            <Button size="small" onClick={() => setCustomFieldInputs([...customFieldInputs, { name: '', regex: '', countOnly: false }])}>
-              + {t('logAnalyzer.upload.addCustomField')}
-            </Button>
-          </Stack>
-        </Collapse>
       </Paper>
+
+      {/* SSE progress dialog */}
+      <Dialog open={sse.isRunning || (sse.events.length > 0 && !sse.isDone)} maxWidth="sm" fullWidth
+        onClose={(_e, reason) => { if (reason !== 'backdropClick' || !sse.isRunning) { sse.reset() } }}>
+        <DialogTitle>{t('logAnalyzer.upload.analyzing')}</DialogTitle>
+        <DialogContent>
+          <OperationProgress events={sse.events} steps={LOG_ANALYSIS_STEPS} />
+        </DialogContent>
+        <DialogActions>
+          {sse.isRunning ? (
+            <Button color="error" startIcon={<Cancel />} onClick={handleCancelAnalysis}>
+              {t('logAnalyzer.upload.cancel')}
+            </Button>
+          ) : (
+            <Button variant="contained" onClick={() => sse.reset()}>
+              {t('logAnalyzer.upload.close')}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
 
       {/* ================================================================
           ANALYSIS SELECTOR — card-based file browser
@@ -701,7 +627,7 @@ export default function LogAnalyzerPage() {
               const uploadDate = a.uploadedAt ? new Date(a.uploadedAt).toLocaleString() : ''
 
               return (
-                <Tooltip key={a.id} title={uploadDate ? `${t('logAnalyzer.upload.uploadedAt')}: ${uploadDate}` : ''} arrow placement="top" enterDelay={400}>
+                <Tooltip key={a.id} title={[a.label, uploadDate ? `${t('logAnalyzer.upload.uploadedAt')}: ${uploadDate}` : ''].filter(Boolean).join('\n')} arrow placement="top" enterDelay={400}>
                 <Paper
                   elevation={0}
                   onClick={() => setSelectedId(a.id)}
@@ -865,8 +791,24 @@ export default function LogAnalyzerPage() {
           ================================================================ */}
       <AnalysisOptionsDialog
         open={optionsDialogOpen}
-        onClose={() => { setOptionsDialogOpen(false); setPendingFiles([]) }}
+        onClose={() => { setOptionsDialogOpen(false); setPendingFiles([]); setPendingContainer(null) }}
         onStart={handleStartAnalysis}
+        files={pendingFiles}
+        onFilesChange={setPendingFiles}
+        presets={presets}
+        initialConfig={{
+          label: '',
+          selectedPreset,
+          slowThreshold,
+          customRegex,
+          customFieldInputs,
+          analysisOptions: lastAnalysisOptions?.analysisOptions ?? {
+            apiCalls: true, jobs: true, failures: true,
+            criticalIssues: true, npeAnalysis: true,
+            exceptionAnalysis: true, customFields: true,
+          },
+        }}
+        containerSource={pendingContainer}
       />
 
       <Dialog open={deleteTarget != null} onClose={() => setDeleteTarget(null)} maxWidth="xs" fullWidth>

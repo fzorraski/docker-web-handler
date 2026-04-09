@@ -57,6 +57,7 @@ export interface AnalyzerStatus {
 
 export interface AnalysisSummary {
   id: string
+  label: string | null
   sourceFiles: { filename: string; size: number }[]
   totalLineCount: number
   uploadedAt: string
