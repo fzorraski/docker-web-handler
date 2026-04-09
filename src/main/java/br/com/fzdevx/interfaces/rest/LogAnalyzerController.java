@@ -9,7 +9,9 @@ import br.com.fzdevx.domain.model.anomaly.*;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.domain.shared.PerformanceInsightsCalculator;
 import br.com.fzdevx.infrastructure.config.LogPresetProvider;
+import br.com.fzdevx.interfaces.rest.util.ContentDispositionHelper;
 import br.com.fzdevx.infrastructure.log.CriticalIssueDetector;
+import br.com.fzdevx.infrastructure.log.HtmlReportGenerator;
 import br.com.fzdevx.infrastructure.log.anomaly.AnomalyDetectorService;
 import br.com.fzdevx.infrastructure.log.anomaly.CorrelationDetector;
 import br.com.fzdevx.infrastructure.log.anomaly.MetricExtractor;
@@ -372,6 +374,30 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
         return Response.ok(analysis.getEndpointStats()).build();
+    }
+
+    @GET
+    @Path("/{id}/api-stats/export")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response exportApiStats(@PathParam("id") String id) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+
+        String label = analysis.getLabel() != null ? analysis.getLabel()
+                : analysis.getSourceFiles().stream().map(LogAnalysis.SourceFile::filename).findFirst().orElse("analysis");
+        var export = new LinkedHashMap<String, Object>();
+        export.put("version", 1);
+        export.put("label", label);
+        export.put("exportedAt", java.time.Instant.now().toString());
+        export.put("timeRangeStart", analysis.getTimeRangeStart() != null ? analysis.getTimeRangeStart().toString() : null);
+        export.put("timeRangeEnd", analysis.getTimeRangeEnd() != null ? analysis.getTimeRangeEnd().toString() : null);
+        export.put("endpoints", analysis.getEndpointStats());
+
+        String filename = label.replaceAll("[^a-zA-Z0-9._-]", "_") + "-stats.json";
+        return Response.ok(export, MediaType.APPLICATION_JSON)
+                .header("Content-Disposition", ContentDispositionHelper.buildAttachmentHeader(filename))
+                .build();
     }
 
     @GET
@@ -1056,6 +1082,59 @@ public class LogAnalyzerController {
             case "WARN" -> "WARN".equals(lineLevel) || "WARNING".equals(lineLevel);
             default -> filter.equalsIgnoreCase(lineLevel);
         };
+    }
+
+    // ── Stats Comparison ─────────────────────────────────────────────────────
+
+    @POST
+    @Path("/compare-stats")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces("text/html")
+    public Response compareStats(Map<String, Object> body) {
+        if (!enabled) return featureDisabled();
+        try {
+            String labelA = (String) body.getOrDefault("labelA", "A");
+            String labelB = (String) body.getOrDefault("labelB", "B");
+            List<EndpointStats> statsA = OBJECT_MAPPER.convertValue(body.get("endpointsA"), new TypeReference<>() {});
+            List<EndpointStats> statsB = OBJECT_MAPPER.convertValue(body.get("endpointsB"), new TypeReference<>() {});
+            String html = HtmlReportGenerator.generateComparison(labelA, labelB, statsA, statsB);
+            return Response.ok(html, "text/html")
+                    .header("Content-Disposition", ContentDispositionHelper.buildAttachmentHeader("stats-comparison.html"))
+                    .build();
+        } catch (Exception e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Invalid comparison data: " + e.getMessage())).build();
+        }
+    }
+
+    // ── Report Download ──────────────────────────────────────────────────────
+
+    @GET
+    @Path("/{id}/report/{type}")
+    @Produces("text/html")
+    public Response downloadReport(@PathParam("id") String id,
+                                   @PathParam("type") String type) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+
+        String html = switch (type) {
+            case "compact" -> HtmlReportGenerator.generateCompact(analysis);
+            case "complete" -> HtmlReportGenerator.generateComplete(analysis);
+            default -> null;
+        };
+        if (html == null) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Invalid report type. Use 'compact' or 'complete'.")).build();
+        }
+
+        String label = analysis.getLabel() != null ? analysis.getLabel()
+                : analysis.getSourceFiles().stream().map(LogAnalysis.SourceFile::filename).findFirst().orElse("analysis");
+        String filename = label.replaceAll("[^a-zA-Z0-9._-]", "_") + "-" + type + ".html";
+
+        return Response.ok(html, "text/html")
+                .header("Content-Disposition", ContentDispositionHelper.buildAttachmentHeader(filename))
+                .build();
     }
 
     private Map<String, Object> analysisSummaryMap(LogAnalysis a) {

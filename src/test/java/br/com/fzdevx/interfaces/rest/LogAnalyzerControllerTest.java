@@ -1417,4 +1417,181 @@ class LogAnalyzerControllerTest {
         assertTrue(body.signalTypes().contains("JOB_DURATION"));
         assertFalse(body.buckets().isEmpty());
     }
+
+    // ── Report Download Tests ──────────────────────────────────────────────
+
+    @Test
+    void downloadReport_compact_returns200WithHtml() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.downloadReport(analysis.getId(), "compact");
+
+        assertEquals(200, response.getStatus());
+        String html = (String) response.getEntity();
+        assertTrue(html.contains("<!DOCTYPE html>"));
+        assertTrue(html.contains("Compact"));
+        assertNotNull(response.getHeaderString("Content-Disposition"));
+    }
+
+    @Test
+    void downloadReport_complete_returns200WithHtml() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.downloadReport(analysis.getId(), "complete");
+
+        assertEquals(200, response.getStatus());
+        String html = (String) response.getEntity();
+        assertTrue(html.contains("<!DOCTYPE html>"));
+        assertTrue(html.contains("Complete"));
+    }
+
+    @Test
+    void downloadReport_invalidType_returns400() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.downloadReport(analysis.getId(), "invalid");
+
+        assertEquals(400, response.getStatus());
+    }
+
+    @Test
+    void downloadReport_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+
+        Response response = controller.downloadReport("nonexistent", "compact");
+
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    void downloadReport_disabled_returns403() {
+        setField("enabled", false);
+        Response response = controller.downloadReport("id", "compact");
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void downloadReport_withLabel_usesLabelInFilename() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        analysis.setLabel("my-server");
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.downloadReport(analysis.getId(), "compact");
+
+        assertEquals(200, response.getStatus());
+        String disposition = response.getHeaderString("Content-Disposition");
+        assertNotNull(disposition);
+        assertTrue(disposition.contains("my-server"));
+    }
+
+    // ── Stats Export Tests ─────────────────────────────────────────────────
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void exportApiStats_returns200WithMetadata() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.exportApiStats(analysis.getId());
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertEquals(1, body.get("version"));
+        assertNotNull(body.get("label"));
+        assertNotNull(body.get("exportedAt"));
+        assertNotNull(body.get("endpoints"));
+        List<?> endpoints = (List<?>) body.get("endpoints");
+        assertEquals(2, endpoints.size());
+        assertNotNull(response.getHeaderString("Content-Disposition"));
+    }
+
+    @Test
+    void exportApiStats_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+
+        Response response = controller.exportApiStats("nonexistent");
+
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    void exportApiStats_disabled_returns403() {
+        setField("enabled", false);
+        Response response = controller.exportApiStats("id");
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void exportApiStats_withLabel_usesLabel() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        analysis.setLabel("production-server");
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.exportApiStats(analysis.getId());
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertEquals("production-server", body.get("label"));
+    }
+
+    // ── Stats Comparison Tests ─────────────────────────────────────────────
+
+    @Test
+    void compareStats_validData_returns200WithHtml() {
+        var body = new HashMap<String, Object>();
+        body.put("labelA", "Server A");
+        body.put("labelB", "Server B");
+        body.put("endpointsA", List.of(
+                Map.of("endpoint", "UserWS/get", "callCount", 100, "avgDurationMs", 200.0, "minDurationMs", 50, "maxDurationMs", 500, "p95DurationMs", 400, "slowCount", 5)
+        ));
+        body.put("endpointsB", List.of(
+                Map.of("endpoint", "UserWS/get", "callCount", 150, "avgDurationMs", 100.0, "minDurationMs", 30, "maxDurationMs", 300, "p95DurationMs", 250, "slowCount", 2)
+        ));
+
+        Response response = controller.compareStats(body);
+
+        assertEquals(200, response.getStatus());
+        String html = (String) response.getEntity();
+        assertTrue(html.contains("<!DOCTYPE html>"));
+        assertTrue(html.contains("Server A"));
+        assertTrue(html.contains("Server B"));
+        assertTrue(html.contains("UserWS/get"));
+        assertNotNull(response.getHeaderString("Content-Disposition"));
+    }
+
+    @Test
+    void compareStats_missingEndpoints_returns400() {
+        var body = new HashMap<String, Object>();
+        body.put("labelA", "A");
+
+        Response response = controller.compareStats(body);
+
+        assertEquals(400, response.getStatus());
+    }
+
+    @Test
+    void compareStats_disabled_returns403() {
+        setField("enabled", false);
+        Response response = controller.compareStats(Map.of());
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void compareStats_emptyEndpoints_returns200() {
+        var body = new HashMap<String, Object>();
+        body.put("labelA", "A");
+        body.put("labelB", "B");
+        body.put("endpointsA", List.of());
+        body.put("endpointsB", List.of());
+
+        Response response = controller.compareStats(body);
+
+        assertEquals(200, response.getStatus());
+        String html = (String) response.getEntity();
+        assertTrue(html.contains("<!DOCTYPE html>"));
+    }
 }

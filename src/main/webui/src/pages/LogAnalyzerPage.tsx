@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Box, Typography, Button, Paper, Tabs, Tab,
-  Chip, IconButton,
+  Chip, IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
   Stack, Dialog, DialogTitle, DialogContent, DialogActions,
   Alert, AlertTitle, LinearProgress, Tooltip, Checkbox,
   alpha, useTheme,
 } from '@mui/material'
 import {
-  CloudUpload, MergeType, Cancel, DeleteForever, Visibility, Warning,
+  CloudUpload, MergeType, Cancel, DeleteForever, Visibility, Warning, Download, Summarize,
   Description, CalendarToday,
   Article, SyncAlt, Hub, AccountTree, ErrorOutline, BugReport,
   Work, WarningAmber, HelpOutline, Code, Extension,
@@ -110,6 +110,7 @@ export default function LogAnalyzerPage() {
 
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null)
+  const [reportMenuAnchor, setReportMenuAnchor] = useState<HTMLElement | null>(null)
 
   // Viewer counts from broadcast (analysisId -> number of viewers)
   const [viewerCounts, setViewerCounts] = useState<Record<string, number>>({})
@@ -716,6 +717,21 @@ export default function LogAnalyzerPage() {
           ================================================================ */}
       {selected && (
         <>
+          <Stack direction="row" justifyContent="flex-end" mb={1}>
+            <Button size="small" startIcon={<Summarize />} onClick={(e) => setReportMenuAnchor(e.currentTarget)}>
+              {t('logAnalyzer.report.button')}
+            </Button>
+            <Menu anchorEl={reportMenuAnchor} open={!!reportMenuAnchor} onClose={() => setReportMenuAnchor(null)}>
+              <MenuItem onClick={() => { setReportMenuAnchor(null); window.open(logService.getReportUrl(selected.id, 'compact')) }}>
+                <ListItemIcon><Download fontSize="small" /></ListItemIcon>
+                <ListItemText>{t('logAnalyzer.report.compact')}</ListItemText>
+              </MenuItem>
+              <MenuItem onClick={() => { setReportMenuAnchor(null); window.open(logService.getReportUrl(selected.id, 'complete')) }}>
+                <ListItemIcon><Download fontSize="small" /></ListItemIcon>
+                <ListItemText>{t('logAnalyzer.report.complete')}</ListItemText>
+              </MenuItem>
+            </Menu>
+          </Stack>
           <Box sx={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))',

@@ -646,6 +646,35 @@ export async function getCustomFieldResults(
   return handleResponse(res)
 }
 
+export function getReportUrl(id: string, type: 'compact' | 'complete'): string {
+  return `${API}/${id}/report/${type}`
+}
+
+export function getStatsExportUrl(id: string): string {
+  return `${API}/${id}/api-stats/export`
+}
+
+export interface StatsExport {
+  version: number
+  label: string
+  exportedAt: string
+  timeRangeStart: string | null
+  timeRangeEnd: string | null
+  endpoints: EndpointStats[]
+}
+
+export async function compareStats(
+  labelA: string, labelB: string, endpointsA: EndpointStats[], endpointsB: EndpointStats[],
+): Promise<Blob> {
+  const res = await fetchWithAuth(`${API}/compare-stats`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ labelA, labelB, endpointsA, endpointsB }),
+  })
+  if (!res.ok) throw new Error('Comparison failed')
+  return res.blob()
+}
+
 export async function getAnomalyDetection(
   id: string,
   params: { signalType?: string; bucketSize?: number; threshold?: number; baselineWindow?: number; metric?: string; method?: string } = {},
