@@ -3,10 +3,14 @@ import {
   Autocomplete, Box, Typography, Button, Paper, Tabs, Tab,
   Chip, TextField, Collapse, IconButton, Switch, FormControlLabel,
   Stack, Dialog, DialogTitle, DialogContent, DialogActions,
-  Alert, AlertTitle, LinearProgress, Tooltip, Badge,
+  Alert, AlertTitle, LinearProgress, Tooltip, Checkbox,
+  alpha, useTheme,
 } from '@mui/material'
 import {
   CloudUpload, ExpandMore, MergeType, Clear, Cancel, DeleteForever, Visibility, Warning,
+  Description, CalendarToday,
+  Article, SyncAlt, Hub, AccountTree, ErrorOutline, BugReport,
+  Work, WarningAmber, HelpOutline, Code, Extension,
 } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
@@ -34,10 +38,40 @@ import type {
   AnalysisSummary, LogPreset, UploadOptions,
 } from '../services/logAnalyzerService'
 import * as logService from '../services/logAnalyzerService'
+import { formatBytes } from '../utils/format'
+
+const ACCEPTED_EXTENSIONS = ['.log', '.txt', '.out']
+
+function formatDateTime(ts: string | null): string {
+  if (!ts) return ''
+  try {
+    const d = new Date(ts)
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  } catch { return ts }
+}
+
+function sameDay(a: string, b: string): boolean {
+  try {
+    const da = new Date(a), db = new Date(b)
+    return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate()
+  } catch { return false }
+}
+
+function formatTimeRange(start: string, end: string): string {
+  if (sameDay(start, end)) {
+    const d = new Date(start)
+    const date = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    const t1 = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    const t2 = new Date(end).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    return `${date}, ${t1} — ${t2}`
+  }
+  return `${formatDateTime(start)} — ${formatDateTime(end)}`
+}
 
 export default function LogAnalyzerPage() {
   const { t } = useTranslation()
   const { notify } = useNotification()
+  const theme = useTheme()
   const clientTokenRef = useRef(crypto.randomUUID())
 
   const [presets, setPresets] = useState<LogPreset[]>([])
@@ -76,15 +110,35 @@ export default function LogAnalyzerPage() {
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null)
 
-  // Viewer counts from broadcast (analysisId → number of viewers)
+  // Viewer counts from broadcast (analysisId -> number of viewers)
   const [viewerCounts, setViewerCounts] = useState<Record<string, number>>({})
 
-  // Capacity confirmation: when at max, ask before evicting the oldest
+  // Capacity confirmation
   const [capacityConfirmOpen, setCapacityConfirmOpen] = useState(false)
   const [pendingAnalysisOptions, setPendingAnalysisOptions] = useState<AnalysisOptions | null>(null)
 
   // Compose
   const [composeIds, setComposeIds] = useState<Set<string>>(new Set())
+
+  // Drag and drop
+  const [isDragging, setIsDragging] = useState(false)
+  const dragCounter = useRef(0)
+
+  const handlePresetChange = useCallback((_: unknown, p: LogPreset | null) => {
+    if (!p) return
+    setSelectedPreset(p.name.toUpperCase())
+    setCustomRegex({
+      logLineRegex: p.logLineRegex,
+      apiCallRegex: p.apiCallRegex ?? undefined,
+      timestampFormat: p.timestampFormat,
+      jobStartRegex: p.jobStartRegex ?? undefined,
+      jobEndRegex: p.jobEndRegex ?? undefined,
+      failureRegex: p.failureRegex ?? undefined,
+      sensitiveFieldNames: p.sensitiveFieldNames?.join(','),
+      criticalIssueExclusions: p.criticalIssueExclusions?.join(','),
+    })
+    setCustomFieldInputs(p.customFields?.map(cf => ({ name: cf.name, regex: cf.regex, countOnly: cf.countOnly })) ?? [])
+  }, [])
 
   useEffect(() => {
     logService.getStatus().then((s) => {
@@ -150,6 +204,44 @@ export default function LogAnalyzerPage() {
     setPendingFiles(Array.from(fileList))
     setOptionsDialogOpen(true)
   }, [])
+
+  // Drag and drop handlers
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current++
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragging(true)
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current--
+    if (dragCounter.current === 0) {
+      setIsDragging(false)
+    }
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounter.current = 0
+    setIsDragging(false)
+    const dt = new DataTransfer()
+    for (const f of Array.from(e.dataTransfer.files)) {
+      if (ACCEPTED_EXTENSIONS.some(ext => f.name.toLowerCase().endsWith(ext))) dt.items.add(f)
+    }
+    if (dt.files.length > 0) {
+      handleUpload(dt.files)
+    }
+  }, [handleUpload])
 
   const doStartAnalysis = useCallback(async (analysisOptions: AnalysisOptions) => {
     setLastAnalysisOptions(analysisOptions)
@@ -350,12 +442,14 @@ export default function LogAnalyzerPage() {
     }
   }, [insightsEndpoint, insightsTimestamp, insightsTabIndex])
 
+  const hasAnalyses = analyses.length > 0
+
   return (
     <Box sx={{ maxWidth: 1600, mx: 'auto', p: 3 }}>
-      <Typography variant="h4" fontWeight={700} mb={3}>
-        {t('logAnalyzer.title')}
-      </Typography>
 
+      {/* ================================================================
+          BROADCAST ALERT
+          ================================================================ */}
       {activeAnalyses.length > 0 && (
         <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
           <AlertTitle>{t('logAnalyzer.broadcast.alertTitle')}</AlertTitle>
@@ -368,56 +462,142 @@ export default function LogAnalyzerPage() {
         </Alert>
       )}
 
-      {/* ---- Upload Panel ---- */}
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="flex-start">
-          <Button
-            variant="contained"
-            component="label"
-            startIcon={<CloudUpload />}
-            disabled={sse.isRunning}
+      {/* ================================================================
+          UPLOAD ZONE — drag & drop with inline config
+          ================================================================ */}
+      <Paper
+        elevation={0}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        sx={{
+          mb: 3, position: 'relative', overflow: 'hidden',
+          border: '2px dashed',
+          borderColor: isDragging ? 'primary.main' : 'divider',
+          bgcolor: isDragging ? alpha(theme.palette.primary.main, 0.04) : 'transparent',
+          transition: 'all 0.25s ease',
+          ...(hasAnalyses ? { p: 2.5 } : { p: 5, textAlign: 'center' }),
+        }}
+      >
+        {/* Drag overlay */}
+        {isDragging && (
+          <Box sx={{
+            position: 'absolute', inset: 0, zIndex: 10,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            bgcolor: alpha(theme.palette.primary.main, 0.08),
+            borderRadius: 'inherit',
+          }}>
+            <Stack alignItems="center" spacing={1}>
+              <CloudUpload sx={{ fontSize: 48, color: 'primary.main' }} />
+              <Typography variant="h6" color="primary.main" fontWeight={600}>
+                {t('logAnalyzer.upload.dropzoneActive')}
+              </Typography>
+            </Stack>
+          </Box>
+        )}
+
+        {/* Empty state — large centered upload prompt */}
+        {!hasAnalyses && (
+          <Stack alignItems="center" spacing={2} sx={{ opacity: isDragging ? 0.15 : 1, transition: 'opacity 0.2s' }}>
+            <CloudUpload sx={{ fontSize: 56, color: 'text.disabled' }} />
+            <Typography variant="h5" fontWeight={600} color="text.secondary">
+              {t('logAnalyzer.title')}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {t('logAnalyzer.upload.dropzone')}
+            </Typography>
+            <Button
+              variant="contained"
+              component="label"
+              startIcon={<CloudUpload />}
+              disabled={sse.isRunning}
+              size="large"
+            >
+              {t('logAnalyzer.upload.selectFiles')}
+              <input type="file" hidden multiple accept=".log,.txt,.out" onChange={(e) => { handleUpload(e.target.files); e.target.value = '' }} />
+            </Button>
+            <Typography variant="caption" color="text.disabled">
+              {t('logAnalyzer.upload.supported')}
+            </Typography>
+          </Stack>
+        )}
+
+        {/* Compact mode — when analyses already exist */}
+        {hasAnalyses && (
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center"
+            sx={{ opacity: isDragging ? 0.15 : 1, transition: 'opacity 0.2s' }}
           >
-            {t('logAnalyzer.upload.selectFiles')}
-            <input type="file" hidden multiple accept=".log,.txt,.out" onChange={(e) => { handleUpload(e.target.files); e.target.value = '' }} />
-          </Button>
-          <Autocomplete
-            size="small"
-            sx={{ minWidth: 200 }}
-            disableClearable
-            options={presets}
-            getOptionLabel={(p) => p.name}
-            value={presets.find(p => p.name.toUpperCase() === selectedPreset.toUpperCase()) ?? presets[0] ?? null}
-            onChange={(_, p) => {
-              if (!p) return
-              setSelectedPreset(p.name.toUpperCase())
-              setCustomRegex({
-                logLineRegex: p.logLineRegex,
-                apiCallRegex: p.apiCallRegex ?? undefined,
-                timestampFormat: p.timestampFormat,
-                jobStartRegex: p.jobStartRegex ?? undefined,
-                jobEndRegex: p.jobEndRegex ?? undefined,
-                failureRegex: p.failureRegex ?? undefined,
-                sensitiveFieldNames: p.sensitiveFieldNames?.join(','),
-                criticalIssueExclusions: p.criticalIssueExclusions?.join(','),
-              })
-              setCustomFieldInputs(p.customFields?.map(cf => ({ name: cf.name, regex: cf.regex, countOnly: cf.countOnly })) ?? [])
-            }}
-            isOptionEqualToValue={(o, v) => o.name === v.name}
-            renderInput={(params) => <TextField {...params} label={t('logAnalyzer.upload.preset')} />}
-          />
-          <TextField
-            size="small"
-            label={t('logAnalyzer.upload.slowThreshold')}
-            type="number"
-            value={slowThreshold}
-            onChange={(e) => setSlowThreshold(Number(e.target.value))}
-            sx={{ width: 130 }}
-            slotProps={{ htmlInput: { min: 0 } }}
-          />
-          <Button size="small" onClick={() => setAdvancedOpen(!advancedOpen)} endIcon={<ExpandMore />}>
-            {t('logAnalyzer.upload.advanced')}
-          </Button>
-        </Stack>
+            <Button
+              variant="contained"
+              component="label"
+              startIcon={<CloudUpload />}
+              disabled={sse.isRunning}
+              sx={{ whiteSpace: 'nowrap' }}
+            >
+              {t('logAnalyzer.upload.selectFiles')}
+              <input type="file" hidden multiple accept=".log,.txt,.out" onChange={(e) => { handleUpload(e.target.files); e.target.value = '' }} />
+            </Button>
+            <Autocomplete
+              size="small"
+              sx={{ minWidth: 200 }}
+              disableClearable
+              options={presets}
+              getOptionLabel={(p) => p.name}
+              value={presets.find(p => p.name.toUpperCase() === selectedPreset.toUpperCase()) ?? presets[0] ?? null}
+              onChange={handlePresetChange}
+              isOptionEqualToValue={(o, v) => o.name === v.name}
+              renderInput={(params) => <TextField {...params} label={t('logAnalyzer.upload.preset')} />}
+            />
+            <TextField
+              size="small"
+              label={t('logAnalyzer.upload.slowThreshold')}
+              type="number"
+              value={slowThreshold}
+              onChange={(e) => setSlowThreshold(Number(e.target.value))}
+              sx={{ width: 130 }}
+              slotProps={{ htmlInput: { min: 0 } }}
+            />
+            <Button size="small" onClick={() => setAdvancedOpen(!advancedOpen)} endIcon={<ExpandMore sx={{ transform: advancedOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />}>
+              {t('logAnalyzer.upload.advanced')}
+            </Button>
+            <Box sx={{ flex: 1 }} />
+            <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap' }}>
+              {t('logAnalyzer.upload.dropzoneHint')}
+            </Typography>
+          </Stack>
+        )}
+
+        {/* Empty state — preset and threshold controls */}
+        {!hasAnalyses && (
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" justifyContent="center" sx={{ mt: 3, opacity: isDragging ? 0.15 : 1, transition: 'opacity 0.2s' }}>
+            <Autocomplete
+              size="small"
+              sx={{ minWidth: 200 }}
+              disableClearable
+              options={presets}
+              getOptionLabel={(p) => p.name}
+              value={presets.find(p => p.name.toUpperCase() === selectedPreset.toUpperCase()) ?? presets[0] ?? null}
+              onChange={handlePresetChange}
+              isOptionEqualToValue={(o, v) => o.name === v.name}
+              renderInput={(params) => <TextField {...params} label={t('logAnalyzer.upload.preset')} />}
+            />
+            <TextField
+              size="small"
+              label={t('logAnalyzer.upload.slowThreshold')}
+              type="number"
+              value={slowThreshold}
+              onChange={(e) => setSlowThreshold(Number(e.target.value))}
+              sx={{ width: 130 }}
+              slotProps={{ htmlInput: { min: 0 } }}
+            />
+            <Button size="small" onClick={() => setAdvancedOpen(!advancedOpen)} endIcon={<ExpandMore sx={{ transform: advancedOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />}>
+              {t('logAnalyzer.upload.advanced')}
+            </Button>
+          </Stack>
+        )}
+
+        {/* SSE progress dialog */}
         <Dialog open={sse.isRunning || (sse.events.length > 0 && !sse.isDone)} maxWidth="sm" fullWidth
           onClose={(_e, reason) => { if (reason !== 'backdropClick' || !sse.isRunning) { sse.reset() } }}>
           <DialogTitle>{t('logAnalyzer.upload.analyzing')}</DialogTitle>
@@ -437,8 +617,9 @@ export default function LogAnalyzerPage() {
           </DialogActions>
         </Dialog>
 
+        {/* Advanced options collapse */}
         <Collapse in={advancedOpen}>
-          <Stack spacing={2} sx={{ mt: 2 }}>
+          <Stack spacing={2} sx={{ mt: 2.5, ...(hasAnalyses ? {} : { textAlign: 'left', maxWidth: 900, mx: 'auto' }) }}>
             <TextField size="small" fullWidth label={t('logAnalyzer.upload.logLineRegex')}
               value={customRegex.logLineRegex ?? ''} onChange={(e) => setCustomRegex(r => ({ ...r, logLineRegex: e.target.value }))} />
             <TextField size="small" fullWidth label={t('logAnalyzer.upload.apiCallRegex')}
@@ -482,110 +663,188 @@ export default function LogAnalyzerPage() {
             </Button>
           </Stack>
         </Collapse>
+      </Paper>
 
-        {/* File list */}
-        {analyses.length > 0 && (
-          <Box sx={{ mt: 2 }}>
-            <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-              <Typography variant="subtitle2">{t('logAnalyzer.upload.analyses')}</Typography>
-              <Chip size="small" variant="outlined"
-                label={`${analyses.length}/${maxFiles}`}
-                color={analyses.length >= maxFiles ? 'warning' : 'default'}
-                title={analyses.length >= maxFiles ? t('logAnalyzer.upload.capacityFull') : ''} />
-              {composeIds.size >= 2 && (
-                <Button size="small" startIcon={<MergeType />} onClick={handleCompose}>
-                  {t('logAnalyzer.compose.button')} ({composeIds.size})
-                </Button>
-              )}
-            </Stack>
+      {/* ================================================================
+          ANALYSIS SELECTOR — card-based file browser
+          ================================================================ */}
+      {hasAnalyses && (
+        <Box sx={{ mb: 3 }}>
+          <Stack direction="row" alignItems="center" spacing={1.5} mb={1.5}>
+            <Typography variant="subtitle2" fontWeight={600} color="text.secondary" sx={{ textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.08em' }}>
+              {t('logAnalyzer.upload.analyses')}
+            </Typography>
+            <Chip size="small" variant="outlined"
+              label={`${analyses.length} / ${maxFiles}`}
+              color={analyses.length >= maxFiles ? 'warning' : 'default'}
+              sx={{ fontWeight: 600, fontSize: '0.7rem' }}
+              title={analyses.length >= maxFiles ? t('logAnalyzer.upload.capacityFull') : ''} />
+            {composeIds.size >= 2 && (
+              <Button size="small" variant="outlined" startIcon={<MergeType />} onClick={handleCompose}>
+                {t('logAnalyzer.compose.button')} ({composeIds.size})
+              </Button>
+            )}
+          </Stack>
+
+          <Box sx={{
+            display: 'flex', gap: 1.5, overflowX: 'auto', pb: 1,
+            '&::-webkit-scrollbar': { height: 4 },
+            '&::-webkit-scrollbar-thumb': { bgcolor: 'divider', borderRadius: 2 },
+          }}>
             {analyses.map((a) => {
+              const isSelected = selectedId === a.id
               const vc = viewerCounts[a.id] ?? 0
-              const otherViewers = selectedId === a.id ? Math.max(0, vc - 1) : vc
+              const otherViewers = isSelected ? Math.max(0, vc - 1) : vc
+              const totalSize = a.sourceFiles.reduce((sum, f) => sum + f.size, 0)
+              const filenames = a.sourceFiles.map(f => f.filename).join(', ')
+              const isComposing = composeIds.has(a.id)
+              const uploadDate = a.uploadedAt ? new Date(a.uploadedAt).toLocaleString() : ''
+
               return (
-              <Badge key={a.id} badgeContent={otherViewers > 0 ? otherViewers : undefined}
-                color="info" overlap="rectangular"
-                anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-                sx={{ mr: 1, mb: 1, '& .MuiBadge-badge': { fontSize: '0.65rem', height: 16, minWidth: 16, right: 4, top: 4 } }}>
-              <Chip
-                label={
-                  <Stack direction="row" alignItems="center" spacing={0.5}>
-                    <span>{a.sourceFiles.map(f => f.filename).join(', ')} ({a.totalLineCount.toLocaleString()} lines)</span>
-                    {otherViewers > 0 && <Visibility sx={{ fontSize: 14, opacity: 0.7 }} />}
+                <Tooltip key={a.id} title={uploadDate ? `${t('logAnalyzer.upload.uploadedAt')}: ${uploadDate}` : ''} arrow placement="top" enterDelay={400}>
+                <Paper
+                  elevation={0}
+                  onClick={() => setSelectedId(a.id)}
+                  sx={{
+                    minWidth: 260, maxWidth: 340, p: 2, cursor: 'pointer',
+                    flex: '0 0 auto', position: 'relative',
+                    border: '2px solid',
+                    borderColor: isSelected ? 'primary.main' : 'divider',
+                    bgcolor: isSelected ? alpha(theme.palette.primary.main, 0.04) : 'transparent',
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      borderColor: isSelected ? 'primary.main' : 'primary.light',
+                      bgcolor: isSelected ? alpha(theme.palette.primary.main, 0.06) : alpha(theme.palette.primary.main, 0.02),
+                      '& .analysis-actions': { opacity: 1 },
+                    },
+                  }}
+                >
+                  {/* Header row: checkbox + filename + actions */}
+                  <Stack direction="row" alignItems="flex-start" spacing={1}>
+                    <Checkbox
+                      size="small"
+                      checked={isComposing}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        e.stopPropagation()
+                        setComposeIds(prev => {
+                          const next = new Set(prev)
+                          if (next.has(a.id)) next.delete(a.id)
+                          else next.add(a.id)
+                          return next
+                        })
+                      }}
+                      sx={{ p: 0, mt: 0.1 }}
+                    />
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Stack direction="row" alignItems="center" spacing={0.5}>
+                        <Description sx={{ fontSize: 16, color: isSelected ? 'primary.main' : 'text.secondary', flexShrink: 0 }} />
+                        <Typography variant="subtitle2" noWrap fontWeight={600} title={filenames}
+                          sx={{ color: isSelected ? 'primary.main' : 'text.primary' }}>
+                          {filenames}
+                        </Typography>
+                      </Stack>
+                    </Box>
+                    <Stack direction="row" alignItems="center" spacing={0.5} className="analysis-actions"
+                      sx={{ opacity: isSelected ? 1 : 0, transition: 'opacity 0.15s' }}>
+                      {otherViewers > 0 && (
+                        <Tooltip title={t('logAnalyzer.upload.viewers', { count: otherViewers })}>
+                          <Chip size="small" icon={<Visibility sx={{ fontSize: 14 }} />} label={otherViewers}
+                            sx={{ height: 22, '& .MuiChip-label': { px: 0.5, fontSize: '0.7rem' } }} />
+                        </Tooltip>
+                      )}
+                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteClick(a.id, filenames) }}
+                        sx={{ p: 0.3 }}>
+                        <DeleteForever sx={{ fontSize: 18 }} color="error" />
+                      </IconButton>
+                    </Stack>
                   </Stack>
-                }
-                onClick={() => setSelectedId(a.id)}
-                onDelete={() => handleDeleteClick(a.id, a.sourceFiles.map(f => f.filename).join(', '))}
-                variant={selectedId === a.id ? 'filled' : 'outlined'}
-                color={selectedId === a.id ? 'primary' : 'default'}
-                sx={{ cursor: 'pointer' }}
-                icon={
-                  <input
-                    type="checkbox"
-                    checked={composeIds.has(a.id)}
-                    onChange={(e) => {
-                      e.stopPropagation()
-                      setComposeIds(prev => {
-                        const next = new Set(prev)
-                        if (next.has(a.id)) next.delete(a.id)
-                        else next.add(a.id)
-                        return next
-                      })
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ marginLeft: 8, cursor: 'pointer' }}
-                  />
-                }
-              />
-              </Badge>
+
+                  {/* Metadata */}
+                  <Stack direction="row" spacing={2} sx={{ mt: 1, ml: 3.5 }} flexWrap="wrap" useFlexGap>
+                    <Stack direction="row" alignItems="center" spacing={0.4}>
+                      <Article sx={{ fontSize: 13, color: 'text.disabled' }} />
+                      <Typography variant="caption" color="text.secondary">
+                        {a.totalLineCount.toLocaleString()} {t('logAnalyzer.common.lines')}
+                      </Typography>
+                    </Stack>
+                    {totalSize > 0 && (
+                      <Typography variant="caption" color="text.disabled">
+                        {formatBytes(totalSize)}
+                      </Typography>
+                    )}
+                  </Stack>
+                  {a.timeRangeStart && a.timeRangeEnd && (
+                    <Stack direction="row" alignItems="center" spacing={0.4} sx={{ mt: 0.5, ml: 3.5 }}>
+                      <CalendarToday sx={{ fontSize: 13, color: 'text.disabled' }} />
+                      <Typography variant="caption" color="text.disabled">
+                        {formatTimeRange(a.timeRangeStart, a.timeRangeEnd)}
+                      </Typography>
+                    </Stack>
+                  )}
+                </Paper>
+                </Tooltip>
               )
             })}
           </Box>
-        )}
-      </Paper>
+        </Box>
+      )}
 
-      {/* ---- Dashboard ---- */}
+      {/* ================================================================
+          DASHBOARD — grouped summary cards + level counts
+          ================================================================ */}
       {selected && (
         <>
-          <Stack direction="row" spacing={2} mb={3} flexWrap="wrap" useFlexGap>
-            <SummaryCard label={t('logAnalyzer.dashboard.totalLines')} value={selected.totalLineCount.toLocaleString()} onClick={() => goToTab('rawLog')} />
-            <SummaryCard label={t('logAnalyzer.dashboard.apiCalls')} value={selected.apiCallCount.toLocaleString()} onClick={() => goToTab('apiCalls')} />
+          <Box sx={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))',
+            gap: 1.5, mb: 2,
+          }}>
+            <SummaryCard icon={<Article />} label={t('logAnalyzer.dashboard.totalLines')} value={selected.totalLineCount.toLocaleString()} onClick={() => goToTab('rawLog')} />
+            <SummaryCard icon={<SyncAlt />} label={t('logAnalyzer.dashboard.apiCalls')} value={selected.apiCallCount.toLocaleString()} onClick={() => goToTab('apiCalls')} />
+            <SummaryCard icon={<Hub />} label={t('logAnalyzer.dashboard.endpoints')} value={selected.endpointCount} onClick={() => goToTab('stats')} />
+            <SummaryCard icon={<AccountTree />} label={t('logAnalyzer.dashboard.threads')} value={selected.threadCount} onClick={() => goToTab('rawLog')} />
+            <SummaryCard icon={<ErrorOutline />} label={t('logAnalyzer.dashboard.errors')} value={selected.errorCount} color="error.main" onClick={() => goToTab('rawLog')} />
             {selected.orphanRequestCount > 0 && (
-              <SummaryCard label={t('logAnalyzer.dashboard.orphanRequests')} value={selected.orphanRequestCount} color="warning.main" onClick={() => goToTab('orphanRequests')} />
-            )}
-            <SummaryCard label={t('logAnalyzer.dashboard.threads')} value={selected.threadCount} onClick={() => goToTab('rawLog')} />
-            <SummaryCard label={t('logAnalyzer.dashboard.endpoints')} value={selected.endpointCount} onClick={() => goToTab('stats')} />
-            <SummaryCard label={t('logAnalyzer.dashboard.errors')} value={selected.errorCount} color="error.main" onClick={() => goToTab('rawLog')} />
-            {selected.jobExecutionCount > 0 && (
-              <SummaryCard label={t('logAnalyzer.dashboard.jobs')} value={selected.jobExecutionCount} onClick={() => goToTab('jobs')} />
-            )}
-            {selected.repeatedFailureCount > 0 && (
-              <SummaryCard label={t('logAnalyzer.dashboard.failures')} value={selected.repeatedFailureCount} color="warning.main" onClick={() => goToTab('failures')} />
+              <SummaryCard icon={<HelpOutline />} label={t('logAnalyzer.dashboard.orphanRequests')} value={selected.orphanRequestCount} color="warning.main" onClick={() => goToTab('orphanRequests')} />
             )}
             {selected.criticalIssueCount > 0 && (
-              <SummaryCard label={t('logAnalyzer.dashboard.criticalIssues')} value={selected.criticalIssueCount} color="warning.main" onClick={() => goToTab('criticalIssues')} />
+              <SummaryCard icon={<WarningAmber />} label={t('logAnalyzer.dashboard.criticalIssues')} value={selected.criticalIssueCount} color="warning.main" onClick={() => goToTab('criticalIssues')} />
             )}
             {selected.npeAnalysisCount > 0 && (
-              <SummaryCard label={t('logAnalyzer.dashboard.npeAnalysis')} value={`${selected.npeAnalysisCount} (${selected.npeLocationCount})`} color="error.main" onClick={() => goToTab('npeAnalysis')} />
+              <SummaryCard icon={<BugReport />} label={t('logAnalyzer.dashboard.npeAnalysis')} value={`${selected.npeAnalysisCount} (${selected.npeLocationCount})`} color="error.main" onClick={() => goToTab('npeAnalysis')} />
             )}
             {selected.exceptionAnalysisCount > 0 && (
-              <SummaryCard label={t('logAnalyzer.dashboard.exceptionAnalysis')} value={`${selected.exceptionAnalysisCount} (${selected.exceptionTypeCount})`} color="error.main" onClick={() => goToTab('exceptionAnalysis')} />
+              <SummaryCard icon={<Code />} label={t('logAnalyzer.dashboard.exceptionAnalysis')} value={`${selected.exceptionAnalysisCount} (${selected.exceptionTypeCount})`} color="error.main" onClick={() => goToTab('exceptionAnalysis')} />
+            )}
+            {selected.jobExecutionCount > 0 && (
+              <SummaryCard icon={<Work />} label={t('logAnalyzer.dashboard.jobs')} value={selected.jobExecutionCount} onClick={() => goToTab('jobs')} />
+            )}
+            {selected.repeatedFailureCount > 0 && (
+              <SummaryCard icon={<ErrorOutline />} label={t('logAnalyzer.dashboard.failures')} value={selected.repeatedFailureCount} color="warning.main" onClick={() => goToTab('failures')} />
             )}
             {selected.customFields?.filter(cf => cf.matchCount > 0).map(cf => (
-              <SummaryCard key={cf.fieldName} label={cf.fieldName} value={cf.matchCount.toLocaleString()} color="primary.main" onClick={() => goToTab(cf.countOnly ? 'rawLog' : `custom-${cf.fieldName}`)} />
+              <SummaryCard key={cf.fieldName} icon={<Extension />} label={cf.fieldName} value={cf.matchCount.toLocaleString()} color="primary.main" onClick={() => goToTab(cf.countOnly ? 'rawLog' : `custom-${cf.fieldName}`)} />
             ))}
-          </Stack>
+          </Box>
 
-          {/* Level counts */}
-          <Stack direction="row" spacing={1} mb={3} flexWrap="wrap" useFlexGap>
-            {Object.entries(selected.levelCounts).map(([level, count]) => (
-              <Chip key={level} label={`${level}: ${count.toLocaleString()}`} size="small"
-                color={level === 'ERROR' || level === 'FATAL' || level === 'SEVERE' ? 'error' : level === 'WARNING' || level === 'WARN' ? 'warning' : 'default'} />
-            ))}
-          </Stack>
+          {/* Level counts — compact inline row */}
+          {Object.keys(selected.levelCounts).length > 0 && (
+            <Stack direction="row" spacing={0.75} mb={3} flexWrap="wrap" useFlexGap>
+              {Object.entries(selected.levelCounts).map(([level, count]) => (
+                <Chip key={level} label={`${level}: ${count.toLocaleString()}`} size="small" variant="outlined"
+                  color={level === 'ERROR' || level === 'FATAL' || level === 'SEVERE' ? 'error' : level === 'WARNING' || level === 'WARN' ? 'warning' : 'default'}
+                  sx={{ fontWeight: 500, fontSize: '0.72rem' }} />
+              ))}
+            </Stack>
+          )}
 
-          {/* ---- Tabs ---- */}
-          <Paper>
-            <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} variant="scrollable" scrollButtons="auto">
+          {/* ================================================================
+              TABS — analysis content
+              ================================================================ */}
+          <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider' }}>
+            <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} variant="scrollable" scrollButtons="auto"
+              sx={{ borderBottom: 1, borderColor: 'divider', '& .MuiTab-root': { textTransform: 'none', fontWeight: 500 } }}>
               {tabs.map(tab => <Tab key={tab.key} label={tab.label} />)}
             </Tabs>
             {tabs.map((tab, idx) => (
@@ -601,6 +860,9 @@ export default function LogAnalyzerPage() {
         </>
       )}
 
+      {/* ================================================================
+          DIALOGS
+          ================================================================ */}
       <AnalysisOptionsDialog
         open={optionsDialogOpen}
         onClose={() => { setOptionsDialogOpen(false); setPendingFiles([]) }}
@@ -649,7 +911,7 @@ export default function LogAnalyzerPage() {
                   {oldest.sourceFiles.map(f => f.filename).join(', ')}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {oldest.totalLineCount.toLocaleString()} lines
+                  {oldest.totalLineCount.toLocaleString()} {t('logAnalyzer.common.lines')}
                 </Typography>
               </Alert>
             ) : null
