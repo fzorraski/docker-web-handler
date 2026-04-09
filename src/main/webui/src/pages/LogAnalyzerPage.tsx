@@ -766,15 +766,23 @@ export default function LogAnalyzerPage() {
           </Box>
 
           {/* Level counts — compact inline row */}
-          {Object.keys(selected.levelCounts).length > 0 && (
+          {Object.keys(selected.levelCounts).length > 0 && (() => {
+            const raw = selected.levelCounts
+            const merged: Record<string, number> = {}
+            for (const [level, count] of Object.entries(raw)) {
+              if (level === 'WARNING') merged['WARN'] = (merged['WARN'] ?? 0) + count
+              else merged[level] = (merged[level] ?? 0) + count
+            }
+            return (
             <Stack direction="row" spacing={0.75} mb={3} flexWrap="wrap" useFlexGap>
-              {Object.entries(selected.levelCounts).map(([level, count]) => (
+              {Object.entries(merged).map(([level, count]) => (
                 <Chip key={level} label={`${level}: ${count.toLocaleString()}`} size="small" variant="outlined"
-                  color={level === 'ERROR' || level === 'FATAL' || level === 'SEVERE' ? 'error' : level === 'WARNING' || level === 'WARN' ? 'warning' : 'default'}
+                  color={level === 'ERROR' || level === 'FATAL' || level === 'SEVERE' ? 'error' : level === 'WARN' ? 'warning' : 'default'}
                   sx={{ fontWeight: 500, fontSize: '0.72rem' }} />
               ))}
             </Stack>
-          )}
+            )
+          })()}
 
           {/* ================================================================
               TABS — analysis content

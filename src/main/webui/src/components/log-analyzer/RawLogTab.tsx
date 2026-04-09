@@ -254,19 +254,24 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
   const levelCounts = useMemo(() => {
     if (globalLevelCounts) {
       const g = globalLevelCounts
-      return {
-        ERROR: (g.ERROR ?? 0) + (g.FATAL ?? 0) + (g.SEVERE ?? 0),
+      const counts: Record<string, number> = {
+        ERROR: g.ERROR ?? 0,
         WARN: (g.WARN ?? 0) + (g.WARNING ?? 0),
         INFO: g.INFO ?? 0,
         DEBUG: g.DEBUG ?? 0,
         TRACE: g.TRACE ?? 0,
       }
+      if ((g.SEVERE ?? 0) > 0) counts.SEVERE = g.SEVERE ?? 0
+      if ((g.FATAL ?? 0) > 0) counts.FATAL = g.FATAL ?? 0
+      return counts
     }
     const counts: Record<string, number> = {}
     for (const l of TOGGLE_LEVELS) counts[l] = 0
     for (const line of lines) {
       const lvl = line.level
-      if (lvl === 'ERROR' || lvl === 'FATAL' || lvl === 'SEVERE') counts.ERROR++
+      if (lvl === 'ERROR') counts.ERROR++
+      else if (lvl === 'SEVERE') counts.SEVERE = (counts.SEVERE ?? 0) + 1
+      else if (lvl === 'FATAL') counts.FATAL = (counts.FATAL ?? 0) + 1
       else if (lvl === 'WARN' || lvl === 'WARNING') counts.WARN++
       else if (lvl === 'INFO') counts.INFO++
       else if (lvl === 'DEBUG') counts.DEBUG++
@@ -420,9 +425,9 @@ export function RawLogTab({ analysisId, initialThread, levelCounts: globalLevelC
       />
 
       <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-        {TOGGLE_LEVELS.map(level => {
-          const color = lt.levelColors[level]
-          const isFiltered = filterLevel === level || (filterLevel === 'WARNING' && level === 'WARN')
+        {Object.entries(levelCounts).filter(([, c]) => c > 0).map(([level]) => {
+          const color = (lt.levelColors as Record<string, string>)[level] ?? lt.levelColors.ERROR
+          const isFiltered = filterLevel === level
           const active = filterLevel === '' || isFiltered
           return (
             <Chip

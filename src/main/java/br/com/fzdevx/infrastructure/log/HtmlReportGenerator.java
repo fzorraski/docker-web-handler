@@ -106,7 +106,7 @@ public final class HtmlReportGenerator {
         var slowestB = statsB.stream().max(Comparator.comparingDouble(EndpointStats::avgDurationMs)).orElse(null);
 
         sb.append("<div class='section'><h2>Insights</h2><table>");
-        sb.append("<thead><tr><th>Metric</th><th>A</th><th>B</th><th>Difference</th></tr></thead><tbody>");
+        sb.append("<thead><tr><th>Metric</th><th class='num'>A</th><th class='num'>B</th><th class='num'>Difference</th></tr></thead><tbody>");
         insightRow(sb, "Total Calls", fmt(totalCallsA), fmt(totalCallsB), pctDiffLabel(totalCallsA, totalCallsB, true));
         insightRow(sb, "Weighted Avg Duration", fmtMs(Math.round(weightedAvgA)), fmtMs(Math.round(weightedAvgB)), pctDiffLabel(weightedAvgA, weightedAvgB, false));
         insightRow(sb, "Total Slow Calls", fmt(totalSlowA), fmt(totalSlowB), pctDiffLabel(totalSlowA, totalSlowB, false));
@@ -118,11 +118,11 @@ public final class HtmlReportGenerator {
         // Comparison table
         sb.append("<div class='section'><h2>Endpoint Comparison</h2><table>");
         sb.append("<thead><tr>")
-          .append("<th style='text-align:left'>Endpoint</th>")
-          .append("<th>A Calls</th><th>B Calls</th>")
-          .append("<th class='col-sep'>A Avg</th><th>B Avg</th><th class='col-delta'>Δ Avg</th><th class='col-delta'>%</th>")
-          .append("<th class='col-sep'>A P95</th><th>B P95</th><th class='col-delta'>Δ P95</th>")
-          .append("<th class='col-sep'>A Slow</th><th>B Slow</th><th class='col-sep'>Verdict</th>")
+          .append("<th>Endpoint</th>")
+          .append("<th class='num'>A Calls</th><th class='num'>B Calls</th>")
+          .append("<th class='num col-sep'>A Avg</th><th class='num'>B Avg</th><th class='num col-delta'>Δ Avg</th><th class='num col-delta'>%</th>")
+          .append("<th class='num col-sep'>A P95</th><th class='num'>B P95</th><th class='num col-delta'>Δ P95</th>")
+          .append("<th class='num col-sep'>A Slow</th><th class='num'>B Slow</th><th class='col-sep'>Verdict</th>")
           .append("</tr></thead><tbody>");
 
         rows.sort(Comparator.comparingDouble(Row::deltaPct));
@@ -221,15 +221,10 @@ public final class HtmlReportGenerator {
         sb.append("</tr></table></div>");
     }
 
-    private static void summaryCell(StringBuilder sb, String label, String value) {
-        sb.append("<td class='summary-cell'><div class='label'>").append(label)
-          .append("</div><div class='value'>").append(value).append("</div></td>");
-    }
-
     private static void sectionLevelDistribution(StringBuilder sb, LogAnalysis a) {
         if (a.getLevelCounts().isEmpty()) return;
         sb.append("<div class='section'><h2>Log Level Distribution</h2><table>");
-        tableHead(sb, "Level", "Count");
+        tableHead(sb, "Level", "#Count");
         var sorted = a.getLevelCounts().entrySet().stream()
                 .sorted(Map.Entry.<String, Integer>comparingByValue().reversed()).toList();
         for (var e : sorted) {
@@ -239,6 +234,11 @@ public final class HtmlReportGenerator {
         sb.append("</table></div>");
     }
 
+    private static void summaryCell(StringBuilder sb, String label, String value) {
+        sb.append("<td class='summary-cell'><div class='label'>").append(label)
+          .append("</div><div class='value'>").append(value).append("</div></td>");
+    }
+
     private static void sectionEndpointStats(StringBuilder sb, LogAnalysis a, int limit) {
         if (a.getEndpointStats().isEmpty()) return;
         String title = limit < Integer.MAX_VALUE ? "Top " + limit + " Slowest Endpoints" : "Endpoint Stats";
@@ -246,7 +246,7 @@ public final class HtmlReportGenerator {
                 .sorted(Comparator.comparingInt(EndpointStats::callCount).reversed())
                 .limit(limit).toList();
         sb.append("<div class='section'><h2>").append(title).append("</h2><table>");
-        tableHead(sb, "Endpoint", "Calls", "Avg", "Min", "Max", "P95", "Slow");
+        tableHead(sb, "Endpoint", "#Calls", "#Avg", "#Min", "#Max", "#P95", "#Slow");
         for (var s : stats) {
             sb.append("<tr><td class='mono'>").append(esc(s.endpoint())).append("</td>")
               .append("<td class='num'>").append(fmt(s.callCount())).append("</td>")
@@ -263,7 +263,7 @@ public final class HtmlReportGenerator {
     private static void sectionCriticalIssuesSummary(StringBuilder sb, LogAnalysis a) {
         if (a.getCriticalIssues().isEmpty()) return;
         sb.append("<div class='section'><h2>Critical Issues</h2><table>");
-        tableHead(sb, "Category", "Severity", "Count", "First Seen", "Last Seen");
+        tableHead(sb, "Category", "Severity", "#Count", "First Seen", "Last Seen");
         for (var s : a.getCriticalIssues()) {
             sb.append("<tr><td>").append(esc(s.category())).append("</td>")
               .append("<td>").append(severityBadge(s.severity())).append("</td>")
@@ -274,20 +274,30 @@ public final class HtmlReportGenerator {
         sb.append("</table></div>");
     }
 
+    private static final int MAX_ISSUES_PER_CATEGORY = 10;
+
     private static void sectionCriticalIssuesDetailed(StringBuilder sb, LogAnalysis a) {
         if (a.getCriticalIssues().isEmpty()) return;
         sb.append("<div class='section'><h2>Critical Issues (Detailed)</h2>");
         for (var s : a.getCriticalIssues()) {
             sb.append("<h3>").append(esc(s.category())).append(" — ").append(severityBadge(s.severity()))
               .append(" (").append(fmt(s.count())).append(" issues)</h3><table>");
-            tableHead(sb, "Pattern", "Line", "Timestamp", "Message");
+            tableHead(sb, "Pattern", "#Line", "Timestamp", "Message");
+            int shown = 0;
             for (var issue : s.issues()) {
+                if (shown >= MAX_ISSUES_PER_CATEGORY) break;
                 sb.append("<tr><td class='mono'>").append(esc(issue.pattern())).append("</td>")
                   .append("<td class='num'>").append(issue.lineNumber()).append("</td>")
                   .append("<td>").append(fmtDt(issue.timestamp())).append("</td>")
                   .append("<td class='msg'>").append(esc(truncate(issue.message(), 200))).append("</td></tr>");
+                shown++;
             }
             sb.append("</table>");
+            int remaining = s.issues().size() - shown;
+            if (remaining > 0) {
+                sb.append("<p style='color:#666;font-size:0.78rem;margin-top:8px'>... and ")
+                  .append(fmt(remaining)).append(" more issues not shown</p>");
+            }
         }
         sb.append("</div>");
     }
@@ -299,7 +309,7 @@ public final class HtmlReportGenerator {
                 .sorted(Comparator.comparingInt(ExceptionLocationSummary::count).reversed())
                 .limit(limit).toList();
         sb.append("<div class='section'><h2>").append(title).append("</h2><table>");
-        tableHead(sb, "Exception", "Origin", "Count", "First Seen", "Last Seen");
+        tableHead(sb, "Exception", "Origin", "#Count", "First Seen", "Last Seen");
         for (var e : sorted) {
             sb.append("<tr><td class='mono'>").append(esc(e.exceptionType())).append("</td>")
               .append("<td class='mono'>").append(esc(e.origin())).append("</td>")
@@ -315,7 +325,7 @@ public final class HtmlReportGenerator {
         var sorted = a.getNpeAnalysis().stream()
                 .sorted(Comparator.comparingInt(NpeLocationSummary::count).reversed()).toList();
         sb.append("<div class='section'><h2>NullPointerException Analysis</h2><table>");
-        tableHead(sb, "Origin", "Count", "First Seen", "Last Seen");
+        tableHead(sb, "Origin", "#Count", "First Seen", "Last Seen");
         for (var n : sorted) {
             sb.append("<tr><td class='mono'>").append(esc(n.origin())).append("</td>")
               .append("<td class='num'>").append(fmt(n.count())).append("</td>")
@@ -329,7 +339,7 @@ public final class HtmlReportGenerator {
         if (a.getJobExecutions().isEmpty()) return;
         var byName = a.getJobExecutions().stream().collect(Collectors.groupingBy(JobExecution::jobName));
         sb.append("<div class='section'><h2>Job Execution Summary</h2><table>");
-        tableHead(sb, "Job", "Runs", "Avg Duration", "Failures");
+        tableHead(sb, "Job", "#Runs", "#Avg Duration", "#Failures");
         for (var e : byName.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
             long avgMs = Math.round(e.getValue().stream().mapToLong(JobExecution::durationMs).average().orElse(0));
             long failures = e.getValue().stream().filter(j -> j.result() != null && j.result().toLowerCase().contains("error")).count();
@@ -341,31 +351,48 @@ public final class HtmlReportGenerator {
         sb.append("</table></div>");
     }
 
+    private static final int MAX_FAILURES = 50;
+    private static final int MAX_ORPHANS = 50;
+
     private static void sectionRepeatedFailures(StringBuilder sb, LogAnalysis a) {
         if (a.getRepeatedFailures().isEmpty()) return;
+        int total = a.getRepeatedFailures().size();
+        var limited = total > MAX_FAILURES ? a.getRepeatedFailures().subList(0, MAX_FAILURES) : a.getRepeatedFailures();
         sb.append("<div class='section'><h2>Repeated Failures</h2><table>");
-        tableHead(sb, "Entity", "Reason", "Occurrences", "First Seen", "Last Seen");
-        for (var f : a.getRepeatedFailures()) {
+        tableHead(sb, "Entity", "Reason", "#Occurrences", "First Seen", "Last Seen");
+        for (var f : limited) {
             sb.append("<tr><td class='mono'>").append(esc(f.entityId())).append("</td>")
               .append("<td class='msg'>").append(esc(truncate(f.reason(), 150))).append("</td>")
               .append("<td class='num'>").append(f.occurrences()).append("</td>")
               .append("<td>").append(fmtDt(f.firstSeen())).append("</td>")
               .append("<td>").append(fmtDt(f.lastSeen())).append("</td></tr>");
         }
-        sb.append("</table></div>");
+        sb.append("</table>");
+        if (total > MAX_FAILURES) {
+            sb.append("<p style='color:#666;font-size:0.78rem;margin-top:8px'>... and ")
+              .append(fmt(total - MAX_FAILURES)).append(" more not shown</p>");
+        }
+        sb.append("</div>");
     }
 
     private static void sectionOrphanRequests(StringBuilder sb, LogAnalysis a) {
         if (a.getOrphanRequests().isEmpty()) return;
+        int total = a.getOrphanRequests().size();
+        var limited = total > MAX_ORPHANS ? a.getOrphanRequests().subList(0, MAX_ORPHANS) : a.getOrphanRequests();
         sb.append("<div class='section'><h2>Orphan Requests</h2><table>");
-        tableHead(sb, "Endpoint", "Thread", "Timestamp", "Line");
-        for (var o : a.getOrphanRequests()) {
+        tableHead(sb, "Endpoint", "Thread", "Timestamp", "#Line");
+        for (var o : limited) {
             sb.append("<tr><td class='mono'>").append(esc(o.endpoint())).append("</td>")
               .append("<td>").append(esc(o.thread())).append("</td>")
               .append("<td>").append(fmtDt(o.timestamp())).append("</td>")
               .append("<td class='num'>").append(o.lineNumber()).append("</td></tr>");
         }
-        sb.append("</table></div>");
+        sb.append("</table>");
+        if (total > MAX_ORPHANS) {
+            sb.append("<p style='color:#666;font-size:0.78rem;margin-top:8px'>... and ")
+              .append(fmt(total - MAX_ORPHANS)).append(" more not shown</p>");
+        }
+        sb.append("</div>");
     }
 
     private static void sectionTopSlowestCalls(StringBuilder sb, LogAnalysis a, int limit) {
@@ -374,7 +401,7 @@ public final class HtmlReportGenerator {
                 .sorted(Comparator.comparingLong(ApiCallPair::durationMs).reversed())
                 .limit(limit).toList();
         sb.append("<div class='section'><h2>Top ").append(limit).append(" Slowest API Calls</h2><table>");
-        tableHead(sb, "Endpoint", "Thread", "Timestamp", "Duration");
+        tableHead(sb, "Endpoint", "Thread", "Timestamp", "#Duration");
         for (var c : top) {
             sb.append("<tr><td class='mono'>").append(esc(c.endpoint())).append("</td>")
               .append("<td>").append(esc(c.thread())).append("</td>")
@@ -387,7 +414,7 @@ public final class HtmlReportGenerator {
     private static void sectionCustomFields(StringBuilder sb, LogAnalysis a) {
         if (a.getCustomFieldResults().isEmpty()) return;
         sb.append("<div class='section'><h2>Custom Fields</h2><table>");
-        tableHead(sb, "Field", "Matches", "Count Only");
+        tableHead(sb, "Field", "#Matches", "Count Only");
         for (var cf : a.getCustomFieldResults()) {
             sb.append("<tr><td class='mono'>").append(esc(cf.fieldName())).append("</td>")
               .append("<td class='num'>").append(fmt(cf.matchCount())).append("</td>")
@@ -398,9 +425,16 @@ public final class HtmlReportGenerator {
 
     // ── Helpers ─────────────────────────────────────────────────────────────
 
+    /** Column names prefixed with '#' are right-aligned (numeric). The '#' is stripped from display. */
     private static void tableHead(StringBuilder sb, String... cols) {
         sb.append("<thead><tr>");
-        for (String c : cols) sb.append("<th>").append(c).append("</th>");
+        for (String c : cols) {
+            if (c.startsWith("#")) {
+                sb.append("<th class='num'>").append(c.substring(1)).append("</th>");
+            } else {
+                sb.append("<th>").append(c).append("</th>");
+            }
+        }
         sb.append("</tr></thead><tbody>");
     }
 
@@ -473,18 +507,18 @@ public final class HtmlReportGenerator {
             .meta { margin-bottom: 28px; }
             .meta p { font-size: 0.85rem; color: #999; margin: 2px 0; }
             .section { background: #16213e; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
-            table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-            th { text-align: right; padding: 10px 12px; color: #777; font-weight: 600; text-transform: uppercase; font-size: 0.65rem; letter-spacing: 0.06em; border-bottom: 2px solid #2a2a4a; }
-            th:first-child { text-align: left; }
-            td { padding: 8px 12px; border-bottom: 1px solid #1e1e3a; }
-            tbody tr:nth-child(even) { background: rgba(255,255,255,0.015); }
-            tbody tr:hover { background: rgba(255,255,255,0.04); }
+            table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+            th { text-align: left; padding: 8px 10px; color: #999; font-weight: 600; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; border-bottom: 1px solid #333; }
+            th.num { text-align: right; }
+            td { padding: 6px 10px; border-bottom: 1px solid #222; }
+            tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+            tbody tr:hover { background: rgba(255,255,255,0.05); }
             .mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.78rem; }
             .num { text-align: right; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.78rem; }
             .msg { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-            .summary-cell { text-align: center; padding: 14px 20px; }
-            .summary-cell .label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.06em; color: #777; }
-            .summary-cell .value { font-size: 1.4rem; font-weight: 700; color: #fff; margin-top: 4px; }
+            .summary-cell { text-align: center; padding: 12px 16px; }
+            .summary-cell .label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; color: #999; }
+            .summary-cell .value { font-size: 1.3rem; font-weight: 700; color: #fff; margin-top: 2px; }
             .col-sep { border-left: 1px solid #2a2a4a; }
             .col-delta { background: rgba(255,255,255,0.02); }
             .badge-error { background: rgba(211,47,47,0.15); color: #f44336; padding: 3px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; }
