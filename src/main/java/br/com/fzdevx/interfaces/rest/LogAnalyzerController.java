@@ -332,6 +332,7 @@ public class LogAnalyzerController {
                                 @QueryParam("minDuration") Long minDuration,
                                 @QueryParam("search") String search,
                                 @QueryParam("sort") @DefaultValue("time") String sort,
+                                @QueryParam("sortDir") @DefaultValue("asc") String sortDir,
                                 @QueryParam("page") @DefaultValue("0") int page,
                                 @QueryParam("size") @DefaultValue("50") int size) {
         if (!enabled) return featureDisabled();
@@ -345,12 +346,15 @@ public class LogAnalyzerController {
                 .filter(c -> minDuration == null || c.durationMs() >= minDuration)
                 .filter(c -> searchTerm == null || containsIgnoreCase(c, searchTerm));
 
-        var sorted = switch (sort) {
-            case "duration" -> filtered.sorted(Comparator.comparingLong(ApiCallPair::durationMs).reversed());
-            case "endpoint" -> filtered.sorted(Comparator.comparing(ApiCallPair::endpoint));
-            default -> filtered.sorted(Comparator.comparing(ApiCallPair::requestTimestamp,
-                    Comparator.nullsLast(Comparator.naturalOrder())));
+        boolean desc = "desc".equalsIgnoreCase(sortDir);
+        Comparator<ApiCallPair> cmp = switch (sort) {
+            case "duration" -> Comparator.comparingLong(ApiCallPair::durationMs);
+            case "endpoint" -> Comparator.comparing(ApiCallPair::endpoint);
+            case "thread" -> Comparator.comparing(ApiCallPair::thread, Comparator.nullsLast(Comparator.naturalOrder()));
+            default -> Comparator.comparing(ApiCallPair::requestTimestamp,
+                    Comparator.nullsLast(Comparator.naturalOrder()));
         };
+        var sorted = filtered.sorted(desc ? cmp.reversed() : cmp);
 
         return paginatedResponse(sorted.toList(), page, size);
     }
@@ -745,6 +749,10 @@ public class LogAnalyzerController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response getCustomFieldMatches(@PathParam("id") String id,
                                           @PathParam("fieldName") String fieldName,
+                                          @QueryParam("search") String search,
+                                          @QueryParam("thread") String thread,
+                                          @QueryParam("sort") String sort,
+                                          @QueryParam("sortDir") @DefaultValue("asc") String sortDir,
                                           @QueryParam("page") @DefaultValue("0") int page,
                                           @QueryParam("size") @DefaultValue("100") int size) {
         if (!enabled) return featureDisabled();
@@ -774,7 +782,38 @@ public class LogAnalyzerController {
             )).build();
         }
 
-        return paginatedResponse(cfr.matches(), page, size);
+        String searchTerm = search != null && !search.isBlank() ? search.trim().toLowerCase() : null;
+        var filtered = cfr.matches().stream()
+                .filter(m -> thread == null || thread.isBlank() || thread.equals(m.thread()))
+                .filter(m -> searchTerm == null || matchesSearch(m, searchTerm));
+
+        if (sort != null && !sort.isBlank()) {
+            Comparator<CustomFieldMatch> cmp = switch (sort) {
+                case "line" -> Comparator.comparingInt(CustomFieldMatch::lineNumber);
+                case "timestamp" -> Comparator.comparing(CustomFieldMatch::timestamp, Comparator.nullsLast(Comparator.naturalOrder()));
+                case "thread" -> Comparator.comparing(CustomFieldMatch::thread, Comparator.nullsLast(Comparator.naturalOrder()));
+                default -> {
+                    // Sort by a named group column value
+                    String groupName = sort;
+                    yield Comparator.comparing(
+                            (CustomFieldMatch m) -> m.groups().getOrDefault(groupName, ""),
+                            Comparator.nullsLast(Comparator.naturalOrder()));
+                }
+            };
+            if ("desc".equalsIgnoreCase(sortDir)) cmp = cmp.reversed();
+            filtered = filtered.sorted(cmp);
+        }
+
+        return paginatedResponse(filtered.toList(), page, size);
+    }
+
+    private boolean matchesSearch(CustomFieldMatch m, String term) {
+        if (m.fullMessage() != null && m.fullMessage().toLowerCase().contains(term)) return true;
+        if (m.thread() != null && m.thread().toLowerCase().contains(term)) return true;
+        for (String v : m.groups().values()) {
+            if (v != null && v.toLowerCase().contains(term)) return true;
+        }
+        return false;
     }
 
     @GET

@@ -2,10 +2,10 @@ import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
 import {
   Autocomplete, Box, Button, CircularProgress, Collapse, IconButton, Typography, Chip, Paper, LinearProgress, Stack,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
-  TablePagination, TextField,
+  TablePagination, TextField, InputAdornment,
   useTheme,
 } from '@mui/material'
-import { BugReport, ErrorOutline, ExpandMore, ExpandLess, HelpOutline, TuneRounded, ContentCopy } from '@mui/icons-material'
+import { BugReport, ErrorOutline, ExpandMore, ExpandLess, HelpOutline, TuneRounded, ContentCopy, Search } from '@mui/icons-material'
 import Tooltip from '@mui/material/Tooltip'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
@@ -26,6 +26,7 @@ export function CriticalIssuesTab({ analysisId, onJumpToLine }: { analysisId: st
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
   const [filterCategory, setFilterCategory] = useState('')
   const [filterPattern, setFilterPattern] = useState('')
+  const [searchText, setSearchText] = useState('')
   const [loading, setLoading] = useState(false)
   const [burstData, setBurstData] = useState<BurstCategorySummary[] | null>(null)
   const [burstLoading, setBurstLoading] = useState(false)
@@ -98,15 +99,21 @@ export function CriticalIssuesTab({ analysisId, onJumpToLine }: { analysisId: st
 
   // Flatten summaries into individual issues for the table
   const flatIssues = useMemo(() => {
+    const term = searchText.trim().toLowerCase()
     return filtered.flatMap(s =>
       s.issues
         .filter(issue => !filterPattern || issue.pattern === filterPattern)
+        .filter(issue => !term
+          || issue.message.toLowerCase().includes(term)
+          || issue.pattern.toLowerCase().includes(term)
+          || issue.category.toLowerCase().includes(term)
+          || issue.sourceFile.toLowerCase().includes(term))
         .map(issue => ({
           ...issue,
           categorySeverity: s.severity,
         }))
     )
-  }, [filtered, filterPattern])
+  }, [filtered, filterPattern, searchText])
 
   const totalFlat = flatIssues.length
   const paged = flatIssues.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
@@ -458,6 +465,22 @@ export function CriticalIssuesTab({ analysisId, onJumpToLine }: { analysisId: st
           value={filterPattern || null}
           onChange={(_, v) => { setFilterPattern(v ?? ''); setPage(0); setExpandedIdx(null) }}
           renderInput={(params) => <TextField {...params} label={t('logAnalyzer.criticalIssues.filterByPattern')} />}
+        />
+        <TextField
+          size="small"
+          placeholder={t('logAnalyzer.criticalIssues.search')}
+          value={searchText}
+          onChange={(e) => { setSearchText(e.target.value); setPage(0); setExpandedIdx(null) }}
+          sx={{ minWidth: 250 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search sx={{ fontSize: 18, color: 'text.disabled' }} />
+                </InputAdornment>
+              ),
+            },
+          }}
         />
       </Stack>
 

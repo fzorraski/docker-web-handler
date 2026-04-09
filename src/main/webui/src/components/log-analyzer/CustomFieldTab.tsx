@@ -1,31 +1,58 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import {
-  Alert, Box, Typography, Table, TableHead, TableRow, TableCell, TableBody,
-  TableContainer, TablePagination, LinearProgress, IconButton, Tooltip,
+  Alert, Autocomplete, Box, Typography, Table, TableHead, TableRow, TableCell, TableBody,
+  TableContainer, TablePagination, TableSortLabel, LinearProgress, IconButton, Tooltip,
+  TextField, Stack, InputAdornment,
   useTheme,
 } from '@mui/material'
-import { ContentCopy } from '@mui/icons-material'
+import { ContentCopy, Search } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { usePaginatedFetch } from '../../hooks/usePaginatedFetch'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { LineLink } from './LineLink'
 import type { CustomFieldMatch } from '../../services/logAnalyzerService'
 import * as logService from '../../services/logAnalyzerService'
 
-export function CustomFieldTab({ analysisId, fieldName, onJumpToLine }: { analysisId: string; fieldName: string; onJumpToLine?: (line: number) => void }) {
+export function CustomFieldTab({ analysisId, fieldName, onJumpToLine }: {
+  analysisId: string; fieldName: string; onJumpToLine?: (line: number) => void
+}) {
   const { t } = useTranslation()
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
-  const { theadBg, theadColor } = useTableHeaderTheme()
+  const { theadBg, theadColor, theadSortSx } = useTableHeaderTheme()
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(25)
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
+  const [searchInput, setSearchInput] = useState('')
+  const [threadFilter, setThreadFilter] = useState('')
+  const [threads, setThreads] = useState<string[]>([])
+  const [sort, setSort] = useState('')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const debouncedSearch = useDebouncedValue(searchInput, 350)
+
+  const handleSort = (field: string, defaultDir: 'asc' | 'desc' = 'asc') => {
+    if (sort === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSort(field); setSortDir(defaultDir) }
+    setPage(0)
+  }
+
+  useEffect(() => {
+    logService.getThreads(analysisId).then(list => setThreads(list.map(th => th.thread))).catch(() => {})
+  }, [analysisId])
 
   useEffect(() => { setPage(0); setExpandedRow(null) }, [analysisId, fieldName])
+  useEffect(() => { setPage(0); setExpandedRow(null) }, [debouncedSearch, threadFilter])
 
   const { data, total, loading, error } = usePaginatedFetch<CustomFieldMatch>(
-    () => logService.getCustomFieldResults(analysisId, fieldName, { page, size: rowsPerPage }),
-    [analysisId, fieldName, page, rowsPerPage],
+    () => logService.getCustomFieldResults(analysisId, fieldName, {
+      page, size: rowsPerPage,
+      search: debouncedSearch || undefined,
+      thread: threadFilter || undefined,
+      sort: sort || undefined,
+      sortDir: sort ? sortDir : undefined,
+    }),
+    [analysisId, fieldName, page, rowsPerPage, debouncedSearch, threadFilter, sort, sortDir],
   )
 
   const groupColumns = useMemo(() => {
@@ -38,15 +65,65 @@ export function CustomFieldTab({ analysisId, fieldName, onJumpToLine }: { analys
     <Box>
       {loading && <LinearProgress sx={{ mb: 1 }} />}
       {error && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
+
+      <Stack direction="row" spacing={2} mb={2} alignItems="center" flexWrap="wrap" useFlexGap>
+        <TextField
+          size="small"
+          placeholder={t('logAnalyzer.customFields.search')}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          sx={{ minWidth: 220 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search sx={{ fontSize: 18, color: 'text.disabled' }} />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+        {threads.length > 0 && (
+          <Autocomplete
+            size="small"
+            sx={{ minWidth: 220 }}
+            options={threads}
+            value={threadFilter || null}
+            onChange={(_, v) => setThreadFilter(v ?? '')}
+            renderInput={(params) => <TextField {...params} label={t('logAnalyzer.customFields.filterByThread')} />}
+          />
+        )}
+      </Stack>
+
       <TableContainer>
         <Table size="small">
           <TableHead>
             <TableRow sx={{ bgcolor: theadBg, '& th': { color: theadColor } }}>
-              <TableCell>{t('logAnalyzer.customFields.line')}</TableCell>
-              <TableCell>{t('logAnalyzer.customFields.timestamp')}</TableCell>
-              <TableCell>{t('logAnalyzer.customFields.thread')}</TableCell>
+              <TableCell>
+                <TableSortLabel active={sort === 'line'} direction={sort === 'line' ? sortDir : 'asc'}
+                  onClick={() => handleSort('line')} sx={theadSortSx}>
+                  {t('logAnalyzer.customFields.line')}
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel active={sort === 'timestamp'} direction={sort === 'timestamp' ? sortDir : 'asc'}
+                  onClick={() => handleSort('timestamp')} sx={theadSortSx}>
+                  {t('logAnalyzer.customFields.timestamp')}
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel active={sort === 'thread'} direction={sort === 'thread' ? sortDir : 'asc'}
+                  onClick={() => handleSort('thread')} sx={theadSortSx}>
+                  {t('logAnalyzer.customFields.thread')}
+                </TableSortLabel>
+              </TableCell>
               {groupColumns.map(col => (
-                <TableCell key={col}>{col}</TableCell>
+                <TableCell key={col}>
+                  <TableSortLabel active={sort === col} direction={sort === col ? sortDir : 'asc'}
+                    onClick={() => handleSort(col)} sx={theadSortSx}>
+                    {col}
+                  </TableSortLabel>
+                </TableCell>
               ))}
             </TableRow>
           </TableHead>

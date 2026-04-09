@@ -940,6 +940,7 @@ const en = {
       loadingIssues: 'Loading issues...',
       firstSeen: 'First Seen',
       lastSeen: 'Last Seen',
+      search: 'Search messages, patterns...',
     },
     customFields: {
       name: 'Field Name',
@@ -950,6 +951,8 @@ const en = {
       timestamp: 'Timestamp',
       thread: 'Thread',
       copy: 'Copy',
+      search: 'Search messages, groups...',
+      filterByThread: 'Filter by thread',
     },
     npeAnalysis: {
       title: 'NullPointerException Analysis',
@@ -991,6 +994,7 @@ const en = {
       copyOccurrence: 'Copy exception details',
       noExceptions: 'No exceptions detected.',
       occurrences: '{{count}} occurrence(s)',
+      search: 'Search exceptions, origins...',
     },
     insights: {
       generateButton: 'Generate Performance Insights',

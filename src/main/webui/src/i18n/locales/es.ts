@@ -941,6 +941,7 @@ const es: typeof en = {
       loadingIssues: 'Cargando problemas...',
       firstSeen: 'Primera Vez',
       lastSeen: 'Última Vez',
+      search: 'Buscar mensajes, patrones...',
     },
     customFields: {
       name: 'Nombre del Campo',
@@ -951,6 +952,8 @@ const es: typeof en = {
       timestamp: 'Fecha/Hora',
       thread: 'Hilo',
       copy: 'Copiar',
+      search: 'Buscar mensajes, grupos...',
+      filterByThread: 'Filtrar por hilo',
     },
     npeAnalysis: {
       title: 'Análisis de NullPointerException',
@@ -992,6 +995,7 @@ const es: typeof en = {
       copyOccurrence: 'Copiar detalles de la excepción',
       noExceptions: 'No se detectaron excepciones.',
       occurrences: '{{count}} ocurrencia(s)',
+      search: 'Buscar excepciones, orígenes...',
     },
     insights: {
       generateButton: 'Generar Insights de Rendimiento',

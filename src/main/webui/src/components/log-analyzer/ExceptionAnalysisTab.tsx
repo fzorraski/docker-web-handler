@@ -2,10 +2,10 @@ import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
 import {
   Autocomplete, Box, Typography, Chip, Button, Paper, LinearProgress, Stack,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
-  TablePagination, Collapse, TextField,
+  TablePagination, Collapse, TextField, InputAdornment,
   useTheme,
 } from '@mui/material'
-import { ExpandMore, ExpandLess, ContentCopy } from '@mui/icons-material'
+import { ExpandMore, ExpandLess, ContentCopy, Search } from '@mui/icons-material'
 import { IconButton, Tooltip } from '@mui/material'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
@@ -32,6 +32,7 @@ export function ExceptionAnalysisTab({ analysisId, onJumpToLine }: { analysisId:
   const [traceOpen, setTraceOpen] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(false)
   const [filterType, setFilterType] = useState<string | null>(null)
+  const [searchText, setSearchText] = useState('')
   const [occurrences, setOccurrences] = useState<import('../../services/logAnalyzerService').ExceptionOccurrence[]>([])
   const [occTotal, setOccTotal] = useState(0)
   const [occPage, setOccPage] = useState(0)
@@ -64,9 +65,19 @@ export function ExceptionAnalysisTab({ analysisId, onJumpToLine }: { analysisId:
   }, [uniqueTypes])
 
   const filtered = useMemo(() => {
-    if (!filterType) return allLocations
-    return allLocations.filter(loc => loc.exceptionType === filterType)
-  }, [allLocations, filterType])
+    let result = allLocations
+    if (filterType) result = result.filter(loc => loc.exceptionType === filterType)
+    const term = searchText.trim().toLowerCase()
+    if (term) {
+      result = result.filter(loc =>
+        loc.exceptionType.toLowerCase().includes(term)
+        || loc.origin.toLowerCase().includes(term)
+        || loc.originClass.toLowerCase().includes(term)
+        || loc.method.toLowerCase().includes(term)
+        || loc.sourceFile.toLowerCase().includes(term))
+    }
+    return result
+  }, [allLocations, filterType, searchText])
 
   const totalOccurrences = useMemo(() => filtered.reduce((sum, loc) => sum + loc.count, 0), [filtered])
   const uniqueLocationCount = useMemo(() => filtered.length, [filtered])
@@ -104,7 +115,7 @@ export function ExceptionAnalysisTab({ analysisId, onJumpToLine }: { analysisId:
   useEffect(() => {
     setPage(0)
     setExpandedIdx(null)
-  }, [filterType])
+  }, [filterType, searchText])
 
   return (
     <Box>
@@ -130,6 +141,22 @@ export function ExceptionAnalysisTab({ analysisId, onJumpToLine }: { analysisId:
           value={filterType}
           onChange={(_, v) => setFilterType(v)}
           renderInput={(params) => <TextField {...params} label={t('logAnalyzer.exceptionAnalysis.filterByType')} />}
+        />
+        <TextField
+          size="small"
+          placeholder={t('logAnalyzer.exceptionAnalysis.search')}
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          sx={{ minWidth: 250 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search sx={{ fontSize: 18, color: 'text.disabled' }} />
+                </InputAdornment>
+              ),
+            },
+          }}
         />
       </Stack>
 

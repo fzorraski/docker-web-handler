@@ -2,7 +2,7 @@ import { useState, useEffect, Fragment } from 'react'
 import {
   Autocomplete, Box, Typography, Chip, IconButton, Tooltip,
   TextField, TablePagination, Switch, FormControlLabel, LinearProgress, Stack,
-  Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
+  Table, TableHead, TableRow, TableCell, TableBody, TableContainer, TableSortLabel,
   Menu, MenuItem, ListItemIcon, ListItemText,
   useTheme,
 } from '@mui/material'
@@ -68,6 +68,13 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onJumpT
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(25)
   const [sort, setSort] = useState('time')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleSort = (field: string, defaultDir: 'asc' | 'desc' = 'asc') => {
+    if (sort === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSort(field); setSortDir(defaultDir) }
+    setPage(0)
+  }
   const [filterEndpoint, setFilterEndpoint] = useState('')
   const [filterThread, setFilterThread] = useState('')
   const [contentSearch, setContentSearch] = useState('')
@@ -89,9 +96,9 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onJumpT
       endpoint: filterEndpoint || undefined,
       thread: filterThread || undefined,
       search: debouncedContentSearch || undefined,
-      sort, page, size: rowsPerPage,
+      sort, sortDir, page, size: rowsPerPage,
     }),
-    [analysisId, filterEndpoint, filterThread, debouncedContentSearch, sort, page, rowsPerPage],
+    [analysisId, filterEndpoint, filterThread, debouncedContentSearch, sort, sortDir, page, rowsPerPage],
   )
 
   return (
@@ -129,21 +136,6 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onJumpT
           } }}
           sx={{ minWidth: 280 }}
         />
-        <Autocomplete
-          size="small"
-          sx={{ minWidth: 180 }}
-          disableClearable
-          options={[
-            { value: 'time', label: t('logAnalyzer.apiCalls.sortByTime') },
-            { value: 'duration', label: t('logAnalyzer.apiCalls.sortByDuration') },
-            { value: 'endpoint', label: t('logAnalyzer.apiCalls.sortByEndpoint') },
-          ]}
-          value={{ value: sort, label: sort === 'duration' ? t('logAnalyzer.apiCalls.sortByDuration') : sort === 'endpoint' ? t('logAnalyzer.apiCalls.sortByEndpoint') : t('logAnalyzer.apiCalls.sortByTime') }}
-          onChange={(_, v) => setSort(v?.value ?? 'time')}
-          getOptionLabel={(o) => o.label}
-          isOptionEqualToValue={(o, v) => o.value === v.value}
-          renderInput={(params) => <TextField {...params} label={t('logAnalyzer.apiCalls.sort')} />}
-        />
         <FormControlLabel
           control={<Switch checked={maskEnabled} onChange={(_, v) => setMaskEnabled(v)} size="small" />}
           label={<Typography variant="body2">{t('logAnalyzer.apiCalls.maskSensitive')}</Typography>}
@@ -155,11 +147,31 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onJumpT
           <TableHead>
             <TableRow sx={{ bgcolor: headerTheme.theadBg, '& th': { color: headerTheme.theadColor } }}>
               <TableCell width={30}></TableCell>
-              <TableCell>{t('logAnalyzer.apiCalls.endpoint')}</TableCell>
+              <TableCell>
+                <TableSortLabel active={sort === 'endpoint'} direction={sort === 'endpoint' ? sortDir : 'asc'}
+                  onClick={() => handleSort('endpoint')} sx={headerTheme.theadSortSx}>
+                  {t('logAnalyzer.apiCalls.endpoint')}
+                </TableSortLabel>
+              </TableCell>
               <TableCell>{t('logAnalyzer.apiCalls.correlationId')}</TableCell>
-              <TableCell>{t('logAnalyzer.apiCalls.thread')}</TableCell>
-              <TableCell>{t('logAnalyzer.apiCalls.requestTime')}</TableCell>
-              <TableCell>{t('logAnalyzer.apiCalls.duration')}</TableCell>
+              <TableCell>
+                <TableSortLabel active={sort === 'thread'} direction={sort === 'thread' ? sortDir : 'asc'}
+                  onClick={() => handleSort('thread')} sx={headerTheme.theadSortSx}>
+                  {t('logAnalyzer.apiCalls.thread')}
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel active={sort === 'time'} direction={sort === 'time' ? sortDir : 'asc'}
+                  onClick={() => handleSort('time')} sx={headerTheme.theadSortSx}>
+                  {t('logAnalyzer.apiCalls.requestTime')}
+                </TableSortLabel>
+              </TableCell>
+              <TableCell>
+                <TableSortLabel active={sort === 'duration'} direction={sort === 'duration' ? sortDir : 'desc'}
+                  onClick={() => handleSort('duration', 'desc')} sx={headerTheme.theadSortSx}>
+                  {t('logAnalyzer.apiCalls.duration')}
+                </TableSortLabel>
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>

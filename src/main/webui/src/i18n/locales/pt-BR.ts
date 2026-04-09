@@ -941,6 +941,7 @@ const ptBR: typeof en = {
       loadingIssues: 'Carregando ocorrências...',
       firstSeen: 'Primeira Vez',
       lastSeen: 'Última Vez',
+      search: 'Buscar mensagens, padrões...',
     },
     customFields: {
       name: 'Nome do Campo',
@@ -951,6 +952,8 @@ const ptBR: typeof en = {
       timestamp: 'Data/Hora',
       thread: 'Thread',
       copy: 'Copiar',
+      search: 'Buscar mensagens, grupos...',
+      filterByThread: 'Filtrar por thread',
     },
     npeAnalysis: {
       title: 'Análise de NullPointerException',
@@ -992,6 +995,7 @@ const ptBR: typeof en = {
       copyOccurrence: 'Copiar detalhes da exceção',
       noExceptions: 'Nenhuma exceção detectada.',
       occurrences: '{{count}} ocorrência(s)',
+      search: 'Buscar exceções, origens...',
     },
     insights: {
       generateButton: 'Gerar Insights de Performance',
