@@ -259,6 +259,8 @@ export function AnalysisOptionsDialog({ open, onClose, onStart, files, onFilesCh
                       label={`${f.name} ${formatBytes(f.size)}`}
                       onDelete={() => handleRemoveFile(i)}
                       size="small"
+                      color="success"
+                      variant="outlined"
                       sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem' }}
                     />
                   ))}
