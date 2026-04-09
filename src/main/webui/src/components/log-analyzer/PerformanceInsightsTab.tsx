@@ -303,6 +303,7 @@ export function PerformanceInsightsTab({ analysisId, initialEndpoint, initialTim
             <Line type="monotone" dataKey="p95DurationMs" stroke="#00BCD4" strokeWidth={2} dot={false} name={t('logAnalyzer.insights.p95Duration')} />
             <Line type="monotone" dataKey="maxDurationMs" stroke="#FF5252" strokeWidth={1} dot={false} strokeDasharray="5 5" name={t('logAnalyzer.insights.maxDuration')} />
             {selectedBucketLabel && <ReferenceLine x={selectedBucketLabel} stroke="#FF6D00" strokeDasharray="4 4" strokeWidth={2} />}
+            <Brush dataKey="time" height={25} stroke="#00BCD4" fill={isDark ? '#1A1D27' : '#f5f5f5'} travellerWidth={10} />
           </LineChart>
         </ResponsiveContainer>
         </div>
@@ -325,6 +326,7 @@ export function PerformanceInsightsTab({ analysisId, initialEndpoint, initialTim
             <Tooltip contentStyle={{ backgroundColor: tooltipBg, border: 'none', fontSize: 12 }} />
             <Area type="monotone" dataKey="concurrentPeak" stroke="#9C27B0" fill="#9C27B0" fillOpacity={0.3} name={t('logAnalyzer.insights.concurrentPeak')} />
             {selectedBucketLabel && <ReferenceLine x={selectedBucketLabel} stroke="#FF6D00" strokeDasharray="4 4" strokeWidth={2} />}
+            <Brush dataKey="time" height={25} stroke="#9C27B0" fill={isDark ? '#1A1D27' : '#f5f5f5'} travellerWidth={10} />
           </AreaChart>
         </ResponsiveContainer>
         </div>

@@ -193,7 +193,21 @@ export function AnomalyDetectionTab({ analysisId }: { analysisId: string }) {
     const source = expandedCorrelation != null ? data.correlations[expandedCorrelation] : null
     const anomalies = source ? source.anomalies : data.correlations.flatMap(c => c.anomalies)
     const { rows, left, right } = buildCorrelationChart(anomalies)
-    return { correlationChartData: rows, correlationLeftTypes: left, correlationRightTypes: right }
+
+    // Rebuild using the full timeline so both charts share the same X-axis for syncId
+    const allBucketLabels = data.buckets.map(b => b.bucketLabel)
+    const types = [...left, ...right]
+    const rowMap = new Map<string, Record<string, number | string>>()
+    for (const r of rows) rowMap.set(r.time as string, r)
+    const fullRows = allBucketLabels.map(label => {
+      const existing = rowMap.get(label)
+      if (existing) return existing
+      const empty: Record<string, number | string> = { time: label }
+      for (const t of types) empty[t] = 0
+      return empty
+    })
+
+    return { correlationChartData: fullRows, correlationLeftTypes: left, correlationRightTypes: right }
   }, [data, expandedCorrelation, buildCorrelationChart])
 
   const statusLabel = (status: string) => {
@@ -379,7 +393,7 @@ export function AnomalyDetectionTab({ analysisId }: { analysisId: string }) {
           </Stack>
         </Stack>
         <ResponsiveContainer width="100%" height={300}>
-          <ComposedChart data={chartData}>
+          <ComposedChart data={chartData} syncId="anomaly">
             <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
             <XAxis dataKey="time" tick={{ fontSize: 11, fill: textColor }} interval="preserveStartEnd" />
             <YAxis tick={{ fontSize: 11, fill: textColor }} />
@@ -488,8 +502,8 @@ export function AnomalyDetectionTab({ analysisId }: { analysisId: string }) {
               </Stack>
             ))}
           </Stack>
-          <ResponsiveContainer width="100%" height={220}>
-            <ComposedChart data={correlationChartData}>
+          <ResponsiveContainer width="100%" height={250}>
+            <ComposedChart data={correlationChartData} syncId="anomaly">
               <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
               <XAxis dataKey="time" tick={{ fontSize: 11, fill: textColor }} />
               <YAxis yAxisId="left" tick={{ fontSize: 11, fill: textColor }}
@@ -531,6 +545,7 @@ export function AnomalyDetectionTab({ analysisId }: { analysisId: string }) {
               {correlationRightTypes.map(type => (
                 <Bar key={type} yAxisId="right" dataKey={type} fill={correlationSignalColors[type]} fillOpacity={0.8} />
               ))}
+              <Brush dataKey="time" height={25} stroke={isDark ? '#555' : '#ccc'} fill={isDark ? '#1e1e1e' : '#fafafa'} travellerWidth={10} />
             </ComposedChart>
           </ResponsiveContainer>
         </Paper>
