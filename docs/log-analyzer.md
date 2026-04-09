@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Log Analyzer allows you to upload log files or analyze container logs directly from the browser. It parses log lines, pairs API request/response calls with timing data, tracks job executions, detects repeated failures, provides anomaly detection with correlation analysis, multi-signal system health monitoring, performance insights, orphan request tracking, and user-defined custom field extraction — all without modifying application code.
+The Log Analyzer allows you to upload log files or analyze container logs directly from the browser. It parses log lines, pairs API request/response calls with timing data, tracks job executions, detects repeated failures, provides anomaly detection with correlation analysis, multi-signal system health monitoring, performance insights, orphan request tracking, user-defined custom field extraction, HTML report generation, and endpoint stats comparison — all without modifying application code.
 
 The feature is disabled by default. Enable it with:
 
@@ -16,22 +16,27 @@ log.analyzer.enabled=true
 
 ### Upload & Analyze Log Files
 
-Upload `.log`, `.txt`, or `.out` files for offline analysis:
+Upload `.log`, `.txt`, or `.out` files for offline analysis through a tabbed configuration dialog:
 
-- **Multiple files:** Upload up to 5 files simultaneously
-- **Large file support:** Up to 500 MB per file (configurable)
+- **Tabbed dialog:** Upload tab (file selection + preset + threshold), Analyses tab (enable/disable features), Advanced tab (regex overrides + custom fields)
+- **File selection:** Select or drag-and-drop a file; the dialog shows the selected file with size and an optional label field
+- **Label:** Optional name (max 50 chars) for the analysis — shown in the analysis card tooltip and reports
 - **Preset selection:** Choose a parsing preset (WildFly, Quarkus, Spring Boot, Custom)
-- **Custom regex:** Override any regex field per upload via the Advanced section
+- **Analysis options:** Toggle individual analysis features (API calls, jobs, failures, critical issues, NPE, exceptions, custom fields) with cost indicators
+- **Custom regex:** Override any regex field per upload via the Advanced tab
+- **Large file support:** Up to 500 MB per file (configurable)
 - **Auto-eviction:** Analyses are automatically removed after 2 hours (configurable)
+- **Drag-and-drop:** Drop files on the main page to open the dialog with the file pre-loaded, or drop inside the dialog
 
 ### Analyze Container Logs
 
-Click the **Deep Analysis** button in the Container Logs Dialog footer to send the current container's logs directly to the analyzer:
+Click the **Deep Analysis** button in the Container Logs Dialog footer to navigate to the Log Analyzer with the upload dialog pre-configured:
 
+- Opens the tabbed dialog with the container source pre-selected
+- User can choose a preset, adjust the slow threshold, and configure analysis options before starting
 - Takes a snapshot of the logs (does not follow the live stream)
 - Strips ANSI color/formatting codes automatically
 - Configurable line count via `log.analyzer.container-tail` (default: 100,000)
-- Navigates to the Log Analyzer page with the analysis pre-selected
 
 ### API Call Pairing
 
@@ -41,6 +46,7 @@ The analyzer detects API request/response pairs from log messages and computes r
 - **Without correlation ID:** `OrderWS/getOrders Request = ...` pairs by thread using a FIFO queue — the first unmatched Request pairs with the next Response for that endpoint on the same thread
 - **Slow call detection:** Calls at or above the slow threshold (default 1000ms) are highlighted in red
 - **Content search:** Search across all request/response payloads to find specific values (order numbers, user names, etc.)
+- **Sortable headers:** Click column headers (Endpoint, Thread, Request Time, Duration) to sort with direction toggle
 
 ### Endpoint Statistics
 
@@ -53,6 +59,13 @@ Per-endpoint aggregates with sortable columns:
 | Min / Max | Fastest and slowest calls |
 | P95 | 95th percentile response time |
 | Slow | Number of calls exceeding the slow threshold |
+
+Features:
+- **Summary cards** showing total calls, weighted average, and total slow count
+- **Health border** — color-coded left border per endpoint (green/yellow/orange/red)
+- **Dual bar chart** — avg and P95 overlay per endpoint
+- **Sort indicators** — `TableSortLabel` arrows on all columns
+- **Export Stats** — download endpoint stats as JSON for comparison (icon in table header)
 
 ### Job Tracking
 
@@ -82,6 +95,7 @@ Time-bucketed analysis of API call performance over the log timeline:
 - **Drill-down:** Click a bucket bar to see per-endpoint breakdown for that time window; right-click to open the detail dialog
 - **Sortable detail dialog:** Sort endpoints by count, avg duration, or P95 within a selected time bucket
 - **Cross-tab navigation:** Jump to Performance Insights from the Endpoint Stats tab or the API Calls context menu with auto-selected endpoint/timestamp
+- **Brush zoom:** Drag the brush control on duration and concurrency charts to zoom into a time range
 
 ### Anomaly Detection (Experimental)
 
@@ -97,6 +111,7 @@ Statistical anomaly detection across multiple signal types extracted from log pa
 - **Baseline window:** Number of preceding buckets used for ratio baseline (2–50)
 - **Correlation detection:** When anomalies are found, the system automatically extracts all other signal types and detects correlated anomalies — showing causal chains with severity scoring and temporal overlap across signal types
 - **Visualization:** Bucket timeline chart with color-coded bars (normal, elevated, anomaly) and a list of detected anomalies with baseline comparisons
+- **Synchronized charts:** Anomaly and correlation charts share the same X-axis via syncId for linked zoom/pan
 
 ### System Health (Experimental)
 
@@ -122,12 +137,37 @@ Tracks API requests that were logged but never received a matching response:
 
 User-defined regex extractors for domain-specific log patterns. See [Custom Fields](#custom-fields-1) section below for full documentation.
 
+Features:
+- **Search:** Text search across messages, thread, and group values
+- **Thread filter:** Filter by thread
+- **Sortable headers:** Sort by line, timestamp, thread, or any dynamic group column
+- **Expandable rows:** Click to see full log message with card-style detail panel
+
+### Critical Issues
+
+Grouped critical log patterns with configurable burst detection:
+
+- **Category and pattern filters:** Filter by issue category or specific pattern
+- **Text search:** Search across messages, patterns, categories, and source files
+- **Burst analysis:** Detect rapid concentrations of errors in configurable time windows
+- **Truncated message tooltips:** Hover over truncated messages to see the full text
+
+### Exception Analysis
+
+Exception grouping by type and origin:
+
+- **Type filter:** Filter by exception type
+- **Text search:** Search across exception types, origins, classes, methods, and source files
+- **Expandable stack traces:** Click to view full stack trace with copy button
+- **Truncated message tooltips:** Hover over truncated NPE messages to see full text
+
 ### Raw Log Viewer
 
 Themed log viewer matching the Container Logs Dialog styling:
 
 - **Virtualized rendering:** Uses react-window for efficient display of thousands of lines
-- **Level toggle chips:** Click ERROR, WARN, INFO, DEBUG, TRACE chips to filter by level
+- **Level toggle chips:** Click ERROR, WARN, INFO, SEVERE, FATAL, DEBUG, TRACE chips to filter by level — SEVERE and FATAL appear as separate chips when present
+- **Clickable dashboard levels:** Click any level chip on the dashboard to jump directly to the Raw Log filtered by that level
 - **Word wrap toggle:** Switch between `pre` (virtualized, no wrap) and `pre-wrap` (wrapped) modes
 - **Search:** Debounced text search across log messages
 - **Thread filter:** Filter by specific thread
@@ -142,6 +182,30 @@ Merge multiple uploaded analyses into a single combined analysis:
 2. Click the **Compose** button
 3. Lines are sorted by timestamp across all files
 4. API calls, jobs, and failures are re-paired on the merged timeline
+
+### Reports
+
+Generate downloadable self-contained HTML reports from any analysis:
+
+- **Compact Report:** Summary cards, log level distribution, top 10 endpoints (by call count), critical issues summary, top 20 exceptions, job summary
+- **Complete Report:** All compact sections plus full endpoint stats, detailed critical issues (top 10 per category), NPE analysis, all exceptions, repeated failures (top 50), orphan requests (top 50), top 100 slowest API calls, custom field summaries
+- **Dark theme:** Self-contained HTML with inline CSS, matching the application's dark theme
+- **Access:** Report dropdown button on the dashboard with compact/complete options
+
+### Endpoint Stats Comparison
+
+Compare endpoint performance between two log analyses to measure optimization impact:
+
+- **Export:** Download endpoint stats as JSON from the Endpoint Stats tab (icon in table header)
+- **Compare page:** Navigate to `/compare` to import two JSON files or load from active analyses
+- **Insights cards:** Total calls, weighted average duration, total slow calls, endpoints, and slowest endpoint — with percentage differences
+- **Interactive table:** Side-by-side comparison with sortable columns (calls, avg, P95, deltas, percentage change, verdict)
+- **Verdict badges:** "B Faster", "B Slower", "Similar" based on ±5% threshold
+- **Filter chips:** Toggle visibility of Faster, Slower, Similar, New, Removed rows
+- **Endpoint filter:** Autocomplete filter to focus on specific endpoints
+- **Charts:** Optional side-by-side bar charts showing avg and P95 duration for top 15 endpoints
+- **Downloadable report:** HTML comparison report with insights table and verdict badges — reflects current filters
+- **Access:** Navigate to `/compare` (no navbar link)
 
 ---
 
@@ -251,14 +315,14 @@ Each entry has three parts separated by `|`:
 
 #### Via the UI
 
-1. Open the **Advanced** section in the upload panel
+1. Open the upload dialog and switch to the **Advanced** tab
 2. Click **+ Add Custom Field**
 3. Fill in:
    - **Field Name:** Display name (e.g., `Entity Changes`)
    - **Regex Pattern:** Java regex with named groups (e.g., `Updated -> (?<entity>\w+):`)
    - **Count Only:** Toggle on to only count matches without storing details
 4. Add more fields as needed, or remove with the **X** button
-5. Upload the log file
+5. Switch to the Upload tab and start the analysis
 
 When a preset is selected, its configured custom fields are automatically loaded into the form. You can modify or remove them before uploading.
 
@@ -280,7 +344,7 @@ Updated -> (?<entity>\w+):.*changed to.*by User:.*\[name=(?<user>\w+)\]
 
 The fixed columns (Line, Timestamp, Thread) are always shown. Named group columns appear after them in the order defined by the regex.
 
-Clicking a row expands to show the full log message with a copy button.
+Clicking a row expands to show the full log message in a card-style detail panel with an orange accent border and a copy button.
 
 ### Examples
 
@@ -385,9 +449,11 @@ POST /api/logs/analyzer/upload
 Content-Type: multipart/form-data
 
 Form fields:
-  files          - One or more log files
+  files          - Log file
+  label          - Optional analysis label (max 50 chars)
   preset         - Preset name (WILDFLY, QUARKUS, SPRING_BOOT, CUSTOM)
   slowThresholdMs - Slow call threshold in ms (optional)
+  options        - JSON analysis options: {"apiCalls":true,"jobs":true,...}
   customFields   - JSON array of custom field definitions (optional)
   logLineRegex   - Override log line regex (optional)
   apiCallRegex   - Override API call regex (optional)
@@ -403,12 +469,13 @@ Query params:
   lines          - Number of lines (100-100000, default: from config)
   direction      - "tail" (last N lines) or "head" (first N lines)
   preset         - Preset name (optional)
+  slowThresholdMs - Slow call threshold (optional)
 ```
 
 ### Query Results
 
 ```
-GET /api/logs/analyzer/{id}/api-calls?endpoint=&thread=&search=&sort=time&page=0&size=50
+GET /api/logs/analyzer/{id}/api-calls?endpoint=&thread=&search=&sort=time&sortDir=asc&page=0&size=50
 GET /api/logs/analyzer/{id}/api-stats
 GET /api/logs/analyzer/{id}/lines?thread=&level=&search=&page=0&size=500
 GET /api/logs/analyzer/{id}/lines/range?from=0&to=100
@@ -426,7 +493,7 @@ GET /api/logs/analyzer/{id}/npe-analysis?page=0&size=50
 GET /api/logs/analyzer/{id}/npe-analysis/{origin}/occurrences?page=0&size=20
 GET /api/logs/analyzer/{id}/exception-analysis?page=0&size=50
 GET /api/logs/analyzer/{id}/exception-analysis/{origin}/occurrences?page=0&size=20
-GET /api/logs/analyzer/{id}/custom-fields/{fieldName}?page=0&size=100
+GET /api/logs/analyzer/{id}/custom-fields/{fieldName}?search=&thread=&sort=&sortDir=asc&page=0&size=100
 ```
 
 ### Performance & Anomaly Analysis
@@ -437,6 +504,16 @@ GET /api/logs/analyzer/{id}/bucket-endpoints?timestamp=&endpoint=&limit=
 GET /api/logs/analyzer/{id}/anomaly-detection?signalType=ERROR_COUNT&bucketSize=300&threshold=3.0&baselineWindow=8&metric=count&method=ratio
 GET /api/logs/analyzer/{id}/anomaly-detection/signal-types
 GET /api/logs/analyzer/{id}/system-health?bucketSize=300&metric=count
+```
+
+### Reports & Export
+
+```
+GET  /api/logs/analyzer/{id}/report/compact     - Download compact HTML report
+GET  /api/logs/analyzer/{id}/report/complete     - Download complete HTML report
+GET  /api/logs/analyzer/{id}/api-stats/export    - Download endpoint stats as JSON
+POST /api/logs/analyzer/compare-stats            - Generate HTML comparison report
+     Body: {"labelA":"...","labelB":"...","endpointsA":[...],"endpointsB":[...]}
 ```
 
 ### Management
@@ -454,24 +531,30 @@ DELETE /api/logs/analyzer/{id}          - Remove analysis
 ## UI
 
 1. Navigate to the **Log Analyzer** page (visible in the navbar when the feature is enabled)
-2. **Upload** a log file or click **Deep Analysis** from the Container Logs Dialog
-3. Optionally select a preset, adjust the slow threshold, and add custom fields in the Advanced section
-4. After upload, the **dashboard** shows summary cards (Total Lines, API Calls, Orphan Requests, Threads, Endpoints, Errors, Jobs, Failures, Critical Issues, Exceptions, and any custom field counts)
-5. **Tabs** provide detailed views:
+2. Click **Select file** or drag-and-drop a log file — this opens the **upload dialog**
+3. In the dialog:
+   - **Upload tab:** See the selected file, add an optional label, choose preset and slow threshold
+   - **Analyses tab:** Toggle analysis features on/off (API calls, jobs, critical issues, etc.) with processing cost indicators
+   - **Advanced tab:** Override regex patterns, configure sensitive fields, add custom field extractors
+4. Click **Start Analysis** to begin processing
+5. After analysis, the **dashboard** shows summary cards (Total Lines, API Calls, Orphan Requests, Threads, Endpoints, Errors, Jobs, Failures, Critical Issues, Exceptions, and any custom field counts)
+6. **Level distribution chips** show log level counts — click any chip to jump to the Raw Log filtered by that level (SEVERE and FATAL appear separately when present)
+7. **Report button** on the dashboard provides compact and complete HTML report downloads
+8. **Tabs** provide detailed views:
 
    **Always visible:**
-   - **API Calls** — paired requests/responses with rainbow brackets, expandable JSON payloads, content search, sensitive field masking, and orphan request count chip
-   - **Endpoint Stats** — sortable table with response time metrics, visual bars, and link to Performance Insights
-   - **Performance Insights** — time-bucketed response time analysis with drill-down by endpoint and time window
+   - **API Calls** — paired requests/responses with rainbow brackets, expandable JSON payloads, content search, sensitive field masking, sortable column headers, and orphan request count chip
+   - **Endpoint Stats** — sortable table with response time metrics, health border, dual bar chart, summary cards, and JSON export button
+   - **Performance Insights** — time-bucketed response time analysis with drill-down by endpoint and time window, brush zoom
    - **Anomaly Detection** — statistical anomaly detection with configurable signal types, methods, and correlation analysis (experimental)
    - **System Health** — multi-signal dual-axis timeline showing all detected signals over time (experimental)
-   - **Raw Log** — virtualized log viewer with level chips, search, thread filter, word wrap, and copy
+   - **Raw Log** — virtualized log viewer with level chips (including SEVERE/FATAL when present), search, thread filter, word wrap, and copy
 
    **Conditional (shown when data exists):**
-   - **Critical Issues** — grouped critical log patterns with burst detection (if critical issues found)
-   - **NPE Analysis** — NullPointerException grouping by origin with stack traces (if NPEs found)
-   - **Exception Analysis** — exception grouping by type/origin with stack traces (if exceptions found)
+   - **Critical Issues** — grouped critical log patterns with burst detection and text search (if critical issues found)
+   - **NPE Analysis** — NullPointerException grouping by origin with stack traces and truncated message tooltips (if NPEs found)
+   - **Exception Analysis** — exception grouping by type/origin with stack traces and text search (if exceptions found)
    - **Jobs** — job executions with duration and trigger/result (if preset has job patterns)
    - **Failures** — repeated failures grouped by entity with detail expansion (if preset has failure pattern)
    - **Orphan Requests** — API requests without matching responses (if orphans detected)
-   - **Custom field tabs** — one tab per custom field with matches > 0 (named after the field)
+   - **Custom field tabs** — one tab per custom field with matches > 0, featuring search, thread filter, and sortable columns (named after the field)

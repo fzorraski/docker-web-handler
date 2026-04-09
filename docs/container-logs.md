@@ -40,3 +40,7 @@ The stream remains open as long as the dialog is open, delivering new log lines 
 2. A full-screen dialog opens with the log viewer
 3. Logs stream in real time with auto-scroll
 4. Close the dialog to stop streaming
+
+### Deep Analysis
+
+When the [Log Analyzer](log-analyzer.md) feature is enabled, a **Deep Analysis** button appears in the dialog footer. Clicking it navigates to the Log Analyzer page and opens the upload dialog pre-configured with the container's logs, allowing you to choose a preset, threshold, and analysis options before starting.
