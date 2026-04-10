@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Autocomplete, Box, Typography, Button, LinearProgress, Alert, Paper, Stack, TextField,
-  Chip, Collapse, IconButton,
+  Chip, Collapse, IconButton, Tooltip as MuiTooltip,
   useTheme,
 } from '@mui/material'
-import { TroubleshootOutlined, Refresh, ExpandMore, ExpandLess, ArrowForward, Science, Visibility, VisibilityOff } from '@mui/icons-material'
+import { TroubleshootOutlined, Refresh, ExpandMore, ExpandLess, ArrowForward, Science, Visibility, VisibilityOff, InfoOutlined } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Brush,
@@ -366,6 +366,10 @@ export function AnomalyDetectionTab({ analysisId }: { analysisId: string }) {
       <Paper sx={{ p: 2, mb: 3 }}>
         <Stack direction="row" alignItems="center" spacing={1} mb={0.5}>
           <Typography variant="subtitle2">{t('logAnalyzer.anomalyDetection.timeline')}</Typography>
+          <MuiTooltip title={t('logAnalyzer.anomalyDetection.timelineHelp')} arrow placement="right"
+            slotProps={{ tooltip: { sx: { maxWidth: 360, fontSize: '0.8rem', lineHeight: 1.5 } } }}>
+            <InfoOutlined sx={{ fontSize: 16, color: 'text.secondary', cursor: 'help' }} />
+          </MuiTooltip>
           {brushRange && (
             <Chip size="small" label={`${chartData[brushRange.startIndex]?.time ?? ''} — ${chartData[brushRange.endIndex]?.time ?? ''}`}
               onDelete={resetZoom} sx={{ fontSize: '0.7rem', height: 22 }} />
@@ -481,6 +485,10 @@ export function AnomalyDetectionTab({ analysisId }: { analysisId: string }) {
         <Paper sx={{ p: 2, mb: 3 }}>
           <Stack direction="row" alignItems="center" spacing={1} mb={0.5}>
             <Typography variant="subtitle2">{t('logAnalyzer.anomalyDetection.correlatedAnomalies')}</Typography>
+            <MuiTooltip title={t('logAnalyzer.anomalyDetection.correlationChartHelp')} arrow placement="right"
+              slotProps={{ tooltip: { sx: { maxWidth: 360, fontSize: '0.8rem', lineHeight: 1.5 } } }}>
+              <InfoOutlined sx={{ fontSize: 16, color: 'text.secondary', cursor: 'help' }} />
+            </MuiTooltip>
             {expandedCorrelation != null && data.correlations[expandedCorrelation] && (
               <Chip size="small" label={`${data.correlations[expandedCorrelation].windowStart} — ${data.correlations[expandedCorrelation].windowEnd}`}
                 onDelete={() => setExpandedCorrelation(null)}
