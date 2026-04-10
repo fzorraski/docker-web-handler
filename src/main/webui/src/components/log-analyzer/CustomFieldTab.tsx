@@ -45,12 +45,12 @@ export function CustomFieldTab({ analysisId, fieldName, onJumpToLine }: {
   useEffect(() => { setPage(0); setExpandedRow(null) }, [debouncedSearch, threadFilter])
 
   const { data, total, loading, error } = usePaginatedFetch<CustomFieldMatch>(
-    () => logService.getCustomFieldResults(analysisId, fieldName, {
+    (signal) => logService.getCustomFieldResults(analysisId, fieldName, {
       page, size: rowsPerPage,
       search: debouncedSearch || undefined,
       thread: threadFilter || undefined,
       sort: sort || undefined,
-      sortDir: sort ? sortDir : undefined,
+      sortDir: sort ? sortDir : undefined, signal,
     }),
     [analysisId, fieldName, page, rowsPerPage, debouncedSearch, threadFilter, sort, sortDir],
   )

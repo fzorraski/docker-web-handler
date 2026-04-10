@@ -34,11 +34,11 @@ export function JobsTab({ analysisId, onJumpToLine }: { analysisId: string; onJu
 
   // Server-side sort + filter + pagination
   const { data: jobs, total, loading } = usePaginatedFetch<JobExecution>(
-    () => logService.getJobs(analysisId, {
+    (signal) => logService.getJobs(analysisId, {
       jobName: filterJob || undefined,
       thread: filterThread || undefined,
       sort,
-      page, size: rowsPerPage,
+      page, size: rowsPerPage, signal,
     }),
     [analysisId, filterJob, filterThread, sort, page, rowsPerPage],
   )

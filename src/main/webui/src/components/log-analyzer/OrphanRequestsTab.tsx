@@ -38,10 +38,10 @@ export function OrphanRequestsTab({ analysisId, sensitiveFields, maskEnabled, on
   }, [analysisId])
 
   const { data: orphans, total, loading } = usePaginatedFetch<OrphanRequest>(
-    () => logService.getOrphanRequests(analysisId, {
+    (signal) => logService.getOrphanRequests(analysisId, {
       endpoint: filterEndpoint || undefined,
       thread: filterThread || undefined,
-      page, size: rowsPerPage,
+      page, size: rowsPerPage, signal,
     }),
     [analysisId, filterEndpoint, filterThread, page, rowsPerPage],
   )

@@ -92,11 +92,11 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onJumpT
   }, [analysisId])
 
   const { data, total, loading } = usePaginatedFetch<ApiCallPair>(
-    () => logService.getApiCalls(analysisId, {
+    (signal) => logService.getApiCalls(analysisId, {
       endpoint: filterEndpoint || undefined,
       thread: filterThread || undefined,
       search: debouncedContentSearch || undefined,
-      sort, sortDir, page, size: rowsPerPage,
+      sort, sortDir, page, size: rowsPerPage, signal,
     }),
     [analysisId, filterEndpoint, filterThread, debouncedContentSearch, sort, sortDir, page, rowsPerPage],
   )

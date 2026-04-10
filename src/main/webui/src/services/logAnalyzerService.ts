@@ -421,7 +421,7 @@ export async function deleteAnalysis(id: string): Promise<void> {
 
 export async function getApiCalls(
   id: string,
-  params: { endpoint?: string; thread?: string; minDuration?: number; search?: string; sort?: string; sortDir?: string; page?: number; size?: number } = {},
+  params: { endpoint?: string; thread?: string; minDuration?: number; search?: string; sort?: string; sortDir?: string; page?: number; size?: number; signal?: AbortSignal } = {},
 ): Promise<PaginatedResponse<ApiCallPair>> {
   const q = new URLSearchParams()
   if (params.endpoint) q.set('endpoint', params.endpoint)
@@ -432,7 +432,7 @@ export async function getApiCalls(
   if (params.sortDir) q.set('sortDir', params.sortDir)
   if (params.page != null) q.set('page', String(params.page))
   if (params.size != null) q.set('size', String(params.size))
-  const res = await fetchWithAuth(`${API}/${id}/api-calls?${q}`)
+  const res = await fetchWithAuth(`${API}/${id}/api-calls?${q}`, { signal: params.signal })
   return handleResponse(res)
 }
 
@@ -443,7 +443,7 @@ export async function getApiStats(id: string): Promise<EndpointStats[]> {
 
 export async function getLines(
   id: string,
-  params: { thread?: string; level?: string; search?: string; page?: number; size?: number } = {},
+  params: { thread?: string; level?: string; search?: string; page?: number; size?: number; signal?: AbortSignal } = {},
 ): Promise<PaginatedResponse<LogLine>> {
   const q = new URLSearchParams()
   if (params.thread) q.set('thread', params.thread)
@@ -451,7 +451,7 @@ export async function getLines(
   if (params.search) q.set('search', params.search)
   if (params.page != null) q.set('page', String(params.page))
   if (params.size != null) q.set('size', String(params.size))
-  const res = await fetchWithAuth(`${API}/${id}/lines?${q}`)
+  const res = await fetchWithAuth(`${API}/${id}/lines?${q}`, { signal: params.signal })
   return handleResponse(res)
 }
 
@@ -484,7 +484,7 @@ export async function getJobFilters(id: string): Promise<{ jobNames: string[]; t
 
 export async function getJobs(
   id: string,
-  params: { jobName?: string; thread?: string; sort?: string; page?: number; size?: number } = {},
+  params: { jobName?: string; thread?: string; sort?: string; page?: number; size?: number; signal?: AbortSignal } = {},
 ): Promise<PaginatedResponse<JobExecution>> {
   const q = new URLSearchParams()
   if (params.jobName) q.set('jobName', params.jobName)
@@ -492,7 +492,7 @@ export async function getJobs(
   if (params.sort) q.set('sort', params.sort)
   if (params.page != null) q.set('page', String(params.page))
   if (params.size != null) q.set('size', String(params.size))
-  const res = await fetchWithAuth(`${API}/${id}/jobs?${q}`)
+  const res = await fetchWithAuth(`${API}/${id}/jobs?${q}`, { signal: params.signal })
   return handleResponse(res)
 }
 
@@ -509,14 +509,14 @@ export async function getFailures(
 
 export async function getOrphanRequests(
   id: string,
-  params: { endpoint?: string; thread?: string; page?: number; size?: number } = {},
+  params: { endpoint?: string; thread?: string; page?: number; size?: number; signal?: AbortSignal } = {},
 ): Promise<PaginatedResponse<OrphanRequest>> {
   const q = new URLSearchParams()
   if (params.endpoint) q.set('endpoint', params.endpoint)
   if (params.thread) q.set('thread', params.thread)
   if (params.page != null) q.set('page', String(params.page))
   if (params.size != null) q.set('size', String(params.size))
-  const res = await fetchWithAuth(`${API}/${id}/orphan-requests?${q}`)
+  const res = await fetchWithAuth(`${API}/${id}/orphan-requests?${q}`, { signal: params.signal })
   return handleResponse(res)
 }
 
@@ -633,7 +633,7 @@ export async function getExceptionOccurrences(
 export async function getCustomFieldResults(
   id: string,
   fieldName: string,
-  params: { page?: number; size?: number; search?: string; thread?: string; sort?: string; sortDir?: string } = {},
+  params: { page?: number; size?: number; search?: string; thread?: string; sort?: string; sortDir?: string; signal?: AbortSignal } = {},
 ): Promise<PaginatedResponse<CustomFieldMatch>> {
   const q = new URLSearchParams()
   if (params.page != null) q.set('page', String(params.page))
@@ -642,7 +642,7 @@ export async function getCustomFieldResults(
   if (params.thread) q.set('thread', params.thread)
   if (params.sort) q.set('sort', params.sort)
   if (params.sortDir) q.set('sortDir', params.sortDir)
-  const res = await fetchWithAuth(`${API}/${id}/custom-fields/${encodeURIComponent(fieldName)}?${q}`)
+  const res = await fetchWithAuth(`${API}/${id}/custom-fields/${encodeURIComponent(fieldName)}?${q}`, { signal: params.signal })
   return handleResponse(res)
 }
 
