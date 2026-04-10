@@ -872,6 +872,7 @@ const ptBR: typeof en = {
       prevMark: 'Marcação anterior',
       nextMark: 'Próxima marcação',
       clearMarks: 'Limpar marcações',
+      goToLine: 'Ir para linha...',
       goToHighlight: 'Ir para linha destacada',
       copyHighlighted: 'Copiar linhas destacadas',
       clearHighlights: 'Limpar destaques',

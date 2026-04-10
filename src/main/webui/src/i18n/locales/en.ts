@@ -871,6 +871,7 @@ const en = {
       prevMark: 'Previous bookmark',
       nextMark: 'Next bookmark',
       clearMarks: 'Clear all bookmarks',
+      goToLine: 'Go to line...',
       goToHighlight: 'Go to highlighted line',
       copyHighlighted: 'Copy highlighted lines',
       clearHighlights: 'Clear highlights',

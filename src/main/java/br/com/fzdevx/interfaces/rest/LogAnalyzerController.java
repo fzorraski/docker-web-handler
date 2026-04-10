@@ -1049,7 +1049,7 @@ public class LogAnalyzerController {
 
     private Response paginatedResponse(List<?> all, int page, int size) {
         page = Math.max(0, page);
-        size = Math.clamp(size, 1, 5000);
+        size = Math.clamp(size, 1, 15000);
         int total = all.size();
         int from = Math.min(page * size, total);
         int to = Math.min(from + size, total);

@@ -872,6 +872,7 @@ const es: typeof en = {
       prevMark: 'Marcador anterior',
       nextMark: 'Siguiente marcador',
       clearMarks: 'Limpiar marcadores',
+      goToLine: 'Ir a línea...',
       goToHighlight: 'Ir a línea resaltada',
       copyHighlighted: 'Copiar líneas resaltadas',
       clearHighlights: 'Limpiar resaltados',

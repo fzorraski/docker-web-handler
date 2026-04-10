@@ -116,7 +116,7 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
   const lt = useMemo(() => getLogTheme(isDark), [isDark])
 
   const [page, setPage] = useState(0)
-  const [rowsPerPage, setRowsPerPage] = useState(500)
+  const [rowsPerPage, setRowsPerPage] = useState(1000)
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search, 300)
   const [activeSearch, setActiveSearch] = useState('') // actual value sent to API
@@ -571,6 +571,38 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
         </IconButton>
       </Tooltip>
 
+      <TextField
+        size="small"
+        placeholder={t('logAnalyzer.rawLog.goToLine')}
+        slotProps={{
+          input: {
+            sx: {
+              bgcolor: lt.searchBg, color: lt.searchText, fontSize: '0.75rem', height: 28,
+              fontFamily: 'monospace',
+              '& input::placeholder': { color: lt.searchPlaceholder, opacity: 1 },
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: lt.searchBorder },
+              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: lt.searchBorderHover },
+              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: lt.searchBorderFocus },
+            },
+          },
+          htmlInput: { inputMode: 'numeric', pattern: '[0-9]*', maxLength: 8 },
+        }}
+        sx={{ width: 100 }}
+        onInput={(e) => {
+          const input = e.target as HTMLInputElement
+          input.value = input.value.replace(/\D/g, '').slice(0, 8)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            const val = Number((e.target as HTMLInputElement).value)
+            if (val > 0 && val <= total) {
+              scrollToLine(val);
+              (e.target as HTMLInputElement).value = ''
+            }
+          }
+        }}
+      />
+
       <Typography variant="caption" sx={{ color: lt.chipInactive, fontFamily: 'monospace', fontSize: '0.7rem' }}>
         {total.toLocaleString()} {t('logAnalyzer.common.lines')}
       </Typography>
@@ -662,7 +694,7 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
     <Box ref={paginationRef}>
       <TablePagination component="div" count={total} page={page} onPageChange={(_, p) => setPage(p)}
         rowsPerPage={rowsPerPage} onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0) }}
-        rowsPerPageOptions={[100, 500, 1000, 2000, 5000]}
+        rowsPerPageOptions={[500, 1000, 2000, 5000, 10000, 15000]}
         showFirstButton showLastButton />
     </Box>
   )
