@@ -47,7 +47,8 @@ function formatTime(ts: string | null): string {
 }
 
 interface RowCustomProps {
-  lines: LogLine[]
+  getLine: (index: number) => LogLine | undefined
+  dataVersion: object // new ref each time lines change — forces react-window row re-render
   levelColor: (level: string | null) => string
   chipInactive: string
   highlightLine: number | null
@@ -59,8 +60,8 @@ interface RowCustomProps {
   highlightRange?: { from: number; to: number } | null
 }
 
-function VirtualRow({ index, style, lines, levelColor, chipInactive, highlightLine, flashLine, markedLines, onToggleMark, isDark, showTimestamp, highlightRange }: RowComponentProps<RowCustomProps>) {
-  const line = lines[index]
+function VirtualRow({ index, style, getLine, levelColor, chipInactive, highlightLine, flashLine, markedLines, onToggleMark, isDark, showTimestamp, highlightRange }: RowComponentProps<RowCustomProps>) {
+  const line = getLine(index)
   if (!line) return null
   const isMarked = markedLines.has(line.lineNumber)
   const bg = getLineBg(line.lineNumber, highlightLine, flashLine, markedLines, isDark, highlightRange)
@@ -140,6 +141,8 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
   const wrapScrollRafRef = useRef(0)
   const prevPageRef = useRef(page)
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const linesRef = useRef<LogLine[]>([])
+  const isFirstMount = useRef(true)
   const listRef = useListRef(null)
   const wrapContainerRef = useRef<HTMLDivElement>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
@@ -149,7 +152,21 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
   useEffect(() => { setActiveSearch(debouncedSearch) }, [debouncedSearch])
 
   useEffect(() => {
+    if (isFirstMount.current) {
+      isFirstMount.current = false
+    } else {
+      setPage(0)
+      setSearch('')
+      setActiveSearch('')
+      setFilterLevel(initialLevel ?? '')
+      setFilterThread(initialThread ?? '')
+      setMarkedLines(new Set())
+      setHighlightLine(null)
+      setFlashLine(null)
+      setScrollTarget(null)
+    }
     logService.getThreads(analysisId).then(setThreads).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analysisId])
 
   useEffect(() => () => {
@@ -202,14 +219,17 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
   const effectiveRowsPerPage = wordWrap ? Math.min(rowsPerPage, 1000) : rowsPerPage
 
   const { data: lines, total, loading } = usePaginatedFetch<LogLine>(
-    () => logService.getLines(analysisId, {
+    (signal) => logService.getLines(analysisId, {
       thread: filterThread || undefined,
       level: filterLevel || undefined,
       search: activeSearch || undefined,
-      page, size: effectiveRowsPerPage,
+      page, size: effectiveRowsPerPage, signal,
     }),
     [analysisId, filterThread, filterLevel, activeSearch, page, effectiveRowsPerPage],
   )
+
+  linesRef.current = lines
+  const getLine = useCallback((i: number) => linesRef.current[i], [])
 
   // Scroll to top when page changes (but not when a scrollTarget is pending)
   useEffect(() => {
@@ -231,8 +251,9 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
   // Scroll to target line after data loads (works for both highlight and bookmark navigation)
   const activeScrollTarget = scrollTarget
   useEffect(() => {
-    if (activeScrollTarget == null || lines.length === 0) return
-    const idx = lines.findIndex(l => l.lineNumber === activeScrollTarget)
+    const curLines = linesRef.current
+    if (activeScrollTarget == null || curLines.length === 0) return
+    const idx = curLines.findIndex(l => l.lineNumber === activeScrollTarget)
     if (idx === -1) return
     setScrollTarget(null)
     const align = scrollAlignRef.current
@@ -250,6 +271,7 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
       }
       onJumpComplete?.()
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeScrollTarget, scrollGen, lines, wordWrap])
 
   const levelCounts = useMemo(() => {
@@ -292,15 +314,15 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
     }
   }, [lt])
 
-  const handleCopyAll = async () => {
-    const text = lines.map(l => l.message ?? '').join('\n')
+  const handleCopyAll = useCallback(async () => {
+    const text = linesRef.current.map(l => l.message ?? '').join('\n')
     try {
       await navigator.clipboard.writeText(text)
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
       setCopySnackbar(true)
       copyTimeoutRef.current = setTimeout(() => setCopySnackbar(false), 1500)
     } catch { /* clipboard not available */ }
-  }
+  }, [])
 
   const toggleMark = useCallback((lineNumber: number) => {
     setMarkedLines(prev => {
@@ -355,35 +377,39 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
     cancelAnimationFrame(wrapScrollRafRef.current)
     wrapScrollRafRef.current = requestAnimationFrame(() => {
       const container = wrapContainerRef.current
-      if (!container || lines.length === 0) return
+      const curLines = linesRef.current
+      if (!container || curLines.length === 0) return
       const children = container.children
       for (let i = 0; i < children.length; i++) {
         const child = children[i] as HTMLElement
         if (child.offsetTop + child.offsetHeight > container.scrollTop) {
           const lineNum = Number(child.dataset.line)
           if (lineNum > 0) {
-            const idx = lines.findIndex(l => l.lineNumber === lineNum)
+            const idx = curLines.findIndex(l => l.lineNumber === lineNum)
             if (idx >= 0) firstVisibleIndexRef.current = idx
           }
           break
         }
       }
     })
-  }, [lines])
+  }, [])
 
   const toggleFullscreen = useCallback(() => {
-    const visibleLine = lines[firstVisibleIndexRef.current]?.lineNumber
+    const visibleLine = linesRef.current[firstVisibleIndexRef.current]?.lineNumber
     setFullscreen(f => !f)
     if (visibleLine != null) {
       scrollAlignRef.current = 'start'
       setScrollTarget(visibleLine)
       setScrollGen(g => g + 1)
     }
-  }, [lines])
+  }, [])
 
   const rowProps = useMemo<RowCustomProps>(
-    () => ({ lines, levelColor, chipInactive: lt.chipInactive, highlightLine, flashLine, markedLines, onToggleMark: toggleMark, isDark, showTimestamp, highlightRange }),
-    [lines, levelColor, lt.chipInactive, highlightLine, flashLine, markedLines, toggleMark, isDark, showTimestamp, highlightRange],
+    // dataVersion is a fresh object each time the memo recomputes — react-window's row memoization
+    // sees a new reference and re-renders rows, while getLine reads fresh data via linesRef
+    () => ({ getLine, dataVersion: {}, levelColor, chipInactive: lt.chipInactive, highlightLine, flashLine, markedLines, onToggleMark: toggleMark, isDark, showTimestamp, highlightRange }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lines, getLine, levelColor, lt.chipInactive, highlightLine, flashLine, markedLines, toggleMark, isDark, showTimestamp, highlightRange],
   )
 
   const wrapToggleColor = isDark ? '#4d96ff' : '#1565c0'
@@ -505,7 +531,7 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
             const from = highlightRange?.from ?? highlightLine ?? 0
             const to = highlightRange?.to ?? highlightLine ?? 0
             if (from <= 0) return
-            const text = lines.filter(l => l.lineNumber >= from && l.lineNumber <= to)
+            const text = linesRef.current.filter(l => l.lineNumber >= from && l.lineNumber <= to)
               .map(l => `${l.lineNumber}\t${l.message ?? ''}`).join('\n')
             navigator.clipboard.writeText(text)
           }} sx={{ color: '#9C27B0' }}>
