@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   getJobFilters,
   getJobs,
+  getLines,
+  getApiCalls,
+  getOrphanRequests,
+  getCustomFieldResults,
   getAnomalyDetection,
   getAnomalySignalTypes,
 } from '../services/logAnalyzerService'
@@ -96,6 +100,164 @@ describe('logAnalyzerService', () => {
       mockFetch.mockReturnValue(jsonResponse({ error: 'fail' }, false))
 
       await expect(getJobs('abc')).rejects.toThrow('fail')
+    })
+  })
+
+  // ---- getLines ----
+
+  describe('getLines', () => {
+    it('builds query params from all filter options', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 100 }))
+
+      await getLines('abc', { thread: 'main', level: 'ERROR', search: 'timeout', page: 1, size: 500 })
+
+      const url = mockFetch.mock.calls[0][0] as string
+      expect(url).toContain('thread=main')
+      expect(url).toContain('level=ERROR')
+      expect(url).toContain('search=timeout')
+      expect(url).toContain('page=1')
+      expect(url).toContain('size=500')
+    })
+
+    it('omits undefined params', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 100 }))
+
+      await getLines('abc', { page: 0, size: 100 })
+
+      const url = mockFetch.mock.calls[0][0] as string
+      expect(url).not.toContain('thread=')
+      expect(url).not.toContain('level=')
+      expect(url).not.toContain('search=')
+    })
+
+    it('passes abort signal to fetch', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 100 }))
+      const controller = new AbortController()
+
+      await getLines('abc', { page: 0, size: 100, signal: controller.signal })
+
+      const init = mockFetch.mock.calls[0][1] as RequestInit
+      expect(init.signal).toBe(controller.signal)
+    })
+
+    it('throws on error response', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ error: 'not found' }, false))
+
+      await expect(getLines('bad', {})).rejects.toThrow('not found')
+    })
+  })
+
+  // ---- getApiCalls ----
+
+  describe('getApiCalls', () => {
+    it('builds query params from all filter options', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 50 }))
+
+      await getApiCalls('abc', { endpoint: '/api/test', thread: 'http-1', search: 'err', sort: 'duration', sortDir: 'desc', page: 2, size: 50 })
+
+      const url = mockFetch.mock.calls[0][0] as string
+      expect(url).toContain('endpoint=%2Fapi%2Ftest')
+      expect(url).toContain('thread=http-1')
+      expect(url).toContain('search=err')
+      expect(url).toContain('sort=duration')
+      expect(url).toContain('sortDir=desc')
+      expect(url).toContain('page=2')
+      expect(url).toContain('size=50')
+    })
+
+    it('passes abort signal to fetch', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 50 }))
+      const controller = new AbortController()
+
+      await getApiCalls('abc', { page: 0, size: 50, signal: controller.signal })
+
+      const init = mockFetch.mock.calls[0][1] as RequestInit
+      expect(init.signal).toBe(controller.signal)
+    })
+
+    it('throws on error response', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ error: 'fail' }, false))
+
+      await expect(getApiCalls('abc')).rejects.toThrow('fail')
+    })
+  })
+
+  // ---- getOrphanRequests ----
+
+  describe('getOrphanRequests', () => {
+    it('builds query params', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 25 }))
+
+      await getOrphanRequests('abc', { endpoint: '/api/orders', thread: 'http-2', page: 1, size: 25 })
+
+      const url = mockFetch.mock.calls[0][0] as string
+      expect(url).toContain('endpoint=%2Fapi%2Forders')
+      expect(url).toContain('thread=http-2')
+      expect(url).toContain('page=1')
+      expect(url).toContain('size=25')
+    })
+
+    it('passes abort signal to fetch', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 25 }))
+      const controller = new AbortController()
+
+      await getOrphanRequests('abc', { page: 0, size: 25, signal: controller.signal })
+
+      const init = mockFetch.mock.calls[0][1] as RequestInit
+      expect(init.signal).toBe(controller.signal)
+    })
+
+    it('throws on error response', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ error: 'fail' }, false))
+
+      await expect(getOrphanRequests('abc')).rejects.toThrow('fail')
+    })
+  })
+
+  // ---- getCustomFieldResults ----
+
+  describe('getCustomFieldResults', () => {
+    it('builds query params with field name', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 50 }))
+
+      await getCustomFieldResults('abc', 'Entity Changes', { search: 'INSERT', thread: 'main', sort: 'line', sortDir: 'asc', page: 0, size: 50 })
+
+      const url = mockFetch.mock.calls[0][0] as string
+      expect(url).toContain('/custom-fields/Entity%20Changes')
+      expect(url).toContain('search=INSERT')
+      expect(url).toContain('thread=main')
+      expect(url).toContain('sort=line')
+      expect(url).toContain('sortDir=asc')
+    })
+
+    it('passes abort signal to fetch', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 50 }))
+      const controller = new AbortController()
+
+      await getCustomFieldResults('abc', 'Test', { page: 0, size: 50, signal: controller.signal })
+
+      const init = mockFetch.mock.calls[0][1] as RequestInit
+      expect(init.signal).toBe(controller.signal)
+    })
+
+    it('throws on error response', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ error: 'fail' }, false))
+
+      await expect(getCustomFieldResults('abc', 'Test')).rejects.toThrow('fail')
+    })
+  })
+
+  // ---- getJobs signal passthrough ----
+
+  describe('getJobs signal', () => {
+    it('passes abort signal to fetch', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 25 }))
+      const controller = new AbortController()
+
+      await getJobs('abc', { page: 0, size: 25, signal: controller.signal })
+
+      const init = mockFetch.mock.calls[0][1] as RequestInit
+      expect(init.signal).toBe(controller.signal)
     })
   })
 
