@@ -60,47 +60,45 @@ interface RowCustomProps {
   highlightRange?: { from: number; to: number } | null
 }
 
+const ROW_LINE_HEIGHT = { lineHeight: `${ROW_HEIGHT}px` } as const
+const ROW_MESSAGE_SX = { whiteSpace: 'pre', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, ...ROW_LINE_HEIGHT } as const
+const ROW_TIMESTAMP_SX = { minWidth: 100, pr: 1, flexShrink: 0, opacity: 0.7, ...ROW_LINE_HEIGHT } as const
+const ROW_HOVER_DARK = { bgcolor: 'rgba(255,255,255,0.03)' } as const
+const ROW_HOVER_LIGHT = { bgcolor: 'rgba(0,0,0,0.02)' } as const
+
 function VirtualRow({ index, style, getLine, levelColor, chipInactive, highlightLine, flashLine, markedLines, onToggleMark, isDark, showTimestamp, highlightRange }: RowComponentProps<RowCustomProps>) {
   const line = getLine(index)
   if (!line) return null
   const isMarked = markedLines.has(line.lineNumber)
   const bg = getLineBg(line.lineNumber, highlightLine, flashLine, markedLines, isDark, highlightRange)
+  const markColor = isDark ? '#00BCD4' : '#009688'
   return (
     <Box component="div" style={style} data-line={line.lineNumber} sx={{
       display: 'flex', px: 2,
       bgcolor: bg,
       borderLeft: isMarked ? '3px solid' : '3px solid transparent',
-      borderColor: isMarked ? (isDark ? '#00BCD4' : '#009688') : 'transparent',
-      '&:hover': { bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' },
+      borderColor: isMarked ? markColor : 'transparent',
+      '&:hover': isDark ? ROW_HOVER_DARK : ROW_HOVER_LIGHT,
     }}>
       <Box
         sx={{
           minWidth: 55, textAlign: 'right', pr: 1.5, userSelect: 'none', flexShrink: 0,
-          lineHeight: `${ROW_HEIGHT}px`, cursor: 'pointer',
-          color: isMarked ? (isDark ? '#00BCD4' : '#009688') : chipInactive,
+          cursor: 'pointer',
+          color: isMarked ? markColor : chipInactive,
           opacity: isMarked ? 1 : 0.5,
-          '&:hover': { opacity: 1, color: isDark ? '#00BCD4' : '#009688' },
+          '&:hover': { opacity: 1, color: markColor },
+          ...ROW_LINE_HEIGHT,
         }}
         onClick={() => onToggleMark(line.lineNumber)}
       >
         {line.lineNumber}
       </Box>
       {showTimestamp && (
-        <Box sx={{
-          minWidth: 100, pr: 1, flexShrink: 0, lineHeight: `${ROW_HEIGHT}px`,
-          color: chipInactive, opacity: 0.7,
-        }}>
+        <Box sx={{ color: chipInactive, ...ROW_TIMESTAMP_SX }}>
           {formatTime(line.timestamp)}
         </Box>
       )}
-      <Box sx={{
-        color: levelColor(line.level),
-        whiteSpace: 'pre',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        flex: 1,
-        lineHeight: `${ROW_HEIGHT}px`,
-      }}>
+      <Box sx={{ color: levelColor(line.level), ...ROW_MESSAGE_SX }}>
         {line.message ?? ''}
       </Box>
     </Box>
@@ -230,6 +228,8 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
 
   linesRef.current = lines
   const getLine = useCallback((i: number) => linesRef.current[i], [])
+  // New ref each time lines changes — forces react-window row re-render since getLine is stable
+  const dataVersion = useMemo(() => ({}), [lines])
 
   // Scroll to top when page changes (but not when a scrollTarget is pending)
   useEffect(() => {
@@ -405,11 +405,8 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
   }, [])
 
   const rowProps = useMemo<RowCustomProps>(
-    // dataVersion is a fresh object each time the memo recomputes — react-window's row memoization
-    // sees a new reference and re-renders rows, while getLine reads fresh data via linesRef
-    () => ({ getLine, dataVersion: {}, levelColor, chipInactive: lt.chipInactive, highlightLine, flashLine, markedLines, onToggleMark: toggleMark, isDark, showTimestamp, highlightRange }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lines, getLine, levelColor, lt.chipInactive, highlightLine, flashLine, markedLines, toggleMark, isDark, showTimestamp, highlightRange],
+    () => ({ getLine, dataVersion, levelColor, chipInactive: lt.chipInactive, highlightLine, flashLine, markedLines, onToggleMark: toggleMark, isDark, showTimestamp, highlightRange }),
+    [getLine, dataVersion, levelColor, lt.chipInactive, highlightLine, flashLine, markedLines, toggleMark, isDark, showTimestamp, highlightRange],
   )
 
   const wrapToggleColor = isDark ? '#4d96ff' : '#1565c0'
