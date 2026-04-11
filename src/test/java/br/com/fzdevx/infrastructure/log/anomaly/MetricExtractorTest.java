@@ -1,6 +1,7 @@
 package br.com.fzdevx.infrastructure.log.anomaly;
 
 import br.com.fzdevx.domain.model.anomaly.BucketStats;
+import br.com.fzdevx.domain.shared.MetricExtractor;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

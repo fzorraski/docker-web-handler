@@ -1,5 +1,6 @@
 package br.com.fzdevx.infrastructure.log.anomaly;
 
+import br.com.fzdevx.application.port.SignalExtractionPort;
 import br.com.fzdevx.domain.model.ApiCallPair;
 import br.com.fzdevx.domain.model.JobExecution;
 import br.com.fzdevx.domain.model.LogLine;
@@ -13,7 +14,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @ApplicationScoped
-public class SignalExtractor {
+public class SignalExtractor implements SignalExtractionPort {
 
     private static final int MAX_SIGNALS_PER_TYPE = 50_000;
 

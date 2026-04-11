@@ -2,6 +2,7 @@ package br.com.fzdevx.infrastructure.log.anomaly;
 
 import br.com.fzdevx.domain.model.anomaly.AnomalyResult;
 import br.com.fzdevx.domain.model.anomaly.BucketStats;
+import br.com.fzdevx.domain.shared.MetricExtractor;
 
 import java.util.ArrayList;
 import java.util.List;

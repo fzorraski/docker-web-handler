@@ -1,5 +1,6 @@
 package br.com.fzdevx.infrastructure.log;
 
+import br.com.fzdevx.application.port.CriticalBurstPort;
 import br.com.fzdevx.domain.model.CriticalBurst;
 import br.com.fzdevx.domain.model.CriticalIssue;
 import br.com.fzdevx.domain.model.CriticalIssueSummary;
@@ -13,7 +14,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 @ApplicationScoped
-public class CriticalIssueDetector {
+public class CriticalIssueDetector implements CriticalBurstPort {
 
     private static final int DEFAULT_MAX_MATCHES = 10_000;
 
@@ -182,10 +183,15 @@ public class CriticalIssueDetector {
     int burstWindowMinutes;
 
     public List<CriticalIssueSummary> detect(List<LogLine> lines) {
-        return detect(lines, List.of());
+        return detect(lines, List.of(), null);
     }
 
     public List<CriticalIssueSummary> detect(List<LogLine> lines, List<String> exclusions) {
+        return detect(lines, exclusions, null);
+    }
+
+    public List<CriticalIssueSummary> detect(List<LogLine> lines, List<String> exclusions,
+                                              java.util.concurrent.atomic.AtomicBoolean cancelled) {
         if (!enabled) {
             return List.of();
         }
@@ -209,10 +215,14 @@ public class CriticalIssueDetector {
         // category -> severity (use highest severity found)
         var severities = new LinkedHashMap<String, String>();
         int totalMatches = 0;
+        int lineIndex = 0;
 
         for (LogLine line : lines) {
             if (totalMatches >= maxMatches) {
                 break;
+            }
+            if (cancelled != null && (++lineIndex % 5000 == 0) && cancelled.get()) {
+                throw new java.util.concurrent.CancellationException("Analysis cancelled");
             }
 
             String msg = line.message();

@@ -3,6 +3,7 @@ package br.com.fzdevx.infrastructure.log.anomaly;
 import br.com.fzdevx.domain.model.anomaly.BucketStats;
 import br.com.fzdevx.domain.model.anomaly.Signal;
 import br.com.fzdevx.domain.model.anomaly.SignalType;
+import br.com.fzdevx.domain.shared.TimeBucketAggregator;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;

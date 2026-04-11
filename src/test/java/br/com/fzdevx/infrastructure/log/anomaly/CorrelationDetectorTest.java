@@ -2,6 +2,7 @@ package br.com.fzdevx.infrastructure.log.anomaly;
 
 import br.com.fzdevx.domain.model.anomaly.AnomalyResult;
 import br.com.fzdevx.domain.model.anomaly.CorrelatedAnomaly;
+import br.com.fzdevx.domain.shared.CorrelationDetector;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
