@@ -69,6 +69,19 @@ public class LogAnalyzerSseController {
         }
         try {
             AnalyzeLogFileRequest request = logAnalyzerController.parseUploadForm(input);
+            var duplicates = analyzeLogFileUseCase.findDuplicateFilenames(
+                    request.getFilenames(), broadcaster.getActiveFilenames());
+            if (!duplicates.isEmpty()) {
+                request.cleanupTempFiles();
+                return Response.status(Response.Status.CONFLICT)
+                        .entity(Map.of("error", "File(s) already analyzed: " + String.join(", ", duplicates),
+                                "duplicates", duplicates))
+                        .build();
+            }
+            // Register filenames as in-progress immediately to close the TOCTOU window
+            // between prepare and stream. broadcastCompleted in streamAnalysis handles cleanup.
+            String joinedFilenames = String.join(", ", request.getFilenames());
+            broadcaster.broadcastStarted("", joinedFilenames, request.getFilenames());
             String ticket = requestStash.stashLogAnalysis(request);
             return Response.ok(Map.of("ticket", ticket)).build();
         } catch (IllegalArgumentException e) {
@@ -95,7 +108,7 @@ public class LogAnalyzerSseController {
         }
 
         String filenames = String.join(", ", request.getFilenames());
-        broadcaster.broadcastStarted("", filenames);
+        // broadcastStarted already called at prepare time — no duplicate call here
 
         boolean[] succeeded = {false};
         String[] analysisId = {null};
@@ -118,7 +131,10 @@ public class LogAnalyzerSseController {
                     var analysis = analyzeLogFileUseCase.get(analysisId[0]);
                     if (analysis != null) analysis.setLabel(lbl.length() > 50 ? lbl.substring(0, 50) : lbl);
                 }
-                broadcaster.broadcastCompleted("", filenames, analysisId[0]);
+                broadcaster.broadcastCompleted("", filenames, analysisId[0], request.getFilenames());
+            } else {
+                // Cancelled or failed — still broadcast so all clients clear the "in progress" banner
+                broadcaster.broadcastCompleted("", filenames, "", request.getFilenames());
             }
             request.cleanupTempFiles();
             SseHelper.closeSink(sink);

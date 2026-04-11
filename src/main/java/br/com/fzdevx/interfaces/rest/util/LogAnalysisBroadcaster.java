@@ -13,6 +13,7 @@ import jakarta.ws.rs.sse.SseEventSink;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
@@ -24,6 +25,8 @@ public class LogAnalysisBroadcaster {
 
     private final ConcurrentHashMap<SseEventSink, Sse> clients = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, ViewerEntry> viewerMap = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicInteger> activeAnalyses = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicInteger> activeFilenames = new ConcurrentHashMap<>();
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "log-analysis-viewer-cleanup");
         t.setDaemon(true);
@@ -39,6 +42,17 @@ public class LogAnalysisBroadcaster {
 
     public void register(SseEventSink sink, Sse sse) {
         clients.put(sink, sse);
+        // Send current active analyses so late joiners see in-progress banners
+        for (var entry : activeAnalyses.entrySet()) {
+            if (entry.getValue().get() <= 0) continue;
+            try {
+                sink.send(sse.newEventBuilder()
+                        .name("analysis-started")
+                        .data(String.class, toJson(Map.of("user", "", "filenames", entry.getKey())))
+                        .mediaType(MediaType.TEXT_PLAIN_TYPE)
+                        .build());
+            } catch (IllegalStateException ignored) { break; }
+        }
         Map<String, Long> counts = getViewerCounts();
         if (!counts.isEmpty()) {
             try {
@@ -60,16 +74,42 @@ public class LogAnalysisBroadcaster {
         scheduleViewerBroadcast();
     }
 
+    public Set<String> getActiveFilenames() {
+        var result = new java.util.HashSet<String>();
+        activeFilenames.forEach((name, count) -> {
+            if (count.get() > 0) result.add(name);
+        });
+        return result;
+    }
+
+    public Map<String, Integer> getActiveAnalyses() {
+        var result = new java.util.HashMap<String, Integer>();
+        activeAnalyses.forEach((k, v) -> {
+            int count = v.get();
+            if (count > 0) result.put(k, count);
+        });
+        return Map.copyOf(result);
+    }
+
     public Map<String, Long> getViewerCounts() {
         return viewerMap.values().stream()
                 .collect(Collectors.groupingBy(ViewerEntry::analysisId, Collectors.counting()));
     }
 
-    public void broadcastStarted(String user, String filenames) {
+    public void broadcastStarted(String user, String filenames, java.util.List<String> individualFilenames) {
+        activeAnalyses.computeIfAbsent(filenames, _ -> new java.util.concurrent.atomic.AtomicInteger(0)).incrementAndGet();
+        for (String name : individualFilenames) {
+            activeFilenames.computeIfAbsent(name, _ -> new java.util.concurrent.atomic.AtomicInteger(0)).incrementAndGet();
+        }
         sendToAll("analysis-started", toJson(Map.of("user", user, "filenames", filenames)));
     }
 
-    public void broadcastCompleted(String user, String filenames, String analysisId) {
+    public void broadcastCompleted(String user, String filenames, String analysisId,
+                                   java.util.List<String> individualFilenames) {
+        activeAnalyses.computeIfPresent(filenames, (_, count) -> count.decrementAndGet() <= 0 ? null : count);
+        for (String name : individualFilenames) {
+            activeFilenames.computeIfPresent(name, (_, count) -> count.decrementAndGet() <= 0 ? null : count);
+        }
         sendToAll("analysis-completed",
                 toJson(Map.of("user", user, "filenames", filenames, "analysisId", analysisId)));
     }
@@ -136,5 +176,7 @@ public class LogAnalysisBroadcaster {
         });
         clients.clear();
         viewerMap.clear();
+        activeAnalyses.clear();
+        activeFilenames.clear();
     }
 }
