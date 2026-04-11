@@ -140,7 +140,7 @@ public class AnalyzeLogFileUseCase {
                 eventSink.accept(ContainerEvent.info("Custom Fields", "Extracting custom fields..."));
                 checkCancelled(cancelled);
                 analysis.setCustomFieldResults(
-                        customFieldExtractorPort.extract(analysis.getAllLines(), preset.customFields())
+                        customFieldExtractorPort.extract(analysis.getAllLines(), preset.customFields(), cancelled)
                 );
                 eventSink.accept(ContainerEvent.info("Custom Fields",
                         "Custom fields: " + analysis.getCustomFieldResults().size() + " field(s) processed"));
@@ -149,19 +149,19 @@ public class AnalyzeLogFileUseCase {
             if (options.criticalIssues()) {
                 eventSink.accept(ContainerEvent.info("Critical Issues", "Detecting critical issues..."));
                 checkCancelled(cancelled);
-                analysis.setCriticalIssues(criticalIssueDetector.detect(analysis.getAllLines(), preset.criticalIssueExclusions()));
+                analysis.setCriticalIssues(criticalIssueDetector.detect(analysis.getAllLines(), preset.criticalIssueExclusions(), cancelled));
             }
 
             if (options.npeAnalysis()) {
                 eventSink.accept(ContainerEvent.info("NPE Analysis", "Analyzing NullPointerExceptions..."));
                 checkCancelled(cancelled);
-                analysis.setNpeAnalysis(npeAnalyzer.analyze(analysis.getAllLines()));
+                analysis.setNpeAnalysis(npeAnalyzer.analyze(analysis.getAllLines(), cancelled));
             }
 
             if (options.exceptionAnalysis()) {
                 eventSink.accept(ContainerEvent.info("Exception Analysis", "Analyzing exceptions..."));
                 checkCancelled(cancelled);
-                analysis.setExceptionAnalysis(exceptionAnalyzer.analyze(analysis.getAllLines()));
+                analysis.setExceptionAnalysis(exceptionAnalyzer.analyze(analysis.getAllLines(), cancelled));
             }
 
             analyses.put(analysis.getId(), new AnalysisEntry(analysis, Instant.now()));
@@ -354,6 +354,19 @@ public class AnalyzeLogFileUseCase {
 
     public boolean delete(String id) {
         return analyses.remove(id) != null;
+    }
+
+    /**
+     * Returns filenames from the given list that already exist in a completed analysis
+     * or are currently being analyzed (in-progress).
+     */
+    public List<String> findDuplicateFilenames(List<String> filenames, Set<String> inProgressFilenames) {
+        Set<String> existing = new java.util.HashSet<>(inProgressFilenames);
+        analyses.values().stream()
+                .flatMap(e -> e.analysis.getSourceFiles().stream())
+                .map(LogAnalysis.SourceFile::filename)
+                .forEach(existing::add);
+        return filenames.stream().filter(existing::contains).toList();
     }
 
     private void evictExpired() {

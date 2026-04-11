@@ -32,6 +32,12 @@ public class CustomFieldExtractor implements CustomFieldExtractorPort {
 
     @Override
     public List<CustomFieldResult> extract(List<LogLine> lines, List<LogPreset.CustomField> customFields) {
+        return extract(lines, customFields, null);
+    }
+
+    @Override
+    public List<CustomFieldResult> extract(List<LogLine> lines, List<LogPreset.CustomField> customFields,
+                                           java.util.concurrent.atomic.AtomicBoolean cancelled) {
         if (customFields == null || customFields.isEmpty()) {
             return List.of();
         }
@@ -68,7 +74,11 @@ public class CustomFieldExtractor implements CustomFieldExtractorPort {
         }
 
         // Single pass over all lines
+        int lineIndex = 0;
         for (LogLine line : lines) {
+            if (cancelled != null && (++lineIndex % 5000 == 0) && cancelled.get()) {
+                throw new java.util.concurrent.CancellationException("Analysis cancelled");
+            }
             if (line.message() == null) continue;
             for (int i = 0; i < compiledFields.size(); i++) {
                 CompiledField cf = compiledFields.get(i);

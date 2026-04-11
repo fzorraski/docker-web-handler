@@ -32,6 +32,11 @@ public class NpeAnalyzer {
     int maxOccurrences;
 
     public List<NpeLocationSummary> analyze(List<LogLine> lines) {
+        return analyze(lines, null);
+    }
+
+    public List<NpeLocationSummary> analyze(List<LogLine> lines,
+                                             java.util.concurrent.atomic.AtomicBoolean cancelled) {
         if (!enabled || lines == null || lines.isEmpty()) {
             return List.of();
         }
@@ -47,6 +52,9 @@ public class NpeAnalyzer {
         for (int i = 0; i < lines.size(); i++) {
             if (totalOccurrences >= maxOccurrences) {
                 break;
+            }
+            if (cancelled != null && (i % 5000 == 0) && cancelled.get()) {
+                throw new java.util.concurrent.CancellationException("Analysis cancelled");
             }
 
             LogLine line = lines.get(i);

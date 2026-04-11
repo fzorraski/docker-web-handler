@@ -95,7 +95,7 @@ public class LogFileParser implements LogAnalysisPort {
         if (apiCallPattern != null) {
             progressSink.accept(ContainerEvent.info("API Calls", "Pairing API calls..."));
             checkCancelled(cancelled);
-            var pairingResult = pairApiCalls(allLines, apiCallPattern, slowThresholdMs, redactionPatterns);
+            var pairingResult = pairApiCalls(allLines, apiCallPattern, slowThresholdMs, redactionPatterns, cancelled);
             apiCalls = pairingResult.pairs;
             orphanRequests = pairingResult.orphans;
             progressSink.accept(ContainerEvent.info("API Calls", "Found " + apiCalls.size() + " API call pairs" +
@@ -106,7 +106,7 @@ public class LogFileParser implements LogAnalysisPort {
         if (jobStartPattern != null) {
             progressSink.accept(ContainerEvent.info("Jobs", "Pairing job executions..."));
             checkCancelled(cancelled);
-            jobExecutions = pairJobExecutions(allLines, jobStartPattern, jobEndPattern);
+            jobExecutions = pairJobExecutions(allLines, jobStartPattern, jobEndPattern, cancelled);
             progressSink.accept(ContainerEvent.info("Jobs", "Found " + jobExecutions.size() + " job executions"));
         }
 
@@ -114,7 +114,7 @@ public class LogFileParser implements LogAnalysisPort {
         if (failurePattern != null) {
             progressSink.accept(ContainerEvent.info("Failures", "Detecting repeated failures..."));
             checkCancelled(cancelled);
-            repeatedFailures = detectRepeatedFailures(allLines, failurePattern);
+            repeatedFailures = detectRepeatedFailures(allLines, failurePattern, cancelled);
             progressSink.accept(ContainerEvent.info("Failures", "Found " + repeatedFailures.size() + " repeated failures"));
         }
 
@@ -166,7 +166,7 @@ public class LogFileParser implements LogAnalysisPort {
     }
 
     private void checkCancelled(AtomicBoolean cancelled) {
-        if (cancelled.get()) throw new CancellationException("Analysis cancelled");
+        if (cancelled != null && cancelled.get()) throw new CancellationException("Analysis cancelled");
     }
 
     private void parseFile(Path file, String filename, Pattern logLinePattern,
@@ -230,14 +230,17 @@ public class LogFileParser implements LogAnalysisPort {
     private record PairingResult(List<ApiCallPair> pairs, List<OrphanRequest> orphans) {}
 
     private PairingResult pairApiCalls(List<LogLine> lines, Pattern apiCallPattern,
-                                              int slowThresholdMs, List<Map.Entry<Pattern, String>> redactionPatterns) {
+                                              int slowThresholdMs, List<Map.Entry<Pattern, String>> redactionPatterns,
+                                              AtomicBoolean cancelled) {
         // Key: thread + "|" + endpoint + "|" + correlationId (or empty)
         Map<String, Deque<PendingRequest>> pendingByCorrelation = new HashMap<>();
         // Key: thread + "|" + endpoint (for calls without correlationId — FIFO queue)
         Map<String, Deque<PendingRequest>> pendingByThreadEndpoint = new HashMap<>();
         List<ApiCallPair> pairs = new ArrayList<>();
+        int lineIndex = 0;
 
         for (LogLine line : lines) {
+            if ((++lineIndex % 5000 == 0)) checkCancelled(cancelled);
             if (line.message() == null) continue;
             Matcher m = apiCallPattern.matcher(line.message());
             if (!m.matches()) continue;
@@ -341,12 +344,15 @@ public class LogFileParser implements LogAnalysisPort {
         return queue.poll();
     }
 
-    private List<JobExecution> pairJobExecutions(List<LogLine> lines, Pattern startPattern, Pattern endPattern) {
+    private List<JobExecution> pairJobExecutions(List<LogLine> lines, Pattern startPattern, Pattern endPattern,
+                                                    AtomicBoolean cancelled) {
         // Key: thread + "|" + jobName
         Map<String, Deque<PendingJob>> pending = new HashMap<>();
         List<JobExecution> executions = new ArrayList<>();
+        int lineIndex = 0;
 
         for (LogLine line : lines) {
+            if ((++lineIndex % 5000 == 0)) checkCancelled(cancelled);
             if (line.message() == null) continue;
 
             Matcher startMatcher = startPattern.matcher(line.message());
@@ -382,12 +388,15 @@ public class LogFileParser implements LogAnalysisPort {
         return executions;
     }
 
-    private List<RepeatedFailure> detectRepeatedFailures(List<LogLine> lines, Pattern failurePattern) {
+    private List<RepeatedFailure> detectRepeatedFailures(List<LogLine> lines, Pattern failurePattern,
+                                                            AtomicBoolean cancelled) {
         // Key: entityId + "|" + reason
         Map<String, List<RepeatedFailure.FailureDetail>> grouped = new LinkedHashMap<>();
         Map<String, String> entityReasonMap = new LinkedHashMap<>();
+        int lineIndex = 0;
 
         for (LogLine line : lines) {
+            if ((++lineIndex % 5000 == 0)) checkCancelled(cancelled);
             if (line.message() == null) continue;
             Matcher m = failurePattern.matcher(line.message());
             if (m.find()) {
