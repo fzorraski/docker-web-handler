@@ -3,7 +3,7 @@ import {
   Box, Typography, Button, Paper, Tabs, Tab,
   Chip, IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
   Stack, Dialog, DialogTitle, DialogContent, DialogActions,
-  Alert, AlertTitle, LinearProgress, Tooltip, Checkbox,
+  Alert, AlertTitle, LinearProgress, Tooltip, Checkbox, CircularProgress,
   alpha, useTheme,
 } from '@mui/material'
 import {
@@ -72,7 +72,11 @@ export default function LogAnalyzerPage() {
   const { t } = useTranslation()
   const { notify } = useNotification()
   const theme = useTheme()
-  const clientTokenRef = useRef(crypto.randomUUID())
+  const clientTokenRef = useRef(
+    typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function'
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  )
 
   const [presets, setPresets] = useState<LogPreset[]>([])
   const [defaultPreset, setDefaultPreset] = useState('WILDFLY')
@@ -316,10 +320,14 @@ export default function LogAnalyzerPage() {
           }
           notify(t('logAnalyzer.upload.success'), 'success')
           setPendingFiles([])
+          setCancelling(false)
+          setAnalysisTicket(null)
           sse.reset()
         },
         () => {
           setPendingFiles([])
+          setCancelling(false)
+          setAnalysisTicket(null)
         },
       )
     } catch (err) {
@@ -351,8 +359,13 @@ export default function LogAnalyzerPage() {
     setPendingAnalysisOptions(null)
   }, [])
 
+  const [cancelling, setCancelling] = useState(false)
+
   const handleCancelAnalysis = useCallback(() => {
-    if (analysisTicket) cancelLogAnalysis(analysisTicket)
+    if (analysisTicket) {
+      setCancelling(true)
+      cancelLogAnalysis(analysisTicket)
+    }
   }, [analysisTicket])
 
   const handleDeleteClick = useCallback((id: string, label: string) => {
@@ -570,18 +583,20 @@ export default function LogAnalyzerPage() {
 
       {/* SSE progress dialog */}
       <Dialog open={sse.isRunning || (sse.events.length > 0 && !sse.isDone)} maxWidth="sm" fullWidth
-        onClose={(_e, reason) => { if (reason !== 'backdropClick' || !sse.isRunning) { sse.reset() } }}>
+        onClose={(_e, reason) => { if (reason !== 'backdropClick' || !sse.isRunning) { sse.reset(); setCancelling(false) } }}>
         <DialogTitle>{t('logAnalyzer.upload.analyzing')}</DialogTitle>
         <DialogContent>
           <OperationProgress events={sse.events} steps={LOG_ANALYSIS_STEPS} />
         </DialogContent>
         <DialogActions>
           {sse.isRunning ? (
-            <Button color="error" startIcon={<Cancel />} onClick={handleCancelAnalysis}>
-              {t('logAnalyzer.upload.cancel')}
+            <Button color="error" disabled={cancelling}
+              startIcon={cancelling ? <CircularProgress size={18} color="inherit" /> : <Cancel />}
+              onClick={handleCancelAnalysis}>
+              {cancelling ? t('common.cancelling') : t('logAnalyzer.upload.cancel')}
             </Button>
           ) : (
-            <Button variant="contained" onClick={() => sse.reset()}>
+            <Button variant="contained" onClick={() => { sse.reset(); setCancelling(false) }}>
               {t('logAnalyzer.upload.close')}
             </Button>
           )}
