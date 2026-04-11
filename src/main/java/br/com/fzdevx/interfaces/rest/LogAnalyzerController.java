@@ -1,40 +1,34 @@
+/**
+ * Layer: interfaces/rest (presentation)
+ * SOLID: S (single responsibility — HTTP routing and response mapping only, zero business logic),
+ *        D (depends on application use cases, not infrastructure)
+ * Behavior: identical to original — all logic moved to use cases and helpers
+ */
 package br.com.fzdevx.interfaces.rest;
 
-import br.com.fzdevx.application.dto.AnalysisOptions;
 import br.com.fzdevx.application.dto.AnalyzeLogFileRequest;
-import br.com.fzdevx.application.usecase.AnalyzeContainerLogsUseCase;
-import br.com.fzdevx.application.usecase.AnalyzeLogFileUseCase;
+import br.com.fzdevx.application.dto.PaginatedResult;
+import br.com.fzdevx.application.usecase.*;
 import br.com.fzdevx.domain.model.*;
 import br.com.fzdevx.domain.model.anomaly.*;
 import br.com.fzdevx.domain.shared.InputValidator;
-import br.com.fzdevx.domain.shared.PerformanceInsightsCalculator;
 import br.com.fzdevx.infrastructure.config.LogPresetProvider;
+import br.com.fzdevx.interfaces.rest.util.AnalysisSummaryMapper;
 import br.com.fzdevx.interfaces.rest.util.ContentDispositionHelper;
-import br.com.fzdevx.infrastructure.log.CriticalIssueDetector;
-import br.com.fzdevx.infrastructure.log.HtmlReportGenerator;
-import br.com.fzdevx.infrastructure.log.anomaly.AnomalyDetectorService;
-import br.com.fzdevx.infrastructure.log.anomaly.CorrelationDetector;
-import br.com.fzdevx.infrastructure.log.anomaly.MetricExtractor;
-import br.com.fzdevx.infrastructure.log.anomaly.SignalExtractor;
-import br.com.fzdevx.infrastructure.log.anomaly.TimeBucketAggregator;
+import br.com.fzdevx.interfaces.rest.util.UploadFormParser;
 import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
-import org.jboss.resteasy.plugins.providers.multipart.InputPart;
 import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.io.InputStream;
-import java.nio.file.Files;
 import java.time.format.DateTimeParseException;
 import java.util.*;
-import java.util.regex.PatternSyntaxException;
-import java.util.stream.Collectors;
 
 @Path("/logs/analyzer")
 public class LogAnalyzerController {
@@ -51,13 +45,46 @@ public class LogAnalyzerController {
     LogPresetProvider logPresetProvider;
 
     @Inject
-    CriticalIssueDetector criticalIssueDetector;
+    QueryApiCallsUseCase queryApiCallsUseCase;
 
     @Inject
-    SignalExtractor signalExtractor;
+    ExportApiStatsUseCase exportApiStatsUseCase;
 
     @Inject
-    AnomalyDetectorService anomalyDetectorService;
+    GetPerformanceInsightsUseCase getPerformanceInsightsUseCase;
+
+    @Inject
+    QueryLogLinesUseCase queryLogLinesUseCase;
+
+    @Inject
+    GetThreadSummaryUseCase getThreadSummaryUseCase;
+
+    @Inject
+    QueryJobExecutionsUseCase queryJobExecutionsUseCase;
+
+    @Inject
+    QueryOrphanRequestsUseCase queryOrphanRequestsUseCase;
+
+    @Inject
+    QueryCriticalIssuesUseCase queryCriticalIssuesUseCase;
+
+    @Inject
+    QueryNpeAnalysisUseCase queryNpeAnalysisUseCase;
+
+    @Inject
+    QueryExceptionAnalysisUseCase queryExceptionAnalysisUseCase;
+
+    @Inject
+    QueryCustomFieldsUseCase queryCustomFieldsUseCase;
+
+    @Inject
+    DetectAnomaliesUseCase detectAnomaliesUseCase;
+
+    @Inject
+    GetSystemHealthUseCase getSystemHealthUseCase;
+
+    @Inject
+    GenerateReportUseCase generateReportUseCase;
 
     @Inject
     br.com.fzdevx.interfaces.rest.util.LogAnalysisBroadcaster logAnalysisBroadcaster;
@@ -88,7 +115,7 @@ public class LogAnalyzerController {
     public Response getStatus() {
         return Response.ok(Map.of(
                 "enabled", enabled,
-                "presets", logPresetProvider.allPresets().stream().map(this::presetToMap).toList(),
+                "presets", logPresetProvider.allPresets().stream().map(AnalysisSummaryMapper::presetToMap).toList(),
                 "defaultPreset", defaultPresetName,
                 "containerTail", defaultContainerTail,
                 "maxFiles", analyzeLogFileUseCase.getMaxFiles(),
@@ -106,6 +133,14 @@ public class LogAnalyzerController {
         AnalyzeLogFileRequest request = null;
         try {
             request = parseUploadForm(input);
+            var duplicates = analyzeLogFileUseCase.findDuplicateFilenames(
+                    request.getFilenames(), logAnalysisBroadcaster.getActiveFilenames());
+            if (!duplicates.isEmpty()) {
+                return Response.status(Response.Status.CONFLICT)
+                        .entity(Map.of("error", "File(s) already analyzed: " + String.join(", ", duplicates),
+                                "duplicates", duplicates))
+                        .build();
+            }
             var result = analyzeLogFileUseCase.analyze(
                     request.getTempFiles(), request.getFilenames(),
                     request.getPreset(), request.getSlowThresholdMs(), request.getOptions());
@@ -116,7 +151,7 @@ public class LogAnalyzerController {
             if (result.evictedId() != null) {
                 logAnalysisBroadcaster.broadcastDeleted(result.evictedId());
             }
-            return Response.ok(analysisSummaryMap(result.analysis())).build();
+            return Response.ok(AnalysisSummaryMapper.toSummaryMap(result.analysis())).build();
         } catch (IllegalArgumentException e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", e.getMessage())).build();
@@ -135,102 +170,8 @@ public class LogAnalyzerController {
      * Throws IllegalArgumentException for validation errors.
      */
     AnalyzeLogFileRequest parseUploadForm(MultipartFormDataInput input) throws Exception {
-        Map<String, List<InputPart>> form = input.getFormDataMap();
-
-        String label = extractString(form, "label");
-        String presetName = extractString(form, "preset");
-        LogPreset basePreset = presetName != null ? logPresetProvider.byName(presetName) : logPresetProvider.byName(defaultPresetName);
-
-        String customLogLineRegex = extractString(form, "logLineRegex");
-        String customApiCallRegex = extractString(form, "apiCallRegex");
-        String customTimestampFormat = extractString(form, "timestampFormat");
-        String customJobStartRegex = extractString(form, "jobStartRegex");
-        String customJobEndRegex = extractString(form, "jobEndRegex");
-        String customFailureRegex = extractString(form, "failureRegex");
-        String customSensitiveFields = extractString(form, "sensitiveFieldNames");
-        String customFieldsJson = extractString(form, "customFields");
-        String customCriticalIssueExclusions = extractString(form, "criticalIssueExclusions");
-
-        List<LogPreset.CustomField> uploadCustomFields = parseCustomFieldsJson(customFieldsJson);
-        List<LogPreset.CustomField> mergedCustomFields = uploadCustomFields.isEmpty()
-                ? basePreset.customFields()
-                : uploadCustomFields;
-
-        LogPreset preset = new LogPreset(
-                basePreset.name(),
-                nonBlankOrDefault(customLogLineRegex, basePreset.logLineRegex()),
-                nonBlankOrDefault(customTimestampFormat, basePreset.timestampFormat()),
-                nonBlankOrDefault(customApiCallRegex, basePreset.apiCallRegex()),
-                nonBlankOrDefault(customJobStartRegex, basePreset.jobStartRegex()),
-                nonBlankOrDefault(customJobEndRegex, basePreset.jobEndRegex()),
-                nonBlankOrDefault(customFailureRegex, basePreset.failureRegex()),
-                customSensitiveFields != null && !customSensitiveFields.isBlank()
-                        ? Arrays.asList(customSensitiveFields.split(","))
-                        : basePreset.sensitiveFieldNames(),
-                mergedCustomFields,
-                customCriticalIssueExclusions != null && !customCriticalIssueExclusions.isBlank()
-                        ? Arrays.asList(customCriticalIssueExclusions.split(","))
-                        : basePreset.criticalIssueExclusions()
-        );
-
-        if (preset.logLineRegex() == null || preset.logLineRegex().isBlank()) {
-            throw new IllegalArgumentException("Log line regex is required.");
-        }
-
-        String slowThresholdStr = extractString(form, "slowThresholdMs");
-        int slowThresholdMs = slowThresholdStr != null
-                ? Integer.parseInt(slowThresholdStr)
-                : defaultSlowThresholdMs;
-
-        List<InputPart> fileParts = form.get("files");
-        if (fileParts == null || fileParts.isEmpty()) {
-            fileParts = form.get("file");
-        }
-        if (fileParts == null || fileParts.isEmpty()) {
-            throw new IllegalArgumentException("No file(s) provided.");
-        }
-
-        List<java.nio.file.Path> tempFiles = new ArrayList<>();
-        List<java.nio.file.Path> tempDirs = new ArrayList<>();
-        List<String> filenames = new ArrayList<>();
-        long maxBytes = (long) maxFileSizeMb * 1024 * 1024;
-
-        for (InputPart filePart : fileParts) {
-            String filename = extractFilename(filePart);
-            if (filename == null || filename.isBlank()) {
-                filename = "unknown-" + (filenames.size() + 1) + ".log";
-            }
-
-            Optional<String> filenameError = InputValidator.validateUploadFilename(filename);
-            if (filenameError.isPresent()) {
-                throw new IllegalArgumentException(filenameError.get());
-            }
-
-            java.nio.file.Path tempDir = Files.createTempDirectory("log-analyzer-");
-            tempDirs.add(tempDir);
-            java.nio.file.Path tempFile = tempDir.resolve(filename);
-            tempFiles.add(tempFile);
-            filenames.add(filename);
-
-            try (InputStream is = filePart.getBody(InputStream.class, null);
-                 var out = Files.newOutputStream(tempFile)) {
-                long size = 0;
-                byte[] buf = new byte[8192];
-                int read;
-                while ((read = is.read(buf)) != -1) {
-                    size += read;
-                    if (size > maxBytes) {
-                        throw new IllegalArgumentException(
-                                "File '" + filename + "' exceeds the maximum size of " + maxFileSizeMb + " MB.");
-                    }
-                    out.write(buf, 0, read);
-                }
-            }
-        }
-
-        AnalysisOptions options = parseAnalysisOptions(extractString(form, "options"));
-
-        return new AnalyzeLogFileRequest(tempFiles, tempDirs, filenames, label, preset, slowThresholdMs, options);
+        return UploadFormParser.parse(input, logPresetProvider, defaultPresetName,
+                defaultSlowThresholdMs, maxFileSizeMb);
     }
 
     @POST
@@ -259,7 +200,7 @@ public class LogAnalyzerController {
             LogAnalysis analysis = analyzeContainerLogsUseCase.execute(
                     containerId, containerName, requestedLines, direction, preset, threshold
             );
-            return Response.ok(analysisSummaryMap(analysis)).build();
+            return Response.ok(AnalysisSummaryMapper.toSummaryMap(analysis)).build();
         } catch (AnalyzeContainerLogsUseCase.ContainerLogException e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", e.getMessage()))
@@ -296,17 +237,17 @@ public class LogAnalyzerController {
         LogPreset preset = presetName != null ? logPresetProvider.byName(presetName) : logPresetProvider.byName(defaultPresetName);
 
         Object slowObj = body.get("slowThresholdMs");
-        int slowThresholdMs = slowObj instanceof Number n ? n.intValue() : defaultSlowThresholdMs;
+        int slowThresholdMsValue = slowObj instanceof Number n ? n.intValue() : defaultSlowThresholdMs;
 
-        AnalysisOptions options = parseAnalysisOptionsFromMap(body.get("options"));
+        var options = UploadFormParser.parseAnalysisOptionsFromMap(body.get("options"));
 
-        LogAnalysis composed = analyzeLogFileUseCase.compose(ids, preset, slowThresholdMs, options);
+        LogAnalysis composed = analyzeLogFileUseCase.compose(ids, preset, slowThresholdMsValue, options);
         if (composed == null) {
             return Response.status(Response.Status.NOT_FOUND)
                     .entity(Map.of("error", "No valid analyses found for the given IDs."))
                     .build();
         }
-        return Response.ok(analysisSummaryMap(composed)).build();
+        return Response.ok(AnalysisSummaryMapper.toSummaryMap(composed)).build();
     }
 
     @GET
@@ -316,7 +257,7 @@ public class LogAnalyzerController {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
-        return Response.ok(analysisSummaryMap(analysis)).build();
+        return Response.ok(AnalysisSummaryMapper.toSummaryMap(analysis)).build();
     }
 
     @DELETE
@@ -346,24 +287,9 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        String searchTerm = search != null && !search.isBlank() ? search.trim() : null;
-        var filtered = analysis.getApiCalls().stream()
-                .filter(c -> endpoint == null || endpoint.isBlank() || c.endpoint().equals(endpoint))
-                .filter(c -> thread == null || thread.isBlank() || c.thread().equals(thread))
-                .filter(c -> minDuration == null || c.durationMs() >= minDuration)
-                .filter(c -> searchTerm == null || containsIgnoreCase(c, searchTerm));
-
-        boolean desc = "desc".equalsIgnoreCase(sortDir);
-        Comparator<ApiCallPair> cmp = switch (sort) {
-            case "duration" -> Comparator.comparingLong(ApiCallPair::durationMs);
-            case "endpoint" -> Comparator.comparing(ApiCallPair::endpoint);
-            case "thread" -> Comparator.comparing(ApiCallPair::thread, Comparator.nullsLast(Comparator.naturalOrder()));
-            default -> Comparator.comparing(ApiCallPair::requestTimestamp,
-                    Comparator.nullsLast(Comparator.naturalOrder()));
-        };
-        var sorted = filtered.sorted(desc ? cmp.reversed() : cmp);
-
-        return paginatedResponse(sorted.toList(), page, size);
+        var result = queryApiCallsUseCase.execute(analysis.getApiCalls(),
+                endpoint, thread, minDuration, search, sort, sortDir, page, size);
+        return Response.ok(result.toMap()).build();
     }
 
     @GET
@@ -384,17 +310,8 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        String label = analysis.getLabel() != null ? analysis.getLabel()
-                : analysis.getSourceFiles().stream().map(LogAnalysis.SourceFile::filename).findFirst().orElse("analysis");
-        var export = new LinkedHashMap<String, Object>();
-        export.put("version", 1);
-        export.put("label", label);
-        export.put("exportedAt", java.time.Instant.now().toString());
-        export.put("timeRangeStart", analysis.getTimeRangeStart() != null ? analysis.getTimeRangeStart().toString() : null);
-        export.put("timeRangeEnd", analysis.getTimeRangeEnd() != null ? analysis.getTimeRangeEnd().toString() : null);
-        export.put("endpoints", analysis.getEndpointStats());
-
-        String filename = label.replaceAll("[^a-zA-Z0-9._-]", "_") + "-stats.json";
+        var export = exportApiStatsUseCase.execute(analysis);
+        String filename = exportApiStatsUseCase.buildFilename(analysis);
         return Response.ok(export, MediaType.APPLICATION_JSON)
                 .header("Content-Disposition", ContentDispositionHelper.buildAttachmentHeader(filename))
                 .build();
@@ -408,18 +325,10 @@ public class LogAnalyzerController {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
-        var calls = analysis.getApiCalls();
-        if (endpoint != null && !endpoint.isBlank()) {
-            calls = calls.stream().filter(c -> endpoint.equals(c.endpoint())).toList();
-        }
-        if (calls.isEmpty()) {
-            return Response.ok(new PerformanceInsights(List.of(), List.of(), "1m", 0)).build();
-        }
-        PerformanceInsights insights = PerformanceInsightsCalculator.compute(
-                calls,
-                analysis.getTimeRangeStart(),
-                analysis.getTimeRangeEnd()
-        );
+
+        PerformanceInsights insights = getPerformanceInsightsUseCase.computeInsights(
+                analysis.getApiCalls(), endpoint,
+                analysis.getTimeRangeStart(), analysis.getTimeRangeEnd());
         return Response.ok(insights).build();
     }
 
@@ -439,13 +348,11 @@ public class LogAnalyzerController {
                     .build();
         }
         limit = Math.clamp(limit, 1, 100);
-        var calls = analysis.getApiCalls();
-        if (endpoint != null && !endpoint.isBlank()) {
-            calls = calls.stream().filter(c -> endpoint.equals(c.endpoint())).toList();
-        }
         try {
-            var bucketEndpoints = PerformanceInsightsCalculator.computeBucketEndpoints(
-                    calls, analysis.getTimeRangeStart(), analysis.getTimeRangeEnd(), timestamp, limit);
+            var bucketEndpoints = getPerformanceInsightsUseCase.computeBucketEndpoints(
+                    analysis.getApiCalls(), endpoint,
+                    analysis.getTimeRangeStart(), analysis.getTimeRangeEnd(),
+                    timestamp, limit);
             return Response.ok(bucketEndpoints).build();
         } catch (DateTimeParseException e) {
             return Response.status(Response.Status.BAD_REQUEST)
@@ -467,13 +374,8 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        String searchLower = search != null ? search.toLowerCase() : null;
-        var filtered = analysis.getAllLines().stream()
-                .filter(l -> thread == null || thread.isBlank() || thread.equals(l.thread()))
-                .filter(l -> level == null || level.isBlank() || matchesLevelGroup(level, l.level()))
-                .filter(l -> searchLower == null || (l.message() != null && l.message().toLowerCase().contains(searchLower)));
-
-        return paginatedResponse(filtered.toList(), page, size);
+        var result = queryLogLinesUseCase.queryLines(analysis.getAllLines(), thread, level, search, page, size);
+        return Response.ok(result.toMap()).build();
     }
 
     @GET
@@ -493,11 +395,9 @@ public class LogAnalyzerController {
                     .entity(Map.of("error", "Invalid range. 'from' and 'to' must be positive and from <= to."))
                     .build();
         }
-        var rangeLines = analysis.getAllLines().stream()
-                .filter(l -> l.lineNumber() >= from && l.lineNumber() <= to)
-                .filter(l -> level == null || level.isBlank() || matchesLevelGroup(level, l.level()))
-                .toList();
-        return paginatedResponse(rangeLines, page, Math.clamp(size, 1, 1000));
+
+        var result = queryLogLinesUseCase.queryLineRange(analysis.getAllLines(), from, to, level, page, size);
+        return Response.ok(result.toMap()).build();
     }
 
     @GET
@@ -508,16 +408,7 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        var threadCounts = analysis.getAllLines().stream()
-                .filter(l -> l.thread() != null)
-                .collect(Collectors.groupingBy(LogLine::thread, Collectors.counting()));
-
-        var threads = threadCounts.entrySet().stream()
-                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
-                .map(e -> Map.of("thread", (Object) e.getKey(), "lineCount", (Object) e.getValue()))
-                .toList();
-
-        return Response.ok(threads).build();
+        return Response.ok(getThreadSummaryUseCase.execute(analysis.getAllLines())).build();
     }
 
     @GET
@@ -543,19 +434,8 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        var jobs = analysis.getJobExecutions().stream();
-        if (jobName != null && !jobName.isBlank()) {
-            jobs = jobs.filter(j -> jobName.equals(j.jobName()));
-        }
-        if (thread != null && !thread.isBlank()) {
-            jobs = jobs.filter(j -> thread.equals(j.thread()));
-        }
-        List<JobExecution> result = switch (sort) {
-            case "duration" -> jobs.sorted(Comparator.comparingLong(JobExecution::durationMs).reversed()).toList();
-            case "name" -> jobs.sorted(Comparator.comparing(JobExecution::jobName)).toList();
-            default -> jobs.sorted(Comparator.comparing(JobExecution::startTimestamp, Comparator.nullsLast(Comparator.naturalOrder()))).toList();
-        };
-        return paginatedResponse(result, page, size);
+        var result = queryJobExecutionsUseCase.query(analysis.getJobExecutions(), jobName, thread, sort, page, size);
+        return Response.ok(result.toMap()).build();
     }
 
     @GET
@@ -566,10 +446,7 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        var executions = analysis.getJobExecutions();
-        var jobNames = executions.stream().map(JobExecution::jobName).distinct().sorted().toList();
-        var threads = executions.stream().map(JobExecution::thread).distinct().sorted().toList();
-        return Response.ok(Map.of("jobNames", jobNames, "threads", threads)).build();
+        return Response.ok(queryJobExecutionsUseCase.getFilters(analysis.getJobExecutions())).build();
     }
 
     @GET
@@ -581,7 +458,7 @@ public class LogAnalyzerController {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
-        return paginatedResponse(analysis.getRepeatedFailures(), page, size);
+        return Response.ok(PaginatedResult.of(analysis.getRepeatedFailures(), page, size).toMap()).build();
     }
 
     @GET
@@ -596,14 +473,8 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        var orphans = analysis.getOrphanRequests().stream();
-        if (endpoint != null && !endpoint.isBlank()) {
-            orphans = orphans.filter(o -> endpoint.equals(o.endpoint()));
-        }
-        if (thread != null && !thread.isBlank()) {
-            orphans = orphans.filter(o -> thread.equals(o.thread()));
-        }
-        return paginatedResponse(orphans.toList(), page, size);
+        var result = queryOrphanRequestsUseCase.execute(analysis.getOrphanRequests(), endpoint, thread, page, size);
+        return Response.ok(result.toMap()).build();
     }
 
     @GET
@@ -615,13 +486,7 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        var summaries = analysis.getCriticalIssues();
-        if (category != null && !category.isBlank()) {
-            summaries = summaries.stream()
-                    .filter(s -> s.category().equalsIgnoreCase(category))
-                    .toList();
-        }
-        return Response.ok(summaries).build();
+        return Response.ok(queryCriticalIssuesUseCase.queryByCategory(analysis.getCriticalIssues(), category)).build();
     }
 
     @GET
@@ -633,28 +498,8 @@ public class LogAnalyzerController {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
-        List<CriticalIssueSummary> withBursts;
-        if (threshold != null || windowMinutes != null) {
-            // Custom params — bypass cache, compute fresh
-            withBursts = criticalIssueDetector.computeBursts(analysis.getCriticalIssues(),
-                    threshold != null ? Math.clamp(threshold, 2, 1000) : 10,
-                    windowMinutes != null ? Math.clamp(windowMinutes, 1, 60) : 5);
-        } else {
-            withBursts = getOrComputeBursts(analysis);
-        }
-        // Return only category-level summaries (no individual bursts — those are fetched on demand)
-        var result = withBursts.stream()
-                .filter(s -> !s.bursts().isEmpty())
-                .map(s -> Map.of(
-                        "category", (Object) s.category(),
-                        "severity", (Object) s.severity(),
-                        "burstCount", (Object) s.bursts().size(),
-                        "totalBurstIssues", (Object) s.bursts().stream().mapToInt(CriticalBurst::issueCount).sum(),
-                        "firstStart", (Object) s.bursts().stream().map(CriticalBurst::burstStart).filter(Objects::nonNull).min(Comparator.naturalOrder()).map(Object::toString).orElse(""),
-                        "lastEnd", (Object) s.bursts().stream().map(CriticalBurst::burstEnd).filter(Objects::nonNull).max(Comparator.naturalOrder()).map(Object::toString).orElse("")
-                ))
-                .toList();
-        return Response.ok(result).build();
+
+        return Response.ok(queryCriticalIssuesUseCase.getBurstSummaries(analysis, threshold, windowMinutes)).build();
     }
 
     @GET
@@ -667,23 +512,9 @@ public class LogAnalyzerController {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
-        var withBursts = getOrComputeBursts(analysis);
-        var categorySummary = withBursts.stream()
-                .filter(s -> s.category().equalsIgnoreCase(category))
-                .findFirst();
-        if (categorySummary.isEmpty()) {
-            return Response.ok(Map.of("data", List.of(), "total", 0, "page", 0, "size", size)).build();
-        }
-        var allBursts = categorySummary.get().bursts();
-        int total = allBursts.size();
-        int from = Math.min(page * size, total);
-        int to = Math.min(from + size, total);
-        var burstMetas = allBursts.subList(from, to).stream().map(b -> Map.of(
-                "burstStart", (Object)(b.burstStart() != null ? b.burstStart().toString() : ""),
-                "burstEnd", (Object)(b.burstEnd() != null ? b.burstEnd().toString() : ""),
-                "issueCount", (Object) b.issueCount()
-        )).toList();
-        return Response.ok(Map.of("data", burstMetas, "total", total, "page", page, "size", size)).build();
+
+        var result = queryCriticalIssuesUseCase.getBurstsByCategory(analysis, category, page, size);
+        return Response.ok(result.toMap()).build();
     }
 
     @GET
@@ -697,17 +528,14 @@ public class LogAnalyzerController {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
-        var withBursts = getOrComputeBursts(analysis);
-        var categorySummary = withBursts.stream()
-                .filter(s -> s.category().equalsIgnoreCase(category))
-                .findFirst();
-        if (categorySummary.isEmpty() || burstIndex < 0 || burstIndex >= categorySummary.get().bursts().size()) {
+
+        var result = queryCriticalIssuesUseCase.getBurstIssues(analysis, category, burstIndex, page, size);
+        if (result.isEmpty()) {
             return Response.status(Response.Status.NOT_FOUND)
                     .entity(Map.of("error", "Burst not found"))
                     .build();
         }
-        var burst = categorySummary.get().bursts().get(burstIndex);
-        return paginatedResponse(burst.issues(), page, size);
+        return Response.ok(result.get().toMap()).build();
     }
 
     @GET
@@ -719,12 +547,9 @@ public class LogAnalyzerController {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
-        // Return summaries without occurrences (fetched on-demand via detail endpoint)
-        var stripped = analysis.getNpeAnalysis().stream()
-                .map(s -> new NpeLocationSummary(s.origin(), s.originClass(), s.method(), s.sourceFile(), s.sourceLine(),
-                        s.count(), s.firstSeen(), s.lastSeen(), List.of()))
-                .toList();
-        return paginatedResponse(stripped, page, size);
+
+        var result = queryNpeAnalysisUseCase.querySummaries(analysis.getNpeAnalysis(), page, size);
+        return Response.ok(result.toMap()).build();
     }
 
     @GET
@@ -737,10 +562,9 @@ public class LogAnalyzerController {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
-        var summary = analysis.getNpeAnalysis().stream()
-                .filter(s -> s.origin().equals(origin)).findFirst();
-        if (summary.isEmpty()) return Response.ok(Map.of("data", List.of(), "total", 0, "page", 0, "size", size)).build();
-        return paginatedResponse(summary.get().occurrences(), page, size);
+
+        var result = queryNpeAnalysisUseCase.queryOccurrences(analysis.getNpeAnalysis(), origin, page, size);
+        return Response.ok(result.toMap()).build();
     }
 
     @GET
@@ -752,11 +576,9 @@ public class LogAnalyzerController {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
-        var stripped = analysis.getExceptionAnalysis().stream()
-                .map(s -> new ExceptionLocationSummary(s.exceptionType(), s.origin(), s.originClass(), s.method(), s.sourceFile(), s.sourceLine(),
-                        s.count(), s.firstSeen(), s.lastSeen(), List.of()))
-                .toList();
-        return paginatedResponse(stripped, page, size);
+
+        var result = queryExceptionAnalysisUseCase.querySummaries(analysis.getExceptionAnalysis(), page, size);
+        return Response.ok(result.toMap()).build();
     }
 
     @GET
@@ -769,10 +591,9 @@ public class LogAnalyzerController {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
-        var summary = analysis.getExceptionAnalysis().stream()
-                .filter(s -> (s.exceptionType() + ":" + s.origin()).equals(origin) || s.origin().equals(origin)).findFirst();
-        if (summary.isEmpty()) return Response.ok(Map.of("data", List.of(), "total", 0, "page", 0, "size", size)).build();
-        return paginatedResponse(summary.get().occurrences(), page, size);
+
+        var result = queryExceptionAnalysisUseCase.queryOccurrences(analysis.getExceptionAnalysis(), origin, page, size);
+        return Response.ok(result.toMap()).build();
     }
 
     @GET
@@ -790,21 +611,19 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        var result = analysis.getCustomFieldResults().stream()
-                .filter(cf -> cf.fieldName().equals(fieldName))
-                .findFirst();
+        var result = queryCustomFieldsUseCase.execute(analysis.getCustomFieldResults(),
+                fieldName, search, thread, sort, sortDir, page, size);
 
-        if (result.isEmpty()) {
+        if (!result.found()) {
             return Response.status(Response.Status.NOT_FOUND)
                     .entity(Map.of("error", "Custom field not found."))
                     .build();
         }
 
-        CustomFieldResult cfr = result.get();
-        if (cfr.countOnly()) {
+        if (result.countOnly()) {
             return Response.ok(Map.of(
-                    "fieldName", cfr.fieldName(),
-                    "matchCount", cfr.matchCount(),
+                    "fieldName", result.fieldName(),
+                    "matchCount", result.matchCount(),
                     "countOnly", true,
                     "data", List.of(),
                     "total", 0,
@@ -813,38 +632,7 @@ public class LogAnalyzerController {
             )).build();
         }
 
-        String searchTerm = search != null && !search.isBlank() ? search.trim().toLowerCase() : null;
-        var filtered = cfr.matches().stream()
-                .filter(m -> thread == null || thread.isBlank() || thread.equals(m.thread()))
-                .filter(m -> searchTerm == null || matchesSearch(m, searchTerm));
-
-        if (sort != null && !sort.isBlank()) {
-            Comparator<CustomFieldMatch> cmp = switch (sort) {
-                case "line" -> Comparator.comparingInt(CustomFieldMatch::lineNumber);
-                case "timestamp" -> Comparator.comparing(CustomFieldMatch::timestamp, Comparator.nullsLast(Comparator.naturalOrder()));
-                case "thread" -> Comparator.comparing(CustomFieldMatch::thread, Comparator.nullsLast(Comparator.naturalOrder()));
-                default -> {
-                    // Sort by a named group column value
-                    String groupName = sort;
-                    yield Comparator.comparing(
-                            (CustomFieldMatch m) -> m.groups().getOrDefault(groupName, ""),
-                            Comparator.nullsLast(Comparator.naturalOrder()));
-                }
-            };
-            if ("desc".equalsIgnoreCase(sortDir)) cmp = cmp.reversed();
-            filtered = filtered.sorted(cmp);
-        }
-
-        return paginatedResponse(filtered.toList(), page, size);
-    }
-
-    private boolean matchesSearch(CustomFieldMatch m, String term) {
-        if (m.fullMessage() != null && m.fullMessage().toLowerCase().contains(term)) return true;
-        if (m.thread() != null && m.thread().toLowerCase().contains(term)) return true;
-        for (String v : m.groups().values()) {
-            if (v != null && v.toLowerCase().contains(term)) return true;
-        }
-        return false;
+        return Response.ok(result.paginated().toMap()).build();
     }
 
     @GET
@@ -862,9 +650,9 @@ public class LogAnalyzerController {
         if (analysis == null) return analysisNotFound();
 
         // Validate signalType
-        SignalType type;
+        SignalType parsedSignalType;
         try {
-            type = SignalType.valueOf(signalType);
+            parsedSignalType = SignalType.valueOf(signalType);
         } catch (IllegalArgumentException e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Invalid signal type: " + signalType))
@@ -872,12 +660,12 @@ public class LogAnalyzerController {
         }
 
         // Validate metric and method
-        if (!MetricExtractor.VALID_METRICS.contains(metric)) {
+        if (!DetectAnomaliesUseCase.VALID_METRICS.contains(metric)) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Invalid metric: " + metric + ". Valid: count, p95, max, avg"))
                     .build();
         }
-        if (!AnomalyDetectorService.VALID_METHODS.contains(method)) {
+        if (!detectAnomaliesUseCase.getValidMethods().contains(method)) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Invalid method: " + method + ". Valid: ratio, zscore"))
                     .build();
@@ -888,70 +676,9 @@ public class LogAnalyzerController {
         threshold = Math.clamp(threshold, 1.5, 20.0);
         baselineWindow = Math.clamp(baselineWindow, 2, 50);
 
-        // Extract signals
-        List<Signal> signals = signalExtractor.extract(analysis.getAllLines(), type, analysis.getApiCalls(), analysis.getJobExecutions(), analysis.getOrphanRequests());
-
-        if (analysis.getTimeRangeStart() == null || analysis.getTimeRangeEnd() == null) {
-            return Response.ok(new AnomalyDetectionResponse(
-                    signalType, metric, method, bucketSize, threshold, 0, 0, 0, "", 0,
-                    List.of(), List.of(), List.of()
-            )).build();
-        }
-
-        // Aggregate into time buckets
-        List<BucketStats> buckets = TimeBucketAggregator.aggregate(
-                signals, bucketSize, analysis.getTimeRangeStart(), analysis.getTimeRangeEnd());
-
-        // Detect anomalies
-        var detection = anomalyDetectorService.detect(
-                buckets, threshold, baselineWindow, signalType, metric, method);
-
-        List<BucketStats> updatedBuckets = detection.buckets();
-        List<AnomalyResult> anomalies = detection.anomalies();
-
-        // Compute metric-aware summary stats
-        long peakValue = updatedBuckets.stream()
-                .mapToLong(b -> (long) MetricExtractor.extract(b, metric))
-                .max().orElse(0);
-        String peakBucketLabel = updatedBuckets.stream()
-                .max(Comparator.comparingDouble(b -> MetricExtractor.extract(b, metric)))
-                .map(BucketStats::bucketLabel)
-                .orElse("");
-        long p95Value = computeP95FromBuckets(updatedBuckets, metric);
-
-        // Correlation detection (extract all signal types and detect)
-        List<CorrelatedAnomaly> correlations = List.of();
-        if (!anomalies.isEmpty()) {
-            Map<SignalType, List<Signal>> allSignals = signalExtractor.extractAll(analysis.getAllLines(), analysis.getApiCalls(), analysis.getJobExecutions(), analysis.getOrphanRequests());
-            Map<String, List<AnomalyResult>> allAnomaliesByType = new LinkedHashMap<>();
-            allAnomaliesByType.put(signalType, anomalies);
-
-            for (Map.Entry<SignalType, List<Signal>> entry : allSignals.entrySet()) {
-                if (entry.getKey().name().equals(signalType)) continue;
-
-                List<BucketStats> otherBuckets = TimeBucketAggregator.aggregate(
-                        entry.getValue(), bucketSize,
-                        analysis.getTimeRangeStart(), analysis.getTimeRangeEnd());
-                var otherDetection = anomalyDetectorService.detect(
-                        otherBuckets, threshold, baselineWindow, entry.getKey().name(), metric, method);
-
-                if (!otherDetection.anomalies().isEmpty()) {
-                    allAnomaliesByType.put(entry.getKey().name(), otherDetection.anomalies());
-                }
-            }
-
-            if (allAnomaliesByType.size() >= 2) {
-                correlations = CorrelationDetector.detect(allAnomaliesByType, 6);
-            }
-        }
-
-        return Response.ok(new AnomalyDetectionResponse(
-                signalType, metric, method, bucketSize, threshold,
-                updatedBuckets.size(),
-                (int) updatedBuckets.stream().filter(b -> "ANOMALY".equals(b.status())).count(),
-                peakValue, peakBucketLabel, p95Value,
-                updatedBuckets, anomalies, correlations
-        )).build();
+        AnomalyDetectionResponse response = detectAnomaliesUseCase.detect(
+                analysis, parsedSignalType, bucketSize, threshold, baselineWindow, metric, method);
+        return Response.ok(response).build();
     }
 
     @GET
@@ -962,9 +689,7 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        List<SignalType> types = signalExtractor.detectAvailableTypes(analysis.getAllLines(), analysis.getApiCalls(), analysis.getJobExecutions(), analysis.getOrphanRequests());
-        List<String> result = types.stream().map(SignalType::name).toList();
-        return Response.ok(result).build();
+        return Response.ok(detectAnomaliesUseCase.getAvailableSignalTypes(analysis)).build();
     }
 
     @GET
@@ -977,51 +702,13 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        if (!MetricExtractor.VALID_METRICS.contains(metric)) {
+        if (!DetectAnomaliesUseCase.VALID_METRICS.contains(metric)) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Invalid metric: " + metric)).build();
         }
         bucketSize = Math.clamp(bucketSize, 60, 3600);
 
-        if (analysis.getTimeRangeStart() == null || analysis.getTimeRangeEnd() == null) {
-            return Response.ok(new SystemHealthResponse(bucketSize, metric, List.of(), List.of(), List.of())).build();
-        }
-
-        Map<SignalType, List<Signal>> allSignals = signalExtractor.extractAll(
-                analysis.getAllLines(), analysis.getApiCalls(), analysis.getJobExecutions(), analysis.getOrphanRequests());
-
-        // Bucket each signal type independently
-        Map<String, List<BucketStats>> bucketsByType = new LinkedHashMap<>();
-        for (var entry : allSignals.entrySet()) {
-            List<BucketStats> typeBuckets = TimeBucketAggregator.aggregate(
-                    entry.getValue(), bucketSize,
-                    analysis.getTimeRangeStart(), analysis.getTimeRangeEnd());
-            bucketsByType.put(entry.getKey().name(), typeBuckets);
-        }
-
-        // Merge by epoch into unified timeline
-        var epochMap = new TreeMap<Long, Map<String, Double>>();
-        var labelMap = new TreeMap<Long, String>();
-        for (var entry : bucketsByType.entrySet()) {
-            String typeName = entry.getKey();
-            // Use selected metric for duration signals, always count for the rest
-            String effectiveMetric = SystemHealthResponse.DURATION_SIGNAL_TYPES.contains(typeName) ? metric : "count";
-            for (BucketStats b : entry.getValue()) {
-                epochMap.computeIfAbsent(b.bucketEpoch(), _ -> new LinkedHashMap<>())
-                        .put(typeName, MetricExtractor.extract(b, effectiveMetric));
-                labelMap.putIfAbsent(b.bucketEpoch(), b.bucketLabel());
-            }
-        }
-
-        List<String> signalTypes = new ArrayList<>(bucketsByType.keySet());
-        List<SystemHealthResponse.HealthBucket> healthBuckets = epochMap.entrySet().stream()
-                .map(e -> new SystemHealthResponse.HealthBucket(
-                        labelMap.get(e.getKey()), e.getKey(), e.getValue()))
-                .toList();
-
-        List<String> durationSignals = signalTypes.stream()
-                .filter(SystemHealthResponse.DURATION_SIGNAL_TYPES::contains).toList();
-        return Response.ok(new SystemHealthResponse(bucketSize, metric, signalTypes, durationSignals, healthBuckets)).build();
+        return Response.ok(getSystemHealthUseCase.execute(analysis, bucketSize, metric)).build();
     }
 
     @GET
@@ -1030,58 +717,9 @@ public class LogAnalyzerController {
     public Response listAnalyses() {
         if (!enabled) return featureDisabled();
         var summaries = analyzeLogFileUseCase.listAll().stream()
-                .map(this::analysisSummaryMap)
+                .map(AnalysisSummaryMapper::toSummaryMap)
                 .toList();
         return Response.ok(summaries).build();
-    }
-
-    // ---- Helpers ----
-
-    private Response featureDisabled() {
-        return Response.status(Response.Status.FORBIDDEN)
-                .entity(Map.of("error", "Log analyzer is disabled.")).build();
-    }
-
-    private Response analysisNotFound() {
-        return Response.status(Response.Status.NOT_FOUND)
-                .entity(Map.of("error", "Analysis not found.")).build();
-    }
-
-    private Response paginatedResponse(List<?> all, int page, int size) {
-        page = Math.max(0, page);
-        size = Math.clamp(size, 1, 15000);
-        int total = all.size();
-        int from = Math.min(page * size, total);
-        int to = Math.min(from + size, total);
-        return Response.ok(Map.of("data", all.subList(from, to), "total", total, "page", page, "size", size)).build();
-    }
-
-    private List<CriticalIssueSummary> getOrComputeBursts(LogAnalysis analysis) {
-        var cached = analysis.getCachedBursts();
-        if (cached != null) return cached;
-        var computed = criticalIssueDetector.computeBursts(analysis.getCriticalIssues());
-        analysis.setCachedBursts(computed);
-        return computed;
-    }
-
-    private long computeP95FromBuckets(List<BucketStats> buckets, String metric) {
-        long[] values = buckets.stream()
-                .mapToLong(b -> (long) MetricExtractor.extract(b, metric))
-                .filter(c -> c > 0)
-                .sorted()
-                .toArray();
-        if (values.length == 0) return 0;
-        int idx = Math.max(0, (int) Math.ceil(values.length * 0.95) - 1);
-        return values[idx];
-    }
-
-    private boolean matchesLevelGroup(String filter, String lineLevel) {
-        if (lineLevel == null) return false;
-        return switch (filter.toUpperCase()) {
-            case "ERROR" -> "ERROR".equals(lineLevel) || "FATAL".equals(lineLevel) || "SEVERE".equals(lineLevel);
-            case "WARN" -> "WARN".equals(lineLevel) || "WARNING".equals(lineLevel);
-            default -> filter.equalsIgnoreCase(lineLevel);
-        };
     }
 
     // ── Stats Comparison ─────────────────────────────────────────────────────
@@ -1097,7 +735,7 @@ public class LogAnalyzerController {
             String labelB = (String) body.getOrDefault("labelB", "B");
             List<EndpointStats> statsA = OBJECT_MAPPER.convertValue(body.get("endpointsA"), new TypeReference<>() {});
             List<EndpointStats> statsB = OBJECT_MAPPER.convertValue(body.get("endpointsB"), new TypeReference<>() {});
-            String html = HtmlReportGenerator.generateComparison(labelA, labelB, statsA, statsB);
+            String html = generateReportUseCase.generateComparison(labelA, labelB, statsA, statsB);
             return Response.ok(html, "text/html")
                     .header("Content-Disposition", ContentDispositionHelper.buildAttachmentHeader("stats-comparison.html"))
                     .build();
@@ -1118,199 +756,28 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        String html = switch (type) {
-            case "compact" -> HtmlReportGenerator.generateCompact(analysis);
-            case "complete" -> HtmlReportGenerator.generateComplete(analysis);
-            default -> null;
-        };
-        if (html == null) {
+        var html = generateReportUseCase.generateReport(analysis, type);
+        if (html.isEmpty()) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Invalid report type. Use 'compact' or 'complete'.")).build();
         }
 
-        String label = analysis.getLabel() != null ? analysis.getLabel()
-                : analysis.getSourceFiles().stream().map(LogAnalysis.SourceFile::filename).findFirst().orElse("analysis");
-        String filename = label.replaceAll("[^a-zA-Z0-9._-]", "_") + "-" + type + ".html";
-
-        return Response.ok(html, "text/html")
+        String filename = generateReportUseCase.buildReportFilename(analysis, type);
+        return Response.ok(html.get(), "text/html")
                 .header("Content-Disposition", ContentDispositionHelper.buildAttachmentHeader(filename))
                 .build();
     }
 
-    private Map<String, Object> analysisSummaryMap(LogAnalysis a) {
-        var customFieldsSummary = a.getCustomFieldResults().stream()
-                .map(cf -> Map.of("fieldName", (Object) cf.fieldName(), "matchCount", (Object) cf.matchCount(),
-                        "countOnly", (Object) cf.countOnly()))
-                .toList();
+    // ---- Helpers ----
 
-        int criticalIssueCount = a.getCriticalIssues().stream()
-                .mapToInt(CriticalIssueSummary::count).sum();
-
-        int npeAnalysisCount = a.getNpeAnalysis().stream()
-                .mapToInt(NpeLocationSummary::count).sum();
-        int npeLocationCount = a.getNpeAnalysis().size();
-
-        int exceptionAnalysisCount = a.getExceptionAnalysis().stream()
-                .mapToInt(ExceptionLocationSummary::count).sum();
-        long exceptionTypeCount = a.getExceptionAnalysis().stream()
-                .map(ExceptionLocationSummary::exceptionType)
-                .distinct()
-                .count();
-
-        // burstCount not computed eagerly; use on-demand endpoint
-
-        var criticalIssueSummaries = a.getCriticalIssues().stream()
-                .map(s -> {
-                    var map = new LinkedHashMap<String, Object>();
-                    map.put("category", s.category());
-                    map.put("severity", s.severity());
-                    map.put("count", s.count());
-                    map.put("firstSeen", s.firstSeen() != null ? s.firstSeen().toString() : null);
-                    map.put("lastSeen", s.lastSeen() != null ? s.lastSeen().toString() : null);
-                    map.put("burstCount", s.bursts().size());
-                    return map;
-                })
-                .toList();
-
-        var map = new LinkedHashMap<String, Object>();
-        map.put("id", a.getId());
-        map.put("label", a.getLabel());
-        map.put("sourceFiles", a.getSourceFiles());
-        map.put("totalLineCount", a.getTotalLineCount());
-        map.put("uploadedAt", a.getUploadedAt().toString());
-        map.put("timeRangeStart", a.getTimeRangeStart() != null ? a.getTimeRangeStart().toString() : "");
-        map.put("timeRangeEnd", a.getTimeRangeEnd() != null ? a.getTimeRangeEnd().toString() : "");
-        map.put("threadCount", a.getThreads().size());
-        map.put("endpointCount", a.getEndpoints().size());
-        map.put("apiCallCount", a.getApiCalls().size());
-        map.put("orphanRequestCount", a.getOrphanRequests().size());
-        map.put("errorCount", a.getErrors().size());
-        map.put("levelCounts", a.getLevelCounts());
-        map.put("jobExecutionCount", a.getJobExecutions().size());
-        map.put("repeatedFailureCount", a.getRepeatedFailures().size());
-        map.put("customFields", customFieldsSummary);
-        map.put("criticalIssueCount", criticalIssueCount);
-        map.put("criticalIssueSummaries", criticalIssueSummaries);
-        map.put("npeAnalysisCount", npeAnalysisCount);
-        map.put("npeLocationCount", npeLocationCount);
-        map.put("exceptionAnalysisCount", exceptionAnalysisCount);
-        map.put("exceptionTypeCount", exceptionTypeCount);
-        return map;
+    private Response featureDisabled() {
+        return Response.status(Response.Status.FORBIDDEN)
+                .entity(Map.of("error", "Log analyzer is disabled.")).build();
     }
 
-    private Map<String, Object> presetToMap(LogPreset p) {
-        var map = new LinkedHashMap<String, Object>();
-        map.put("name", p.name());
-        map.put("logLineRegex", p.logLineRegex());
-        map.put("timestampFormat", p.timestampFormat());
-        map.put("apiCallRegex", p.apiCallRegex());
-        map.put("jobStartRegex", p.jobStartRegex());
-        map.put("jobEndRegex", p.jobEndRegex());
-        map.put("failureRegex", p.failureRegex());
-        map.put("sensitiveFieldNames", p.sensitiveFieldNames());
-        map.put("customFields", p.customFields().stream()
-                .map(cf -> Map.of("name", cf.name(), "regex", cf.regex(), "countOnly", cf.countOnly()))
-                .toList());
-        map.put("criticalIssueExclusions", p.criticalIssueExclusions());
-        return map;
+    private Response analysisNotFound() {
+        return Response.status(Response.Status.NOT_FOUND)
+                .entity(Map.of("error", "Analysis not found.")).build();
     }
 
-    private String extractString(Map<String, List<InputPart>> form, String key) {
-        List<InputPart> parts = form.get(key);
-        if (parts == null || parts.isEmpty()) return null;
-        try {
-            return parts.getFirst().getBodyAsString().trim();
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private String extractFilename(InputPart part) {
-        String header = part.getHeaders().getFirst("Content-Disposition");
-        if (header == null) return null;
-        for (String s : header.split(";")) {
-            String trimmed = s.trim();
-            if (trimmed.startsWith("filename")) {
-                return trimmed.split("=")[1].trim().replace("\"", "");
-            }
-        }
-        return null;
-    }
-
-    private String nonBlankOrDefault(String value, String defaultValue) {
-        return value != null && !value.isBlank() ? value : defaultValue;
-    }
-
-    private List<LogPreset.CustomField> parseCustomFieldsJson(String json) {
-        if (json == null || json.isBlank()) return List.of();
-        try {
-            List<Map<String, Object>> items = OBJECT_MAPPER.readValue(json, new TypeReference<>() {});
-            List<LogPreset.CustomField> result = new ArrayList<>();
-            for (Map<String, Object> item : items) {
-                String name = (String) item.get("name");
-                String regex = (String) item.get("regex");
-                boolean countOnly = Boolean.TRUE.equals(item.get("countOnly"));
-                if (name != null && regex != null) {
-                    result.add(new LogPreset.CustomField(name, regex, countOnly));
-                }
-            }
-            return result;
-        } catch (Exception e) {
-            Log.warnf("Failed to parse customFields JSON: %s", e.getMessage());
-            return List.of();
-        }
-    }
-
-    private boolean containsIgnoreCase(ApiCallPair call, String search) {
-        return containsIgnoreCase(call.requestPayload(), search)
-                || containsIgnoreCase(call.responsePayload(), search)
-                || containsIgnoreCase(call.correlationId(), search);
-    }
-
-    private boolean containsIgnoreCase(String text, String search) {
-        if (text == null || text.length() < search.length()) return false;
-        for (int i = 0, max = text.length() - search.length(); i <= max; i++) {
-            if (text.regionMatches(true, i, search, 0, search.length())) return true;
-        }
-        return false;
-    }
-
-    private AnalysisOptions parseAnalysisOptions(String json) {
-        if (json == null || json.isBlank()) return AnalysisOptions.all();
-        try {
-            Map<String, Object> map = OBJECT_MAPPER.readValue(json, new TypeReference<>() {});
-            return buildAnalysisOptions(map);
-        } catch (Exception e) {
-            Log.warnf("Failed to parse analysis options JSON, using defaults: %s", e.getMessage());
-            return AnalysisOptions.all();
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private AnalysisOptions parseAnalysisOptionsFromMap(Object optionsObj) {
-        if (optionsObj == null) return AnalysisOptions.all();
-        if (optionsObj instanceof Map<?, ?> map) {
-            return buildAnalysisOptions((Map<String, Object>) map);
-        }
-        return AnalysisOptions.all();
-    }
-
-    private AnalysisOptions buildAnalysisOptions(Map<String, Object> map) {
-        return new AnalysisOptions(
-                optionFlag(map, "apiCalls"),
-                optionFlag(map, "jobs"),
-                optionFlag(map, "failures"),
-                optionFlag(map, "criticalIssues"),
-                optionFlag(map, "npeAnalysis"),
-                optionFlag(map, "exceptionAnalysis"),
-                optionFlag(map, "customFields")
-        );
-    }
-
-    private boolean optionFlag(Map<String, Object> map, String key) {
-        Object val = map.get(key);
-        if (val instanceof Boolean b) return b;
-        if (val instanceof String s) return !"false".equalsIgnoreCase(s);
-        return true; // default to enabled
-    }
 }

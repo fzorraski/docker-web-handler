@@ -1,4 +1,4 @@
-package br.com.fzdevx.infrastructure.log.anomaly;
+package br.com.fzdevx.domain.shared;
 
 import br.com.fzdevx.domain.model.anomaly.BucketStats;
 import br.com.fzdevx.domain.model.anomaly.Signal;

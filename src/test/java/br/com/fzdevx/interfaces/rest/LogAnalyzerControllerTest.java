@@ -1,13 +1,15 @@
 package br.com.fzdevx.interfaces.rest;
 
+import br.com.fzdevx.application.usecase.*;
 import br.com.fzdevx.application.usecase.AnalyzeContainerLogsUseCase;
 import br.com.fzdevx.application.usecase.AnalyzeLogFileUseCase;
 import br.com.fzdevx.domain.model.*;
 import br.com.fzdevx.domain.model.anomaly.*;
+import br.com.fzdevx.application.port.AnomalyDetectionPort;
+import br.com.fzdevx.application.port.CriticalBurstPort;
+import br.com.fzdevx.application.port.ReportGeneratorPort;
+import br.com.fzdevx.application.port.SignalExtractionPort;
 import br.com.fzdevx.infrastructure.config.LogPresetProvider;
-import br.com.fzdevx.infrastructure.log.anomaly.AnomalyDetectorService;
-import br.com.fzdevx.infrastructure.log.anomaly.DetectionStrategy;
-import br.com.fzdevx.infrastructure.log.anomaly.SignalExtractor;
 import jakarta.ws.rs.core.Response;
 import org.jboss.resteasy.plugins.providers.multipart.InputPart;
 import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
@@ -16,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -48,13 +51,37 @@ class LogAnalyzerControllerTest {
     LogPresetProvider logPresetProvider;
 
     @Mock
-    SignalExtractor signalExtractor;
+    SignalExtractionPort signalExtractor;
 
     @Mock
-    AnomalyDetectorService anomalyDetectorService;
+    AnomalyDetectionPort anomalyDetectorService;
+
+    @Mock
+    CriticalBurstPort criticalIssueDetector;
+
+    @Mock
+    ReportGeneratorPort reportGeneratorPort;
 
     @Mock
     br.com.fzdevx.interfaces.rest.util.LogAnalysisBroadcaster logAnalysisBroadcaster;
+
+    // Use cases with no dependencies — @Spy creates real instances
+    @Spy QueryApiCallsUseCase queryApiCallsUseCase;
+    @Spy ExportApiStatsUseCase exportApiStatsUseCase;
+    @Spy GetPerformanceInsightsUseCase getPerformanceInsightsUseCase;
+    @Spy QueryLogLinesUseCase queryLogLinesUseCase;
+    @Spy GetThreadSummaryUseCase getThreadSummaryUseCase;
+    @Spy QueryJobExecutionsUseCase queryJobExecutionsUseCase;
+    @Spy QueryOrphanRequestsUseCase queryOrphanRequestsUseCase;
+    @Spy QueryNpeAnalysisUseCase queryNpeAnalysisUseCase;
+    @Spy QueryExceptionAnalysisUseCase queryExceptionAnalysisUseCase;
+    @Spy QueryCustomFieldsUseCase queryCustomFieldsUseCase;
+
+    // Use cases with dependencies — @Spy, deps injected in setUp
+    @Spy GenerateReportUseCase generateReportUseCase;
+    @Spy QueryCriticalIssuesUseCase queryCriticalIssuesUseCase;
+    @Spy DetectAnomaliesUseCase detectAnomaliesUseCase;
+    @Spy GetSystemHealthUseCase getSystemHealthUseCase;
 
     @InjectMocks
     LogAnalyzerController controller;
@@ -68,6 +95,23 @@ class LogAnalyzerControllerTest {
         setField("defaultContainerTail", 10000);
         when(logPresetProvider.allPresets()).thenReturn(LogPreset.allPresets());
         when(logPresetProvider.byName(anyString())).thenAnswer(inv -> LogPreset.byName(inv.getArgument(0)));
+        when(anomalyDetectorService.validMethods()).thenReturn(java.util.Set.of("ratio", "zscore"));
+
+        // Inject mock dependencies into use cases that have their own @Inject fields
+        setFieldOn(queryCriticalIssuesUseCase, "criticalBurstPort", criticalIssueDetector);
+        setFieldOn(detectAnomaliesUseCase, "signalExtractor", signalExtractor);
+        setFieldOn(detectAnomaliesUseCase, "anomalyDetector", anomalyDetectorService);
+        setFieldOn(getSystemHealthUseCase, "signalExtractor", signalExtractor);
+        setFieldOn(generateReportUseCase, "reportGenerator", reportGeneratorPort);
+
+        // Delegate report generation to HtmlReportGenerator for tests that assert HTML output
+        when(reportGeneratorPort.generateCompact(any())).thenAnswer(inv ->
+                br.com.fzdevx.infrastructure.log.HtmlReportGenerator.generateCompact(inv.getArgument(0)));
+        when(reportGeneratorPort.generateComplete(any())).thenAnswer(inv ->
+                br.com.fzdevx.infrastructure.log.HtmlReportGenerator.generateComplete(inv.getArgument(0)));
+        when(reportGeneratorPort.generateComparison(anyString(), anyString(), any(), any())).thenAnswer(inv ->
+                br.com.fzdevx.infrastructure.log.HtmlReportGenerator.generateComparison(
+                        inv.getArgument(0), inv.getArgument(1), inv.getArgument(2), inv.getArgument(3)));
     }
 
     private void setField(String name, Object value) {
@@ -75,6 +119,16 @@ class LogAnalyzerControllerTest {
             Field f = LogAnalyzerController.class.getDeclaredField(name);
             f.setAccessible(true);
             f.set(controller, value);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void setFieldOn(Object target, String name, Object value) {
+        try {
+            Field f = target.getClass().getDeclaredField(name);
+            f.setAccessible(true);
+            f.set(target, value);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -1189,7 +1243,7 @@ class LogAnalyzerControllerTest {
         );
         when(signalExtractor.extract(anyList(), eq(SignalType.ERROR_COUNT), anyList(), anyList(), anyList())).thenReturn(signals);
 
-        var detectionResult = new DetectionStrategy.DetectionResult(
+        var detectionResult = new AnomalyDetectionPort.DetectionResult(
                 List.of(new BucketStats("10:00", 1000, 1, 1, 1, 1, 1, "normal", 0.0, 0.0)),
                 List.of()
         );
@@ -1212,7 +1266,7 @@ class LogAnalyzerControllerTest {
 
         when(signalExtractor.extract(anyList(), eq(SignalType.API_LATENCY), anyList(), anyList(), anyList())).thenReturn(List.of());
 
-        var detectionResult = new DetectionStrategy.DetectionResult(List.of(), List.of());
+        var detectionResult = new AnomalyDetectionPort.DetectionResult(List.of(), List.of());
         when(anomalyDetectorService.detect(anyList(), anyDouble(), anyInt(), anyString(), anyString(), anyString())).thenReturn(detectionResult);
 
         Response response = controller.getAnomalyDetection(analysis.getId(), "API_LATENCY", 300, 3.0, 8, "count", "ratio");
@@ -1234,7 +1288,7 @@ class LogAnalyzerControllerTest {
         when(signalExtractor.extract(anyList(), eq(SignalType.ERROR_COUNT), anyList(), anyList(), anyList())).thenReturn(signals);
 
         var anomaly = new AnomalyResult("ERROR_COUNT", "10:00", 10.0, 2.0, 5.0, 10, 15);
-        var detectionResult = new DetectionStrategy.DetectionResult(
+        var detectionResult = new AnomalyDetectionPort.DetectionResult(
                 List.of(new BucketStats("10:00", 1000, 10, 10, 1, 10, 10, "ANOMALY", 2.0, 5.0)),
                 List.of(anomaly)
         );
@@ -1593,5 +1647,931 @@ class LogAnalyzerControllerTest {
         assertEquals(200, response.getStatus());
         String html = (String) response.getEntity();
         assertTrue(html.contains("<!DOCTYPE html>"));
+    }
+
+    // ======================================================================
+    // Characterization tests — Performance Insights
+    // ======================================================================
+
+    @Test
+    void getPerformanceInsights_disabled_returnsForbidden() {
+        setField("enabled", false);
+        Response response = controller.getPerformanceInsights(ANALYSIS_ID, null);
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void getPerformanceInsights_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+        Response response = controller.getPerformanceInsights("nonexistent", null);
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    void getPerformanceInsights_noApiCalls_returnsEmptyInsights() {
+        var analysis = new LogAnalysis(
+                List.of(new LogAnalysis.SourceFile("server.log", 1024)),
+                1, LocalDateTime.of(2025, 6, 15, 10, 0, 0), LocalDateTime.of(2025, 6, 15, 10, 30, 0),
+                List.of(), List.of(), List.of(), List.of(),
+                Map.of(), List.of(), List.of(), List.of(), List.of()
+        );
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getPerformanceInsights(analysis.getId(), null);
+
+        assertEquals(200, response.getStatus());
+        PerformanceInsights insights = (PerformanceInsights) response.getEntity();
+        assertTrue(insights.timeBuckets().isEmpty());
+        assertTrue(insights.topEndpointsByImpact().isEmpty());
+    }
+
+    @Test
+    void getPerformanceInsights_withApiCalls_returnsInsights() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getPerformanceInsights(analysis.getId(), null);
+
+        assertEquals(200, response.getStatus());
+        PerformanceInsights insights = (PerformanceInsights) response.getEntity();
+        assertNotNull(insights);
+        assertNotNull(insights.bucketWidth());
+    }
+
+    @Test
+    void getPerformanceInsights_filteredByEndpoint_usesOnlyMatchingCalls() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getPerformanceInsights(analysis.getId(), "UserResource/getUser");
+
+        assertEquals(200, response.getStatus());
+        PerformanceInsights insights = (PerformanceInsights) response.getEntity();
+        assertNotNull(insights);
+    }
+
+    @Test
+    void getPerformanceInsights_blankEndpoint_treatedAsNoFilter() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response unfiltered = controller.getPerformanceInsights(analysis.getId(), null);
+        Response blankFilter = controller.getPerformanceInsights(analysis.getId(), "  ");
+
+        // Both should use all calls
+        assertEquals(200, unfiltered.getStatus());
+        assertEquals(200, blankFilter.getStatus());
+    }
+
+    // ======================================================================
+    // Characterization tests — Bucket Endpoints
+    // ======================================================================
+
+    @Test
+    void getBucketEndpoints_disabled_returnsForbidden() {
+        setField("enabled", false);
+        Response response = controller.getBucketEndpoints(ANALYSIS_ID, "2025-06-15T10:00:00", null, 7);
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void getBucketEndpoints_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+        Response response = controller.getBucketEndpoints("nonexistent", "2025-06-15T10:00:00", null, 7);
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    void getBucketEndpoints_missingTimestamp_returns400() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getBucketEndpoints(analysis.getId(), null, null, 7);
+
+        assertEquals(400, response.getStatus());
+        assertErrorContains(response, "timestamp");
+    }
+
+    @Test
+    void getBucketEndpoints_blankTimestamp_returns400() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getBucketEndpoints(analysis.getId(), "  ", null, 7);
+
+        assertEquals(400, response.getStatus());
+    }
+
+    @Test
+    void getBucketEndpoints_invalidTimestamp_returns400() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getBucketEndpoints(analysis.getId(), "not-a-date", null, 7);
+
+        assertEquals(400, response.getStatus());
+        assertErrorContains(response, "invalid timestamp");
+    }
+
+    @Test
+    void getBucketEndpoints_validTimestamp_returns200() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getBucketEndpoints(analysis.getId(),
+                analysis.getTimeRangeStart().toString(), null, 7);
+
+        assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    void getBucketEndpoints_limitClampedTo1Minimum() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        // Limit of 0 should be clamped to 1
+        Response response = controller.getBucketEndpoints(analysis.getId(),
+                analysis.getTimeRangeStart().toString(), null, 0);
+
+        assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    void getBucketEndpoints_filteredByEndpoint() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getBucketEndpoints(analysis.getId(),
+                analysis.getTimeRangeStart().toString(), "UserResource/getUser", 7);
+
+        assertEquals(200, response.getStatus());
+    }
+
+    // ======================================================================
+    // Characterization tests — Line Range
+    // ======================================================================
+
+    @Test
+    void getLineRange_disabled_returnsForbidden() {
+        setField("enabled", false);
+        Response response = controller.getLineRange(ANALYSIS_ID, 1, 10, null, 0, 500);
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void getLineRange_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+        Response response = controller.getLineRange("nonexistent", 1, 10, null, 0, 500);
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    void getLineRange_invalidRange_fromZero_returns400() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getLineRange(analysis.getId(), 0, 10, null, 0, 500);
+
+        assertEquals(400, response.getStatus());
+        assertErrorContains(response, "invalid range");
+    }
+
+    @Test
+    void getLineRange_invalidRange_fromGreaterThanTo_returns400() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getLineRange(analysis.getId(), 10, 5, null, 0, 500);
+
+        assertEquals(400, response.getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getLineRange_validRange_returns200WithPagination() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getLineRange(analysis.getId(), 1, 4, null, 0, 500);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertEquals(4, data.size());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getLineRange_filteredByLevel_returnsOnlyMatchingLevel() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getLineRange(analysis.getId(), 1, 4, "ERROR", 0, 500);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<LogLine> data = (List<LogLine>) entity.get("data");
+        assertEquals(1, data.size());
+        assertEquals("ERROR", data.getFirst().level());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getLineRange_sizeClampedTo1000Max() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getLineRange(analysis.getId(), 1, 4, null, 0, 5000);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        assertEquals(1000, entity.get("size"));
+    }
+
+    // ======================================================================
+    // Characterization tests — Critical Issues
+    // ======================================================================
+
+    private LogAnalysis buildAnalysisWithCriticalIssues() {
+        LocalDateTime now = LocalDateTime.of(2025, 6, 15, 10, 0, 0);
+        var analysis = new LogAnalysis(
+                List.of(new LogAnalysis.SourceFile("server.log", 1024)),
+                4, now, now.plusSeconds(60),
+                List.of("main"), List.of(),
+                List.of(), List.of(), Map.of("ERROR", 4), List.of(),
+                List.of(), List.of(), List.of()
+        );
+
+        var issues1 = List.of(
+                new CriticalIssue("JDBC_CONNECT_ERROR", "HIGH", "Cannot get JDBC connection",
+                        10, now, "Connection refused", "server.log"),
+                new CriticalIssue("JDBC_CONNECT_ERROR", "HIGH", "Cannot get JDBC connection",
+                        20, now.plusSeconds(5), "Connection refused", "server.log")
+        );
+        var issues2 = List.of(
+                new CriticalIssue("OUT_OF_MEMORY", "CRITICAL", "OutOfMemoryError",
+                        30, now.plusSeconds(10), "Java heap space", "server.log")
+        );
+
+        analysis.setCriticalIssues(List.of(
+                new CriticalIssueSummary("JDBC_CONNECT_ERROR", "HIGH", 2, now, now.plusSeconds(5), issues1, List.of()),
+                new CriticalIssueSummary("OUT_OF_MEMORY", "CRITICAL", 1, now.plusSeconds(10), now.plusSeconds(10), issues2, List.of())
+        ));
+        return analysis;
+    }
+
+    @Test
+    void getCriticalIssues_disabled_returnsForbidden() {
+        setField("enabled", false);
+        Response response = controller.getCriticalIssues(ANALYSIS_ID, null);
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void getCriticalIssues_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+        Response response = controller.getCriticalIssues("nonexistent", null);
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCriticalIssues_noFilter_returnsAll() {
+        LogAnalysis analysis = buildAnalysisWithCriticalIssues();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getCriticalIssues(analysis.getId(), null);
+
+        assertEquals(200, response.getStatus());
+        List<CriticalIssueSummary> summaries = (List<CriticalIssueSummary>) response.getEntity();
+        assertEquals(2, summaries.size());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCriticalIssues_filterByCategory_returnsOnlyMatching() {
+        LogAnalysis analysis = buildAnalysisWithCriticalIssues();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getCriticalIssues(analysis.getId(), "OUT_OF_MEMORY");
+
+        assertEquals(200, response.getStatus());
+        List<CriticalIssueSummary> summaries = (List<CriticalIssueSummary>) response.getEntity();
+        assertEquals(1, summaries.size());
+        assertEquals("OUT_OF_MEMORY", summaries.getFirst().category());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCriticalIssues_filterCaseInsensitive() {
+        LogAnalysis analysis = buildAnalysisWithCriticalIssues();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getCriticalIssues(analysis.getId(), "out_of_memory");
+
+        assertEquals(200, response.getStatus());
+        List<CriticalIssueSummary> summaries = (List<CriticalIssueSummary>) response.getEntity();
+        assertEquals(1, summaries.size());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCriticalIssues_blankCategory_returnsAll() {
+        LogAnalysis analysis = buildAnalysisWithCriticalIssues();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getCriticalIssues(analysis.getId(), "  ");
+
+        assertEquals(200, response.getStatus());
+        List<CriticalIssueSummary> summaries = (List<CriticalIssueSummary>) response.getEntity();
+        assertEquals(2, summaries.size());
+    }
+
+    // ======================================================================
+    // Characterization tests — Critical Bursts
+    // ======================================================================
+
+    private LogAnalysis buildAnalysisWithBursts() {
+        LocalDateTime now = LocalDateTime.of(2025, 6, 15, 10, 0, 0);
+        var analysis = new LogAnalysis(
+                List.of(new LogAnalysis.SourceFile("server.log", 1024)),
+                10, now, now.plusMinutes(30),
+                List.of("main"), List.of(),
+                List.of(), List.of(), Map.of("ERROR", 10), List.of(),
+                List.of(), List.of(), List.of()
+        );
+
+        var issues = new java.util.ArrayList<CriticalIssue>();
+        for (int i = 0; i < 5; i++) {
+            issues.add(new CriticalIssue("JDBC_CONNECT_ERROR", "HIGH", "Connection refused",
+                    10 + i, now.plusMinutes(i), "Connection refused to db-host", "server.log"));
+        }
+        var burst = new CriticalBurst("JDBC_CONNECT_ERROR", "HIGH", now, now.plusMinutes(4), 5, issues);
+
+        analysis.setCriticalIssues(List.of(
+                new CriticalIssueSummary("JDBC_CONNECT_ERROR", "HIGH", 5,
+                        now, now.plusMinutes(4), issues, List.of(burst))
+        ));
+        return analysis;
+    }
+
+    @Test
+    void getCriticalBursts_disabled_returnsForbidden() {
+        setField("enabled", false);
+        Response response = controller.getCriticalBursts(ANALYSIS_ID, null, null);
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void getCriticalBursts_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+        Response response = controller.getCriticalBursts("nonexistent", null, null);
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCriticalBursts_defaultParams_usesCache() {
+        LogAnalysis analysis = buildAnalysisWithBursts();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        // No cached bursts → computeBursts should be called
+        when(criticalIssueDetector.computeBursts(anyList())).thenReturn(analysis.getCriticalIssues());
+
+        Response response = controller.getCriticalBursts(analysis.getId(), null, null);
+
+        assertEquals(200, response.getStatus());
+        List<Map<String, Object>> result = (List<Map<String, Object>>) response.getEntity();
+        assertEquals(1, result.size());
+        assertEquals("JDBC_CONNECT_ERROR", result.getFirst().get("category"));
+        assertEquals(1, result.getFirst().get("burstCount"));
+        assertEquals(5, result.getFirst().get("totalBurstIssues"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCriticalBursts_customParams_bypassesCache() {
+        LogAnalysis analysis = buildAnalysisWithBursts();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        when(criticalIssueDetector.computeBursts(anyList(), anyInt(), anyInt())).thenReturn(analysis.getCriticalIssues());
+
+        Response response = controller.getCriticalBursts(analysis.getId(), 20, 10);
+
+        assertEquals(200, response.getStatus());
+        // Should call the parameterized version, not the default
+        verify(criticalIssueDetector).computeBursts(anyList(), eq(20), eq(10));
+        verify(criticalIssueDetector, never()).computeBursts(anyList());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCriticalBursts_thresholdClamped() {
+        LogAnalysis analysis = buildAnalysisWithBursts();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+        when(criticalIssueDetector.computeBursts(anyList(), anyInt(), anyInt())).thenReturn(analysis.getCriticalIssues());
+
+        // Threshold 0 should be clamped to 2
+        controller.getCriticalBursts(analysis.getId(), 0, null);
+
+        verify(criticalIssueDetector).computeBursts(anyList(), eq(2), eq(5));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCriticalBursts_noBursts_returnsEmptyList() {
+        LogAnalysis analysis = buildAnalysisWithCriticalIssues(); // has issues but no bursts
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        when(criticalIssueDetector.computeBursts(anyList())).thenReturn(analysis.getCriticalIssues());
+
+        Response response = controller.getCriticalBursts(analysis.getId(), null, null);
+
+        assertEquals(200, response.getStatus());
+        List<?> result = (List<?>) response.getEntity();
+        assertTrue(result.isEmpty());
+    }
+
+    // ======================================================================
+    // Characterization tests — Critical Bursts By Category
+    // ======================================================================
+
+    @Test
+    void getCriticalBurstsByCategory_disabled_returnsForbidden() {
+        setField("enabled", false);
+        Response response = controller.getCriticalBurstsByCategory(ANALYSIS_ID, "JDBC_CONNECT_ERROR", 0, 10);
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void getCriticalBurstsByCategory_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+        Response response = controller.getCriticalBurstsByCategory("nonexistent", "JDBC_CONNECT_ERROR", 0, 10);
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCriticalBurstsByCategory_categoryNotFound_returnsEmptyPaginated() {
+        LogAnalysis analysis = buildAnalysisWithBursts();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+        when(criticalIssueDetector.computeBursts(anyList())).thenReturn(analysis.getCriticalIssues());
+
+        Response response = controller.getCriticalBurstsByCategory(analysis.getId(), "NONEXISTENT", 0, 10);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertTrue(data.isEmpty());
+        assertEquals(0, entity.get("total"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCriticalBurstsByCategory_validCategory_returnsPaginated() {
+        LogAnalysis analysis = buildAnalysisWithBursts();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+        when(criticalIssueDetector.computeBursts(anyList())).thenReturn(analysis.getCriticalIssues());
+
+        Response response = controller.getCriticalBurstsByCategory(analysis.getId(), "JDBC_CONNECT_ERROR", 0, 10);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertEquals(1, data.size());
+        assertEquals(1, entity.get("total"));
+    }
+
+    // ======================================================================
+    // Characterization tests — Critical Burst Issues
+    // ======================================================================
+
+    @Test
+    void getCriticalBurstIssues_disabled_returnsForbidden() {
+        setField("enabled", false);
+        Response response = controller.getCriticalBurstIssues(ANALYSIS_ID, "JDBC_CONNECT_ERROR", 0, 0, 25);
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void getCriticalBurstIssues_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+        Response response = controller.getCriticalBurstIssues("nonexistent", "JDBC_CONNECT_ERROR", 0, 0, 25);
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    void getCriticalBurstIssues_categoryNotFound_returns404() {
+        LogAnalysis analysis = buildAnalysisWithBursts();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+        when(criticalIssueDetector.computeBursts(anyList())).thenReturn(analysis.getCriticalIssues());
+
+        Response response = controller.getCriticalBurstIssues(analysis.getId(), "NONEXISTENT", 0, 0, 25);
+
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    void getCriticalBurstIssues_invalidBurstIndex_returns404() {
+        LogAnalysis analysis = buildAnalysisWithBursts();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+        when(criticalIssueDetector.computeBursts(anyList())).thenReturn(analysis.getCriticalIssues());
+
+        Response response = controller.getCriticalBurstIssues(analysis.getId(), "JDBC_CONNECT_ERROR", 99, 0, 25);
+
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    void getCriticalBurstIssues_negativeBurstIndex_returns404() {
+        LogAnalysis analysis = buildAnalysisWithBursts();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+        when(criticalIssueDetector.computeBursts(anyList())).thenReturn(analysis.getCriticalIssues());
+
+        Response response = controller.getCriticalBurstIssues(analysis.getId(), "JDBC_CONNECT_ERROR", -1, 0, 25);
+
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCriticalBurstIssues_validBurst_returnsPaginatedIssues() {
+        LogAnalysis analysis = buildAnalysisWithBursts();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+        when(criticalIssueDetector.computeBursts(anyList())).thenReturn(analysis.getCriticalIssues());
+
+        Response response = controller.getCriticalBurstIssues(analysis.getId(), "JDBC_CONNECT_ERROR", 0, 0, 25);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertEquals(5, data.size());
+        assertEquals(5, entity.get("total"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getCriticalBurstIssues_pagination_returnsCorrectPage() {
+        LogAnalysis analysis = buildAnalysisWithBursts();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+        when(criticalIssueDetector.computeBursts(anyList())).thenReturn(analysis.getCriticalIssues());
+
+        Response response = controller.getCriticalBurstIssues(analysis.getId(), "JDBC_CONNECT_ERROR", 0, 0, 2);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertEquals(2, data.size());
+        assertEquals(5, entity.get("total"));
+    }
+
+    // ======================================================================
+    // Characterization tests — NPE Analysis
+    // ======================================================================
+
+    private LogAnalysis buildAnalysisWithNpeData() {
+        LocalDateTime now = LocalDateTime.of(2025, 6, 15, 10, 0, 0);
+        var analysis = new LogAnalysis(
+                List.of(new LogAnalysis.SourceFile("server.log", 1024)),
+                4, now, now.plusSeconds(60),
+                List.of("main"), List.of(),
+                List.of(), List.of(), Map.of("ERROR", 4), List.of(),
+                List.of(), List.of(), List.of()
+        );
+
+        var occurrences = List.of(
+                new NpeOccurrence("com.example.Service", "process", "Service.java", 42,
+                        "null at process", now, 10, "server.log", List.of("at com.example.Service.process(Service.java:42)")),
+                new NpeOccurrence("com.example.Service", "process", "Service.java", 42,
+                        "null at process", now.plusSeconds(30), 50, "server.log", List.of("at com.example.Service.process(Service.java:42)"))
+        );
+
+        analysis.setNpeAnalysis(List.of(
+                new NpeLocationSummary("com.example.Service.process(Service.java:42)",
+                        "com.example.Service", "process", "Service.java", 42,
+                        2, now, now.plusSeconds(30), occurrences)
+        ));
+        return analysis;
+    }
+
+    @Test
+    void getNpeAnalysis_disabled_returnsForbidden() {
+        setField("enabled", false);
+        Response response = controller.getNpeAnalysis(ANALYSIS_ID, 0, 50);
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void getNpeAnalysis_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+        Response response = controller.getNpeAnalysis("nonexistent", 0, 50);
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getNpeAnalysis_returnsSummariesWithOccurrencesStripped() {
+        LogAnalysis analysis = buildAnalysisWithNpeData();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getNpeAnalysis(analysis.getId(), 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<NpeLocationSummary> data = (List<NpeLocationSummary>) entity.get("data");
+        assertEquals(1, data.size());
+        NpeLocationSummary summary = data.getFirst();
+        assertEquals("com.example.Service.process(Service.java:42)", summary.origin());
+        assertEquals(2, summary.count());
+        assertTrue(summary.occurrences().isEmpty(), "Occurrences should be stripped in summary");
+    }
+
+    // ======================================================================
+    // Characterization tests — NPE Occurrences
+    // ======================================================================
+
+    @Test
+    void getNpeOccurrences_disabled_returnsForbidden() {
+        setField("enabled", false);
+        Response response = controller.getNpeOccurrences(ANALYSIS_ID, "some.origin", 0, 25);
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void getNpeOccurrences_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+        Response response = controller.getNpeOccurrences("nonexistent", "some.origin", 0, 25);
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getNpeOccurrences_originNotFound_returnsEmptyPaginated() {
+        LogAnalysis analysis = buildAnalysisWithNpeData();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getNpeOccurrences(analysis.getId(), "nonexistent.origin", 0, 25);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertTrue(data.isEmpty());
+        assertEquals(0, entity.get("total"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getNpeOccurrences_validOrigin_returnsPaginatedOccurrences() {
+        LogAnalysis analysis = buildAnalysisWithNpeData();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getNpeOccurrences(analysis.getId(),
+                "com.example.Service.process(Service.java:42)", 0, 25);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertEquals(2, data.size());
+        assertEquals(2, entity.get("total"));
+    }
+
+    // ======================================================================
+    // Characterization tests — Exception Analysis
+    // ======================================================================
+
+    private LogAnalysis buildAnalysisWithExceptionData() {
+        LocalDateTime now = LocalDateTime.of(2025, 6, 15, 10, 0, 0);
+        var analysis = new LogAnalysis(
+                List.of(new LogAnalysis.SourceFile("server.log", 1024)),
+                4, now, now.plusSeconds(60),
+                List.of("main"), List.of(),
+                List.of(), List.of(), Map.of("ERROR", 4), List.of(),
+                List.of(), List.of(), List.of()
+        );
+
+        var occurrences = List.of(
+                new ExceptionOccurrence("IllegalStateException", "com.example.Handler", "handle",
+                        "Handler.java", 55, "Invalid state",
+                        now, 15, "server.log", List.of("at com.example.Handler.handle(Handler.java:55)")),
+                new ExceptionOccurrence("IllegalStateException", "com.example.Handler", "handle",
+                        "Handler.java", 55, "Invalid state",
+                        now.plusSeconds(20), 35, "server.log", List.of("at com.example.Handler.handle(Handler.java:55)"))
+        );
+
+        analysis.setExceptionAnalysis(List.of(
+                new ExceptionLocationSummary("IllegalStateException",
+                        "com.example.Handler.handle(Handler.java:55)",
+                        "com.example.Handler", "handle", "Handler.java", 55,
+                        2, now, now.plusSeconds(20), occurrences)
+        ));
+        return analysis;
+    }
+
+    @Test
+    void getExceptionAnalysis_disabled_returnsForbidden() {
+        setField("enabled", false);
+        Response response = controller.getExceptionAnalysis(ANALYSIS_ID, 0, 50);
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void getExceptionAnalysis_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+        Response response = controller.getExceptionAnalysis("nonexistent", 0, 50);
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getExceptionAnalysis_returnsSummariesWithOccurrencesStripped() {
+        LogAnalysis analysis = buildAnalysisWithExceptionData();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getExceptionAnalysis(analysis.getId(), 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<ExceptionLocationSummary> data = (List<ExceptionLocationSummary>) entity.get("data");
+        assertEquals(1, data.size());
+        ExceptionLocationSummary summary = data.getFirst();
+        assertEquals("IllegalStateException", summary.exceptionType());
+        assertEquals(2, summary.count());
+        assertTrue(summary.occurrences().isEmpty(), "Occurrences should be stripped in summary");
+    }
+
+    // ======================================================================
+    // Characterization tests — Exception Occurrences
+    // ======================================================================
+
+    @Test
+    void getExceptionOccurrences_disabled_returnsForbidden() {
+        setField("enabled", false);
+        Response response = controller.getExceptionOccurrences(ANALYSIS_ID, "some.origin", 0, 25);
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void getExceptionOccurrences_notFound_returns404() {
+        when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
+        Response response = controller.getExceptionOccurrences("nonexistent", "some.origin", 0, 25);
+        assertEquals(404, response.getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getExceptionOccurrences_originNotFound_returnsEmptyPaginated() {
+        LogAnalysis analysis = buildAnalysisWithExceptionData();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getExceptionOccurrences(analysis.getId(), "nonexistent.origin", 0, 25);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertTrue(data.isEmpty());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getExceptionOccurrences_matchByOrigin_returnsPaginated() {
+        LogAnalysis analysis = buildAnalysisWithExceptionData();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getExceptionOccurrences(analysis.getId(),
+                "com.example.Handler.handle(Handler.java:55)", 0, 25);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertEquals(2, data.size());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getExceptionOccurrences_matchByCompositeKey_returnsPaginated() {
+        LogAnalysis analysis = buildAnalysisWithExceptionData();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        // The controller matches on either origin or exceptionType:origin composite key
+        Response response = controller.getExceptionOccurrences(analysis.getId(),
+                "IllegalStateException:com.example.Handler.handle(Handler.java:55)", 0, 25);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<?> data = (List<?>) entity.get("data");
+        assertEquals(2, data.size());
+    }
+
+    // ======================================================================
+    // Characterization tests — Lines filtering (additional coverage)
+    // ======================================================================
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getLines_filteredByThread_returnsOnlyMatchingThread() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getLines(analysis.getId(), "http-thread-1", null, null, 0, 100);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<LogLine> data = (List<LogLine>) entity.get("data");
+        assertEquals(2, data.size());
+        assertTrue(data.stream().allMatch(l -> "http-thread-1".equals(l.thread())));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getLines_filteredByLevel_errorIncludesFatalAndSevere() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getLines(analysis.getId(), null, "ERROR", null, 0, 100);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<LogLine> data = (List<LogLine>) entity.get("data");
+        assertEquals(1, data.size());
+        assertEquals("ERROR", data.getFirst().level());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getLines_filteredBySearch_caseInsensitive() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getLines(analysis.getId(), null, null, "SLOW QUERY", 0, 100);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<LogLine> data = (List<LogLine>) entity.get("data");
+        assertEquals(1, data.size());
+        assertTrue(data.getFirst().message().contains("Slow query"));
+    }
+
+    // ======================================================================
+    // Characterization tests — API Calls sorting
+    // ======================================================================
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getApiCalls_sortByDuration_ascending() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, "duration", "asc", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<ApiCallPair> data = (List<ApiCallPair>) entity.get("data");
+        assertEquals(2, data.size());
+        assertTrue(data.get(0).durationMs() <= data.get(1).durationMs());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getApiCalls_sortByDuration_descending() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, "duration", "desc", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<ApiCallPair> data = (List<ApiCallPair>) entity.get("data");
+        assertEquals(2, data.size());
+        assertTrue(data.get(0).durationMs() >= data.get(1).durationMs());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getApiCalls_sortByEndpoint() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, "endpoint", "asc", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<ApiCallPair> data = (List<ApiCallPair>) entity.get("data");
+        assertEquals(2, data.size());
+        assertTrue(data.get(0).endpoint().compareTo(data.get(1).endpoint()) <= 0);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getApiCalls_filterByMinDuration() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getApiCalls(analysis.getId(), null, null, 1000L, null, "time", "asc", 0, 50);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<ApiCallPair> data = (List<ApiCallPair>) entity.get("data");
+        assertEquals(1, data.size());
+        assertEquals("OrderResource/create", data.getFirst().endpoint());
     }
 }

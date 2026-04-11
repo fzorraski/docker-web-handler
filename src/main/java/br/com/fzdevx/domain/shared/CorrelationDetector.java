@@ -1,4 +1,4 @@
-package br.com.fzdevx.infrastructure.log.anomaly;
+package br.com.fzdevx.domain.shared;
 
 import br.com.fzdevx.domain.model.anomaly.AnomalyResult;
 import br.com.fzdevx.domain.model.anomaly.CorrelatedAnomaly;
@@ -91,31 +91,19 @@ public final class CorrelationDetector {
         return correlations;
     }
 
-    /**
-     * Severity-weighted score with temporal proximity bonus.
-     * <p>
-     * score = distinctTypes × sumOfAllRatios × proximityBonus
-     * <p>
-     * Proximity bonus: anomalies in the same bucket get 1.5x, spread across multiple buckets get 1.0x.
-     */
     private static double computeScore(List<AnomalyResult> anomalies, List<String> distinctTypes, String startBucket) {
         double sumRatios = anomalies.stream().mapToDouble(AnomalyResult::ratio).sum();
         int anomalyCount = anomalies.size();
 
-        // Proximity bonus: what fraction of anomalies are in the start bucket?
         long inStartBucket = anomalies.stream()
                 .filter(a -> startBucket.equals(a.bucketLabel()))
                 .count();
         double proximityFactor = 1.0 + 0.5 * ((double) inStartBucket / anomalyCount);
 
-        // Combined: types × average_ratio × proximity
         double avgRatio = sumRatios / anomalyCount;
         return distinctTypes.size() * avgRatio * proximityFactor;
     }
 
-    /**
-     * Classify correlation severity based on score.
-     */
     private static String classifySeverity(double score) {
         if (score >= 20.0) return "critical";
         if (score >= 10.0) return "high";
@@ -123,20 +111,13 @@ public final class CorrelationDetector {
         return "low";
     }
 
-    /**
-     * Build a causal chain ordering signal types by likely root cause.
-     * Uses CAUSAL_ORDER priority and timestamp ordering within the window.
-     * Earlier-occurring types with higher causal priority come first.
-     */
     private static List<String> buildCausalChain(List<AnomalyResult> anomalies, String startBucket) {
-        // Group by type, find earliest bucket per type
         Map<String, String> earliestBucketByType = new LinkedHashMap<>();
         for (AnomalyResult a : anomalies) {
             earliestBucketByType.merge(a.signalType(), a.bucketLabel(),
                     (existing, next) -> existing.compareTo(next) <= 0 ? existing : next);
         }
 
-        // Sort: first by earliest bucket (time order), then by causal priority for ties
         return earliestBucketByType.entrySet().stream()
                 .sorted(Comparator
                         .<Map.Entry<String, String>, String>comparing(Map.Entry::getValue)
