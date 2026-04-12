@@ -1111,6 +1111,8 @@ const ptBR: typeof en = {
       tabAnalyses: 'Analises',
       tabAdvanced: 'Avancado',
       orDragDrop: 'ou arraste e solte aqui',
+      fileReady: 'Arquivo pronto para analise',
+      clickOrDropToReplace: 'Clique ou solte para substituir',
       labelField: 'Nome (opcional)',
       containerSource: 'Analisar logs do container',
       description: 'Selecione quais analises executar. Desative recursos nao utilizados para acelerar o processamento.',

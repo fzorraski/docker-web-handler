@@ -1110,6 +1110,8 @@ const en = {
       tabAnalyses: 'Analyses',
       tabAdvanced: 'Advanced',
       orDragDrop: 'or drag & drop here',
+      fileReady: 'File ready for analysis',
+      clickOrDropToReplace: 'Click or drop to replace',
       labelField: 'Label (optional)',
       containerSource: 'Analyze container logs',
       description: 'Select which analyses to run. Disable unused features to speed up processing.',

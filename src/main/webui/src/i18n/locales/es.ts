@@ -1111,6 +1111,8 @@ const es: typeof en = {
       tabAnalyses: 'Analisis',
       tabAdvanced: 'Avanzado',
       orDragDrop: 'o arrastra y suelta aqui',
+      fileReady: 'Archivo listo para analisis',
+      clickOrDropToReplace: 'Haz clic o suelta para reemplazar',
       labelField: 'Nombre (opcional)',
       containerSource: 'Analizar logs del contenedor',
       description: 'Seleccione que analisis ejecutar. Desactive funciones no utilizadas para acelerar el procesamiento.',

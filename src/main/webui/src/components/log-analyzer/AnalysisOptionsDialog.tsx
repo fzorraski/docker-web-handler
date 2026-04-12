@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Autocomplete, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
+  Autocomplete, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
   IconButton, Stack, Switch, Tab, Tabs, TextField, Tooltip, Typography,
   FormControlLabel,
   alpha, useTheme,
 } from '@mui/material'
 import {
-  Close, CloudUpload, Clear,
+  Close, CloudUpload, Clear, CheckCircleOutline,
   SyncAlt, Work, ErrorOutline, WarningAmber, BugReport, Code, Extension,
 } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
@@ -102,7 +102,6 @@ export function AnalysisOptionsDialog({ open, onClose, onStart, files, onFilesCh
 }) {
   const { t } = useTranslation()
   const theme = useTheme()
-  const isDark = theme.palette.mode === 'dark'
 
   const [tab, setTab] = useState(0)
   const [options, setOptions] = useState<AnalysisOptions>(ALL_ON)
@@ -160,10 +159,6 @@ export function AnalysisOptionsDialog({ open, onClose, onStart, files, onFilesCh
     })
   }, [label, options, selectedPreset, slowThreshold, customRegex, customFieldInputs, onStart])
 
-  const handleRemoveFile = useCallback((idx: number) => {
-    onFilesChange(files.filter((_, i) => i !== idx))
-  }, [files, onFilesChange])
-
   const handleAddFiles = useCallback((fileList: FileList | null) => {
     if (!fileList) return
     const valid = Array.from(fileList).filter(f =>
@@ -207,7 +202,7 @@ export function AnalysisOptionsDialog({ open, onClose, onStart, files, onFilesCh
         {/* ── Tab 0: Upload ── */}
         {tab === 0 && (
           <Stack spacing={2.5}>
-            {/* Container source banner OR drop zone */}
+            {/* Container source banner OR drop zone / file ready state */}
             {containerSource ? (
               <Box sx={{
                 display: 'flex', alignItems: 'center', gap: 2,
@@ -221,7 +216,44 @@ export function AnalysisOptionsDialog({ open, onClose, onStart, files, onFilesCh
                   <Typography variant="body1" fontFamily="'JetBrains Mono', monospace" fontSize="0.9rem">{containerSource.name}</Typography>
                 </Box>
               </Box>
+            ) : files.length > 0 ? (
+              /* ── File ready state ── */
+              <Box
+                component="label"
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                sx={{
+                  display: 'flex', alignItems: 'center', gap: 2,
+                  py: 2.5, px: 3, borderRadius: 2, cursor: 'pointer',
+                  border: '1px solid',
+                  borderColor: isDragging ? 'primary.main' : alpha(theme.palette.success.main, 0.4),
+                  bgcolor: isDragging ? alpha(theme.palette.primary.main, 0.06) : alpha(theme.palette.success.main, 0.03),
+                  transition: 'all 0.2s ease',
+                  '&:hover': { borderColor: isDragging ? 'primary.main' : alpha(theme.palette.success.main, 0.6), bgcolor: alpha(theme.palette.success.main, 0.05) },
+                }}
+              >
+                <input type="file" hidden accept=".log,.txt,.out" onChange={(e) => { handleAddFiles(e.target.files); e.target.value = '' }} />
+                <CheckCircleOutline sx={{ fontSize: 28, color: 'success.main' }} />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  {files.map((f, i) => (
+                    <Box key={`${f.name}-${i}`}>
+                      <Typography variant="body2" fontWeight={600} sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }} noWrap>
+                        {f.name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {formatBytes(f.size)}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+                <Typography variant="caption" color="text.disabled" sx={{ whiteSpace: 'nowrap' }}>
+                  {t('logAnalyzer.analysisOptions.clickOrDropToReplace')}
+                </Typography>
+              </Box>
             ) : (
+              /* ── Empty drop zone ── */
               <Box
                 component="label"
                 onDragEnter={handleDragEnter}
@@ -249,32 +281,17 @@ export function AnalysisOptionsDialog({ open, onClose, onStart, files, onFilesCh
               </Box>
             )}
 
-            {/* File chips + label (file mode only) */}
+            {/* Label field (file mode only) */}
             {!containerSource && files.length > 0 && (
-              <Stack spacing={1.5}>
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                  {files.map((f, i) => (
-                    <Chip
-                      key={`${f.name}-${i}`}
-                      label={`${f.name} ${formatBytes(f.size)}`}
-                      onDelete={() => handleRemoveFile(i)}
-                      size="small"
-                      color="success"
-                      variant="outlined"
-                      sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem' }}
-                    />
-                  ))}
-                </Stack>
-                <TextField
-                  size="small"
-                  fullWidth
-                  label={t('logAnalyzer.analysisOptions.labelField')}
-                  placeholder={files[0]?.name ?? ''}
-                  slotProps={{ htmlInput: { maxLength: 50 } }}
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                />
-              </Stack>
+              <TextField
+                size="small"
+                fullWidth
+                label={t('logAnalyzer.analysisOptions.labelField')}
+                placeholder={files[0]?.name ?? ''}
+                slotProps={{ htmlInput: { maxLength: 50 } }}
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+              />
             )}
 
             {/* Preset + Threshold */}
