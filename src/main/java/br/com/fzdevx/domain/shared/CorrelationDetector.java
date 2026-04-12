@@ -17,7 +17,7 @@ public final class CorrelationDetector {
         var types = List.of(
                 "OOM", "DEADLOCK", "GC_PAUSE", "POOL_EXHAUSTION", "POOL_LEAK",
                 "THREAD_REJECTION", "SLOW_QUERY", "SQL_EXCEPTION", "NPE",
-                "HTTP_ERROR", "API_LATENCY", "JOB_DURATION", "ORPHAN_REQUEST", "ERROR_COUNT"
+                "HTTP_ERROR", "API_COUNT", "API_LATENCY", "JOB_DURATION", "ORPHAN_REQUEST", "ERROR_COUNT"
         );
         var map = new HashMap<String, Integer>();
         for (int i = 0; i < types.size(); i++) map.put(types.get(i), i);

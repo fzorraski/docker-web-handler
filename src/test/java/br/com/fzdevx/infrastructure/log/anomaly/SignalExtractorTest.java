@@ -101,7 +101,8 @@ class SignalExtractorTest {
         Map<SignalType, List<Signal>> result = extractor.extractAll(null, apiCalls);
 
         assertTrue(result.containsKey(SignalType.API_LATENCY));
-        assertEquals(1, result.size());
+        assertTrue(result.containsKey(SignalType.API_COUNT));
+        assertEquals(2, result.size());
     }
 
     @Test
@@ -151,7 +152,7 @@ class SignalExtractorTest {
 
         List<SignalType> types = extractor.detectAvailableTypes(null, apiCalls);
 
-        assertEquals(List.of(SignalType.API_LATENCY), types);
+        assertEquals(List.of(SignalType.API_COUNT, SignalType.API_LATENCY), types);
     }
 
     @Test

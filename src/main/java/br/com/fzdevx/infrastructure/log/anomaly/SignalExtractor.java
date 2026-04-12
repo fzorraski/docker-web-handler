@@ -63,6 +63,9 @@ public class SignalExtractor implements SignalExtractionPort {
 
     public List<Signal> extract(List<LogLine> lines, SignalType type, List<ApiCallPair> apiCalls,
                                 List<JobExecution> jobs, List<OrphanRequest> orphans) {
+        if (type == SignalType.API_COUNT) {
+            return extractApiCount(apiCalls);
+        }
         if (type == SignalType.API_LATENCY) {
             return extractApiLatency(apiCalls);
         }
@@ -98,6 +101,24 @@ public class SignalExtractor implements SignalExtractionPort {
                     SignalType.API_LATENCY,
                     call.durationMs(),
                     call.endpoint() + " " + call.durationMs() + "ms",
+                    call.requestTimestamp(),
+                    call.thread(),
+                    call.endpoint()
+            ));
+        }
+        return signals;
+    }
+
+    private List<Signal> extractApiCount(List<ApiCallPair> apiCalls) {
+        if (apiCalls == null || apiCalls.isEmpty()) return List.of();
+        List<Signal> signals = new ArrayList<>();
+        for (ApiCallPair call : apiCalls) {
+            if (call.requestTimestamp() == null) continue;
+            if (signals.size() >= MAX_SIGNALS_PER_TYPE) break;
+            signals.add(new Signal(
+                    SignalType.API_COUNT,
+                    1L,
+                    call.endpoint(),
                     call.requestTimestamp(),
                     call.thread(),
                     call.endpoint()
@@ -176,6 +197,11 @@ public class SignalExtractor implements SignalExtractionPort {
             }
         }
 
+        List<Signal> apiCountSignals = extractApiCount(apiCalls);
+        if (!apiCountSignals.isEmpty()) {
+            result.put(SignalType.API_COUNT, apiCountSignals);
+        }
+
         List<Signal> apiSignals = extractApiLatency(apiCalls);
         if (!apiSignals.isEmpty()) {
             result.put(SignalType.API_LATENCY, apiSignals);
@@ -251,6 +277,7 @@ public class SignalExtractor implements SignalExtractionPort {
             }
         }
         if (apiCalls != null && !apiCalls.isEmpty()) {
+            found.add(SignalType.API_COUNT);
             found.add(SignalType.API_LATENCY);
         }
         if (jobs != null && !jobs.isEmpty()) {
