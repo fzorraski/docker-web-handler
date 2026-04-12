@@ -34,6 +34,10 @@ public class LogFileParser implements LogAnalysisPort {
     @Inject
     @ConfigProperty(name = "log.analyzer.max-stored-lines", defaultValue = "500000")
     int maxStoredLines;
+
+    @Inject
+    @jakarta.inject.Named("analysisExecutor")
+    ExecutorService analysisExecutor;
     private static final long REGEX_SAFETY_TIMEOUT_MS = 2000;
 
     @Override
@@ -45,6 +49,13 @@ public class LogFileParser implements LogAnalysisPort {
     @Override
     public LogAnalysis analyze(List<Path> files, List<String> filenames, LogPreset preset, int slowThresholdMs,
                                AnalysisOptions options, Consumer<ContainerEvent> progressSink, AtomicBoolean cancelled) {
+        return analyze(files, filenames, preset, slowThresholdMs, options, progressSink, cancelled, null);
+    }
+
+    @Override
+    public LogAnalysis analyze(List<Path> files, List<String> filenames, LogPreset preset, int slowThresholdMs,
+                               AnalysisOptions options, Consumer<ContainerEvent> progressSink, AtomicBoolean cancelled,
+                               Consumer<List<LogLine>> onLinesParsed) {
         Pattern logLinePattern = compileAndValidate(preset.logLineRegex(), "logLineRegex");
         Pattern apiCallPattern = options.apiCalls() && preset.apiCallRegex() != null && !preset.apiCallRegex().isBlank()
                 ? compileAndValidate(preset.apiCallRegex(), "apiCallRegex") : null;
@@ -86,36 +97,78 @@ public class LogFileParser implements LogAnalysisPort {
         }
 
         checkCancelled(cancelled);
+
+        // Notify the caller that parsing is done — allows launching parallel work immediately
+        if (onLinesParsed != null) {
+            onLinesParsed.accept(Collections.unmodifiableList(allLines));
+        }
+
         List<String> sensitiveFieldNames = preset.sensitiveFieldNames() != null
                 ? preset.sensitiveFieldNames() : List.of();
         List<Map.Entry<Pattern, String>> redactionPatterns = compileRedactionPatterns(sensitiveFieldNames);
 
+        // Phases 2-4: run in parallel — all read allLines independently
+        // Capture allLines as final for lambda access (variable is reassigned later for max-stored-lines trimming)
+        final List<LogLine> linesForAnalysis = allLines;
+
+        CompletableFuture<PairingResult> apiCallsFuture = null;
+        CompletableFuture<List<JobExecution>> jobsFuture = null;
+        CompletableFuture<List<RepeatedFailure>> failuresFuture = null;
+
+        if (apiCallPattern != null) {
+            apiCallsFuture = CompletableFuture.supplyAsync(() -> {
+                progressSink.accept(ContainerEvent.info("API Calls", "Pairing API calls..."));
+                var result = pairApiCalls(linesForAnalysis, apiCallPattern, slowThresholdMs, redactionPatterns, cancelled);
+                progressSink.accept(ContainerEvent.info("API Calls", "Found " + result.pairs.size() + " API call pairs" +
+                        (result.orphans.isEmpty() ? "" : " (" + result.orphans.size() + " orphan requests)")));
+                return result;
+            }, analysisExecutor);
+        } else {
+            progressSink.accept(ContainerEvent.info("API Calls", "Skipped"));
+        }
+        if (jobStartPattern != null) {
+            jobsFuture = CompletableFuture.supplyAsync(() -> {
+                progressSink.accept(ContainerEvent.info("Jobs", "Pairing job executions..."));
+                var result = pairJobExecutions(linesForAnalysis, jobStartPattern, jobEndPattern, cancelled);
+                progressSink.accept(ContainerEvent.info("Jobs", "Found " + result.size() + " job executions"));
+                return result;
+            }, analysisExecutor);
+        } else {
+            progressSink.accept(ContainerEvent.info("Jobs", "Skipped"));
+        }
+        if (failurePattern != null) {
+            failuresFuture = CompletableFuture.supplyAsync(() -> {
+                progressSink.accept(ContainerEvent.info("Failures", "Detecting repeated failures..."));
+                var result = detectRepeatedFailures(linesForAnalysis, failurePattern, cancelled);
+                progressSink.accept(ContainerEvent.info("Failures", "Found " + result.size() + " repeated failures"));
+                return result;
+            }, analysisExecutor);
+        } else {
+            progressSink.accept(ContainerEvent.info("Failures", "Skipped"));
+        }
+
+        // Await results
         List<ApiCallPair> apiCalls = List.of();
         List<OrphanRequest> orphanRequests = List.of();
-        if (apiCallPattern != null) {
-            progressSink.accept(ContainerEvent.info("API Calls", "Pairing API calls..."));
-            checkCancelled(cancelled);
-            var pairingResult = pairApiCalls(allLines, apiCallPattern, slowThresholdMs, redactionPatterns, cancelled);
-            apiCalls = pairingResult.pairs;
-            orphanRequests = pairingResult.orphans;
-            progressSink.accept(ContainerEvent.info("API Calls", "Found " + apiCalls.size() + " API call pairs" +
-                    (orphanRequests.isEmpty() ? "" : " (" + orphanRequests.size() + " orphan requests)")));
-        }
-
         List<JobExecution> jobExecutions = List.of();
-        if (jobStartPattern != null) {
-            progressSink.accept(ContainerEvent.info("Jobs", "Pairing job executions..."));
-            checkCancelled(cancelled);
-            jobExecutions = pairJobExecutions(allLines, jobStartPattern, jobEndPattern, cancelled);
-            progressSink.accept(ContainerEvent.info("Jobs", "Found " + jobExecutions.size() + " job executions"));
-        }
-
         List<RepeatedFailure> repeatedFailures = List.of();
-        if (failurePattern != null) {
-            progressSink.accept(ContainerEvent.info("Failures", "Detecting repeated failures..."));
-            checkCancelled(cancelled);
-            repeatedFailures = detectRepeatedFailures(allLines, failurePattern, cancelled);
-            progressSink.accept(ContainerEvent.info("Failures", "Found " + repeatedFailures.size() + " repeated failures"));
+
+        try {
+            if (apiCallsFuture != null) {
+                var pairingResult = apiCallsFuture.join();
+                apiCalls = pairingResult.pairs;
+                orphanRequests = pairingResult.orphans;
+            }
+            if (jobsFuture != null) {
+                jobExecutions = jobsFuture.join();
+            }
+            if (failuresFuture != null) {
+                repeatedFailures = failuresFuture.join();
+            }
+        } catch (CompletionException e) {
+            if (e.getCause() instanceof CancellationException ce) throw ce;
+            if (e.getCause() instanceof RuntimeException re) throw re;
+            throw new RuntimeException(e.getCause());
         }
 
         Map<String, Integer> levelCounts = new LinkedHashMap<>();

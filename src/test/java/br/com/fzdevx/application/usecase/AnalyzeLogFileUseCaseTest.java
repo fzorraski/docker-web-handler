@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -45,6 +46,7 @@ class AnalyzeLogFileUseCaseTest {
     void setUp() {
         setField("maxFiles", 5);
         setField("ttlMinutes", 120);
+        setField("analysisExecutor", java.util.concurrent.Executors.newFixedThreadPool(4));
     }
 
     private void setField(String name, Object value) {
@@ -55,6 +57,19 @@ class AnalyzeLogFileUseCaseTest {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void stubProgressAnalyze(LogAnalysis result) {
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any(), any(), any(), any()))
+                .thenAnswer(inv -> {
+                    // Invoke the onLinesParsed callback with the analysis's lines
+                    Consumer<List<LogLine>> callback = inv.getArgument(7);
+                    if (callback != null) {
+                        callback.accept(result.getAllLines());
+                    }
+                    return result;
+                });
     }
 
     private LogAnalysis makeAnalysis() {
@@ -222,7 +237,7 @@ class AnalyzeLogFileUseCaseTest {
     @Test
     void analyzeWithProgress_sendsEventsAndStoresResult() {
         LogAnalysis expected = makeAnalysis();
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any(), any(), any())).thenReturn(expected);
+        stubProgressAnalyze(expected);
 
         List<ContainerEvent> events = new ArrayList<>();
         useCase.analyzeWithProgress(
@@ -246,7 +261,7 @@ class AnalyzeLogFileUseCaseTest {
     @Test
     void analyzeWithProgress_cancellation_sendsErrorEvent() {
         // Simulate cancellation during parsing: the port throws CancellationException
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any(), any(), any()))
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any(), any(), any(), any()))
                 .thenThrow(new CancellationException("cancelled"));
 
         List<ContainerEvent> events = new ArrayList<>();
@@ -262,7 +277,7 @@ class AnalyzeLogFileUseCaseTest {
 
     @Test
     void analyzeWithProgress_exception_sendsErrorEvent() {
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any(), any(), any()))
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any(), any(), any(), any()))
                 .thenThrow(new RuntimeException("disk full"));
 
         List<ContainerEvent> events = new ArrayList<>();
@@ -279,8 +294,8 @@ class AnalyzeLogFileUseCaseTest {
     @Test
     void analyzeWithProgress_sendsCustomFieldEvents() {
         LogAnalysis expected = makeAnalysis();
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any(), any(), any())).thenReturn(expected);
-        when(customFieldExtractorPort.extract(any(), any())).thenReturn(List.of());
+        stubProgressAnalyze(expected);
+        when(customFieldExtractorPort.extract(any(), any(), any())).thenReturn(List.of());
 
         LogPreset presetWithFields = new LogPreset("WildFly",
                 LogPreset.WILDFLY.logLineRegex(), LogPreset.WILDFLY.timestampFormat(),
@@ -308,7 +323,7 @@ class AnalyzeLogFileUseCaseTest {
     void cancel_activeTicket_returnsTrue() {
         // Start an analysis that blocks so we can cancel it
         AtomicBoolean parserStarted = new AtomicBoolean(false);
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any(), any(), any()))
+        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any(), any(), any(), any()))
                 .thenAnswer(inv -> {
                     parserStarted.set(true);
                     AtomicBoolean cancelled = inv.getArgument(6);
@@ -339,7 +354,7 @@ class AnalyzeLogFileUseCaseTest {
 
     @Test
     void cancel_afterCompletion_returnsFalse() {
-        when(logAnalysisPort.analyze(any(), any(), any(), anyInt(), any(), any(), any())).thenReturn(makeAnalysis());
+        stubProgressAnalyze(makeAnalysis());
 
         useCase.analyzeWithProgress(
                 List.of(Path.of("/tmp/test.log")), List.of("test.log"),

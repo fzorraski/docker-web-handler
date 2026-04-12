@@ -53,6 +53,10 @@ public class AnalyzeLogFileUseCase {
     br.com.fzdevx.infrastructure.persistence.ResourceCounterService resourceCounterService;
 
     @Inject
+    @jakarta.inject.Named("analysisExecutor")
+    ExecutorService analysisExecutor;
+
+    @Inject
     @ConfigProperty(name = "log.analyzer.max-files", defaultValue = "5")
     int maxFiles;
 
@@ -128,40 +132,95 @@ public class AnalyzeLogFileUseCase {
                 if (evictedId != null) onEvicted.accept(evictedId);
             }
 
+            // Determine which post-parsing phases to run
+            boolean doCustomFields = options.customFields() && preset.hasCustomFields();
+            boolean doCriticalIssues = options.criticalIssues();
+            boolean doNpeAnalysis = options.npeAnalysis();
+            boolean doExceptionAnalysis = options.exceptionAnalysis();
+
+            // Phases 7-10 launch immediately when parsing completes (via callback),
+            // running in parallel with phases 2-4 inside LogFileParser.
+            // Holders for futures launched from the callback (array trick for lambda capture).
+            final CompletableFuture<List<CustomFieldResult>>[] cfHolder = new CompletableFuture[]{null};
+            final CompletableFuture<List<CriticalIssueSummary>>[] ciHolder = new CompletableFuture[]{null};
+            final CompletableFuture<List<NpeLocationSummary>>[] npeHolder = new CompletableFuture[]{null};
+            final CompletableFuture<List<ExceptionLocationSummary>>[] exHolder = new CompletableFuture[]{null};
+
             eventSink.accept(ContainerEvent.info("Parsing", "Starting analysis..."));
-            LogAnalysis analysis = logAnalysisPort.analyze(files, filenames, preset, slowThresholdMs, options, eventSink, cancelled);
+            LogAnalysis analysis = logAnalysisPort.analyze(files, filenames, preset, slowThresholdMs, options, eventSink, cancelled,
+                    (parsedLines) -> {
+                        // Called when parsing finishes, before phases 2-4 start in LogFileParser.
+                        // Launch phases 7-10 here so they run concurrently with phases 2-4.
+                        // Events are sent from inside each task for real-time parallel feedback.
+                        if (doCustomFields) {
+                            cfHolder[0] = CompletableFuture.supplyAsync(() -> {
+                                eventSink.accept(ContainerEvent.info("Custom Fields", "Extracting custom fields..."));
+                                checkCancelled(cancelled);
+                                var result = customFieldExtractorPort.extract(parsedLines, preset.customFields(), cancelled);
+                                eventSink.accept(ContainerEvent.info("Custom Fields",
+                                        "Custom fields: " + result.size() + " field(s) processed"));
+                                return result;
+                            }, analysisExecutor);
+                        } else {
+                            eventSink.accept(ContainerEvent.info("Custom Fields", "Skipped"));
+                        }
+                        if (doCriticalIssues) {
+                            ciHolder[0] = CompletableFuture.supplyAsync(() -> {
+                                eventSink.accept(ContainerEvent.info("Critical Issues", "Detecting critical issues..."));
+                                checkCancelled(cancelled);
+                                var result = criticalIssueDetector.detect(parsedLines, preset.criticalIssueExclusions(), cancelled);
+                                eventSink.accept(ContainerEvent.info("Critical Issues",
+                                        "Critical issues: " + result.size() + " categor" +
+                                                (result.size() == 1 ? "y" : "ies") + " detected"));
+                                return result;
+                            }, analysisExecutor);
+                        } else {
+                            eventSink.accept(ContainerEvent.info("Critical Issues", "Skipped"));
+                        }
+                        if (doNpeAnalysis) {
+                            npeHolder[0] = CompletableFuture.supplyAsync(() -> {
+                                eventSink.accept(ContainerEvent.info("NPE Analysis", "Analyzing NullPointerExceptions..."));
+                                checkCancelled(cancelled);
+                                var result = npeAnalyzer.analyze(parsedLines, cancelled);
+                                eventSink.accept(ContainerEvent.info("NPE Analysis",
+                                        "NPE analysis: " + result.size() + " location(s) found"));
+                                return result;
+                            }, analysisExecutor);
+                        } else {
+                            eventSink.accept(ContainerEvent.info("NPE Analysis", "Skipped"));
+                        }
+                        if (doExceptionAnalysis) {
+                            exHolder[0] = CompletableFuture.supplyAsync(() -> {
+                                eventSink.accept(ContainerEvent.info("Exception Analysis", "Analyzing exceptions..."));
+                                checkCancelled(cancelled);
+                                var result = exceptionAnalyzer.analyze(parsedLines, cancelled);
+                                eventSink.accept(ContainerEvent.info("Exception Analysis",
+                                        "Exception analysis: " + result.size() + " location(s) found"));
+                                return result;
+                            }, analysisExecutor);
+                        } else {
+                            eventSink.accept(ContainerEvent.info("Exception Analysis", "Skipped"));
+                        }
+                    });
 
             if (cancelled.get()) {
+                // Cancel in-flight futures and wait for them to stop
+                cancelAndJoin(cfHolder[0], ciHolder[0], npeHolder[0], exHolder[0]);
                 eventSink.accept(ContainerEvent.error("Cancelled", "Analysis cancelled."));
                 return;
             }
 
-            if (options.customFields() && preset.hasCustomFields()) {
-                eventSink.accept(ContainerEvent.info("Custom Fields", "Extracting custom fields..."));
-                checkCancelled(cancelled);
-                analysis.setCustomFieldResults(
-                        customFieldExtractorPort.extract(analysis.getAllLines(), preset.customFields(), cancelled)
-                );
-                eventSink.accept(ContainerEvent.info("Custom Fields",
-                        "Custom fields: " + analysis.getCustomFieldResults().size() + " field(s) processed"));
-            }
-
-            if (options.criticalIssues()) {
-                eventSink.accept(ContainerEvent.info("Critical Issues", "Detecting critical issues..."));
-                checkCancelled(cancelled);
-                analysis.setCriticalIssues(criticalIssueDetector.detect(analysis.getAllLines(), preset.criticalIssueExclusions(), cancelled));
-            }
-
-            if (options.npeAnalysis()) {
-                eventSink.accept(ContainerEvent.info("NPE Analysis", "Analyzing NullPointerExceptions..."));
-                checkCancelled(cancelled);
-                analysis.setNpeAnalysis(npeAnalyzer.analyze(analysis.getAllLines(), cancelled));
-            }
-
-            if (options.exceptionAnalysis()) {
-                eventSink.accept(ContainerEvent.info("Exception Analysis", "Analyzing exceptions..."));
-                checkCancelled(cancelled);
-                analysis.setExceptionAnalysis(exceptionAnalyzer.analyze(analysis.getAllLines(), cancelled));
+            // Await all parallel phases and collect results
+            try {
+                if (cfHolder[0] != null) analysis.setCustomFieldResults(cfHolder[0].join());
+                if (ciHolder[0] != null) analysis.setCriticalIssues(ciHolder[0].join());
+                if (npeHolder[0] != null) analysis.setNpeAnalysis(npeHolder[0].join());
+                if (exHolder[0] != null) analysis.setExceptionAnalysis(exHolder[0].join());
+            } catch (CompletionException e) {
+                cancelled.set(true);
+                cancelAndJoin(cfHolder[0], ciHolder[0], npeHolder[0], exHolder[0]);
+                if (e.getCause() instanceof CancellationException ce) throw ce;
+                throw e;
             }
 
             analyses.put(analysis.getId(), new AnalysisEntry(analysis, Instant.now()));
@@ -185,6 +244,18 @@ public class AnalyzeLogFileUseCase {
         if (cancelled == null) return false;
         cancelled.set(true);
         return true;
+    }
+
+    @SafeVarargs
+    private void cancelAndJoin(CompletableFuture<?>... futures) {
+        for (var f : futures) {
+            if (f != null) f.cancel(true);
+        }
+        for (var f : futures) {
+            if (f != null) {
+                try { f.join(); } catch (Exception ignored) { }
+            }
+        }
     }
 
     private void checkCancelled(AtomicBoolean cancelled) {

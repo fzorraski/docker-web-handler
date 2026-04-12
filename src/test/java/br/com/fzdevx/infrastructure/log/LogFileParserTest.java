@@ -24,6 +24,7 @@ class LogFileParserTest {
     void setUp() {
         parser = new LogFileParser();
         setField("maxStoredLines", 500_000);
+        setField("analysisExecutor", java.util.concurrent.Executors.newSingleThreadExecutor());
     }
 
     private void setField(String name, Object value) {
