@@ -4,7 +4,6 @@ import {
   Stepper,
   Step,
   Collapse,
-  IconButton,
   StepLabel,
   Typography,
   LinearProgress,
@@ -504,7 +503,6 @@ function CollapsibleLog({ logRef, events }: { logRef: React.RefObject<HTMLDivEle
   const [open, setOpen] = useState(false)
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
-  const visible = events.filter(e => e.message !== 'Skipped')
 
   return (
     <Box sx={{ mt: 2 }}>
@@ -534,15 +532,6 @@ function CollapsibleLog({ logRef, events }: { logRef: React.RefObject<HTMLDivEle
           }}>
             {open ? t('logAnalyzer.upload.hideDetails') : t('logAnalyzer.upload.showDetails')}
           </Typography>
-          <Box sx={{
-            ml: 0.5, px: 0.75, py: 0.125,
-            borderRadius: 1,
-            bgcolor: alpha(theme.palette.text.disabled, isDark ? 0.1 : 0.08),
-          }}>
-            <Typography sx={{ fontSize: '0.58rem', fontWeight: 700, color: 'text.disabled' }}>
-              {visible.length}
-            </Typography>
-          </Box>
         </Box>
       </Box>
 
