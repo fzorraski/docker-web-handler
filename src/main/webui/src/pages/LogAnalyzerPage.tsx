@@ -193,6 +193,9 @@ export default function LogAnalyzerPage() {
   }, [])
 
   // Subscribe to log analysis broadcasts from other users
+  const selectedIdRef = useRef(selectedId)
+  selectedIdRef.current = selectedId
+
   useEffect(() => {
     return subscribeLogAnalysisUpdates(
       (ev) => setActiveAnalyses(prev => [...prev, ev.filenames]),
@@ -201,12 +204,12 @@ export default function LogAnalyzerPage() {
         refreshList()
       },
       (ev) => {
-        if (ev.analysisId && selectedId === ev.analysisId) setSelectedId(null)
+        if (ev.analysisId && selectedIdRef.current === ev.analysisId) setSelectedId(null)
         refreshList()
       },
       (counts) => setViewerCounts(counts),
     )
-  }, [refreshList, selectedId])
+  }, [refreshList])
 
   const selected = useMemo(
     () => analyses.find((a) => a.id === selectedId) ?? null,

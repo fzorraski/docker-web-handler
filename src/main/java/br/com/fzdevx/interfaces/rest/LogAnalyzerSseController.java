@@ -17,6 +17,7 @@ import jakarta.ws.rs.sse.SseEventSink;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
 
+import java.util.List;
 import java.util.Map;
 
 @Path("/logs/analyzer/sse")
@@ -108,6 +109,7 @@ public class LogAnalyzerSseController {
         }
 
         String filenames = String.join(", ", request.getFilenames());
+        List<String> individualFilenames = request.getFilenames();
         // broadcastStarted already called at prepare time — no duplicate call here
 
         boolean[] succeeded = {false};
@@ -117,7 +119,9 @@ public class LogAnalyzerSseController {
                     request.getTempFiles(), request.getFilenames(),
                     request.getPreset(), request.getSlowThresholdMs(), request.getOptions(),
                     event -> {
-                        SseHelper.sendEvent(sink, sse, event);
+                        synchronized (sink) {
+                            SseHelper.sendEvent(sink, sse, event);
+                        }
                         if (event.getType() == ContainerEvent.EventType.SUCCESS) {
                             succeeded[0] = true;
                             analysisId[0] = event.getDetail();
