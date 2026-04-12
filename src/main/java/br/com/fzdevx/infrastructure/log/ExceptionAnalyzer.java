@@ -9,6 +9,8 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -66,16 +68,13 @@ public class ExceptionAnalyzer {
         return analyze(lines, null);
     }
 
-    public List<ExceptionLocationSummary> analyze(List<LogLine> lines,
-                                                   java.util.concurrent.atomic.AtomicBoolean cancelled) {
+    public List<ExceptionLocationSummary> analyze(List<LogLine> lines, AtomicBoolean cancelled) {
         if (!enabled || lines == null || lines.isEmpty()) {
             return List.of();
         }
 
-        // groupKey -> list of occurrences
-        var groups = new LinkedHashMap<String, List<ExceptionOccurrence>>();
-        // groupKey -> first occurrence metadata
-        var originMeta = new LinkedHashMap<String, ExceptionOccurrence>();
+        // groupKey -> (originKey, list of occurrences)
+        var groups = new LinkedHashMap<String, GroupEntry>();
         int totalOccurrences = 0;
 
         LocalDateTime lastTimestamp = null;
@@ -85,7 +84,7 @@ public class ExceptionAnalyzer {
                 break;
             }
             if (cancelled != null && (i % 5000 == 0) && cancelled.get()) {
-                throw new java.util.concurrent.CancellationException("Analysis cancelled");
+                throw new CancellationException("Analysis cancelled");
             }
 
             LogLine line = lines.get(i);
@@ -219,20 +218,15 @@ public class ExceptionAnalyzer {
                     stackTrace
             );
 
-            groups.computeIfAbsent(groupKey, _ -> new ArrayList<>()).add(occurrence);
-            originMeta.putIfAbsent(groupKey, occurrence);
+            groups.computeIfAbsent(groupKey, _ -> new GroupEntry(originKey)).occurrences.add(occurrence);
             totalOccurrences++;
         }
 
         // Build summaries, sorted by count descending
-        return groups.entrySet().stream()
+        return groups.values().stream()
                 .map(entry -> {
-                    String key = entry.getKey();
-                    List<ExceptionOccurrence> occurrences = entry.getValue();
-                    ExceptionOccurrence first = originMeta.get(key);
-
-                    // Extract origin part (after the exceptionType: prefix)
-                    String origin = key.contains(":") ? key.substring(key.indexOf(':') + 1) : key;
+                    List<ExceptionOccurrence> occurrences = entry.occurrences;
+                    ExceptionOccurrence first = occurrences.getFirst();
 
                     LocalDateTime firstSeen = null;
                     LocalDateTime lastSeen = null;
@@ -245,7 +239,7 @@ public class ExceptionAnalyzer {
 
                     return new ExceptionLocationSummary(
                             first.exceptionType(),
-                            origin,
+                            entry.originKey,
                             first.originClass(),
                             first.method(),
                             first.sourceFile(),
@@ -258,5 +252,14 @@ public class ExceptionAnalyzer {
                 })
                 .sorted(Comparator.comparingInt(ExceptionLocationSummary::count).reversed())
                 .toList();
+    }
+
+    private static class GroupEntry {
+        final String originKey;
+        final List<ExceptionOccurrence> occurrences = new ArrayList<>();
+
+        GroupEntry(String originKey) {
+            this.originKey = originKey;
+        }
     }
 }
