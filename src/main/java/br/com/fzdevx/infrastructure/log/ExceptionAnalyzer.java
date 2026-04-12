@@ -34,27 +34,25 @@ public class ExceptionAnalyzer {
             "InterruptedException"
     );
 
+    // Target exception names excluding IOException (checked separately)
+    private static final List<String> NON_IO_EXCEPTION_NAMES = EXCEPTION_NAMES.stream()
+            .filter(name -> !"IOException".equals(name))
+            .toList();
+
     private static final Pattern AT_LINE_PATTERN = Pattern.compile(
             "^\\s+at\\s+(?:\\S+/{1,2})?(.+)\\.(\\w+)\\((\\S+\\.java):(\\d+)\\)"
     );
 
     // Build a combined pattern for all exception types.
     // Matches: optional "Caused by: " prefix, optional package prefix, exception name, optional ": message"
-    private static final Pattern EXCEPTION_PATTERN;
+    private static final Pattern EXCEPTION_PATTERN = Pattern.compile(
+            "(?:Caused by:\\s*)?(?:java\\.\\w+\\.)*(" + String.join("|", NON_IO_EXCEPTION_NAMES) + ")(?::\\s*(.+))?"
+    );
 
     // For IOException: only match when preceded by "Caused by:"
     private static final Pattern IO_EXCEPTION_CAUSED_BY_PATTERN = Pattern.compile(
             "Caused by:\\s*(?:java\\.\\w+\\.)*IOException(?::\\s*(.+))?"
     );
-
-    static {
-        String alternation = String.join("|", EXCEPTION_NAMES.stream()
-                .filter(name -> !"IOException".equals(name))
-                .toList());
-        EXCEPTION_PATTERN = Pattern.compile(
-                "(?:Caused by:\\s*)?(?:java\\.\\w+\\.)*(" + alternation + ")(?::\\s*(.+))?"
-        );
-    }
 
     @Inject
     @ConfigProperty(name = "log.analyzer.exception-analysis.enabled", defaultValue = "true")
@@ -101,6 +99,12 @@ public class ExceptionAnalyzer {
                 continue;
             }
 
+            // Fast pre-filter: all target exceptions end with "Exception",
+            // so skip lines that can't possibly match — avoids regex on ~98% of lines
+            if (!msg.contains("Exception")) {
+                continue;
+            }
+
             // Skip NullPointerException (handled by NpeAnalyzer)
             if (msg.contains("NullPointerException")) {
                 continue;
@@ -119,12 +123,24 @@ public class ExceptionAnalyzer {
                 }
             }
 
-            // Check all other exceptions
+            // Check all other exceptions — but first verify a specific target name
+            // is present. Lines with "Exception" only in class names (ExceptionHandler,
+            // ExceptionMapper, etc.) would pass the broad filter but fail the regex;
+            // failed regex matches are the most expensive (full backtracking).
             if (exceptionType == null) {
-                Matcher matcher = EXCEPTION_PATTERN.matcher(msg);
-                if (matcher.find()) {
-                    exceptionType = matcher.group(1);
-                    exceptionMessage = matcher.group(2);
+                boolean hasTarget = false;
+                for (String name : NON_IO_EXCEPTION_NAMES) {
+                    if (msg.contains(name)) {
+                        hasTarget = true;
+                        break;
+                    }
+                }
+                if (hasTarget) {
+                    Matcher matcher = EXCEPTION_PATTERN.matcher(msg);
+                    if (matcher.find()) {
+                        exceptionType = matcher.group(1);
+                        exceptionMessage = matcher.group(2);
+                    }
                 }
             }
 
@@ -151,11 +167,19 @@ public class ExceptionAnalyzer {
                     break;
                 }
 
-                String trimmed = nextMsg.trim();
-                if (trimmed.startsWith("at ") || trimmed.startsWith("Caused by:") || trimmed.equals("...")) {
+                // Zero-allocation prefix check: skip leading whitespace then match known prefixes
+                int s = 0;
+                while (s < nextMsg.length() && nextMsg.charAt(s) <= ' ') s++;
+                int remaining = nextMsg.length() - s;
+
+                boolean isAtLine = remaining >= 3 && nextMsg.regionMatches(s, "at ", 0, 3);
+                boolean isCausedBy = remaining >= 10 && nextMsg.regionMatches(s, "Caused by:", 0, 10);
+                boolean isEllipsis = remaining == 3 && nextMsg.regionMatches(s, "...", 0, 3);
+
+                if (isAtLine || isCausedBy || isEllipsis) {
                     stackTrace.add(nextMsg);
 
-                    if (!foundAtLine && trimmed.startsWith("at ")) {
+                    if (!foundAtLine && isAtLine) {
                         Matcher atMatcher = AT_LINE_PATTERN.matcher(nextMsg);
                         if (atMatcher.find()) {
                             originClass = atMatcher.group(1);
@@ -210,17 +234,14 @@ public class ExceptionAnalyzer {
                     // Extract origin part (after the exceptionType: prefix)
                     String origin = key.contains(":") ? key.substring(key.indexOf(':') + 1) : key;
 
-                    LocalDateTime firstSeen = occurrences.stream()
-                            .map(ExceptionOccurrence::timestamp)
-                            .filter(Objects::nonNull)
-                            .min(Comparator.naturalOrder())
-                            .orElse(null);
-
-                    LocalDateTime lastSeen = occurrences.stream()
-                            .map(ExceptionOccurrence::timestamp)
-                            .filter(Objects::nonNull)
-                            .max(Comparator.naturalOrder())
-                            .orElse(null);
+                    LocalDateTime firstSeen = null;
+                    LocalDateTime lastSeen = null;
+                    for (ExceptionOccurrence o : occurrences) {
+                        LocalDateTime ts = o.timestamp();
+                        if (ts == null) continue;
+                        if (firstSeen == null || ts.isBefore(firstSeen)) firstSeen = ts;
+                        if (lastSeen == null || ts.isAfter(lastSeen)) lastSeen = ts;
+                    }
 
                     return new ExceptionLocationSummary(
                             first.exceptionType(),
