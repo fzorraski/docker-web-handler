@@ -1097,6 +1097,7 @@ const en = {
       timeline: 'Signal Timeline',
       noData: 'No signal data available.',
       error: 'Failed to load system health data.',
+      metricHint: 'Affects duration signals only (API Latency, Slow Query, GC Pause, Job Duration). Count-based signals (Error Count, API Count, NPE, etc.) always show raw counts.',
       leftAxis: 'Left Axis',
       leftAxisAuto: 'Auto (highest)',
       rightAxis: 'Right Axis',

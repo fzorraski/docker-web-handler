@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  Autocomplete, Alert, Box, Typography, Button, LinearProgress, Paper, Stack, TextField, Chip,
+  Autocomplete, Alert, Box, Typography, Button, LinearProgress, Paper, Stack, TextField, Chip, Tooltip as MuiTooltip,
   useTheme,
 } from '@mui/material'
-import { MonitorHeart, Refresh, Science } from '@mui/icons-material'
+import { MonitorHeart, Refresh, Science, InfoOutlined } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import {
   ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -165,17 +165,22 @@ export function SystemHealthTab({ analysisId }: { analysisId: string }) {
 
   const controls = (compact: boolean) => (
     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
-      <Autocomplete
-        size="small"
-        sx={{ minWidth: compact ? 130 : 160 }}
-        disableClearable
-        options={METRIC_OPTIONS}
-        getOptionLabel={(o) => t(o.labelKey)}
-        value={METRIC_OPTIONS.find(o => o.value === selectedMetric)!}
-        onChange={(_, v) => setSelectedMetric(v.value)}
-        isOptionEqualToValue={(o, v) => o.value === v.value}
-        renderInput={(params) => <TextField {...params} label={t('logAnalyzer.anomalyDetection.metric')} />}
-      />
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <Autocomplete
+          size="small"
+          sx={{ minWidth: compact ? 130 : 160 }}
+          disableClearable
+          options={METRIC_OPTIONS}
+          getOptionLabel={(o) => t(o.labelKey)}
+          value={METRIC_OPTIONS.find(o => o.value === selectedMetric)!}
+          onChange={(_, v) => setSelectedMetric(v.value)}
+          isOptionEqualToValue={(o, v) => o.value === v.value}
+          renderInput={(params) => <TextField {...params} label={t('logAnalyzer.anomalyDetection.metric')} />}
+        />
+        <MuiTooltip title={t('logAnalyzer.systemHealth.metricHint')} arrow placement="top">
+          <InfoOutlined sx={{ fontSize: 16, color: 'text.disabled', cursor: 'help' }} />
+        </MuiTooltip>
+      </Box>
       <Autocomplete
         size="small"
         sx={{ minWidth: compact ? 130 : 160 }}
@@ -280,7 +285,7 @@ export function SystemHealthTab({ analysisId }: { analysisId: string }) {
           return (
             <Chip
               key={type}
-              label={`${type} (max: ${Math.round(max)})`}
+              label={`${type} (max: ${Math.round(max)}${durationSignals.has(type) && selectedMetric !== 'count' ? 'ms' : ''})`}
               size="small"
               onClick={() => toggleSignal(type)}
               sx={{

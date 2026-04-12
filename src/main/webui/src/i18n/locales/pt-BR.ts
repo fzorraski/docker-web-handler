@@ -1098,6 +1098,7 @@ const ptBR: typeof en = {
       timeline: 'Linha do Tempo de Sinais',
       noData: 'Nenhum dado de sinal disponivel.',
       error: 'Falha ao carregar dados de saude do sistema.',
+      metricHint: 'Afeta apenas sinais de duracao (API Latency, Slow Query, GC Pause, Job Duration). Sinais baseados em contagem (Error Count, API Count, NPE, etc.) sempre mostram contagens brutas.',
       leftAxis: 'Eixo Esquerdo',
       leftAxisAuto: 'Auto (maior)',
       rightAxis: 'Eixo Direito',

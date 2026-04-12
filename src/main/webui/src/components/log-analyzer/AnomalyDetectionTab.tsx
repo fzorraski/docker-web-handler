@@ -255,6 +255,9 @@ export function AnomalyDetectionTab({ analysisId }: { analysisId: string }) {
         isOptionEqualToValue={(o, v) => o.value === v.value}
         renderInput={(params) => <TextField {...params} label={t('logAnalyzer.anomalyDetection.metric')} />}
       />
+      <MuiTooltip title={t('logAnalyzer.systemHealth.metricHint')} arrow placement="top">
+        <InfoOutlined sx={{ fontSize: 16, color: 'text.disabled', cursor: 'help', ml: -1 }} />
+      </MuiTooltip>
       <Autocomplete
         size="small"
         sx={{ minWidth: compact ? 130 : 160 }}

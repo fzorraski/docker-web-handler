@@ -1098,6 +1098,7 @@ const es: typeof en = {
       timeline: 'Linea de Tiempo de Senales',
       noData: 'No hay datos de senal disponibles.',
       error: 'Error al cargar datos de salud del sistema.',
+      metricHint: 'Afecta solo las senales de duracion (API Latency, Slow Query, GC Pause, Job Duration). Las senales basadas en conteo (Error Count, API Count, NPE, etc.) siempre muestran conteos brutos.',
       leftAxis: 'Eje Izquierdo',
       leftAxisAuto: 'Auto (mayor)',
       rightAxis: 'Eje Derecho',
