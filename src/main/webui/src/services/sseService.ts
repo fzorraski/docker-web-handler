@@ -303,12 +303,48 @@ export function streamSnapshot(
 
 // ---- Log Analysis ----
 
-export async function prepareLogAnalysis(files: File[], options: Record<string, string | undefined>): Promise<string> {
+export async function prepareLogAnalysis(
+  files: File[],
+  options: Record<string, string | undefined>,
+  onUploadProgress?: (percent: number) => void,
+): Promise<string> {
   const form = new FormData()
   files.forEach((f) => form.append('files', f))
   for (const [key, value] of Object.entries(options)) {
     if (value != null) form.append(key, value)
   }
+
+  if (onUploadProgress) {
+    // Use XMLHttpRequest for upload progress tracking
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', '/api/logs/analyzer/sse/upload/prepare')
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onUploadProgress(Math.round((e.loaded / e.total) * 100))
+      }
+      xhr.onload = () => {
+        if (xhr.status === 401) {
+          window.dispatchEvent(new CustomEvent('auth:session-expired'))
+          reject(new Error('Session expired'))
+          return
+        }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText)
+            resolve(data.ticket)
+          } catch { reject(new Error('Invalid response')) }
+        } else {
+          try {
+            const data = JSON.parse(xhr.responseText)
+            reject(new Error(data.error || xhr.statusText))
+          } catch { reject(new Error(xhr.statusText)) }
+        }
+      }
+      xhr.onerror = () => reject(new Error('Upload failed'))
+      xhr.send(form)
+    })
+  }
+
   const res = await fetchWithAuth('/api/logs/analyzer/sse/upload/prepare', { method: 'POST', body: form })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))

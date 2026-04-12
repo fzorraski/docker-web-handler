@@ -110,6 +110,9 @@ export default function LogAnalyzerPage() {
   const [lastAnalysisOptions, setLastAnalysisOptions] = useState<AnalysisConfiguration | null>(null)
   const [pendingContainer, setPendingContainer] = useState<{ id: string; name: string } | null>(null)
 
+  // Upload progress (0-100, -1 = not uploading)
+  const [uploadProgress, setUploadProgress] = useState(-1)
+
   // Active analyses from other users (broadcast)
   const [activeAnalyses, setActiveAnalyses] = useState<string[]>([])
 
@@ -312,7 +315,9 @@ export default function LogAnalyzerPage() {
     }
 
     try {
-      const ticket = await prepareLogAnalysis(pendingFiles, formFields)
+      setUploadProgress(0)
+      const ticket = await prepareLogAnalysis(pendingFiles, formFields, (pct) => setUploadProgress(pct))
+      setUploadProgress(-1)
       setAnalysisTicket(ticket)
       sse.start(
         (onEvent, onDone, onError) => streamLogAnalysis(ticket, onEvent, onDone, onError),
@@ -334,6 +339,7 @@ export default function LogAnalyzerPage() {
         },
       )
     } catch (err) {
+      setUploadProgress(-1)
       notify(err instanceof Error ? err.message : t('logAnalyzer.upload.error'), 'error')
       setPendingFiles([])
     }
@@ -584,11 +590,51 @@ export default function LogAnalyzerPage() {
         )}
       </Paper>
 
+      {/* Upload progress dialog */}
+      <Dialog open={uploadProgress >= 0} maxWidth="xs" fullWidth>
+        <DialogTitle>{t('logAnalyzer.upload.uploading')}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1 }}>
+            <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+              <CircularProgress
+                variant="determinate"
+                value={uploadProgress}
+                size={48}
+                thickness={4}
+                sx={{ color: 'primary.main', '& .MuiCircularProgress-circle': { strokeLinecap: 'round', transition: 'stroke-dashoffset 0.3s ease' } }}
+              />
+              <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: 'primary.main' }}>{uploadProgress}%</Typography>
+              </Box>
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                {pendingFiles.map(f => f.name).join(', ')}
+              </Typography>
+              <LinearProgress
+                variant="determinate"
+                value={uploadProgress}
+                sx={{ mt: 1, borderRadius: 2, height: 4, '& .MuiLinearProgress-bar': { borderRadius: 2, transition: 'transform 0.3s ease' } }}
+              />
+            </Box>
+          </Box>
+        </DialogContent>
+      </Dialog>
+
       {/* SSE progress dialog */}
       <Dialog open={sse.isRunning || (sse.events.length > 0 && !sse.isDone)} maxWidth="sm" fullWidth
         onClose={(_e, reason) => { if (reason !== 'backdropClick' || !sse.isRunning) { sse.reset(); setCancelling(false) } }}>
-        <DialogTitle>{t('logAnalyzer.upload.analyzing')}</DialogTitle>
+        <DialogTitle>
+          {sse.hasError
+            ? (sse.events.some(e => e.type === 'ERROR' && e.step === 'Cancelled') ? t('logAnalyzer.upload.cancelled') : t('logAnalyzer.upload.failed'))
+            : t('logAnalyzer.upload.analyzing')}
+        </DialogTitle>
         <DialogContent>
+          {sse.hasError && (
+            <Alert severity={sse.events.some(e => e.type === 'ERROR' && e.step === 'Cancelled') ? 'warning' : 'error'} sx={{ mb: 2 }}>
+              {sse.events.filter(e => e.type === 'ERROR').pop()?.message ?? t('logAnalyzer.upload.error')}
+            </Alert>
+          )}
           <OperationProgress events={sse.events} steps={LOG_ANALYSIS_STEPS} />
         </DialogContent>
         <DialogActions>
