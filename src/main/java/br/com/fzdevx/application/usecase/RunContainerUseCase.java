@@ -260,7 +260,7 @@ public class RunContainerUseCase {
             boolean hasSnapshot = request.getSnapshotId() != null && !request.getSnapshotId().isBlank();
             if (hasDump || hasSnapshot) {
                 if (runCtx.cancelled.get()) {
-                    eventSink.accept(ContainerEvent.error("Restoring", "Operation cancelled."));
+                    eventSink.accept(ContainerEvent.error("Preparing", "Operation cancelled."));
                     return;
                 }
 
@@ -276,7 +276,6 @@ public class RunContainerUseCase {
                     }
                 }
 
-                eventSink.accept(ContainerEvent.info("Restoring", "Starting restore..."));
                 RestoreDumpRequest restoreReq = new RestoreDumpRequest();
                 restoreReq.setDumpId(hasDump ? request.getDumpId() : null);
                 restoreReq.setSnapshotId(hasSnapshot ? request.getSnapshotId() : null);

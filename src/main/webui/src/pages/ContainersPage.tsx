@@ -984,7 +984,10 @@ export default function ContainersPage() {
       <NewContainerModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        onCreated={loadContainers}
+        onCreated={() => {
+          loadContainers()
+          getMigratedDatabases().then(setMigratedDatabases).catch(() => {})
+        }}
       />
 
       <Dialog open={actions.removeSse.events.length > 0} onClose={actions.handleRemoveDialogClose} maxWidth="sm" fullWidth>
