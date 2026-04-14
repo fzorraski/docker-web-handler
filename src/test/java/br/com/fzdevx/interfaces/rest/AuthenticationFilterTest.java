@@ -1,6 +1,9 @@
 package br.com.fzdevx.interfaces.rest;
 
+import br.com.fzdevx.application.port.RateLimitPort;
 import br.com.fzdevx.infrastructure.config.AuthSessionManager;
+import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.net.SocketAddress;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.core.Cookie;
 import jakarta.ws.rs.core.Response;
@@ -16,14 +19,20 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.lang.reflect.Field;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class AuthenticationFilterTest {
 
     @Mock AuthSessionManager sessionManager;
+    @Mock RateLimitPort rateLimitPort;
+    @Mock jakarta.inject.Provider<HttpServerRequest> vertxRequestProvider;
+    @Mock HttpServerRequest httpServerRequest;
+    @Mock SocketAddress remoteAddress;
     @Mock ContainerRequestContext requestContext;
     @Mock UriInfo uriInfo;
 
@@ -35,7 +44,12 @@ class AuthenticationFilterTest {
         setField("authEnabled", true);
         setField("ciEnabled", false);
         setField("ciApiKey", java.util.Optional.empty());
+        setField("trustForwardedHeaders", false);
         lenient().when(requestContext.getUriInfo()).thenReturn(uriInfo);
+        lenient().when(rateLimitPort.checkRateLimit(anyString())).thenReturn(Optional.empty());
+        lenient().when(vertxRequestProvider.get()).thenReturn(httpServerRequest);
+        lenient().when(remoteAddress.host()).thenReturn("127.0.0.1");
+        lenient().when(httpServerRequest.remoteAddress()).thenReturn(remoteAddress);
     }
 
     private void setField(String name, Object value) {
@@ -242,7 +256,6 @@ class AuthenticationFilterTest {
 
     @Test
     void filter_ciPath_authIndependentOfAppAuth() {
-        // CI auth should work even when app.auth.enabled=false
         setField("authEnabled", false);
         setField("ciEnabled", true);
         setField("ciApiKey", java.util.Optional.of("secret"));
@@ -265,5 +278,62 @@ class AuthenticationFilterTest {
         filter.filter(requestContext);
 
         verify(requestContext).abortWith(any());
+    }
+
+    // ---- CI API key rate limiting ----
+
+    @Test
+    void filter_ciPath_rateLimited_returns429() {
+        setField("ciEnabled", true);
+        setField("ciApiKey", java.util.Optional.of("secret"));
+        when(uriInfo.getPath()).thenReturn("/ci/environments");
+        when(rateLimitPort.checkRateLimit("ci:127.0.0.1")).thenReturn(Optional.of(30L));
+
+        filter.filter(requestContext);
+
+        ArgumentCaptor<Response> captor = ArgumentCaptor.forClass(Response.class);
+        verify(requestContext).abortWith(captor.capture());
+        assertEquals(429, captor.getValue().getStatus());
+    }
+
+    @Test
+    void filter_ciPath_wrongKey_recordsFailure() {
+        setField("ciEnabled", true);
+        setField("ciApiKey", java.util.Optional.of("secret"));
+        when(uriInfo.getPath()).thenReturn("/ci/environments");
+        when(requestContext.getHeaderString("X-API-Key")).thenReturn("wrong");
+
+        filter.filter(requestContext);
+
+        verify(rateLimitPort).recordFailure("ci:127.0.0.1");
+    }
+
+    @Test
+    void filter_ciPath_validKey_recordsSuccess() {
+        setField("ciEnabled", true);
+        setField("ciApiKey", java.util.Optional.of("secret"));
+        when(uriInfo.getPath()).thenReturn("/ci/environments");
+        when(requestContext.getHeaderString("X-API-Key")).thenReturn("secret");
+
+        filter.filter(requestContext);
+
+        verify(rateLimitPort).recordSuccess("ci:127.0.0.1");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void filter_ciPath_rateLimited_bodyContainsRetryAfter() {
+        setField("ciEnabled", true);
+        setField("ciApiKey", java.util.Optional.of("secret"));
+        when(uriInfo.getPath()).thenReturn("/ci/environments");
+        when(rateLimitPort.checkRateLimit("ci:127.0.0.1")).thenReturn(Optional.of(45L));
+
+        filter.filter(requestContext);
+
+        ArgumentCaptor<Response> captor = ArgumentCaptor.forClass(Response.class);
+        verify(requestContext).abortWith(captor.capture());
+        Map<String, Object> body = (Map<String, Object>) captor.getValue().getEntity();
+        assertEquals("TOO_MANY_REQUESTS", body.get("code"));
+        assertEquals(45L, body.get("retryAfter"));
     }
 }

@@ -1,7 +1,9 @@
 package br.com.fzdevx.interfaces.rest;
 
+import br.com.fzdevx.application.port.RateLimitPort;
 import br.com.fzdevx.infrastructure.config.AuthSessionManager;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
+import io.vertx.core.http.HttpServerRequest;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
@@ -40,7 +42,17 @@ public class AuthenticationFilter implements ContainerRequestFilter {
     Optional<String> ciApiKey;
 
     @Inject
+    @ConfigProperty(name = "app.rate-limit.trust-forwarded-headers", defaultValue = "false")
+    boolean trustForwardedHeaders;
+
+    @Inject
     AuthSessionManager sessionManager;
+
+    @Inject
+    RateLimitPort rateLimitPort;
+
+    @Inject
+    jakarta.inject.Provider<HttpServerRequest> vertxRequestProvider;
 
     @Override
     public void filter(ContainerRequestContext requestContext) {
@@ -52,9 +64,22 @@ public class AuthenticationFilter implements ContainerRequestFilter {
                 abort(requestContext, 404, "NOT_FOUND", "CI API is not enabled.");
                 return;
             }
+
+            String clientIp = extractClientIp();
+            String rateLimitKey = "ci:" + clientIp;
+
+            Optional<Long> blocked = rateLimitPort.checkRateLimit(rateLimitKey);
+            if (blocked.isPresent()) {
+                abortRateLimited(requestContext, blocked.get());
+                return;
+            }
+
             String apiKey = requestContext.getHeaderString("X-API-Key");
             if (!PasswordValidationService.constantTimeEquals(ciApiKey, apiKey)) {
+                rateLimitPort.recordFailure(rateLimitKey);
                 abort(requestContext, 401, "UNAUTHORIZED", "Invalid API key.");
+            } else {
+                rateLimitPort.recordSuccess(rateLimitKey);
             }
             return;
         }
@@ -69,11 +94,29 @@ public class AuthenticationFilter implements ContainerRequestFilter {
         }
     }
 
+    private String extractClientIp() {
+        return AuthController.extractClientIp(vertxRequestProvider.get(), trustForwardedHeaders);
+    }
+
     private void abort(ContainerRequestContext ctx, int status, String code, String message) {
         ctx.abortWith(
                 Response.status(status)
                         .type(MediaType.APPLICATION_JSON)
                         .entity(Map.of("code", code, "message", message))
+                        .build()
+        );
+    }
+
+    private void abortRateLimited(ContainerRequestContext ctx, long retryAfter) {
+        ctx.abortWith(
+                Response.status(429)
+                        .type(MediaType.APPLICATION_JSON)
+                        .header("Retry-After", retryAfter)
+                        .entity(Map.of(
+                                "code", "TOO_MANY_REQUESTS",
+                                "message", "Too many failed attempts. Try again in " + retryAfter + " seconds.",
+                                "retryAfter", retryAfter
+                        ))
                         .build()
         );
     }
