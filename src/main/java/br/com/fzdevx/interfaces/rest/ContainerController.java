@@ -146,7 +146,7 @@ public class ContainerController {
             return false;
         }
         try {
-            expirationService.cancel(dockerContainer.getContainerId());
+            expirationService.remove(dockerContainer.getContainerId());
             try {
                 dockerClient.stopContainerCmd(dockerContainer.getContainerId()).exec();
             } catch (Exception ignored) {

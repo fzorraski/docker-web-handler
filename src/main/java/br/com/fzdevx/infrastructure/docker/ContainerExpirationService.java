@@ -13,7 +13,9 @@ import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.*;
 
 @ApplicationScoped
@@ -67,6 +69,22 @@ public class ContainerExpirationService {
         if (future != null) {
             future.cancel(false);
         }
+        expirationRepository.findByContainerId(shortId).ifPresentOrElse(expiration -> {
+            if (expiration.getDatabaseName() != null && !expiration.getDatabaseName().isBlank()) {
+                expiration.setExpiresAt(null);
+                expiration.setDeleteDatabaseOnExpiration(false);
+                expirationRepository.save(expiration);
+            } else {
+                expirationRepository.delete(shortId);
+            }
+        }, () -> expirationRepository.delete(shortId));
+    }
+
+    public void remove(String shortId) {
+        ScheduledFuture<?> future = scheduledTasks.remove(shortId);
+        if (future != null) {
+            future.cancel(false);
+        }
         expirationRepository.delete(shortId);
     }
 
@@ -100,6 +118,7 @@ public class ContainerExpirationService {
 
     public boolean extendExpiration(String shortId, int minutes) {
         return expirationRepository.findByContainerId(shortId)
+                .filter(expiration -> expiration.getExpiresAt() != null)
                 .map(expiration -> {
                     Instant newExpiresAt = expiration.getExpiresAt().plusSeconds(minutes * 60L);
                     expiration.setExpiresAt(newExpiresAt);
@@ -128,7 +147,15 @@ public class ContainerExpirationService {
         List<ContainerExpiration> persisted = expirationRepository.findAll();
         Log.infof("Reloading %d persisted container expirations.", persisted.size());
 
+        Set<String> existingContainerIds = resolveExistingContainerIds();
+
         for (ContainerExpiration expiration : persisted) {
+            if (!existingContainerIds.contains(expiration.getShortId())) {
+                Log.infof("Removing orphaned expiration record for container %s (no longer exists).",
+                        expiration.getShortId());
+                expirationRepository.delete(expiration.getShortId());
+                continue;
+            }
             if (expiration.getExpiresAt() == null) {
                 continue;
             }
@@ -138,6 +165,20 @@ public class ContainerExpirationService {
             } else {
                 scheduleTask(expiration);
             }
+        }
+    }
+
+    private Set<String> resolveExistingContainerIds() {
+        try {
+            Set<String> ids = new java.util.HashSet<>();
+            for (com.github.dockerjava.api.model.Container c :
+                    dockerClient.listContainersCmd().withShowAll(true).exec()) {
+                ids.add(c.getId().substring(0, 10));
+            }
+            return ids;
+        } catch (Exception e) {
+            Log.warnf("Failed to list containers for orphan cleanup: %s", e.getMessage());
+            return Collections.emptySet();
         }
     }
 

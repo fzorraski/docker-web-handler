@@ -31,7 +31,7 @@ public class RemoveContainerUseCase {
         }
 
         eventSink.accept(ContainerEvent.info("Cancelling", "Cancelling scheduled expiration..."));
-        expirationService.cancel(containerId);
+        expirationService.remove(containerId);
         eventSink.accept(ContainerEvent.info("Cancelling", "Expiration cancelled."));
 
         eventSink.accept(ContainerEvent.info("Stopping", "Stopping container " + containerId + "..."));

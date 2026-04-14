@@ -316,7 +316,7 @@ class ContainerControllerTest {
         req.setContainerId("abc123def4");
 
         assertTrue(controller.removeContainer(req));
-        verify(expirationService).cancel("abc123def4");
+        verify(expirationService).remove("abc123def4");
         verify(removeCmd).exec();
     }
 
@@ -370,7 +370,7 @@ class ContainerControllerTest {
         controller.removeContainer(req);
 
         var inOrder = inOrder(expirationService, dockerClient);
-        inOrder.verify(expirationService).cancel("abc123def4");
+        inOrder.verify(expirationService).remove("abc123def4");
         inOrder.verify(dockerClient).stopContainerCmd("abc123def4");
     }
 }

@@ -98,7 +98,7 @@ class RemoveContainerUseCaseTest {
     void execute_happyPath_cancelsExpiration() {
         useCase.execute(VALID_ID, events::add);
 
-        verify(expirationService).cancel(VALID_ID);
+        verify(expirationService).remove(VALID_ID);
     }
 
     @Test
