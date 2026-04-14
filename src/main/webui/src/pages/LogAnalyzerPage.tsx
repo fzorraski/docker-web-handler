@@ -932,16 +932,26 @@ export default function LogAnalyzerPage() {
           </Typography>
           {(() => {
             const oldest = analyses.reduce((o, a) => a.uploadedAt < o.uploadedAt ? a : o, analyses[0])
-            return oldest ? (
-              <Alert severity="warning" variant="outlined">
-                <Typography variant="body2" fontWeight={500}>
-                  {oldest.sourceFiles.map(f => f.filename).join(', ')}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {oldest.totalLineCount.toLocaleString()} {t('logAnalyzer.common.lines')}
-                </Typography>
-              </Alert>
-            ) : null
+            if (!oldest) return null
+            const vc = viewerCounts[oldest.id] ?? 0
+            const others = selectedId === oldest.id ? Math.max(0, vc - 1) : vc
+            return (
+              <>
+                <Alert severity="warning" variant="outlined">
+                  <Typography variant="body2" fontWeight={500}>
+                    {oldest.sourceFiles.map(f => f.filename).join(', ')}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {oldest.totalLineCount.toLocaleString()} {t('logAnalyzer.common.lines')}
+                  </Typography>
+                </Alert>
+                {others > 0 && (
+                  <Alert severity="warning" sx={{ mt: 2 }} icon={<Visibility />}>
+                    {t('logAnalyzer.capacity.viewerWarning', { count: others })}
+                  </Alert>
+                )}
+              </>
+            )
           })()}
         </DialogContent>
         <DialogActions>

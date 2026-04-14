@@ -811,6 +811,7 @@ const ptBR: typeof en = {
       title: 'Limite de Análises Atingido',
       message: 'Você atingiu o máximo de {{max}} análises. Enviar um novo arquivo substituirá a mais antiga:',
       proceed: 'Substituir e Enviar',
+      viewerWarning: '{{count}} outro(s) usuário(s) estão visualizando esta análise.',
     },
     dashboard: {
       totalLines: 'Total de Linhas',

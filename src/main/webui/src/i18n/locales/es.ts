@@ -811,6 +811,7 @@ const es: typeof en = {
       title: 'Límite de Análisis Alcanzado',
       message: 'Ha alcanzado el máximo de {{max}} análisis. Subir un nuevo archivo reemplazará el más antiguo:',
       proceed: 'Reemplazar y Subir',
+      viewerWarning: '{{count}} otro(s) usuario(s) están viendo este análisis actualmente.',
     },
     dashboard: {
       totalLines: 'Líneas Totales',

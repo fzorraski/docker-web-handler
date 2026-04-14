@@ -810,6 +810,7 @@ const en = {
       title: 'Analysis Limit Reached',
       message: 'You have reached the maximum of {{max}} analyses. Uploading a new file will replace the oldest one:',
       proceed: 'Replace & Upload',
+      viewerWarning: '{{count}} other user(s) are currently viewing this analysis.',
     },
     dashboard: {
       totalLines: 'Total Lines',
