@@ -748,6 +748,7 @@ const ptBR: typeof en = {
     signIn: 'Entrar',
     signingIn: 'Entrando...',
     invalidPassword: 'Senha inválida.',
+    tooManyAttempts: 'Muitas tentativas falhas. Tente novamente em {{seconds}}s.',
     sessionExpired: 'Sessão expirada. Faça login novamente.',
     logout: 'Sair',
   },

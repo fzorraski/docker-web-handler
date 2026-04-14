@@ -5,7 +5,7 @@ interface AuthContextValue {
   authEnabled: boolean
   authenticated: boolean
   loading: boolean
-  login: (password: string) => Promise<{ success: boolean; error?: string }>
+  login: (password: string) => Promise<{ success: boolean; error?: string; retryAfter?: number }>
   logout: () => Promise<void>
 }
 
@@ -65,7 +65,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       setAuthenticated(true)
       return { success: true }
     }
-    return { success: false, error: result.error }
+    return { success: false, error: result.error, retryAfter: result.retryAfter }
   }, [])
 
   const logout = useCallback(async () => {

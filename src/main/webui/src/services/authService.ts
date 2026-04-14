@@ -12,13 +12,17 @@ export async function checkSession(): Promise<{ authenticated: boolean }> {
   return res.json()
 }
 
-export async function login(password: string): Promise<{ authenticated: boolean; error?: string }> {
+export async function login(password: string): Promise<{ authenticated: boolean; error?: string; retryAfter?: number }> {
   const res = await fetch(API + 'login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password }),
   })
   const data = await res.json().catch(() => ({}))
+  if (res.status === 429) {
+    const retryAfter = Math.max(0, Math.floor(Number(data.retryAfter) || 0))
+    return { authenticated: false, error: data.message || 'Too many attempts.', retryAfter }
+  }
   if (!res.ok) {
     return { authenticated: false, error: data.message || 'Login failed.' }
   }

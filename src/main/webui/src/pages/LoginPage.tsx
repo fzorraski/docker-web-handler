@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Box, Paper, Typography, TextField, Button, Alert, IconButton, Tooltip } from '@mui/material'
 import { Lock, DarkMode, LightMode } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
@@ -13,18 +13,43 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [retryAfter, setRetryAfter] = useState(0)
+  const isLocked = retryAfter > 0
+
+  useEffect(() => {
+    if (!isLocked) return
+    const timer = setInterval(() => {
+      setRetryAfter(prev => {
+        if (prev <= 1) {
+          clearInterval(timer)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [isLocked])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!password.trim() || loading) return
+    if (!password.trim() || loading || retryAfter > 0) return
     setLoading(true)
     setError('')
     const result = await login(password)
     if (!result.success) {
-      setError(result.error || t('login.invalidPassword'))
+      if (result.retryAfter) {
+        setRetryAfter(result.retryAfter)
+        setError(t('login.tooManyAttempts', { seconds: result.retryAfter }))
+      } else {
+        setError(result.error || t('login.invalidPassword'))
+      }
       setLoading(false)
     }
   }
+
+  const errorMessage = isLocked
+    ? t('login.tooManyAttempts', { seconds: retryAfter })
+    : error
 
   return (
     <Box
@@ -111,9 +136,9 @@ export default function LoginPage() {
         </Typography>
 
         <form onSubmit={handleSubmit}>
-          {error && (
-            <Alert severity="error" sx={{ mb: 2, textAlign: 'left' }}>
-              {error}
+          {errorMessage && (
+            <Alert severity={isLocked ? 'warning' : 'error'} sx={{ mb: 2, textAlign: 'left' }}>
+              {errorMessage}
             </Alert>
           )}
           <TextField
@@ -123,7 +148,7 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             fullWidth
             autoFocus
-            disabled={loading}
+            disabled={loading || isLocked}
             sx={{ mb: 2.5 }}
           />
           <Button
@@ -131,11 +156,11 @@ export default function LoginPage() {
             variant="contained"
             fullWidth
             size="large"
-            disabled={!password.trim() || loading}
+            disabled={!password.trim() || loading || isLocked}
             startIcon={<Lock />}
             sx={{ py: 1.3, fontWeight: 600, fontSize: '0.95rem' }}
           >
-            {loading ? t('login.signingIn') : t('login.signIn')}
+            {loading ? t('login.signingIn') : isLocked ? t('login.tooManyAttempts', { seconds: retryAfter }) : t('login.signIn')}
           </Button>
         </form>
       </Paper>

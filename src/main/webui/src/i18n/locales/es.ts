@@ -748,6 +748,7 @@ const es: typeof en = {
     signIn: 'Iniciar sesión',
     signingIn: 'Iniciando sesión...',
     invalidPassword: 'Contraseña inválida.',
+    tooManyAttempts: 'Demasiados intentos fallidos. Intente de nuevo en {{seconds}}s.',
     sessionExpired: 'Sesión expirada. Inicie sesión nuevamente.',
     logout: 'Cerrar sesión',
   },

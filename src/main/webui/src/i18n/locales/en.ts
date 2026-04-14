@@ -746,6 +746,7 @@ const en = {
     signIn: 'Sign In',
     signingIn: 'Signing in...',
     invalidPassword: 'Invalid password.',
+    tooManyAttempts: 'Too many failed attempts. Try again in {{seconds}}s.',
     sessionExpired: 'Session expired. Please sign in again.',
     logout: 'Logout',
   },
