@@ -1,71 +1,172 @@
-# docker-web-handler(Java, Quarkus, Maven)
+# Docker Web Handler
 
-Simple application to visualize and manipulate docker images and containers from web browser.
+A web application for managing Docker containers and images from the browser. Built with **Quarkus** (Java) and **React** (TypeScript), it communicates with the Docker daemon via [docker-java](https://github.com/docker-java/docker-java) over the local socket.
 
-This project uses Quarkus, the Supersonic Subatomic Java Framework.
+## Features
 
-## Use with docker
+- **Container Management** -- Create, start, stop, remove containers from a whitelist of allowed repositories
+- **Image Management** -- List, pull, and remove Docker images with registry tag browsing
+- **Interactive Terminal** -- Browser-based shell sessions into running containers via WebSocket + xterm.js
+- **Database Operations** -- List PostgreSQL databases, upload/restore dumps, create snapshots, run post-restore scripts
+- **Database Migration** -- Manual or API-driven SQL migrations between versions
+- **Container Scheduling** -- Schedule start/stop/create actions with cron expressions and conflict detection
+- **Container Expiration** -- Auto-remove containers (and optionally drop databases) after a configurable TTL
+- **Log Analyzer** -- Upload or snapshot container logs for API call pairing, response time stats, job tracking, exception grouping, and custom field extraction
+- **Webhook Notifications** -- POST notifications to Slack or any endpoint on container/restore events with HMAC-SHA256 signing
+- **CI/CD API** -- Programmatic environment creation for pipelines with API key authentication
+- **Authentication** -- Optional login-based session authentication for all API access
+- **i18n** -- English, Portuguese (BR), and Spanish
 
-1. Pull image:
-```shell script
-docker pull fabriciozrk/docker-web-handler:latest
+## Quick Start with Docker
+
+```bash
+docker run -d \
+  -p 8080:8080 \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v dwh-data:/deployments/data \
+  -e ALLOWED_RUN_REPOSITORIES=nginx,myorg/myapp \
+  fabriciozrk/docker-web-handler:latest
 ```
-2. Run with:
-```shell script
-docker run -d -p 8080:8080 --restart=always -v /var/run/docker.sock:/var/run/docker.sock fabriciozrk/docker-web-handler
-```
----
 
-## Run the application with live coding
+Then open http://localhost:8080.
 
-You can run your application in dev mode that enables live coding using:
+> **Requires Docker socket access.** The container needs `/var/run/docker.sock` mounted to communicate with the Docker daemon.
 
-1. Start the application with:
-```shell script
+### Using Docker Compose
+
+1. Copy `.env.example` to `.env` and fill in your values
+2. Create a `docker-compose.yml` referencing your `.env` (see [Configuration](#configuration) below)
+3. Run `docker compose up -d`
+
+## Development Setup
+
+**Prerequisites:** Java 25+, Maven, Node.js 20+, Docker
+
+```bash
+# Clone and run in dev mode (live reload for both backend and frontend)
+git clone https://github.com/fabriciozrk/docker-web-handler.git
+cd docker-web-handler
 ./mvnw compile quarkus:dev
 ```
 
-2. Visit <b><i> http://localhost:8080 </i></b>
+- Backend: http://localhost:8080
+- Frontend dev server: http://localhost:5173 (proxied to backend)
 
-3. Make some changes in the source code.
+### Other Commands
 
-4. Refresh your browser (F5).  
+| Command | Description |
+|---------|-------------|
+| `./mvnw test` | Run tests |
+| `./mvnw package` | Build production jar |
+| `java -jar target/docker-web-handler-1.0.0-SNAPSHOT-runner.jar` | Run packaged jar |
+| `./mvnw package -Pnative` | Build native executable (requires GraalVM) |
+| `cd src/main/webui && npm run dev` | Frontend only |
+| `cd src/main/webui && npm run build` | Frontend production build |
 
-<i> Notice that those changes are immediately in effect. </i>
+## Configuration
 
----
+All configuration is done via environment variables. See [`.env.example`](.env.example) for the full list with descriptions.
 
-## Pack and run the application
+Every property in [`application.properties`](src/main/resources/application.properties) can be overridden by an environment variable using this naming convention: dots and hyphens become underscores, all uppercase.
 
-The application can be packaged using:
-```shell script
-./mvnw package
 ```
-It produces the `docker-web-handler-1.0.0-SNAPSHOT-runner.jar` file in the `/target` directory. <br>
-
-Run it:
-```shell script 
-java -jar target/docker-web-handler-1.0.0-SNAPSHOT-runner.jar
-```
-<br>
-
----
-
-## Creating a native executable
-
-1. [Install GraalVM and install the native-image tool](https://quarkus.io/guides/building-native-image#configuring-graalvm)
-
-2. Compile it natively:
-```shell script
-./mvnw package -Pnative
+docker.connect-timeout  ->  DOCKER_CONNECT_TIMEOUT
 ```
 
-3. Or, if you don't have GraalVM installed, you can run the native executable build in a dockerContainer using: 
-```shell script
-./mvnw package -Pnative -Dquarkus.native.dockerContainer-build=true
-```
-4. Run the native executable:
+Per-repository properties use the pattern:
 
-```shell script
-./target/docker-web-handler-1.0.0-SNAPSHOT-runner
 ```
+REPOSITORY_<SETTING>_<REPO_NAME>
+```
+
+### Key Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DOCKER_HOST` | `unix:///var/run/docker.sock` | Docker daemon socket path |
+| `ALLOWED_RUN_REPOSITORIES` | *(empty)* | Comma-separated image repos users can run |
+| `APP_AUTH_ENABLED` | `false` | Enable login-based authentication |
+| `APP_AUTH_PASSWORD` | *(empty)* | Password for login (required when auth enabled) |
+| `APP_AUTH_SESSION_TIMEOUT_MINUTES` | `480` | Session TTL |
+| `DATABASE_LISTING_ENABLED` | `false` | Show PostgreSQL databases in the UI |
+| `DATABASE_DUMP_ENABLED` | `false` | Enable dump upload/restore |
+| `CONTAINER_SCHEDULING_ENABLED` | `true` | Enable container scheduling |
+| `CONTAINER_TERMINAL_ENABLED` | `true` | Enable browser terminal |
+| `WEBHOOK_ENABLED` | `false` | Enable webhook notifications |
+| `WEBHOOK_URL` | *(empty)* | Webhook endpoint URL |
+| `CI_API_ENABLED` | `false` | Enable CI/CD API |
+| `CI_API_KEY` | *(empty)* | API key for CI authentication |
+| `LOG_ANALYZER_ENABLED` | `false` | Enable log analyzer feature |
+
+## Security
+
+### Authentication
+
+Authentication is **disabled by default** for backward compatibility. To enable:
+
+```bash
+APP_AUTH_ENABLED=true
+APP_AUTH_PASSWORD=your-strong-password-here
+```
+
+When enabled, all API endpoints require a valid session cookie obtained via `/api/auth/login`.
+
+### Feature Passwords
+
+Several features have independent password protection:
+
+| Feature | Password Variable | Required Variable |
+|---------|-------------------|-------------------|
+| Dump upload | `DATABASE_DUMP_UPLOAD_PASSWORD` | `DATABASE_DUMP_UPLOAD_PASSWORD_REQUIRED` |
+| Dump/snapshot operations | `DATABASE_DUMP_OPERATIONS_PASSWORD` | `DATABASE_DUMP_OPERATIONS_PASSWORD_REQUIRED` |
+| Scheduling | `CONTAINER_SCHEDULING_PASSWORD` | `CONTAINER_SCHEDULING_PASSWORD_REQUIRED` |
+| Terminal | `CONTAINER_TERMINAL_PASSWORD` | `CONTAINER_TERMINAL_PASSWORD_REQUIRED` |
+
+### Recommended Production Settings
+
+```bash
+APP_AUTH_ENABLED=true
+APP_AUTH_PASSWORD=<strong-password>
+DATABASE_DUMP_OPERATIONS_PASSWORD_REQUIRED=true
+DATABASE_DUMP_OPERATIONS_PASSWORD=<strong-password>
+CONTAINER_SCHEDULING_PASSWORD_REQUIRED=true
+CONTAINER_SCHEDULING_PASSWORD=<strong-password>
+CONTAINER_TERMINAL_PASSWORD_REQUIRED=true
+CONTAINER_TERMINAL_PASSWORD=<strong-password>
+CONTAINER_MEMORY_GUARD_ENABLED=true
+WEBHOOK_ALLOW_HTTP=false
+```
+
+### Docker Socket Access
+
+This application requires access to the Docker daemon socket. This grants significant privileges -- the application can create, start, stop, and remove containers on the host. Deploy it in a trusted environment and restrict network access appropriately.
+
+### Registry Credentials
+
+Registry credentials are stored in environment variables. Use Docker secrets or a secrets manager in production. Never commit credentials to version control.
+
+## Architecture
+
+```
+Backend (Quarkus / JAX-RS)          Frontend (React / MUI)
+br.com.fzdevx/                      src/main/webui/src/
+├── domain/                         ├── pages/
+│   ├── model/                      ├── components/
+│   ├── exception/                  ├── services/
+│   └── shared/                     ├── hooks/
+├── application/                    ├── i18n/
+│   ├── usecase/                    └── theme/
+│   ├── port/
+│   └── dto/
+├── infrastructure/
+│   ├── docker/
+│   ├── persistence/
+│   ├── registry/
+│   ├── config/
+│   └── util/
+└── interfaces/
+    └── rest/
+```
+
+The backend follows **Clean Architecture** with the dependency rule: `domain` <- `application` <- `infrastructure` / `interfaces`. The frontend is a React SPA served by Quarkus Quinoa with React Router for client-side routing.
