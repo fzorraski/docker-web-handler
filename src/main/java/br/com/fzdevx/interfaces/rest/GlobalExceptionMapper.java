@@ -70,6 +70,7 @@ public class GlobalExceptionMapper implements ExceptionMapper<Exception> {
             case 403 -> "FORBIDDEN";
             case 404 -> "NOT_FOUND";
             case 409 -> "CONFLICT";
+            case 429 -> "TOO_MANY_REQUESTS";
             default -> "ERROR";
         };
     }
