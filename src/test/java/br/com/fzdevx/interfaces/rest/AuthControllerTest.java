@@ -1,6 +1,10 @@
 package br.com.fzdevx.interfaces.rest;
 
+import br.com.fzdevx.application.dto.LoginResult;
+import br.com.fzdevx.application.usecase.LoginUseCase;
 import br.com.fzdevx.infrastructure.config.AuthSessionManager;
+import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.net.SocketAddress;
 import jakarta.ws.rs.core.Cookie;
 import jakarta.ws.rs.core.NewCookie;
 import jakarta.ws.rs.core.Response;
@@ -18,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -25,6 +30,9 @@ import static org.mockito.Mockito.*;
 class AuthControllerTest {
 
     @Mock AuthSessionManager sessionManager;
+    @Mock LoginUseCase loginUseCase;
+    @Mock HttpServerRequest httpServerRequest;
+    @Mock SocketAddress remoteAddress;
 
     @InjectMocks
     AuthController controller;
@@ -33,6 +41,9 @@ class AuthControllerTest {
     void setUp() {
         setField("authEnabled", true);
         setField("authPassword", Optional.of("secret"));
+        setField("trustForwardedHeaders", false);
+        when(remoteAddress.host()).thenReturn("127.0.0.1");
+        when(httpServerRequest.remoteAddress()).thenReturn(remoteAddress);
     }
 
     private void setField(String name, Object value) {
@@ -96,16 +107,17 @@ class AuthControllerTest {
     @Test
     void login_authDisabled_returns200() {
         setField("authEnabled", false);
-        Response response = controller.login(Map.of("password", "anything"));
+        Response response = controller.login(Map.of("password", "anything"), httpServerRequest);
         assertEquals(200, response.getStatus());
     }
 
     @Test
-    void login_correctPassword_returns200WithCookie() {
+    void login_success_returns200WithCookie() {
+        when(loginUseCase.execute("127.0.0.1", "secret")).thenReturn(LoginResult.success());
         when(sessionManager.createSession()).thenReturn("session-123");
         when(sessionManager.getSessionTimeoutMinutes()).thenReturn(480);
 
-        Response response = controller.login(Map.of("password", "secret"));
+        Response response = controller.login(Map.of("password", "secret"), httpServerRequest);
 
         assertEquals(200, response.getStatus());
         Map<String, NewCookie> cookies = response.getCookies();
@@ -118,35 +130,42 @@ class AuthControllerTest {
     }
 
     @Test
-    void login_wrongPassword_returns401() {
-        Response response = controller.login(Map.of("password", "wrong"));
+    void login_invalidPassword_returns401() {
+        when(loginUseCase.execute("127.0.0.1", "wrong")).thenReturn(LoginResult.invalidPassword());
+
+        Response response = controller.login(Map.of("password", "wrong"), httpServerRequest);
         assertEquals(401, response.getStatus());
     }
 
     @Test
     void login_nullBody_returns401() {
-        Response response = controller.login(null);
+        when(loginUseCase.execute(anyString(), isNull())).thenReturn(LoginResult.invalidPassword());
+
+        Response response = controller.login(null, httpServerRequest);
         assertEquals(401, response.getStatus());
     }
 
     @Test
-    void login_emptyPassword_returns401() {
-        Response response = controller.login(Map.of("password", ""));
-        assertEquals(401, response.getStatus());
+    void login_rateLimited_returns429() {
+        when(loginUseCase.execute("127.0.0.1", "anything")).thenReturn(LoginResult.rateLimited(30));
+
+        Response response = controller.login(Map.of("password", "anything"), httpServerRequest);
+
+        assertEquals(429, response.getStatus());
+        assertEquals(30L, response.getHeaderString("Retry-After") != null
+                ? Long.parseLong(response.getHeaderString("Retry-After")) : null);
     }
 
     @Test
-    void login_noPasswordConfigured_returns401() {
-        setField("authPassword", Optional.empty());
-        Response response = controller.login(Map.of("password", "anything"));
-        assertEquals(401, response.getStatus());
-    }
+    @SuppressWarnings("unchecked")
+    void login_rateLimited_bodyContainsRetryAfter() {
+        when(loginUseCase.execute("127.0.0.1", "anything")).thenReturn(LoginResult.rateLimited(45));
 
-    @Test
-    void login_blankPasswordConfigured_returns401() {
-        setField("authPassword", Optional.of("   "));
-        Response response = controller.login(Map.of("password", "   "));
-        assertEquals(401, response.getStatus());
+        Response response = controller.login(Map.of("password", "anything"), httpServerRequest);
+
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertEquals("TOO_MANY_REQUESTS", body.get("code"));
+        assertEquals(45L, body.get("retryAfter"));
     }
 
     // ---- logout ----
@@ -174,10 +193,11 @@ class AuthControllerTest {
 
     @Test
     void login_cookie_isHttpOnly() {
+        when(loginUseCase.execute("127.0.0.1", "secret")).thenReturn(LoginResult.success());
         when(sessionManager.createSession()).thenReturn("id");
         when(sessionManager.getSessionTimeoutMinutes()).thenReturn(60);
 
-        Response response = controller.login(Map.of("password", "secret"));
+        Response response = controller.login(Map.of("password", "secret"), httpServerRequest);
         NewCookie cookie = response.getCookies().get("DWH-SESSION");
 
         assertTrue(cookie.isHttpOnly());
@@ -185,12 +205,48 @@ class AuthControllerTest {
 
     @Test
     void login_cookie_hasSameSiteStrict() {
+        when(loginUseCase.execute("127.0.0.1", "secret")).thenReturn(LoginResult.success());
         when(sessionManager.createSession()).thenReturn("id");
         when(sessionManager.getSessionTimeoutMinutes()).thenReturn(60);
 
-        Response response = controller.login(Map.of("password", "secret"));
+        Response response = controller.login(Map.of("password", "secret"), httpServerRequest);
         NewCookie cookie = response.getCookies().get("DWH-SESSION");
 
         assertEquals(NewCookie.SameSite.STRICT, cookie.getSameSite());
+    }
+
+    // ---- extractClientIp ----
+
+    @Test
+    void extractClientIp_trustDisabled_ignoresForwardedHeader() {
+        when(httpServerRequest.getHeader("X-Forwarded-For")).thenReturn("203.0.113.50");
+
+        assertEquals("127.0.0.1", AuthController.extractClientIp(httpServerRequest, false));
+    }
+
+    @Test
+    void extractClientIp_trustEnabled_usesForwardedHeader() {
+        when(httpServerRequest.getHeader("X-Forwarded-For")).thenReturn("203.0.113.50, 70.41.3.18");
+
+        assertEquals("203.0.113.50", AuthController.extractClientIp(httpServerRequest, true));
+    }
+
+    @Test
+    void extractClientIp_trustEnabled_blankHeader_usesRemoteAddr() {
+        SocketAddress addr = mock(SocketAddress.class);
+        when(addr.host()).thenReturn("10.0.0.1");
+        when(httpServerRequest.getHeader("X-Forwarded-For")).thenReturn("   ");
+        when(httpServerRequest.remoteAddress()).thenReturn(addr);
+
+        assertEquals("10.0.0.1", AuthController.extractClientIp(httpServerRequest, true));
+    }
+
+    @Test
+    void extractClientIp_noForwardedHeader_usesRemoteAddr() {
+        SocketAddress addr = mock(SocketAddress.class);
+        when(addr.host()).thenReturn("10.0.0.1");
+        when(httpServerRequest.remoteAddress()).thenReturn(addr);
+
+        assertEquals("10.0.0.1", AuthController.extractClientIp(httpServerRequest, true));
     }
 }

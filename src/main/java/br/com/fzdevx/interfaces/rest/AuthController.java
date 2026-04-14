@@ -1,12 +1,15 @@
 package br.com.fzdevx.interfaces.rest;
 
+import br.com.fzdevx.application.dto.LoginResult;
+import br.com.fzdevx.application.usecase.LoginUseCase;
 import br.com.fzdevx.infrastructure.config.AuthSessionManager;
-import br.com.fzdevx.infrastructure.config.PasswordValidationService;
 import io.quarkus.logging.Log;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
+import io.vertx.core.http.HttpServerRequest;
 import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.Cookie;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.NewCookie;
@@ -31,6 +34,13 @@ public class AuthController {
 
     @Inject
     AuthSessionManager sessionManager;
+
+    @Inject
+    LoginUseCase loginUseCase;
+
+    @Inject
+    @ConfigProperty(name = "app.rate-limit.trust-forwarded-headers", defaultValue = "false")
+    boolean trustForwardedHeaders;
 
     void onStartup(@Observes StartupEvent event) {
         if (authEnabled && (authPassword.isEmpty() || authPassword.get().isBlank())) {
@@ -60,31 +70,42 @@ public class AuthController {
     @Path("/login")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response login(Map<String, String> body) {
+    public Response login(Map<String, String> body, @Context HttpServerRequest request) {
         if (!authEnabled) {
             return Response.ok(Map.of("authenticated", true)).build();
         }
 
         String password = body != null ? body.get("password") : null;
+        String clientIp = extractClientIp(request, trustForwardedHeaders);
 
-        if (!validatePassword(password)) {
-            return Response.status(Response.Status.UNAUTHORIZED)
+        LoginResult result = loginUseCase.execute(clientIp, password);
+
+        return switch (result.status()) {
+            case SUCCESS -> {
+                String sessionId = sessionManager.createSession();
+                NewCookie cookie = new NewCookie.Builder(SESSION_COOKIE)
+                        .value(sessionId)
+                        .path("/")
+                        .httpOnly(true)
+                        .sameSite(NewCookie.SameSite.STRICT)
+                        .maxAge(sessionManager.getSessionTimeoutMinutes() * 60)
+                        .build();
+                yield Response.ok(Map.of("authenticated", true))
+                        .cookie(cookie)
+                        .build();
+            }
+            case INVALID_PASSWORD -> Response.status(Response.Status.UNAUTHORIZED)
                     .entity(Map.of("code", "UNAUTHORIZED", "message", "Invalid password."))
                     .build();
-        }
-
-        String sessionId = sessionManager.createSession();
-        NewCookie cookie = new NewCookie.Builder(SESSION_COOKIE)
-                .value(sessionId)
-                .path("/")
-                .httpOnly(true)
-                .sameSite(NewCookie.SameSite.STRICT)
-                .maxAge(sessionManager.getSessionTimeoutMinutes() * 60)
-                .build();
-
-        return Response.ok(Map.of("authenticated", true))
-                .cookie(cookie)
-                .build();
+            case RATE_LIMITED -> Response.status(429)
+                    .header("Retry-After", result.retryAfterSeconds())
+                    .entity(Map.of(
+                            "code", "TOO_MANY_REQUESTS",
+                            "message", "Too many failed attempts. Try again in " + result.retryAfterSeconds() + " seconds.",
+                            "retryAfter", result.retryAfterSeconds()
+                    ))
+                    .build();
+        };
     }
 
     @POST
@@ -108,7 +129,13 @@ public class AuthController {
                 .build();
     }
 
-    private boolean validatePassword(String input) {
-        return PasswordValidationService.constantTimeEquals(authPassword, input);
+    static String extractClientIp(HttpServerRequest request, boolean trustForwardedHeaders) {
+        if (trustForwardedHeaders) {
+            String forwarded = request.getHeader("X-Forwarded-For");
+            if (forwarded != null && !forwarded.isBlank()) {
+                return forwarded.split(",")[0].trim();
+            }
+        }
+        return request.remoteAddress() != null ? request.remoteAddress().host() : "unknown";
     }
 }
