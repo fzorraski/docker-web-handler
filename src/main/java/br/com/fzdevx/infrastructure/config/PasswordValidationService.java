@@ -1,5 +1,9 @@
 package br.com.fzdevx.infrastructure.config;
 
+import br.com.fzdevx.application.port.RateLimitPort;
+import br.com.fzdevx.domain.exception.RateLimitedException;
+import br.com.fzdevx.interfaces.rest.AuthController;
+import io.vertx.core.http.HttpServerRequest;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -43,22 +47,32 @@ public class PasswordValidationService {
     @ConfigProperty(name = "container.terminal.password.required", defaultValue = "true")
     boolean terminalPasswordRequired;
 
+    @Inject
+    RateLimitPort rateLimitPort;
+
+    @Inject
+    jakarta.inject.Provider<HttpServerRequest> requestProvider;
+
+    @Inject
+    @ConfigProperty(name = "app.rate-limit.trust-forwarded-headers", defaultValue = "false")
+    boolean trustForwardedHeaders;
+
     public boolean validateUploadPassword(String password) {
-        return validate(uploadPassword, uploadPasswordRequired, password);
+        return validate("upload-pw", uploadPassword, uploadPasswordRequired, password);
     }
 
     public boolean validateOperationsPassword(String password) {
-        return validate(operationsPassword, operationsPasswordRequired, password);
+        return validate("ops-pw", operationsPassword, operationsPasswordRequired, password);
     }
 
     public boolean validateSchedulingPassword(String password) {
         if (!schedulingPasswordRequired) return true;
         if (!hasPassword(schedulingPassword)) return false;
-        return constantTimeEquals(schedulingPassword, password);
+        return compareWithRateLimit("schedule-pw", schedulingPassword, password);
     }
 
     public boolean validateTerminalPassword(String password) {
-        return validate(terminalPassword, terminalPasswordRequired, password);
+        return validate("terminal-pw", terminalPassword, terminalPasswordRequired, password);
     }
 
     public boolean isUploadPasswordRequired() { return uploadPasswordRequired && hasPassword(uploadPassword); }
@@ -77,10 +91,45 @@ public class PasswordValidationService {
                 (input != null ? input : "").getBytes());
     }
 
-    private boolean validate(Optional<String> configured, boolean required, String input) {
+    private boolean validate(String rateLimitCategory, Optional<String> configured, boolean required, String input) {
         if (!required) return true;
         if (!hasPassword(configured)) return true;
-        return constantTimeEquals(configured, input);
+        return compareWithRateLimit(rateLimitCategory, configured, input);
+    }
+
+    private boolean compareWithRateLimit(String category, Optional<String> configured, String input) {
+        String rateLimitKey = resolveRateLimitKey(category, input);
+        if (rateLimitKey != null) {
+            Optional<Long> blocked = rateLimitPort.checkRateLimit(rateLimitKey);
+            if (blocked.isPresent()) {
+                throw new RateLimitedException(blocked.get());
+            }
+        }
+
+        boolean valid = constantTimeEquals(configured, input);
+
+        if (rateLimitKey != null) {
+            if (valid) rateLimitPort.recordSuccess(rateLimitKey);
+            else rateLimitPort.recordFailure(rateLimitKey);
+        }
+
+        return valid;
+    }
+
+    private String resolveRateLimitKey(String category, String input) {
+        if (input == null || input.isBlank()) return null;
+        String clientIp = getClientIp();
+        if (clientIp == null) return null;
+        return category + ":" + clientIp;
+    }
+
+    private String getClientIp() {
+        try {
+            HttpServerRequest request = requestProvider.get();
+            return AuthController.extractClientIp(request, trustForwardedHeaders);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private boolean hasPassword(Optional<String> password) {

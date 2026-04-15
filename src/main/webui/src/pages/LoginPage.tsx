@@ -22,6 +22,7 @@ export default function LoginPage() {
       setRetryAfter(prev => {
         if (prev <= 1) {
           clearInterval(timer)
+          setError('')
           return 0
         }
         return prev - 1

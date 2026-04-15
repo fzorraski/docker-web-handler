@@ -6,6 +6,7 @@ import br.com.fzdevx.domain.exception.DuplicateEntityException;
 import br.com.fzdevx.domain.exception.EntityNotFoundException;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.exception.OperationInProgressException;
+import br.com.fzdevx.domain.exception.RateLimitedException;
 import io.quarkus.logging.Log;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
@@ -27,6 +28,18 @@ public class GlobalExceptionMapper implements ExceptionMapper<Exception> {
             int status = wae.getResponse().getStatus();
             Log.debugf("WebApplicationException [%d]: %s", status, exception.getMessage());
             return buildResponse(status, mapStatusToCode(status), sanitizeMessage(exception.getMessage()));
+        }
+
+        // Handle rate limiting (before general DomainException handling)
+        if (exception instanceof RateLimitedException rle) {
+            Log.debugf("RateLimitedException: %s", rle.getMessage());
+            return Response.status(429)
+                    .type(MediaType.APPLICATION_JSON)
+                    .header("Retry-After", rle.getRetryAfterSeconds())
+                    .entity(Map.of("code", "TOO_MANY_REQUESTS",
+                                   "message", rle.getMessage(),
+                                   "retryAfter", rle.getRetryAfterSeconds()))
+                    .build();
         }
 
         // Handle sealed domain exception hierarchy
@@ -52,6 +65,7 @@ public class GlobalExceptionMapper implements ExceptionMapper<Exception> {
             case InvalidInputException e -> 400;
             case DuplicateEntityException e -> 409;
             case OperationInProgressException e -> 409;
+            case RateLimitedException e -> 429;
             default -> 500;
         };
     }

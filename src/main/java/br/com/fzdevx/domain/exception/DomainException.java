@@ -3,7 +3,8 @@ package br.com.fzdevx.domain.exception;
 
 public sealed class DomainException extends RuntimeException
         permits EntityNotFoundException, DuplicateEntityException,
-                InvalidInputException, OperationInProgressException {
+                InvalidInputException, OperationInProgressException,
+                RateLimitedException {
 
     private final String code;
 

@@ -129,7 +129,7 @@ public class AuthController {
                 .build();
     }
 
-    static String extractClientIp(HttpServerRequest request, boolean trustForwardedHeaders) {
+    public static String extractClientIp(HttpServerRequest request, boolean trustForwardedHeaders) {
         if (trustForwardedHeaders) {
             String forwarded = request.getHeader("X-Forwarded-For");
             if (forwarded != null && !forwarded.isBlank()) {
