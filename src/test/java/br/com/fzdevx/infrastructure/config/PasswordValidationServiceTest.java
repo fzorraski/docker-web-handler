@@ -1,11 +1,17 @@
 package br.com.fzdevx.infrastructure.config;
 
+import br.com.fzdevx.application.port.RateLimitPort;
+import br.com.fzdevx.domain.exception.RateLimitedException;
+import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.net.SocketAddress;
+import jakarta.inject.Provider;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class PasswordValidationServiceTest {
 
@@ -179,5 +185,138 @@ class PasswordValidationServiceTest {
     @Test
     void constantTimeEquals_matching_returnsTrue() {
         assertTrue(PasswordValidationService.constantTimeEquals(Optional.of("secret"), "secret"));
+    }
+
+    // ---- rate limiting ----
+
+    private PasswordValidationService opsServiceWithRateLimit(String password, RateLimitPort rateLimitPort,
+                                                              Provider<HttpServerRequest> requestProvider) throws Exception {
+        var service = opsService(password, true);
+        setField(service, "rateLimitPort", rateLimitPort);
+        setField(service, "requestProvider", requestProvider);
+        setField(service, "trustForwardedHeaders", false);
+        return service;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Provider<HttpServerRequest> mockRequestProvider(String clientIp) {
+        SocketAddress addr = mock(SocketAddress.class);
+        when(addr.host()).thenReturn(clientIp);
+        HttpServerRequest request = mock(HttpServerRequest.class);
+        when(request.remoteAddress()).thenReturn(addr);
+        Provider<HttpServerRequest> provider = mock(Provider.class);
+        when(provider.get()).thenReturn(request);
+        return provider;
+    }
+
+    @Test
+    void validateOperations_blocked_throwsRateLimitedException() throws Exception {
+        var rateLimitPort = mock(RateLimitPort.class);
+        when(rateLimitPort.checkRateLimit("ops-pw:10.0.0.1")).thenReturn(Optional.of(30L));
+        var service = opsServiceWithRateLimit("secret", rateLimitPort, mockRequestProvider("10.0.0.1"));
+
+        var ex = assertThrows(RateLimitedException.class, () -> service.validateOperationsPassword("wrong"));
+        assertEquals(30, ex.getRetryAfterSeconds());
+    }
+
+    @Test
+    void validateOperations_wrongPassword_recordsFailure() throws Exception {
+        var rateLimitPort = mock(RateLimitPort.class);
+        when(rateLimitPort.checkRateLimit(anyString())).thenReturn(Optional.empty());
+        var service = opsServiceWithRateLimit("secret", rateLimitPort, mockRequestProvider("10.0.0.1"));
+
+        assertFalse(service.validateOperationsPassword("wrong"));
+        verify(rateLimitPort).recordFailure("ops-pw:10.0.0.1");
+    }
+
+    @Test
+    void validateOperations_correctPassword_recordsSuccess() throws Exception {
+        var rateLimitPort = mock(RateLimitPort.class);
+        when(rateLimitPort.checkRateLimit(anyString())).thenReturn(Optional.empty());
+        var service = opsServiceWithRateLimit("secret", rateLimitPort, mockRequestProvider("10.0.0.1"));
+
+        assertTrue(service.validateOperationsPassword("secret"));
+        verify(rateLimitPort).recordSuccess("ops-pw:10.0.0.1");
+    }
+
+    @Test
+    void validateOperations_nullPassword_skipsRateLimit() throws Exception {
+        var rateLimitPort = mock(RateLimitPort.class);
+        var service = opsServiceWithRateLimit("secret", rateLimitPort, mockRequestProvider("10.0.0.1"));
+
+        assertFalse(service.validateOperationsPassword(null));
+        verifyNoInteractions(rateLimitPort);
+    }
+
+    @Test
+    void validateOperations_blankPassword_skipsRateLimit() throws Exception {
+        var rateLimitPort = mock(RateLimitPort.class);
+        var service = opsServiceWithRateLimit("secret", rateLimitPort, mockRequestProvider("10.0.0.1"));
+
+        assertFalse(service.validateOperationsPassword("  "));
+        verifyNoInteractions(rateLimitPort);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void validateOperations_noHttpContext_skipsRateLimit() throws Exception {
+        var rateLimitPort = mock(RateLimitPort.class);
+        Provider<HttpServerRequest> provider = mock(Provider.class);
+        when(provider.get()).thenThrow(new RuntimeException("no context"));
+        var service = opsServiceWithRateLimit("secret", rateLimitPort, provider);
+
+        assertFalse(service.validateOperationsPassword("wrong"));
+        verifyNoInteractions(rateLimitPort);
+    }
+
+    @Test
+    void validateTerminal_wrongPassword_recordsFailureWithTerminalCategory() throws Exception {
+        var rateLimitPort = mock(RateLimitPort.class);
+        when(rateLimitPort.checkRateLimit(anyString())).thenReturn(Optional.empty());
+        var service = createService(null, false, null, false, null, false, "term", true);
+        setField(service, "rateLimitPort", rateLimitPort);
+        setField(service, "requestProvider", mockRequestProvider("10.0.0.1"));
+        setField(service, "trustForwardedHeaders", false);
+
+        assertFalse(service.validateTerminalPassword("wrong"));
+        verify(rateLimitPort).recordFailure("terminal-pw:10.0.0.1");
+    }
+
+    @Test
+    void validateScheduling_wrongPassword_recordsFailureWithScheduleCategory() throws Exception {
+        var rateLimitPort = mock(RateLimitPort.class);
+        when(rateLimitPort.checkRateLimit(anyString())).thenReturn(Optional.empty());
+        var service = createService(null, false, null, false, "sched", true, null, false);
+        setField(service, "rateLimitPort", rateLimitPort);
+        setField(service, "requestProvider", mockRequestProvider("10.0.0.1"));
+        setField(service, "trustForwardedHeaders", false);
+
+        assertFalse(service.validateSchedulingPassword("wrong"));
+        verify(rateLimitPort).recordFailure("schedule-pw:10.0.0.1");
+    }
+
+    @Test
+    void validateUpload_wrongPassword_recordsFailureWithUploadCategory() throws Exception {
+        var rateLimitPort = mock(RateLimitPort.class);
+        when(rateLimitPort.checkRateLimit(anyString())).thenReturn(Optional.empty());
+        var service = createService(null, false, "upload123", true, null, false, null, false);
+        setField(service, "rateLimitPort", rateLimitPort);
+        setField(service, "requestProvider", mockRequestProvider("10.0.0.1"));
+        setField(service, "trustForwardedHeaders", false);
+
+        assertFalse(service.validateUploadPassword("wrong"));
+        verify(rateLimitPort).recordFailure("upload-pw:10.0.0.1");
+    }
+
+    @Test
+    void validateOperations_notRequired_skipsRateLimit() throws Exception {
+        var rateLimitPort = mock(RateLimitPort.class);
+        var service = createService("secret", false, null, false, null, false, null, false);
+        setField(service, "rateLimitPort", rateLimitPort);
+        setField(service, "requestProvider", mockRequestProvider("10.0.0.1"));
+        setField(service, "trustForwardedHeaders", false);
+
+        assertTrue(service.validateOperationsPassword("wrong"));
+        verifyNoInteractions(rateLimitPort);
     }
 }
