@@ -9,6 +9,7 @@ import RestoreDumpModal from '../components/RestoreDumpModal'
 import CreateSnapshotModal from '../components/CreateSnapshotModal'
 import EditExpirationDialog from '../components/EditExpirationDialog'
 import PasswordConfirmDialog from '../components/PasswordConfirmDialog'
+import { RateLimitError } from '../services/fetchWithAuth'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
 import { useStickyHeader } from '../hooks/useStickyHeader'
 import { useDumpMetadataEdit } from '../hooks/useDumpMetadataEdit'
@@ -318,7 +319,8 @@ export default function DatabasePage() {
           notify(result.error || t('database.deleteFailed'), 'error')
         }
       }
-    } catch {
+    } catch (e) {
+      if (e instanceof RateLimitError) throw e
       notify(t('common.unexpectedError'), 'error')
     }
   }
@@ -1185,8 +1187,8 @@ export default function DatabasePage() {
         confirmColor="primary"
         icon={<Edit />}
         onConfirm={async (password) => {
-          dumpEdit.setPasswordOpen(false)
           await dumpEdit.saveEdit(password)
+          dumpEdit.setPasswordOpen(false)
         }}
         onClose={() => { dumpEdit.setPasswordOpen(false); dumpEdit.cancelEdit() }}
       />
@@ -1200,8 +1202,8 @@ export default function DatabasePage() {
         confirmColor="primary"
         icon={<Edit />}
         onConfirm={async (password) => {
-          snapEdit.setPasswordOpen(false)
           await snapEdit.saveEdit(password)
+          snapEdit.setPasswordOpen(false)
         }}
         onClose={() => { snapEdit.setPasswordOpen(false); snapEdit.cancelEdit() }}
       />

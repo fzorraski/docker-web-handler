@@ -15,6 +15,7 @@ import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
 import CreateScheduleModal from '../components/CreateScheduleModal'
 import PasswordConfirmDialog from '../components/PasswordConfirmDialog'
+import { RateLimitError } from '../services/fetchWithAuth'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
 import { useStickyHeader } from '../hooks/useStickyHeader'
 import { useTablePagination } from '../hooks/useTablePagination'
@@ -157,10 +158,11 @@ export default function SchedulesPage() {
         setSelected(new Set())
       }
       loadSchedules()
-    } catch {
+      setPendingDelete(null)
+    } catch (e) {
+      if (e instanceof RateLimitError) throw e
       notify(t('common.unexpectedError'), 'error')
       loadSchedules()
-    } finally {
       setPendingDelete(null)
     }
   }
@@ -216,9 +218,10 @@ export default function SchedulesPage() {
         notify(t('schedules.executionTriggered'), 'success')
         setTimeout(loadSchedules, 2000)
       }
-    } catch {
+      setPendingAction(null)
+    } catch (e) {
+      if (e instanceof RateLimitError) throw e
       notify(t('common.unexpectedError'), 'error')
-    } finally {
       setPendingAction(null)
     }
   }

@@ -11,6 +11,7 @@ import { Add, Close, PlayArrow, Stop, Delete, Schedule } from '@mui/icons-materi
 import { useTranslation } from 'react-i18next'
 import { useNotification } from './NotificationProvider'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
+import { RateLimitError } from '../services/fetchWithAuth'
 import { createSchedule, getSchedulesByContainer } from '../services/scheduleService'
 import {
   getAllowedRepositories, getRepositoryTags, getRepositoryEnvKeys,
@@ -186,9 +187,10 @@ export default function CreateScheduleModal({ open, onClose, onCreated, containe
       reset()
       onCreated()
       onClose()
+      setPendingRequest(null)
     } catch (e: unknown) {
+      if (e instanceof RateLimitError) throw e
       notify((e as Error).message || t('common.unexpectedError'), 'error')
-    } finally {
       setPendingRequest(null)
     }
   }

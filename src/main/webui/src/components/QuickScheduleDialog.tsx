@@ -12,6 +12,7 @@ import { Close, Delete, PlayArrow, Stop, Schedule, Timer, Warning, Lock } from '
 import { useTranslation } from 'react-i18next'
 import { useNotification } from './NotificationProvider'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
+import { RateLimitError } from '../services/fetchWithAuth'
 import {
   getSchedulesByContainer, createSchedule, toggleSchedule, deleteSchedule, executeScheduleNow,
 } from '../services/scheduleService'
@@ -100,9 +101,10 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
       notify(t('schedules.created'), 'success')
       loadSchedules()
       setTab(1)
+      setPendingCreate(false)
     } catch (e: unknown) {
+      if (e instanceof RateLimitError) throw e
       notify((e as Error).message || t('common.unexpectedError'), 'error')
-    } finally {
       setPendingCreate(false)
     }
   }
@@ -115,9 +117,10 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
     try {
       const updated = await toggleSchedule(pendingToggleId, password)
       setSchedules(prev => prev.map(s => s.id === pendingToggleId ? updated : s))
-    } catch {
+      setPendingToggleId(null)
+    } catch (e) {
+      if (e instanceof RateLimitError) throw e
       notify(t('common.unexpectedError'), 'error')
-    } finally {
       setPendingToggleId(null)
     }
   }
@@ -137,9 +140,10 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
       await deleteSchedule(pendingDeleteId, password)
       notify(t('schedules.deleted'), 'success')
       loadSchedules()
-    } catch {
+      setPendingDeleteId(null)
+    } catch (e) {
+      if (e instanceof RateLimitError) throw e
       notify(t('common.unexpectedError'), 'error')
-    } finally {
       setPendingDeleteId(null)
     }
   }
@@ -159,9 +163,10 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
     try {
       await executeScheduleNow(pendingExecId, password)
       notify(t('schedules.executionTriggered'), 'success')
-    } catch {
+      setPendingExecId(null)
+    } catch (e) {
+      if (e instanceof RateLimitError) throw e
       notify(t('common.unexpectedError'), 'error')
-    } finally {
       setPendingExecId(null)
     }
   }
