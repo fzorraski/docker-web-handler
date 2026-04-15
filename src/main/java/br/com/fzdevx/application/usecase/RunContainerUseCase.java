@@ -27,6 +27,7 @@ import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.Config;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -124,6 +125,7 @@ public class RunContainerUseCase {
     }
 
     public void execute(RunContainerConfig request, Consumer<ContainerEvent> eventSink, String ticket) {
+        Instant startedAt = Instant.now();
         RunContext runCtx = new RunContext();
         if (ticket != null) {
             activeRuns.put(ticket, runCtx);
@@ -344,7 +346,7 @@ public class RunContainerUseCase {
                 return;
             }
 
-            String expirationMessage = scheduleExpiration(request, container.getId());
+            String expirationMessage = scheduleExpiration(request, container.getId(), startedAt);
 
             resourceCounterService.increment(ResourceCounterService.CONTAINERS);
 
@@ -493,8 +495,8 @@ public class RunContainerUseCase {
         return result;
     }
 
-    private String scheduleExpiration(RunContainerConfig request, String fullContainerId) {
-        Instant expiresInstant = resolveExpiration(request);
+    private String scheduleExpiration(RunContainerConfig request, String fullContainerId, Instant startedAt) {
+        Instant expiresInstant = resolveExpiration(request, startedAt);
         if (expiresInstant == null) {
             String dbName = request.getDatabaseName();
             if (dbName != null && !dbName.isBlank()) {
@@ -513,7 +515,7 @@ public class RunContainerUseCase {
         return " (expires at " + ldt.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) + ")";
     }
 
-    private Instant resolveExpiration(RunContainerConfig request) {
+    Instant resolveExpiration(RunContainerConfig request, Instant startedAt) {
         Instant maxExpiration = findDbDeletionExpiration(request.getDatabaseName());
 
         if (request.getExpiresAt() == null || request.getExpiresAt().isBlank()) {
@@ -522,6 +524,14 @@ public class RunContainerUseCase {
 
         LocalDateTime ldt = LocalDateTime.parse(request.getExpiresAt(), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         Instant requested = ldt.atZone(ZoneId.systemDefault()).toInstant();
+
+        // If the requested expiration is already in the past (e.g. a database restore
+        // took longer than the expiration duration), recalculate from now preserving
+        // the original duration the user intended.
+        if (requested.isBefore(Instant.now())) {
+            Duration originalDuration = Duration.between(startedAt, requested);
+            requested = Instant.now().plus(originalDuration);
+        }
 
         if (maxExpiration != null && requested.isAfter(maxExpiration)) {
             return maxExpiration;

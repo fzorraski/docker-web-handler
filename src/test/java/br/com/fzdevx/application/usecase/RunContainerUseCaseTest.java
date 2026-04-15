@@ -30,6 +30,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -429,6 +434,60 @@ class RunContainerUseCaseTest {
         useCase.execute(req, events::add);
 
         assertTrue(hasEvent(EventType.SUCCESS));
+    }
+
+    // ---- expiration recalculation ----
+
+    @Test
+    void resolveExpiration_inFuture_returnsOriginalTimestamp() {
+        RunContainerRequest req = validRequest();
+        LocalDateTime futureTime = LocalDateTime.now().plusMinutes(30);
+        req.setExpiresAt(futureTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+
+        Instant result = useCase.resolveExpiration(req, Instant.now());
+
+        Instant expected = futureTime.atZone(ZoneId.systemDefault()).toInstant();
+        assertTrue(Duration.between(expected, result).abs().toSeconds() < 2);
+    }
+
+    @Test
+    void resolveExpiration_inPast_recalculatesFromNow() {
+        // Simulate: user submitted 10 minutes ago with 5-minute expiration
+        // startedAt = 10 minutes ago, expiresAt = 5 minutes ago (was 5 min after submission)
+        Instant startedAt = Instant.now().minus(Duration.ofMinutes(10));
+        LocalDateTime expiresAt = LocalDateTime.ofInstant(
+                Instant.now().minus(Duration.ofMinutes(5)), ZoneId.systemDefault());
+
+        RunContainerRequest req = validRequest();
+        req.setExpiresAt(expiresAt.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+
+        Instant result = useCase.resolveExpiration(req, startedAt);
+
+        // Original duration was 5 minutes. Should be recalculated to ~5 minutes from now.
+        assertTrue(result.isAfter(Instant.now()), "Recalculated expiration should be in the future");
+        long minutesFromNow = Duration.between(Instant.now(), result).toMinutes();
+        assertTrue(minutesFromNow >= 4 && minutesFromNow <= 6,
+                "Expected ~5 minutes from now but got " + minutesFromNow);
+    }
+
+    @Test
+    void resolveExpiration_nullExpiresAt_returnsNull() {
+        RunContainerRequest req = validRequest();
+        req.setExpiresAt(null);
+
+        Instant result = useCase.resolveExpiration(req, Instant.now());
+
+        assertNull(result);
+    }
+
+    @Test
+    void resolveExpiration_blankExpiresAt_returnsNull() {
+        RunContainerRequest req = validRequest();
+        req.setExpiresAt("  ");
+
+        Instant result = useCase.resolveExpiration(req, Instant.now());
+
+        assertNull(result);
     }
 
     // ---- cancellation ----
