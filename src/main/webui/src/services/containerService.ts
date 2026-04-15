@@ -212,6 +212,17 @@ export async function cancelExpiration(id: string): Promise<boolean> {
   return handleResponse(res)
 }
 
+export async function validateOperationsPassword(password: string): Promise<boolean> {
+  const res = await fetchWithAuth(API + 'validate-operations-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  })
+  if (res.status === 403) return false
+  if (!res.ok) throw new Error(res.statusText)
+  return true
+}
+
 export async function runContainer(
   repository: string,
   tag: string,

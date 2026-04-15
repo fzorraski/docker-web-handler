@@ -35,6 +35,7 @@ import {
   getRepositoryTags,
   isMigrationApiAvailable,
   repositoryHasDatabases,
+  validateOperationsPassword,
 } from '../services/containerService'
 import { isDumpEnabled, listDumps, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
 import type { DatabaseConflict, DatabaseDump, DatabaseSnapshot } from '../types'
@@ -1241,6 +1242,10 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         confirmColor="primary"
         icon={<PlayArrow />}
         onConfirm={async (password) => {
+          const valid = await validateOperationsPassword(password)
+          if (!valid) {
+            throw new Error(t('common.invalidOperationsPassword'))
+          }
           operationsPasswordRef.current = password
           setOperationsPassword(password)
           setOperationsPasswordOpen(false)

@@ -272,6 +272,19 @@ public class ContainerConfigController {
         return jakarta.ws.rs.core.Response.ok(Map.of("ticket", ticket)).build();
     }
 
+    @POST
+    @Path("/validate-operations-password")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public jakarta.ws.rs.core.Response validateOperationsPassword(Map<String, String> body) {
+        String password = body != null ? body.get("password") : null;
+        if (!passwordValidationService.validateOperationsPassword(password)) {
+            return jakarta.ws.rs.core.Response.status(jakarta.ws.rs.core.Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
+        }
+        return jakarta.ws.rs.core.Response.ok(Map.of("valid", true)).build();
+    }
+
     @GET
     @Path("/migration-preview")
     @Produces(MediaType.APPLICATION_JSON)

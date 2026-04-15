@@ -20,6 +20,8 @@ const en = {
     operationsPassword: 'Operations Password',
     uploadPassword: 'Upload Password',
     unexpectedError: 'An unexpected error occurred.',
+    invalidOperationsPassword: 'Invalid operations password. Please try again.',
+    rateLimited: 'Too many failed attempts. Try again in {{seconds}}s.',
     description: 'Description',
     noExpiration: 'No expiration',
     preparing: 'Preparing...',

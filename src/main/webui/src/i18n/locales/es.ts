@@ -22,6 +22,8 @@ const es: typeof en = {
     operationsPassword: 'Contrasena de Operaciones',
     uploadPassword: 'Contrasena de Subida',
     unexpectedError: 'Ocurrio un error inesperado.',
+    invalidOperationsPassword: 'Contrasena de operaciones invalida. Intente de nuevo.',
+    rateLimited: 'Demasiados intentos fallidos. Intente de nuevo en {{seconds}}s.',
     description: 'Descripcion',
     noExpiration: 'Sin expiracion',
     preparing: 'Preparando...',

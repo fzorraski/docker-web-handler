@@ -22,6 +22,8 @@ const ptBR: typeof en = {
     operationsPassword: 'Senha de Operacoes',
     uploadPassword: 'Senha de Upload',
     unexpectedError: 'Ocorreu um erro inesperado.',
+    invalidOperationsPassword: 'Senha de operacoes invalida. Tente novamente.',
+    rateLimited: 'Muitas tentativas falhas. Tente novamente em {{seconds}}s.',
     description: 'Descricao',
     noExpiration: 'Sem expiracao',
     preparing: 'Preparando...',

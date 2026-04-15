@@ -1,5 +1,6 @@
 package br.com.fzdevx.interfaces.rest;
 
+import br.com.fzdevx.domain.exception.RateLimitedException;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
 import br.com.fzdevx.infrastructure.config.RequestStash;
@@ -288,6 +289,37 @@ class ContainerConfigControllerTest {
         when(requestStash.stashTerminal("abc123def4")).thenReturn("ticket-123");
         var res = controller.authorizeTerminal(Map.of("containerId", "abc123def4", "password", "secret"));
         assertEquals(200, res.getStatus());
+    }
+
+    // ---- validateOperationsPassword ----
+
+    @Test
+    void validateOperationsPassword_invalid_returnsForbidden() {
+        when(passwordValidationService.validateOperationsPassword("wrong")).thenReturn(false);
+        var res = controller.validateOperationsPassword(Map.of("password", "wrong"));
+        assertEquals(403, res.getStatus());
+    }
+
+    @Test
+    void validateOperationsPassword_valid_returnsOk() {
+        when(passwordValidationService.validateOperationsPassword("correct")).thenReturn(true);
+        var res = controller.validateOperationsPassword(Map.of("password", "correct"));
+        assertEquals(200, res.getStatus());
+    }
+
+    @Test
+    void validateOperationsPassword_nullBody_returnsForbidden() {
+        when(passwordValidationService.validateOperationsPassword(null)).thenReturn(false);
+        var res = controller.validateOperationsPassword(null);
+        assertEquals(403, res.getStatus());
+    }
+
+    @Test
+    void validateOperationsPassword_rateLimited_throwsRateLimitedException() {
+        when(passwordValidationService.validateOperationsPassword("any"))
+                .thenThrow(new RateLimitedException(30));
+        assertThrows(RateLimitedException.class,
+                () -> controller.validateOperationsPassword(Map.of("password", "any")));
     }
 
     // ---- isMigrationApiAvailable ----
