@@ -104,6 +104,7 @@ public class RunContainerUseCase {
         volatile String restoreRepository;
         volatile String restoreTargetDatabase;
         volatile boolean restoreCreatedDatabase;
+        volatile List<Integer> allocatedPorts;
     }
 
     private final ConcurrentHashMap<String, RunContext> activeRuns = new ConcurrentHashMap<>();
@@ -244,7 +245,7 @@ public class RunContainerUseCase {
 
             CreateContainerResponse container;
             try {
-                container = createContainer(imageRef, request, eventSink);
+                container = createContainer(imageRef, request, eventSink, runCtx);
                 createdContainerId = container.getId();
             } catch (Exception e) {
                 eventSink.accept(ContainerEvent.error("Creating", sanitizeCreateError(e.getMessage(), request.getContainerName())));
@@ -342,7 +343,7 @@ public class RunContainerUseCase {
             try {
                 dockerClient.startContainerCmd(container.getId()).exec();
             } catch (Exception e) {
-                eventSink.accept(ContainerEvent.error("Starting", "Failed to start container: " + e.getMessage()));
+                eventSink.accept(ContainerEvent.error("Starting", sanitizeStartError(e.getMessage())));
                 return;
             }
 
@@ -354,17 +355,23 @@ public class RunContainerUseCase {
             eventSink.accept(ContainerEvent.success("Complete",
                     "Container started successfully from " + imageRef + expirationMessage));
         } finally {
+            if (runCtx.allocatedPorts != null) {
+                portFinder.releasePorts(runCtx.allocatedPorts);
+            }
             if (ticket != null) {
                 activeRuns.remove(ticket);
             }
-            // Clean up container if it was created but the operation was cancelled or failed after creation
-            if (createdContainerId != null && runCtx.cancelled.get()) {
+            // Clean up container if it was created but the operation was cancelled or failed
+            if (createdContainerId != null) {
                 try {
                     dockerClient.removeContainerCmd(createdContainerId).withForce(true).exec();
                     eventSink.accept(ContainerEvent.info("Creating",
-                            "Container removed due to cancellation."));
+                            runCtx.cancelled.get()
+                                    ? "Container removed due to cancellation."
+                                    : "Container removed after failure."));
                 } catch (Exception e) {
-                    io.quarkus.logging.Log.warnf("Failed to remove container after cancellation: %s", e.getMessage());
+                    io.quarkus.logging.Log.warnf("Failed to remove container after %s: %s",
+                            runCtx.cancelled.get() ? "cancellation" : "failure", e.getMessage());
                 }
             }
             // Drop newly created database if cancelled after restore completed (Scenario B)
@@ -382,19 +389,20 @@ public class RunContainerUseCase {
     }
 
     private CreateContainerResponse createContainer(String imageRef, RunContainerConfig request,
-                                                     Consumer<ContainerEvent> eventSink) {
+                                                     Consumer<ContainerEvent> eventSink, RunContext runCtx) {
         CreateContainerCmd createCmd = dockerClient.createContainerCmd(imageRef);
 
         if (request.getContainerName() != null && !request.getContainerName().isBlank()) {
             createCmd.withName(request.getContainerName().trim());
         }
 
-        HostConfig hostConfig = buildHostConfig(request, eventSink);
+        List<Integer> containerPorts = portFinder.getContainerPorts(request.getRepository());
+
+        HostConfig hostConfig = buildHostConfig(request, eventSink, runCtx, containerPorts);
         if (hostConfig != null) {
             createCmd.withHostConfig(hostConfig);
         }
 
-        List<Integer> containerPorts = portFinder.getContainerPorts(request.getRepository());
         if (!containerPorts.isEmpty()) {
             createCmd.withExposedPorts(
                     containerPorts.stream().map(ExposedPort::tcp).toList());
@@ -415,8 +423,8 @@ public class RunContainerUseCase {
         return createCmd.exec();
     }
 
-    private HostConfig buildHostConfig(RunContainerConfig request, Consumer<ContainerEvent> eventSink) {
-        List<Integer> containerPorts = portFinder.getContainerPorts(request.getRepository());
+    private HostConfig buildHostConfig(RunContainerConfig request, Consumer<ContainerEvent> eventSink,
+                                       RunContext runCtx, List<Integer> containerPorts) {
         boolean hasMemory = request.getMemoryMb() != null;
         boolean hasPorts = !containerPorts.isEmpty();
 
@@ -438,6 +446,7 @@ public class RunContainerUseCase {
 
         if (hasPorts) {
             List<Integer> hostPorts = portFinder.findAvailablePorts(containerPorts.size());
+            runCtx.allocatedPorts = List.copyOf(hostPorts);
             Ports portBindings = new Ports();
             for (int i = 0; i < containerPorts.size(); i++) {
                 int containerPort = containerPorts.get(i);
@@ -553,18 +562,38 @@ public class RunContainerUseCase {
         return null;
     }
 
+    private String sanitizeStartError(String message) {
+        if (message == null) {
+            return "Failed to start container.";
+        }
+        if (message.contains("already in use") || message.contains("already allocated")) {
+            return "Port binding conflict — a port is already in use. Please try again.";
+        }
+        if (message.contains("driver failed programming external connectivity")) {
+            return "Failed to bind ports — a network conflict occurred. Please try again.";
+        }
+        return "Failed to start container: " + stripDockerJsonNoise(message);
+    }
+
     private String sanitizeCreateError(String message, String containerName) {
         if (message != null && message.contains("is already in use by container")) {
             return "A container named \"" + containerName + "\" already exists. Remove or rename it first.";
         }
-        // Strip Docker API JSON noise (Status NNN: {"message":"..."})
+        return "Failed to create container" + (message != null ? ": " + stripDockerJsonNoise(message) : ".");
+    }
+
+    /**
+     * Strips Docker API JSON wrapping (e.g. {@code Status 500: {"message":"actual error"}})
+     * and returns just the inner message.
+     */
+    private String stripDockerJsonNoise(String message) {
         if (message != null && message.contains("{\"message\":\"")) {
             int start = message.indexOf("{\"message\":\"") + 12;
-            int end = message.lastIndexOf("\"}");
+            int end = message.indexOf("\"}", start);
             if (end > start) {
                 return message.substring(start, end);
             }
         }
-        return "Failed to create container" + (message != null ? ": " + message : ".");
+        return message;
     }
 }

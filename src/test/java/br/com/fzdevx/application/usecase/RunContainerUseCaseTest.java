@@ -17,6 +17,7 @@ import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.PullImageCmd;
+import com.github.dockerjava.api.command.RemoveContainerCmd;
 import com.github.dockerjava.api.command.StartContainerCmd;
 import com.github.dockerjava.api.model.PullResponseItem;
 import com.github.dockerjava.core.command.PullImageResultCallback;
@@ -114,6 +115,10 @@ class RunContainerUseCaseTest {
         when(portFinder.getContainerPorts(REPO)).thenReturn(Collections.emptyList());
         when(config.getOptionalValue("repository.hidden-env." + REPO, String.class))
                 .thenReturn(Optional.empty());
+
+        RemoveContainerCmd removeCmd = mock(RemoveContainerCmd.class);
+        when(dockerClient.removeContainerCmd(CONTAINER_ID)).thenReturn(removeCmd);
+        when(removeCmd.withForce(true)).thenReturn(removeCmd);
     }
 
     private ContainerEvent lastEvent() {
@@ -132,6 +137,16 @@ class RunContainerUseCaseTest {
 
     private boolean hasEvent(EventType type) {
         return events.stream().anyMatch(e -> e.getType() == type);
+    }
+
+    private void assertHasError(String step, String messageContains) {
+        ContainerEvent error = events.stream()
+                .filter(e -> e.getType() == EventType.ERROR && step.equals(e.getStep()))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(error, "Expected ERROR event at step '" + step + "'");
+        assertTrue(error.getMessage().contains(messageContains),
+                "Expected message containing '" + messageContains + "' but was: " + error.getMessage());
     }
 
     // ---- validation: repository ----
@@ -351,7 +366,7 @@ class RunContainerUseCaseTest {
 
         useCase.execute(validRequest(), events::add);
 
-        assertLastEventError("Starting", "Failed to start container");
+        assertHasError("Starting", "Failed to start container");
     }
 
     // ---- happy path ----
@@ -518,5 +533,36 @@ class RunContainerUseCaseTest {
         useCase.execute(validRequest(), events::add);
 
         verifyNoInteractions(dockerClient);
+    }
+
+    // ---- port release on all exit paths ----
+
+    private void stubHappyPathWithPorts() {
+        stubHappyPath();
+        when(portFinder.getContainerPorts(REPO)).thenReturn(List.of(8080));
+        when(portFinder.findAvailablePorts(1)).thenReturn(List.of(10000));
+    }
+
+    @Test
+    void execute_withPortMapping_releasesPortsOnSuccess() {
+        stubHappyPathWithPorts();
+
+        useCase.execute(validRequest(), events::add);
+
+        assertTrue(hasEvent(EventType.SUCCESS));
+        verify(portFinder).releasePorts(List.of(10000));
+    }
+
+    @Test
+    void execute_withPortMapping_releasesPortsOnStartFailure() {
+        stubHappyPathWithPorts();
+        StartContainerCmd startCmd = mock(StartContainerCmd.class);
+        when(dockerClient.startContainerCmd(CONTAINER_ID)).thenReturn(startCmd);
+        when(startCmd.exec()).thenThrow(new RuntimeException("port already in use"));
+
+        useCase.execute(validRequest(), events::add);
+
+        assertHasError("Starting", "Port binding conflict");
+        verify(portFinder).releasePorts(List.of(10000));
     }
 }

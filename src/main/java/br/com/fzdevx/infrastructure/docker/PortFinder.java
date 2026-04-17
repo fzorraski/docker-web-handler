@@ -16,11 +16,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 @ApplicationScoped
 public class PortFinder {
 
     private static final int MAX_PORT = 65535;
+    private final Set<Integer> reservedPorts = ConcurrentHashMap.newKeySet();
 
     @Inject
     DockerClient dockerClient;
@@ -73,7 +75,7 @@ public class PortFinder {
      * @param count number of ports needed
      * @return ordered list of available host ports
      */
-    public List<Integer> findAvailablePorts(int count) {
+    public synchronized List<Integer> findAvailablePorts(int count) {
         if (count <= 0) {
             return Collections.emptyList();
         }
@@ -83,7 +85,9 @@ public class PortFinder {
         int candidate = hostPortStart;
 
         while (available.size() < count && candidate <= MAX_PORT) {
-            if (!dockerPorts.contains(candidate) && isPortFree(candidate)) {
+            if (!dockerPorts.contains(candidate)
+                    && !reservedPorts.contains(candidate)
+                    && isPortFree(candidate)) {
                 available.add(candidate);
             }
             candidate++;
@@ -95,7 +99,18 @@ public class PortFinder {
                             + ". Needed " + count + ", found " + available.size() + ".");
         }
 
+        reservedPorts.addAll(available);
         return available;
+    }
+
+    /**
+     * Releases previously reserved ports so they can be re-used by future
+     * calls to {@link #findAvailablePorts(int)}.
+     */
+    public void releasePorts(List<Integer> ports) {
+        if (ports != null) {
+            reservedPorts.removeAll(ports);
+        }
     }
 
     private Set<Integer> collectDockerHostPorts() {
