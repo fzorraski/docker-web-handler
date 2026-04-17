@@ -357,7 +357,7 @@ class LogAnalyzerControllerTest {
     void getLines_disabled_returnsForbidden() {
         setField("enabled", false);
 
-        Response response = controller.getLines(ANALYSIS_ID, null, null, null, 0, 100);
+        Response response = controller.getLines(ANALYSIS_ID, null, null, null, null, 0, 100);
 
         assertEquals(403, response.getStatus());
     }
@@ -460,7 +460,7 @@ class LogAnalyzerControllerTest {
     void getLines_notFound_returns404() {
         when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
 
-        Response response = controller.getLines("nonexistent", null, null, null, 0, 100);
+        Response response = controller.getLines("nonexistent", null, null, null, null, 0, 100);
 
         assertEquals(404, response.getStatus());
     }
@@ -695,7 +695,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getLines(analysis.getId(), null, null, null, 0, 100);
+        Response response = controller.getLines(analysis.getId(), null, null, null, null, 0, 100);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -2472,7 +2472,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getLines(analysis.getId(), "http-thread-1", null, null, 0, 100);
+        Response response = controller.getLines(analysis.getId(), "http-thread-1", null, null, null, 0, 100);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -2487,7 +2487,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getLines(analysis.getId(), null, "ERROR", null, 0, 100);
+        Response response = controller.getLines(analysis.getId(), null, "ERROR", null, null, 0, 100);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -2502,13 +2502,103 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getLines(analysis.getId(), null, null, "SLOW QUERY", 0, 100);
+        Response response = controller.getLines(analysis.getId(), null, null, "SLOW QUERY", null, 0, 100);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
         List<LogLine> data = (List<LogLine>) entity.get("data");
         assertEquals(1, data.size());
         assertTrue(data.getFirst().message().contains("Slow query"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getLines_filteredByExclude_excludesMatchingLines() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getLines(analysis.getId(), null, null, null, "Slow query", 0, 100);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<LogLine> data = (List<LogLine>) entity.get("data");
+        assertTrue(data.stream().noneMatch(l -> l.message() != null && l.message().toLowerCase().contains("slow query")));
+        assertEquals(3, data.size());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getLines_filteredByExclude_multiplePatterns_excludesAll() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getLines(analysis.getId(), null, null, null, "Slow query,Started", 0, 100);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<LogLine> data = (List<LogLine>) entity.get("data");
+        assertTrue(data.stream().noneMatch(l -> l.message() != null &&
+                (l.message().toLowerCase().contains("slow query") || l.message().toLowerCase().contains("started"))));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getLines_filteredByExclude_caseInsensitive() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getLines(analysis.getId(), null, null, null, "SLOW QUERY", 0, 100);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<LogLine> data = (List<LogLine>) entity.get("data");
+        assertEquals(3, data.size());
+        assertTrue(data.stream().noneMatch(l -> l.message() != null && l.message().toLowerCase().contains("slow query")));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getLines_filteredByExclude_blankExclude_returnsAll() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getLines(analysis.getId(), null, null, null, "  ", 0, 100);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<LogLine> data = (List<LogLine>) entity.get("data");
+        assertEquals(4, data.size());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getLines_filteredBySearchAndExclude_bothApply() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        // Search for "e" matches all 4 lines; exclude "Slow query" removes 1
+        Response response = controller.getLines(analysis.getId(), null, null, "e", "Slow query", 0, 100);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<LogLine> data = (List<LogLine>) entity.get("data");
+        assertTrue(data.stream().allMatch(l -> l.message().toLowerCase().contains("e")));
+        assertTrue(data.stream().noneMatch(l -> l.message().toLowerCase().contains("slow query")));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getLines_filteredByExclude_patternsWithWhitespace_trimmed() {
+        LogAnalysis analysis = buildSampleAnalysis();
+        when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
+
+        Response response = controller.getLines(analysis.getId(), null, null, null, " Slow query , started ", 0, 100);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> entity = (Map<String, Object>) response.getEntity();
+        List<LogLine> data = (List<LogLine>) entity.get("data");
+        assertTrue(data.stream().noneMatch(l -> l.message() != null &&
+                (l.message().toLowerCase().contains("slow query") || l.message().toLowerCase().contains("started"))));
     }
 
     // ======================================================================

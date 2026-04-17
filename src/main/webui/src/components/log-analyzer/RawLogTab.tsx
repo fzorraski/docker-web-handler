@@ -5,7 +5,7 @@ import {
   TablePagination, LinearProgress, InputAdornment, Dialog,
   useTheme,
 } from '@mui/material'
-import { Search, ContentCopy, WrapText, KeyboardArrowUp, KeyboardArrowDown, MyLocation, ClearAll, HighlightOff, Fullscreen, FullscreenExit, AccessTime } from '@mui/icons-material'
+import { Search, ContentCopy, WrapText, KeyboardArrowUp, KeyboardArrowDown, MyLocation, ClearAll, HighlightOff, Fullscreen, FullscreenExit, AccessTime, FilterListOff } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { List, useListRef, type RowComponentProps } from 'react-window'
 import { usePaginatedFetch } from '../../hooks/usePaginatedFetch'
@@ -121,6 +121,9 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search, 300)
   const [activeSearch, setActiveSearch] = useState('') // actual value sent to API
+  const [exclude, setExclude] = useState('')
+  const debouncedExclude = useDebouncedValue(exclude, 300)
+  const [activeExclude, setActiveExclude] = useState('')
   const [filterLevel, setFilterLevel] = useState(initialLevel ?? '')
   useEffect(() => { if (initialLevel) { setFilterLevel(initialLevel); setPage(0) } }, [initialLevel])
   const [filterThread, setFilterThread] = useState(initialThread ?? '')
@@ -147,8 +150,9 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
   const toolbarRef = useRef<HTMLDivElement>(null)
   const paginationRef = useRef<HTMLDivElement>(null)
 
-  // Sync debounced search to active search (normal typing flow)
+  // Sync debounced search/exclude to active values (normal typing flow)
   useEffect(() => { setActiveSearch(debouncedSearch) }, [debouncedSearch])
+  useEffect(() => { setActiveExclude(debouncedExclude) }, [debouncedExclude])
 
   useEffect(() => {
     if (isFirstMount.current) {
@@ -157,6 +161,8 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
       setPage(0)
       setSearch('')
       setActiveSearch('')
+      setExclude('')
+      setActiveExclude('')
       setFilterLevel(initialLevel ?? '')
       setFilterThread(initialThread ?? '')
       setMarkedLines(new Set())
@@ -195,6 +201,8 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
     setFilterThread('')
     setSearch('')
     setActiveSearch('') // bypass debounce
+    setExclude('')
+    setActiveExclude('')
     const rpp = wordWrap ? Math.min(rowsPerPage, 1000) : rowsPerPage
     setPage(Math.floor((jumpToLine - 1) / rpp))
     setHighlightLine(jumpToLine)
@@ -209,6 +217,8 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
     setFilterThread('')
     setSearch('')
     setActiveSearch('')
+    setExclude('')
+    setActiveExclude('')
     const rpp = wordWrap ? Math.min(rowsPerPage, 1000) : rowsPerPage
     setPage(Math.floor((highlightRange.from - 1) / rpp))
     setScrollTarget(highlightRange.from)
@@ -222,9 +232,10 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
       thread: filterThread || undefined,
       level: filterLevel || undefined,
       search: activeSearch || undefined,
+      exclude: activeExclude || undefined,
       page, size: effectiveRowsPerPage, signal,
     }),
-    [analysisId, filterThread, filterLevel, activeSearch, page, effectiveRowsPerPage],
+    [analysisId, filterThread, filterLevel, activeSearch, activeExclude, page, effectiveRowsPerPage],
   )
 
   linesRef.current = lines
@@ -432,6 +443,33 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
             startAdornment: (
               <InputAdornment position="start">
                 <Search sx={{ color: lt.searchPlaceholder, fontSize: 18 }} />
+              </InputAdornment>
+            ),
+            sx: {
+              bgcolor: lt.searchBg,
+              color: lt.searchText,
+              fontSize: '0.8rem',
+              height: 32,
+              '& input::placeholder': { color: lt.searchPlaceholder, opacity: 1 },
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: lt.searchBorder },
+              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: lt.searchBorderHover },
+              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: lt.searchBorderFocus },
+            },
+          },
+        }}
+        sx={{ minWidth: 160, maxWidth: 220 }}
+      />
+
+      <TextField
+        size="small"
+        placeholder={t('logAnalyzer.rawLog.exclude')}
+        value={exclude}
+        onChange={(e) => { setExclude(e.target.value); setPage(0) }}
+        slotProps={{
+          input: {
+            startAdornment: (
+              <InputAdornment position="start">
+                <FilterListOff sx={{ color: lt.searchPlaceholder, fontSize: 18 }} />
               </InputAdornment>
             ),
             sx: {

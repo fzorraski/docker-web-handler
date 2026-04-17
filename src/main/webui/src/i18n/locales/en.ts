@@ -889,6 +889,7 @@ const en = {
     },
     rawLog: {
       search: 'Search logs...',
+      exclude: 'Exclude patterns...',
       level: 'Level',
       thread: 'Thread',
       prevMark: 'Previous bookmark',

@@ -11,6 +11,7 @@ import br.com.fzdevx.domain.model.LogLine;
 import br.com.fzdevx.domain.shared.LogLevelMatcher;
 import jakarta.enterprise.context.ApplicationScoped;
 
+import java.util.Arrays;
 import java.util.List;
 
 @ApplicationScoped
@@ -18,12 +19,25 @@ public class QueryLogLinesUseCase {
 
     public PaginatedResult<LogLine> queryLines(List<LogLine> allLines,
                                                String thread, String level, String search,
+                                               String exclude,
                                                int page, int size) {
         String searchLower = search != null ? search.toLowerCase() : null;
+        List<String> excludePatterns = (exclude != null && !exclude.isBlank())
+                ? Arrays.stream(exclude.split(","))
+                        .map(s -> s.trim().toLowerCase())
+                        .filter(s -> !s.isEmpty())
+                        .toList()
+                : List.of();
+
         var filtered = allLines.stream()
                 .filter(l -> thread == null || thread.isBlank() || thread.equals(l.thread()))
                 .filter(l -> level == null || level.isBlank() || LogLevelMatcher.matchesLevelGroup(level, l.level()))
-                .filter(l -> searchLower == null || (l.message() != null && l.message().toLowerCase().contains(searchLower)));
+                .filter(l -> {
+                    if (l.message() == null) return searchLower == null;
+                    String msgLower = l.message().toLowerCase();
+                    if (searchLower != null && !msgLower.contains(searchLower)) return false;
+                    return excludePatterns.isEmpty() || excludePatterns.stream().noneMatch(msgLower::contains);
+                });
 
         return PaginatedResult.of(filtered.toList(), page, size);
     }

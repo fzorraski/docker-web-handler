@@ -383,13 +383,14 @@ public class LogAnalyzerController {
                              @QueryParam("thread") String thread,
                              @QueryParam("level") String level,
                              @QueryParam("search") String search,
+                             @QueryParam("exclude") String exclude,
                              @QueryParam("page") @DefaultValue("0") int page,
                              @QueryParam("size") @DefaultValue("100") int size) {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        var result = queryLogLinesUseCase.queryLines(analysis.getAllLines(), thread, level, search, page, size);
+        var result = queryLogLinesUseCase.queryLines(analysis.getAllLines(), thread, level, search, exclude, page, size);
         return Response.ok(result.toMap()).build();
     }
 

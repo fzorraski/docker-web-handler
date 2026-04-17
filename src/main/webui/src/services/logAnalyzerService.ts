@@ -445,12 +445,13 @@ export async function getApiStats(id: string): Promise<EndpointStats[]> {
 
 export async function getLines(
   id: string,
-  params: { thread?: string; level?: string; search?: string; page?: number; size?: number; signal?: AbortSignal } = {},
+  params: { thread?: string; level?: string; search?: string; exclude?: string; page?: number; size?: number; signal?: AbortSignal } = {},
 ): Promise<PaginatedResponse<LogLine>> {
   const q = new URLSearchParams()
   if (params.thread) q.set('thread', params.thread)
   if (params.level) q.set('level', params.level)
   if (params.search) q.set('search', params.search)
+  if (params.exclude) q.set('exclude', params.exclude)
   if (params.page != null) q.set('page', String(params.page))
   if (params.size != null) q.set('size', String(params.size))
   const res = await fetchWithAuth(`${API}/${id}/lines?${q}`, { signal: params.signal })

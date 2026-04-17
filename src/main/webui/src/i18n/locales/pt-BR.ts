@@ -890,6 +890,7 @@ const ptBR: typeof en = {
     },
     rawLog: {
       search: 'Buscar nos logs...',
+      exclude: 'Excluir padrões...',
       level: 'Nível',
       thread: 'Thread',
       prevMark: 'Marcação anterior',

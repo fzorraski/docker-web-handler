@@ -890,6 +890,7 @@ const es: typeof en = {
     },
     rawLog: {
       search: 'Buscar en logs...',
+      exclude: 'Excluir patrones...',
       level: 'Nivel',
       thread: 'Hilo',
       prevMark: 'Marcador anterior',
