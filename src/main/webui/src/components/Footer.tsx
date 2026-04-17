@@ -38,6 +38,7 @@ export default function Footer() {
   const [hostStats, setHostStats] = useState<HostStats | null>(null)
   const [hostModalOpen, setHostModalOpen] = useState(false)
   const [statsModalOpen, setStatsModalOpen] = useState(false)
+  const [appVersion, setAppVersion] = useState<string | null>(null)
 
   const loadHost = useCallback(() => {
     fetch('/api/stats/host').then(r => r.ok ? r.json() : null).then(setHostStats).catch(() => {})
@@ -51,6 +52,7 @@ export default function Footer() {
 
     loadSummary()
     loadHost()
+    fetch('/api/stats/info').then(r => r.ok ? r.json() : null).then(d => { if (d?.version) setAppVersion(d.version) }).catch(() => {})
     const summaryInterval = setInterval(loadSummary, 30000)
     const hostInterval = setInterval(loadHost, 60000)
     return () => { clearInterval(summaryInterval); clearInterval(hostInterval) }
@@ -161,7 +163,7 @@ export default function Footer() {
         )}
       </Box>
       {/* Stats modal */}
-      {stats && <StatsModal open={statsModalOpen} onClose={() => setStatsModalOpen(false)} stats={stats} isDark={isDark} />}
+      {stats && <StatsModal open={statsModalOpen} onClose={() => setStatsModalOpen(false)} stats={stats} isDark={isDark} appVersion={appVersion} />}
 
       {/* Host usage modal */}
       <Dialog open={hostModalOpen} onClose={() => setHostModalOpen(false)} maxWidth="sm" fullWidth>
@@ -225,7 +227,7 @@ export default function Footer() {
   )
 }
 
-function StatsModal({ open, onClose, stats, isDark }: { open: boolean; onClose: () => void; stats: Stats; isDark: boolean }) {
+function StatsModal({ open, onClose, stats, isDark, appVersion }: { open: boolean; onClose: () => void; stats: Stats; isDark: boolean; appVersion: string | null }) {
   const { t, i18n } = useTranslation()
   const startDate = new Date(stats.startedAt)
   const daysRunning = Math.max(1, Math.round((Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
@@ -284,6 +286,11 @@ function StatsModal({ open, onClose, stats, isDark }: { open: boolean; onClose: 
             ))}
           </TableBody>
         </Table>
+          {appVersion && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 2, fontFamily: "'JetBrains Mono', monospace" }}>
+              v{appVersion}
+            </Typography>
+          )}
       </DialogContent>
     </Dialog>
   )

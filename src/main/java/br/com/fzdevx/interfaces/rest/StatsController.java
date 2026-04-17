@@ -10,6 +10,7 @@ import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -26,6 +27,9 @@ public class StatsController {
     @Inject
     MemoryGuardService memoryGuardService;
 
+    @ConfigProperty(name = "quarkus.application.version", defaultValue = "dev")
+    String appVersion;
+
     // Cached CPU snapshot for delta calculation (avoids Thread.sleep)
     private volatile long[] lastCpuSnapshot;
 
@@ -33,6 +37,13 @@ public class StatsController {
     void init() {
         // Seed initial CPU snapshot so the first call has a baseline
         try { lastCpuSnapshot = readCpuSnapshot(); } catch (Exception ignored) {}
+    }
+
+    @GET
+    @Path("/info")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Map<String, String> getInfo() {
+        return Map.of("version", appVersion);
     }
 
     @GET

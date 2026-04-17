@@ -234,6 +234,7 @@ export default function Navbar() {
           </Box>
         </Box>
       </Drawer>
+
     </>
   )
 }
