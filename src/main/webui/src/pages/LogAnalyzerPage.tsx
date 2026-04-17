@@ -904,7 +904,7 @@ export default function LogAnalyzerPage() {
             {tabs.map((tab, idx) => (
               <Box key={tab.key} sx={{ p: 2, display: idx === activeTab ? 'block' : 'none' }}>
                 {tab.key === 'rawLog'
-                  ? <RawLogTab analysisId={selected!.id} initialLevel={initialLevel} levelCounts={selected!.levelCounts} jumpToLine={jumpToLine} onJumpComplete={handleJumpComplete} highlightRange={jumpToRange} onRangeComplete={handleRangeComplete} />
+                  ? <RawLogTab analysisId={selected!.id} initialLevel={initialLevel} levelCounts={selected!.levelCounts} jumpToLine={jumpToLine} onJumpComplete={handleJumpComplete} highlightRange={jumpToRange} onRangeComplete={handleRangeComplete} active={idx === activeTab} />
                   : tab.key === 'insights'
                     ? <PerformanceInsightsTab analysisId={selected!.id} initialEndpoint={insightsEndpoint} initialTimestamp={insightsTimestamp} onEndpointConsumed={handleInsightsConsumed} onGoToApiCalls={handleGoToApiCalls} active={idx === activeTab} />
                     : tab.key === 'apiCalls'

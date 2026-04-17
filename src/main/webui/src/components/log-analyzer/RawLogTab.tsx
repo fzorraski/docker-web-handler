@@ -19,6 +19,23 @@ const TOGGLE_LEVELS: LogLevel[] = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE']
 const ROW_HEIGHT = 20
 const VIEWER_HEIGHT = 500
 
+function HighlightedText({ text, word, color }: { text: string; word: string; color: string }) {
+  if (!word) return <>{text}</>
+  const lower = text.toLowerCase()
+  const wordLower = word.toLowerCase()
+  const parts: React.ReactNode[] = []
+  let cursor = 0
+  let idx = lower.indexOf(wordLower, cursor)
+  while (idx !== -1) {
+    if (idx > cursor) parts.push(text.substring(cursor, idx))
+    parts.push(<mark key={idx} style={{ backgroundColor: color, color: 'inherit', borderRadius: 2, padding: '0 1px' }}>{text.substring(idx, idx + word.length)}</mark>)
+    cursor = idx + word.length
+    idx = lower.indexOf(wordLower, cursor)
+  }
+  if (cursor < text.length) parts.push(text.substring(cursor))
+  return <>{parts}</>
+}
+
 function getLineBg(lineNumber: number, highlightLine: number | null, flashLine: number | null, markedLines: Set<number>, isDark: boolean, highlightRange?: { from: number; to: number } | null): string | undefined {
   if (highlightRange && lineNumber >= highlightRange.from && lineNumber <= highlightRange.to) {
     return isDark ? 'rgba(156, 39, 176, 0.25)' : 'rgba(156, 39, 176, 0.15)'
@@ -59,6 +76,8 @@ interface RowCustomProps {
   isDark: boolean
   showTimestamp: boolean
   highlightRange?: { from: number; to: number } | null
+  selectedWord: string
+  wordHighlightColor: string
 }
 
 const ROW_LINE_HEIGHT = { lineHeight: `${ROW_HEIGHT}px` } as const
@@ -67,7 +86,7 @@ const ROW_TIMESTAMP_SX = { minWidth: 100, pr: 1, flexShrink: 0, opacity: 0.7, ..
 const ROW_HOVER_DARK = { bgcolor: 'rgba(255,255,255,0.03)' } as const
 const ROW_HOVER_LIGHT = { bgcolor: 'rgba(0,0,0,0.02)' } as const
 
-function VirtualRow({ index, style, getLine, levelColor, chipInactive, highlightLine, flashLine, markedLines, onToggleMark, isDark, showTimestamp, highlightRange }: RowComponentProps<RowCustomProps>) {
+function VirtualRow({ index, style, getLine, levelColor, chipInactive, highlightLine, flashLine, markedLines, onToggleMark, isDark, showTimestamp, highlightRange, selectedWord, wordHighlightColor }: RowComponentProps<RowCustomProps>) {
   const line = getLine(index)
   if (!line) return null
   const isMarked = markedLines.has(line.lineNumber)
@@ -100,16 +119,17 @@ function VirtualRow({ index, style, getLine, levelColor, chipInactive, highlight
         </Box>
       )}
       <Box sx={{ color: levelColor(line.level), ...ROW_MESSAGE_SX }}>
-        {line.message ?? ''}
+        {selectedWord && line.message ? <HighlightedText text={line.message} word={selectedWord} color={wordHighlightColor} /> : (line.message ?? '')}
       </Box>
     </Box>
   )
 }
 
-export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts: globalLevelCounts, jumpToLine, onJumpComplete, highlightRange, onRangeComplete }: {
+export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts: globalLevelCounts, jumpToLine, onJumpComplete, highlightRange, onRangeComplete, active = true }: {
   analysisId: string; initialThread?: string; initialLevel?: string | null; levelCounts?: Record<string, number>
   jumpToLine?: number | null; onJumpComplete?: () => void
   highlightRange?: { from: number; to: number } | null; onRangeComplete?: () => void
+  active?: boolean
 }) {
   const { t } = useTranslation()
   const theme = useTheme()
@@ -136,6 +156,7 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
   const [scrollTarget, setScrollTarget] = useState<number | null>(null)
   const [scrollGen, setScrollGen] = useState(0)
   const [flashLine, setFlashLine] = useState<number | null>(null)
+  const [selectedWord, setSelectedWord] = useState('')
   const [fullscreen, setFullscreen] = useState(false)
   const [fullscreenHeight, setFullscreenHeight] = useState(VIEWER_HEIGHT)
   const firstVisibleIndexRef = useRef(0)
@@ -169,6 +190,7 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
       setHighlightLine(null)
       setFlashLine(null)
       setScrollTarget(null)
+      setSelectedWord('')
     }
     logService.getThreads(analysisId).then(setThreads).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -416,9 +438,25 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
     }
   }, [])
 
+  const handleLogDoubleClick = useCallback(() => {
+    const sel = window.getSelection()?.toString().trim() ?? ''
+    setSelectedWord(sel.length >= 2 && sel.length <= 200 && !sel.includes('\n') ? sel : '')
+  }, [])
+
+  useEffect(() => {
+    if (!selectedWord) return
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') setSelectedWord('') }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [selectedWord])
+
+  useEffect(() => { if (!active) setSelectedWord('') }, [active])
+
+  const wordHighlightColor = isDark ? 'rgba(255, 213, 79, 0.4)' : 'rgba(255, 213, 79, 0.7)'
+
   const rowProps = useMemo<RowCustomProps>(
-    () => ({ getLine, dataVersion, levelColor, chipInactive: lt.chipInactive, highlightLine, flashLine, markedLines, onToggleMark: toggleMark, isDark, showTimestamp, highlightRange }),
-    [getLine, dataVersion, levelColor, lt.chipInactive, highlightLine, flashLine, markedLines, toggleMark, isDark, showTimestamp, highlightRange],
+    () => ({ getLine, dataVersion, levelColor, chipInactive: lt.chipInactive, highlightLine, flashLine, markedLines, onToggleMark: toggleMark, isDark, showTimestamp, highlightRange, selectedWord, wordHighlightColor }),
+    [getLine, dataVersion, levelColor, lt.chipInactive, highlightLine, flashLine, markedLines, toggleMark, isDark, showTimestamp, highlightRange, selectedWord, wordHighlightColor],
   )
 
   const wrapToggleColor = isDark ? '#4d96ff' : '#1565c0'
@@ -582,6 +620,23 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
         </>
       )}
 
+      {selectedWord && (
+        <Chip
+          label={selectedWord.length > 30 ? selectedWord.substring(0, 30) + '…' : selectedWord}
+          size="small"
+          onDelete={() => setSelectedWord('')}
+          sx={{
+            bgcolor: wordHighlightColor,
+            color: isDark ? '#E8ECF1' : '#333',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+            height: 22,
+            maxWidth: 200,
+            '& .MuiChip-deleteIcon': { color: isDark ? '#E8ECF1' : '#555', fontSize: 16 },
+          }}
+        />
+      )}
+
       <Box sx={{ flex: 1 }} />
 
       <Tooltip title={wordWrap ? t('containers.logs.nowrapLines') : t('containers.logs.wrapLines')} arrow>
@@ -649,7 +704,7 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
   )
 
   const logViewerContent = (
-    <Box sx={{
+    <Box onDoubleClick={handleLogDoubleClick} sx={{
       fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace",
       fontSize: '0.8rem',
       bgcolor: lt.logViewerBg,
@@ -707,7 +762,7 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
                   flex: 1,
                   lineHeight: '20px',
                 }}>
-                  {line.message ?? ''}
+                  {selectedWord && line.message ? <HighlightedText text={line.message} word={selectedWord} color={wordHighlightColor} /> : (line.message ?? '')}
                 </Box>
               </Box>
             );
