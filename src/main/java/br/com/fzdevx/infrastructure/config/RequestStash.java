@@ -1,5 +1,6 @@
 package br.com.fzdevx.infrastructure.config;
 
+import br.com.fzdevx.application.dto.AnalysisOptions;
 import br.com.fzdevx.application.dto.AnalyzeLogFileRequest;
 import br.com.fzdevx.application.dto.CreateSnapshotRequest;
 import br.com.fzdevx.application.dto.PruneImagesRequest;
@@ -32,6 +33,9 @@ public class RequestStash {
     private final ConcurrentHashMap<String, StashedEntry<PruneImagesRequest>> pruneStash = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, StashedEntry<RunMigrationRequest>> migrationStash = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, StashedEntry<AnalyzeLogFileRequest>> logAnalysisStash = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, StashedEntry<ComposeRequest>> composeStash = new ConcurrentHashMap<>();
+
+    public record ComposeRequest(java.util.List<String> ids, String presetName, int slowThresholdMs, AnalysisOptions options) {}
 
     private ScheduledExecutorService cleanupScheduler;
 
@@ -60,7 +64,8 @@ public class RequestStash {
                 + evictMap(pruneStash, cutoff)
                 + evictMap(migrationStash, cutoff)
                 + evictMap(terminalStash, cutoff)
-                + evictLogAnalysisStash(cutoff);
+                + evictLogAnalysisStash(cutoff)
+                + evictMap(composeStash, cutoff);
         if (evicted > 0) {
             Log.infof("RequestStash: evicted %d expired ticket(s).", evicted);
         }
@@ -145,6 +150,14 @@ public class RequestStash {
 
     public AnalyzeLogFileRequest retrieveLogAnalysis(String ticket) {
         return take(logAnalysisStash, ticket);
+    }
+
+    public String stashCompose(ComposeRequest request) {
+        return put(composeStash, request);
+    }
+
+    public ComposeRequest retrieveCompose(String ticket) {
+        return take(composeStash, ticket);
     }
 
     private int evictLogAnalysisStash(Instant cutoff) {

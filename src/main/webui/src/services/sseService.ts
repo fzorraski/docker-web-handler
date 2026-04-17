@@ -370,6 +370,42 @@ export async function cancelLogAnalysis(ticket: string): Promise<boolean> {
   return data.cancelled
 }
 
+// ── Compose Analysis (SSE) ──────────────────────────────────────────────
+
+export async function prepareComposeAnalysis(body: {
+  ids: string[]
+  preset?: string
+  slowThresholdMs?: number
+}): Promise<string> {
+  const res = await fetchWithAuth('/api/logs/analyzer/sse/compose/prepare', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || res.statusText)
+  }
+  const data = await res.json()
+  return data.ticket
+}
+
+export function streamComposeAnalysis(
+  ticket: string,
+  onEvent: (event: ContainerEvent) => void,
+  onDone: (event: ContainerEvent) => void,
+  onError: (message: string) => void,
+): () => void {
+  return streamSse(`/api/logs/analyzer/sse/compose/${ticket}`, onEvent, onDone, onError)
+}
+
+export async function cancelComposeAnalysis(ticket: string): Promise<boolean> {
+  const res = await fetchWithAuth(`/api/logs/analyzer/sse/compose/cancel/${ticket}`, { method: 'POST' })
+  if (!res.ok) return false
+  const data = await res.json()
+  return data.cancelled
+}
+
 export interface LogAnalysisEvent {
   user: string
   filenames: string

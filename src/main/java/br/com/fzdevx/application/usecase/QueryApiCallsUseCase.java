@@ -10,6 +10,7 @@ import br.com.fzdevx.application.dto.PaginatedResult;
 import br.com.fzdevx.domain.model.ApiCallPair;
 import jakarta.enterprise.context.ApplicationScoped;
 
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 
@@ -19,6 +20,7 @@ public class QueryApiCallsUseCase {
     public PaginatedResult<ApiCallPair> execute(List<ApiCallPair> apiCalls,
                                                 String endpoint, String thread,
                                                 Long minDuration, String search,
+                                                LocalDateTime timeFrom, LocalDateTime timeTo,
                                                 String sort, String sortDir,
                                                 int page, int size) {
         String searchTerm = search != null && !search.isBlank() ? search.trim() : null;
@@ -26,6 +28,8 @@ public class QueryApiCallsUseCase {
                 .filter(c -> endpoint == null || endpoint.isBlank() || c.endpoint().equals(endpoint))
                 .filter(c -> thread == null || thread.isBlank() || c.thread().equals(thread))
                 .filter(c -> minDuration == null || c.durationMs() >= minDuration)
+                .filter(c -> timeFrom == null || c.requestTimestamp() == null || !c.requestTimestamp().isBefore(timeFrom))
+                .filter(c -> timeTo == null || c.requestTimestamp() == null || !c.requestTimestamp().isAfter(timeTo))
                 .filter(c -> searchTerm == null || containsIgnoreCase(c, searchTerm));
 
         boolean desc = "desc".equalsIgnoreCase(sortDir);

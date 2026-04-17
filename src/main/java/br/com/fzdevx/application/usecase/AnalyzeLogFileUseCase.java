@@ -262,6 +262,183 @@ public class AnalyzeLogFileUseCase {
         if (cancelled.get()) throw new CancellationException("Analysis cancelled");
     }
 
+    public void composeWithProgress(List<String> analysisIds, LogPreset preset, int slowThresholdMs,
+                                     AnalysisOptions options, Consumer<ContainerEvent> eventSink,
+                                     String ticket, Consumer<String> onEvicted) {
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        activeRuns.put(ticket, cancelled);
+        try {
+            if (analyses.size() >= maxFiles) {
+                String evictedId = evictOldest();
+                if (evictedId != null) onEvicted.accept(evictedId);
+            }
+
+            // Collect source analyses
+            List<LogAnalysis> sources = new ArrayList<>();
+            for (String id : analysisIds) {
+                AnalysisEntry entry = analyses.get(id);
+                if (entry != null) sources.add(entry.analysis);
+            }
+            if (sources.isEmpty()) {
+                eventSink.accept(ContainerEvent.error("Error", "No valid analyses found for the given IDs."));
+                return;
+            }
+
+            // Phase 1: Merging
+            eventSink.accept(ContainerEvent.info("Merging", "Collecting and sorting lines from " + sources.size() + " analyses..."));
+            checkCancelled(cancelled);
+
+            var mergedLines = new ArrayList<LogLine>();
+            var mergedSourceFiles = new ArrayList<LogAnalysis.SourceFile>();
+            for (LogAnalysis src : sources) {
+                mergedLines.addAll(src.getAllLines());
+                mergedSourceFiles.addAll(src.getSourceFiles());
+            }
+            mergedLines.sort(Comparator.comparing(LogLine::timestamp, Comparator.nullsLast(Comparator.naturalOrder())));
+
+            // Merge metadata
+            var apiCalls = new ArrayList<ApiCallPair>();
+            var jobExecs = new ArrayList<JobExecution>();
+            var errors = new ArrayList<LogLine>();
+            var levelCounts = new LinkedHashMap<String, Integer>();
+            var threads = new LinkedHashSet<String>();
+            var endpoints = new LinkedHashSet<String>();
+            var failureGroups = new LinkedHashMap<String, List<RepeatedFailure>>();
+
+            for (LogAnalysis src : sources) {
+                apiCalls.addAll(src.getApiCalls());
+                jobExecs.addAll(src.getJobExecutions());
+                errors.addAll(src.getErrors());
+                src.getLevelCounts().forEach((k, v) -> levelCounts.merge(k, v, Integer::sum));
+                threads.addAll(src.getThreads());
+                endpoints.addAll(src.getEndpoints());
+                for (RepeatedFailure f : src.getRepeatedFailures()) {
+                    String key = f.entityId() + "|" + (f.reason() != null ? f.reason() : "");
+                    failureGroups.computeIfAbsent(key, _ -> new ArrayList<>()).add(f);
+                }
+            }
+
+            var failures = failureGroups.entrySet().stream().map(e -> {
+                List<RepeatedFailure> group = e.getValue();
+                RepeatedFailure first = group.getFirst();
+                var mergedDetails = group.stream().flatMap(f -> f.details().stream())
+                        .sorted(Comparator.comparing(RepeatedFailure.FailureDetail::timestamp, Comparator.nullsLast(Comparator.naturalOrder()))).toList();
+                int totalOccurrences = group.stream().mapToInt(RepeatedFailure::occurrences).sum();
+                LocalDateTime minFirstSeen = group.stream().map(RepeatedFailure::firstSeen).filter(Objects::nonNull).min(Comparator.naturalOrder()).orElse(null);
+                LocalDateTime maxLastSeen = group.stream().map(RepeatedFailure::lastSeen).filter(Objects::nonNull).max(Comparator.naturalOrder()).orElse(null);
+                return new RepeatedFailure(first.entityId(), first.reason(), totalOccurrences, minFirstSeen, maxLastSeen, mergedDetails);
+            }).sorted(Comparator.comparingInt(RepeatedFailure::occurrences).reversed()).toList();
+
+            apiCalls.sort(Comparator.comparing(ApiCallPair::requestTimestamp, Comparator.nullsLast(Comparator.naturalOrder())));
+            var start = mergedLines.stream().map(LogLine::timestamp).filter(Objects::nonNull).min(Comparator.naturalOrder()).orElse(null);
+            var end = mergedLines.stream().map(LogLine::timestamp).filter(Objects::nonNull).max(Comparator.naturalOrder()).orElse(null);
+            var endpointStats = EndpointStatsCalculator.compute(apiCalls, slowThresholdMs);
+
+            // Merge custom fields
+            var customFieldGroups = new LinkedHashMap<String, List<CustomFieldResult>>();
+            for (LogAnalysis src : sources) {
+                for (CustomFieldResult cfr : src.getCustomFieldResults()) {
+                    customFieldGroups.computeIfAbsent(cfr.fieldName(), _ -> new ArrayList<>()).add(cfr);
+                }
+            }
+            var mergedCustomFields = customFieldGroups.entrySet().stream().map(e -> {
+                List<CustomFieldResult> group = e.getValue();
+                int totalCount = group.stream().mapToInt(CustomFieldResult::matchCount).sum();
+                boolean countOnly = group.getFirst().countOnly();
+                var mergedMatches = countOnly ? List.<CustomFieldMatch>of() : group.stream().flatMap(r -> r.matches().stream()).toList();
+                return new CustomFieldResult(e.getKey(), totalCount, countOnly, mergedMatches);
+            }).toList();
+
+            checkCancelled(cancelled);
+            eventSink.accept(ContainerEvent.info("Merging", "Merged " + mergedLines.size() + " lines from " + sources.size() + " analyses"));
+
+            LogAnalysis merged = new LogAnalysis(
+                    mergedSourceFiles, mergedLines.size(), start, end,
+                    new ArrayList<>(threads), new ArrayList<>(endpoints),
+                    apiCalls, endpointStats, levelCounts, errors,
+                    jobExecs, failures, mergedLines
+            );
+            merged.setCustomFieldResults(mergedCustomFields);
+
+            // Parallel detection phases
+            boolean doCriticalIssues = options.criticalIssues();
+            boolean doNpeAnalysis = options.npeAnalysis();
+            boolean doExceptionAnalysis = options.exceptionAnalysis();
+
+            final CompletableFuture<List<CriticalIssueSummary>>[] ciHolder = new CompletableFuture[]{null};
+            final CompletableFuture<List<NpeLocationSummary>>[] npeHolder = new CompletableFuture[]{null};
+            final CompletableFuture<List<ExceptionLocationSummary>>[] exHolder = new CompletableFuture[]{null};
+
+            if (doCriticalIssues) {
+                ciHolder[0] = CompletableFuture.supplyAsync(() -> {
+                    eventSink.accept(ContainerEvent.info("Critical Issues", "Detecting critical issues..."));
+                    checkCancelled(cancelled);
+                    var result = criticalIssueDetector.detect(mergedLines, preset.criticalIssueExclusions(), cancelled);
+                    eventSink.accept(ContainerEvent.info("Critical Issues",
+                            "Critical issues: " + result.size() + " categor" + (result.size() == 1 ? "y" : "ies") + " detected"));
+                    return result;
+                }, analysisExecutor);
+            } else {
+                eventSink.accept(ContainerEvent.info("Critical Issues", "Skipped"));
+            }
+            if (doNpeAnalysis) {
+                npeHolder[0] = CompletableFuture.supplyAsync(() -> {
+                    eventSink.accept(ContainerEvent.info("NPE Analysis", "Analyzing NullPointerExceptions..."));
+                    checkCancelled(cancelled);
+                    var result = npeAnalyzer.analyze(mergedLines, cancelled);
+                    eventSink.accept(ContainerEvent.info("NPE Analysis",
+                            "NPE analysis: " + result.size() + " location(s) found"));
+                    return result;
+                }, analysisExecutor);
+            } else {
+                eventSink.accept(ContainerEvent.info("NPE Analysis", "Skipped"));
+            }
+            if (doExceptionAnalysis) {
+                exHolder[0] = CompletableFuture.supplyAsync(() -> {
+                    eventSink.accept(ContainerEvent.info("Exception Analysis", "Analyzing exceptions..."));
+                    checkCancelled(cancelled);
+                    var result = exceptionAnalyzer.analyze(mergedLines, cancelled);
+                    eventSink.accept(ContainerEvent.info("Exception Analysis",
+                            "Exception analysis: " + result.size() + " location(s) found"));
+                    return result;
+                }, analysisExecutor);
+            } else {
+                eventSink.accept(ContainerEvent.info("Exception Analysis", "Skipped"));
+            }
+
+            if (cancelled.get()) {
+                cancelAndJoin(ciHolder[0], npeHolder[0], exHolder[0]);
+                eventSink.accept(ContainerEvent.error("Cancelled", "Compose cancelled."));
+                return;
+            }
+
+            try {
+                if (ciHolder[0] != null) merged.setCriticalIssues(ciHolder[0].join());
+                if (npeHolder[0] != null) merged.setNpeAnalysis(npeHolder[0].join());
+                if (exHolder[0] != null) merged.setExceptionAnalysis(exHolder[0].join());
+            } catch (CompletionException e) {
+                cancelled.set(true);
+                cancelAndJoin(ciHolder[0], npeHolder[0], exHolder[0]);
+                if (e.getCause() instanceof CancellationException ce) throw ce;
+                throw e;
+            }
+
+            analyses.put(merged.getId(), new AnalysisEntry(merged, Instant.now()));
+            resourceCounterService.increment(br.com.fzdevx.infrastructure.persistence.ResourceCounterService.LOGS_ANALYZED);
+
+            eventSink.accept(ContainerEvent.success("Complete",
+                    "Compose complete: " + merged.getTotalLineCount() + " lines, "
+                            + merged.getApiCalls().size() + " API calls",
+                    merged.getId()));
+        } catch (CancellationException e) {
+            eventSink.accept(ContainerEvent.error("Cancelled", "Compose cancelled."));
+        } catch (Exception e) {
+            eventSink.accept(ContainerEvent.error("Error", "Compose failed: " + e.getMessage()));
+        } finally {
+            activeRuns.remove(ticket);
+        }
+    }
+
     public LogAnalysis compose(List<String> analysisIds, LogPreset preset, int slowThresholdMs) {
         return compose(analysisIds, preset, slowThresholdMs, AnalysisOptions.all());
     }

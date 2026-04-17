@@ -13,27 +13,64 @@ export function formatBytesRate(bytesPerSec: number): string {
   return formatBytes(bytesPerSec) + '/s'
 }
 
-const dateTimeFormat = (locale: string) =>
-  new Intl.DateTimeFormat(locale, {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+const _fmtCache = new Map<string, Intl.DateTimeFormat>()
+function cachedFormat(key: string, locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const cacheKey = `${key}:${locale}`
+  let fmt = _fmtCache.get(cacheKey)
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat(locale, options)
+    _fmtCache.set(cacheKey, fmt)
+  }
+  return fmt
+}
+
+const dateTimeOpts: Intl.DateTimeFormatOptions = {
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit',
+}
+
+const logTimestampOpts = {
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit',
+  fractionalSecondDigits: 3,
+} as Intl.DateTimeFormatOptions
+
+const logTimestampShortOpts: Intl.DateTimeFormatOptions = {
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit',
+}
 
 /** Format an ISO date string (e.g. from dump/snapshot timestamps) */
 export function formatDate(iso: string): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return iso
-  return dateTimeFormat(i18n.language).format(d)
+  return cachedFormat('dt', i18n.language, dateTimeOpts).format(d)
+}
+
+/**
+ * Format a log timestamp (ISO-like, e.g. "2026-04-15T07:02:02.018") using the current locale.
+ * Includes seconds and milliseconds for log precision.
+ */
+export function formatLogTimestamp(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return cachedFormat('logTs', i18n.language, logTimestampOpts).format(d)
+}
+
+/** Same as formatLogTimestamp but without milliseconds — for shorter displays. */
+export function formatLogTimestampShort(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return cachedFormat('logTsShort', i18n.language, logTimestampShortOpts).format(d)
 }
 
 /** Format a backend date string in dd/MM/yyyy HH:mm:ss format */
 export function formatBackendDate(raw: string): string {
   const d = dayjs(raw, 'DD/MM/YYYY HH:mm:ss')
   if (!d.isValid()) return raw
-  return dateTimeFormat(i18n.language).format(d.toDate())
+  return cachedFormat('dt', i18n.language, dateTimeOpts).format(d.toDate())
 }
 
 export function buildTargetDbName(dump: DatabaseDump): string {

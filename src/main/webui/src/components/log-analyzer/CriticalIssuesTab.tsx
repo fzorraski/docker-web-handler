@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
+import { copyToClipboard } from '../../utils/clipboard'
 import {
   Autocomplete, Box, Button, CircularProgress, Collapse, IconButton, Typography, Chip, Paper, LinearProgress, Stack,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
@@ -560,7 +561,7 @@ export function CriticalIssuesTab({ analysisId, onJumpToLine }: { analysisId: st
                               <Tooltip title={t('logAnalyzer.criticalIssues.copyMessage')} arrow>
                                 <IconButton size="small"
                                   sx={{ position: 'absolute', top: 4, right: 4, opacity: 0.6, '&:hover': { opacity: 1 } }}
-                                  onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(`[${issue.category}] ${issue.pattern}\nTimestamp: ${issue.timestamp?.replace('T', ' ') ?? '-'}\nLine: ${issue.lineNumber}\nSource: ${issue.sourceFile}\n\n${issue.message}`) }}>
+                                  onClick={(e) => { e.stopPropagation(); copyToClipboard(`[${issue.category}] ${issue.pattern}\nTimestamp: ${issue.timestamp?.replace('T', ' ') ?? '-'}\nLine: ${issue.lineNumber}\nSource: ${issue.sourceFile}\n\n${issue.message}`).catch(() => {}) }}>
                                   <ContentCopy sx={{ fontSize: 14 }} />
                                 </IconButton>
                               </Tooltip>

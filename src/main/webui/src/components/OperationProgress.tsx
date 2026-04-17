@@ -38,6 +38,8 @@ const MIGRATION_STEPS = ['Validating', 'Running Migration']
 const SNAPSHOT_STEPS = ['Validating', 'Pulling Image', 'Creating Snapshot', 'Saving']
 const LOG_ANALYSIS_STEPS = ['Parsing', 'API Calls', 'Jobs', 'Failures', 'Custom Fields', 'Critical Issues', 'NPE Analysis', 'Exception Analysis']
 const LOG_ANALYSIS_PARALLEL_STEPS = ['API Calls', 'Jobs', 'Failures', 'Custom Fields', 'Critical Issues', 'NPE Analysis', 'Exception Analysis']
+const LOG_COMPOSE_STEPS = ['Merging', 'Critical Issues', 'NPE Analysis', 'Exception Analysis']
+const LOG_COMPOSE_PARALLEL_STEPS = ['Critical Issues', 'NPE Analysis', 'Exception Analysis']
 
 type StepState = 'pending' | 'active' | 'completed' | 'skipped'
 
@@ -46,7 +48,7 @@ interface Props {
   steps?: string[]
 }
 
-export { RUN_STEPS, REMOVE_STEPS, REMOVE_IMAGE_STEPS, PRUNE_IMAGES_STEPS, RESTORE_STEPS, RUN_WITH_RESTORE_STEPS, RESTORE_WITH_SCRIPTS_STEPS, RUN_WITH_RESTORE_AND_SCRIPTS_STEPS, RESTORE_WITH_MIGRATION_STEPS, RESTORE_WITH_SCRIPTS_AND_MIGRATION_STEPS, RUN_WITH_RESTORE_AND_MIGRATION_STEPS, RUN_WITH_RESTORE_SCRIPTS_AND_MIGRATION_STEPS, RUN_WITH_MIGRATION_STEPS, MIGRATION_STEPS, SNAPSHOT_STEPS, LOG_ANALYSIS_STEPS }
+export { RUN_STEPS, REMOVE_STEPS, REMOVE_IMAGE_STEPS, PRUNE_IMAGES_STEPS, RESTORE_STEPS, RUN_WITH_RESTORE_STEPS, RESTORE_WITH_SCRIPTS_STEPS, RUN_WITH_RESTORE_AND_SCRIPTS_STEPS, RESTORE_WITH_MIGRATION_STEPS, RESTORE_WITH_SCRIPTS_AND_MIGRATION_STEPS, RUN_WITH_RESTORE_AND_MIGRATION_STEPS, RUN_WITH_RESTORE_SCRIPTS_AND_MIGRATION_STEPS, RUN_WITH_MIGRATION_STEPS, MIGRATION_STEPS, SNAPSHOT_STEPS, LOG_ANALYSIS_STEPS, LOG_COMPOSE_STEPS }
 
 function buildStepStates(events: ContainerEvent[], steps: string[]): StepState[] {
   const states: StepState[] = steps.map(() => 'pending')
@@ -207,12 +209,12 @@ function StepPill({ num, label, state }: { num: number, label: string, state: 'p
 
 // ── Main parallel phase layout ──────────────────────────────────────────────
 
-function ParallelPhaseGrid({ events, steps }: { events: ContainerEvent[], steps: string[] }) {
+function ParallelPhaseGrid({ events, steps, firstStep = 'Parsing' }: { events: ContainerEvent[], steps: string[], firstStep?: string }) {
   const { t } = useTranslation()
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
   const stepTranslations: Record<string, string> = t('steps', { returnObjects: true })
-  const allSteps = useMemo(() => ['Parsing', ...steps], [steps])
+  const allSteps = useMemo(() => [firstStep, ...steps], [firstStep, steps])
   const states = useMemo(() => buildStepStates(events, allSteps), [events, allSteps])
 
   const parsingState = states[0]
@@ -553,6 +555,7 @@ export default function OperationProgress({ events, steps = RUN_STEPS }: Props) 
   const isError = lastEvent?.type === 'ERROR'
   const isComplete = lastEvent?.type === 'SUCCESS'
   const isLogAnalysis = steps === LOG_ANALYSIS_STEPS
+  const isLogCompose = steps === LOG_COMPOSE_STEPS
 
   const stepTranslations: Record<string, string> = t('steps', { returnObjects: true })
 
@@ -572,6 +575,8 @@ export default function OperationProgress({ events, steps = RUN_STEPS }: Props) 
     <Box sx={{ py: 2 }}>
       {isLogAnalysis ? (
         <ParallelPhaseGrid events={events} steps={LOG_ANALYSIS_PARALLEL_STEPS} />
+      ) : isLogCompose ? (
+        <ParallelPhaseGrid events={events} steps={LOG_COMPOSE_PARALLEL_STEPS} firstStep="Merging" />
       ) : (
         <Stepper activeStep={activeIndex === -1 ? 0 : activeIndex} alternativeLabel>
           {steps.map((label, index) => {

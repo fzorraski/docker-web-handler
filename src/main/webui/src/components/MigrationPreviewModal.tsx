@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import { copyToClipboard } from '../utils/clipboard'
 import {
   Dialog,
   DialogTitle,
@@ -183,9 +184,9 @@ export default function MigrationPreviewModal({ open, preview, loading, error, o
   const handleCopy = useCallback(async () => {
     const text = displayedLines.map(l => l.text).join('\n')
     try {
-      await navigator.clipboard.writeText(text)
-    } catch { /* clipboard API may not be available */ }
-    setCopySnackbar(true)
+      await copyToClipboard(text)
+      setCopySnackbar(true)
+    } catch { /* clipboard unavailable */ }
   }, [displayedLines])
 
   const highlightedLineIndex = useMemo(() => {

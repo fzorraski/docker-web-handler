@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { copyToClipboard } from '../../utils/clipboard'
 import {
   Autocomplete, Box, Typography, TextField, Chip, IconButton, Tooltip,
   TablePagination, LinearProgress, InputAdornment, Dialog,
@@ -317,11 +318,11 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
   const handleCopyAll = useCallback(async () => {
     const text = linesRef.current.map(l => l.message ?? '').join('\n')
     try {
-      await navigator.clipboard.writeText(text)
+      await copyToClipboard(text)
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
       setCopySnackbar(true)
       copyTimeoutRef.current = setTimeout(() => setCopySnackbar(false), 1500)
-    } catch { /* clipboard not available */ }
+    } catch { /* clipboard unavailable */ }
   }, [])
 
   const toggleMark = useCallback((lineNumber: number) => {
@@ -530,7 +531,7 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
             if (from <= 0) return
             const text = linesRef.current.filter(l => l.lineNumber >= from && l.lineNumber <= to)
               .map(l => `${l.lineNumber}\t${l.message ?? ''}`).join('\n')
-            navigator.clipboard.writeText(text)
+            copyToClipboard(text).catch(() => {})
           }} sx={{ color: '#9C27B0' }}>
             <ContentCopy sx={{ fontSize: 16 }} />
           </IconButton>

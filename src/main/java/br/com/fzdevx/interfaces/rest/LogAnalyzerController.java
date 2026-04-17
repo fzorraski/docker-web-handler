@@ -27,6 +27,7 @@ import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.*;
 
@@ -279,6 +280,8 @@ public class LogAnalyzerController {
                                 @QueryParam("thread") String thread,
                                 @QueryParam("minDuration") Long minDuration,
                                 @QueryParam("search") String search,
+                                @QueryParam("timeFrom") String timeFromStr,
+                                @QueryParam("timeTo") String timeToStr,
                                 @QueryParam("sort") @DefaultValue("time") String sort,
                                 @QueryParam("sortDir") @DefaultValue("asc") String sortDir,
                                 @QueryParam("page") @DefaultValue("0") int page,
@@ -287,9 +290,21 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
+        LocalDateTime timeFrom = parseDateTime(timeFromStr);
+        LocalDateTime timeTo = parseDateTime(timeToStr);
+
         var result = queryApiCallsUseCase.execute(analysis.getApiCalls(),
-                endpoint, thread, minDuration, search, sort, sortDir, page, size);
+                endpoint, thread, minDuration, search, timeFrom, timeTo, sort, sortDir, page, size);
         return Response.ok(result.toMap()).build();
+    }
+
+    private LocalDateTime parseDateTime(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return LocalDateTime.parse(value);
+        } catch (DateTimeParseException e) {
+            return null;
+        }
     }
 
     @GET

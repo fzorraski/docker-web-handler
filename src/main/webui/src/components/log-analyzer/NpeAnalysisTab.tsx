@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
+import { copyToClipboard } from '../../utils/clipboard'
 import {
   Box, Typography, Chip, Button, Paper, LinearProgress, Stack,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
@@ -176,7 +177,7 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
                                             e.stopPropagation()
                                             const traceText = occ.stackTrace.length > 0 ? occ.stackTrace.join('\n') : (occ.message ?? '')
                                             const text = `NullPointerException: ${occ.message ?? ''}\nTimestamp: ${occ.timestamp?.replace('T', ' ') ?? '-'}\nOrigin: ${occ.originClass}.${occ.method}(${occ.sourceFile}:${occ.sourceLine})\nLine: ${occ.logLineNumber}\n\n${traceText}`
-                                            navigator.clipboard.writeText(text)
+                                            copyToClipboard(text).catch(() => {})
                                           }}>
                                             <ContentCopy sx={{ fontSize: 14 }} />
                                           </IconButton>
@@ -192,7 +193,7 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
                                             onClick={(e) => {
                                               e.stopPropagation()
                                               const text = occ.stackTrace.length > 0 ? occ.stackTrace.join('\n') : (occ.message ?? '')
-                                              navigator.clipboard.writeText(text)
+                                              copyToClipboard(text).catch(() => {})
                                             }}>
                                             <ContentCopy sx={{ fontSize: 14 }} />
                                           </IconButton>

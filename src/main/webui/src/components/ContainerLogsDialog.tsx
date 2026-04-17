@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, useDeferredValue, memo } from 'react'
+import { copyToClipboard } from '../utils/clipboard'
 import {
   Dialog,
   DialogTitle,
@@ -440,18 +441,7 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
 
   const handleCopy = useCallback(async () => {
     const text = displayedLogs.map(l => l.message).join('\n')
-    try {
-      await navigator.clipboard.writeText(text)
-    } catch {
-      const textarea = document.createElement('textarea')
-      textarea.value = text
-      textarea.style.position = 'fixed'
-      textarea.style.opacity = '0'
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textarea)
-    }
+    await copyToClipboard(text)
     setCopySnackbar(true)
   }, [displayedLogs])
 

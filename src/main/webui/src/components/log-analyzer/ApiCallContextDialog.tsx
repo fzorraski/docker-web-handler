@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { copyToClipboard } from '../../utils/clipboard'
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, IconButton,
   Box, Typography, Chip, CircularProgress, Stack, Tooltip, TablePagination,
@@ -73,7 +74,7 @@ export function ApiCallContextDialog({ open, onClose, analysisId, from, to, endp
 
   const handleCopy = () => {
     const text = lines.map(l => `${l.lineNumber}\t${l.message ?? ''}`).join('\n')
-    navigator.clipboard.writeText(text).then(() => {
+    copyToClipboard(text).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })

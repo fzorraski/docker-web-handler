@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
+import { copyToClipboard } from '../../utils/clipboard'
 import {
   Alert, Autocomplete, Box, Typography, Table, TableHead, TableRow, TableCell, TableBody,
   TableContainer, TablePagination, TableSortLabel, LinearProgress, IconButton, Tooltip,
@@ -183,7 +184,7 @@ export function CustomFieldTab({ analysisId, fieldName, onJumpToLine }: {
                         }}>
                           <Tooltip title={t('logAnalyzer.customFields.copy')} arrow>
                             <IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, opacity: 0.5, '&:hover': { opacity: 1 } }}
-                              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(match.fullMessage).catch(() => {}) }}>
+                              onClick={(e) => { e.stopPropagation(); copyToClipboard(match.fullMessage).catch(() => {}) }}>
                               <ContentCopy sx={{ fontSize: 14 }} />
                             </IconButton>
                           </Tooltip>

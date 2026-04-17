@@ -1,4 +1,5 @@
 import { useState, useEffect, Fragment } from 'react'
+import { copyToClipboard } from '../../utils/clipboard'
 import {
   Autocomplete, Box, Typography, IconButton, Tooltip, LinearProgress, TextField, Stack,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
@@ -132,7 +133,7 @@ export function OrphanRequestsTab({ analysisId, sensitiveFields, maskEnabled, on
                               onClick={(e) => {
                                 e.stopPropagation()
                                 const text = tryFormatJson(maskSensitiveFields(o.payload!, sensitiveFields ?? [], maskEnabled ?? false)).formatted
-                                navigator.clipboard.writeText(text)
+                                copyToClipboard(text).catch(() => {})
                               }}
                             >
                               <ContentCopy sx={{ fontSize: 14 }} />

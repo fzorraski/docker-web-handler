@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
+import { copyToClipboard } from '../../utils/clipboard'
 import {
   Autocomplete, Box, Typography, Chip, Button, Paper, LinearProgress, Stack,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
@@ -258,7 +259,7 @@ export function ExceptionAnalysisTab({ analysisId, onJumpToLine }: { analysisId:
                                           <IconButton size="small" onClick={(e) => {
                                             e.stopPropagation()
                                             const text = `${occ.exceptionType}: ${occ.message ?? ''}\nTimestamp: ${occ.timestamp?.replace('T', ' ') ?? '-'}\nOrigin: ${occ.originClass}.${occ.method}(${occ.sourceFile}:${occ.sourceLine})\nLine: ${occ.logLineNumber}\n\n${occ.stackTrace.join('\n')}`
-                                            navigator.clipboard.writeText(text)
+                                            copyToClipboard(text).catch(() => {})
                                           }}>
                                             <ContentCopy sx={{ fontSize: 14 }} />
                                           </IconButton>
@@ -271,7 +272,7 @@ export function ExceptionAnalysisTab({ analysisId, onJumpToLine }: { analysisId:
                                         <Tooltip title={t('logAnalyzer.exceptionAnalysis.copyTrace')} arrow>
                                           <IconButton size="small"
                                             sx={{ position: 'absolute', top: 4, right: 4, opacity: 0.6, '&:hover': { opacity: 1 } }}
-                                            onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(occ.stackTrace.join('\n')) }}>
+                                            onClick={(e) => { e.stopPropagation(); copyToClipboard(occ.stackTrace.join('\n')).catch(() => {}) }}>
                                             <ContentCopy sx={{ fontSize: 14 }} />
                                           </IconButton>
                                         </Tooltip>
