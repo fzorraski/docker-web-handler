@@ -16,8 +16,8 @@ import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
 import { useNotification } from '../components/NotificationProvider'
 import { useSseOperation } from '../hooks/useSseOperation'
-import OperationProgress, { LOG_ANALYSIS_STEPS } from '../components/OperationProgress'
-import { prepareLogAnalysis, streamLogAnalysis, cancelLogAnalysis, subscribeLogAnalysisUpdates, setLogAnalysisViewing } from '../services/sseService'
+import OperationProgress, { LOG_ANALYSIS_STEPS, LOG_COMPOSE_STEPS } from '../components/OperationProgress'
+import { prepareLogAnalysis, streamLogAnalysis, cancelLogAnalysis, prepareComposeAnalysis, streamComposeAnalysis, cancelComposeAnalysis, subscribeLogAnalysisUpdates, setLogAnalysisViewing } from '../services/sseService'
 import { AnalysisOptionsDialog, applyPreset } from '../components/log-analyzer/AnalysisOptionsDialog'
 import type { AnalysisConfiguration } from '../components/log-analyzer/AnalysisOptionsDialog'
 import { SummaryCard } from '../components/log-analyzer/SummaryCard'
@@ -89,12 +89,15 @@ export default function LogAnalyzerPage() {
   )
   const sse = useSseOperation()
   const [analysisTicket, setAnalysisTicket] = useState<string | null>(null)
+  const [composeTicket, setComposeTicket] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState(0)
   const [jumpToLine, setJumpToLine] = useState<number | null>(null)
   const [jumpToRange, setJumpToRange] = useState<{ from: number; to: number } | null>(null)
   const [initialLevel, setInitialLevel] = useState<string | null>(null)
   const [insightsEndpoint, setInsightsEndpoint] = useState<string | null>(null)
   const [insightsTimestamp, setInsightsTimestamp] = useState<string | null>(null)
+  const [apiCallsTimeFrom, setApiCallsTimeFrom] = useState<string | null>(null)
+  const [apiCallsTimeTo, setApiCallsTimeTo] = useState<string | null>(null)
 
   // Upload form
   const [selectedPreset, setSelectedPreset] = useState('')
@@ -374,8 +377,11 @@ export default function LogAnalyzerPage() {
     if (analysisTicket) {
       setCancelling(true)
       cancelLogAnalysis(analysisTicket)
+    } else if (composeTicket) {
+      setCancelling(true)
+      cancelComposeAnalysis(composeTicket)
     }
-  }, [analysisTicket])
+  }, [analysisTicket, composeTicket])
 
   const handleDeleteClick = useCallback((id: string, label: string) => {
     setDeleteTarget({ id, label })
@@ -397,15 +403,34 @@ export default function LogAnalyzerPage() {
   const handleCompose = useCallback(async () => {
     if (composeIds.size < 2) return
     try {
-      const result = await logService.composeAnalyses(Array.from(composeIds), selectedPreset, slowThreshold)
-      setSelectedId(result.id)
-      setComposeIds(new Set())
-      refreshList()
-      notify(t('logAnalyzer.compose.success'), 'success')
+      const ticket = await prepareComposeAnalysis({
+        ids: Array.from(composeIds),
+        preset: selectedPreset,
+        slowThresholdMs: slowThreshold,
+      })
+      setComposeTicket(ticket)
+      sse.start(
+        (onEvent, onDone, onError) => streamComposeAnalysis(ticket, onEvent, onDone, onError),
+        (event) => {
+          if (event.detail) {
+            setSelectedId(event.detail)
+            refreshList()
+          }
+          notify(t('logAnalyzer.compose.success'), 'success')
+          setComposeIds(new Set())
+          setCancelling(false)
+          setComposeTicket(null)
+          sse.reset()
+        },
+        () => {
+          setCancelling(false)
+          setComposeTicket(null)
+        },
+      )
     } catch (err) {
       notify(err instanceof Error ? err.message : t('logAnalyzer.compose.error'), 'error')
     }
-  }, [composeIds, selectedPreset, slowThreshold, refreshList, notify, t])
+  }, [composeIds, selectedPreset, slowThreshold, refreshList, notify, t, sse])
 
   const presetObj = useMemo(
     () => presets.find(p => p.name.toUpperCase() === selectedPreset.toUpperCase()),
@@ -439,10 +464,20 @@ export default function LogAnalyzerPage() {
     setInsightsTimestamp(null)
   }, [])
 
+  const handleGoToApiCalls = useCallback((timeFrom: string, timeTo: string) => {
+    setApiCallsTimeFrom(timeFrom)
+    setApiCallsTimeTo(timeTo)
+  }, [])
+
+  const handleApiCallsTimeConsumed = useCallback(() => {
+    setApiCallsTimeFrom(null)
+    setApiCallsTimeTo(null)
+  }, [])
+
   const tabs = useMemo(() => {
     if (!selected) return []
     const list = [
-      { key: 'apiCalls', label: t('logAnalyzer.tabs.apiCalls'), component: <ApiCallsTab analysisId={selected.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} onJumpToLine={handleJumpToLine} onJumpToRange={handleJumpToRange} onViewInsights={handleViewInsightsForCall} orphanRequestCount={selected.orphanRequestCount} onGoToOrphans={() => goToTab('orphanRequests')} /> },
+      { key: 'apiCalls', label: t('logAnalyzer.tabs.apiCalls'), component: null },
       { key: 'stats', label: t('logAnalyzer.tabs.endpointStats'), component: <EndpointStatsTab analysisId={selected.id} onViewInsights={handleViewInsights} /> },
       { key: 'insights', label: t('logAnalyzer.tabs.performanceInsights'), component: null },
       { key: 'anomalyDetection', label: t('logAnalyzer.tabs.anomalyDetection'), component: <AnomalyDetectionTab analysisId={selected.id} /> },
@@ -498,6 +533,14 @@ export default function LogAnalyzerPage() {
       setActiveTab(insightsTabIndex)
     }
   }, [insightsEndpoint, insightsTimestamp, insightsTabIndex])
+
+  // Switch to apiCalls tab when time range is set from Performance Insights
+  const apiCallsTabIndex = useMemo(() => tabs.findIndex(t => t.key === 'apiCalls'), [tabs])
+  useEffect(() => {
+    if (apiCallsTimeFrom != null && apiCallsTimeTo != null && apiCallsTabIndex >= 0) {
+      setActiveTab(apiCallsTabIndex)
+    }
+  }, [apiCallsTimeFrom, apiCallsTimeTo, apiCallsTabIndex])
 
   const hasAnalyses = analyses.length > 0
 
@@ -627,7 +670,7 @@ export default function LogAnalyzerPage() {
         <DialogTitle>
           {sse.hasError
             ? (sse.events.some(e => e.type === 'ERROR' && e.step === 'Cancelled') ? t('logAnalyzer.upload.cancelled') : t('logAnalyzer.upload.failed'))
-            : t('logAnalyzer.upload.analyzing')}
+            : composeTicket ? t('logAnalyzer.compose.composing') : t('logAnalyzer.upload.analyzing')}
         </DialogTitle>
         <DialogContent>
           {sse.hasError && (
@@ -635,7 +678,7 @@ export default function LogAnalyzerPage() {
               {sse.events.filter(e => e.type === 'ERROR').pop()?.message ?? t('logAnalyzer.upload.error')}
             </Alert>
           )}
-          <OperationProgress events={sse.events} steps={LOG_ANALYSIS_STEPS} />
+          <OperationProgress events={sse.events} steps={composeTicket ? LOG_COMPOSE_STEPS : LOG_ANALYSIS_STEPS} />
         </DialogContent>
         <DialogActions>
           {sse.isRunning ? (
@@ -863,8 +906,10 @@ export default function LogAnalyzerPage() {
                 {tab.key === 'rawLog'
                   ? <RawLogTab analysisId={selected!.id} initialLevel={initialLevel} levelCounts={selected!.levelCounts} jumpToLine={jumpToLine} onJumpComplete={handleJumpComplete} highlightRange={jumpToRange} onRangeComplete={handleRangeComplete} />
                   : tab.key === 'insights'
-                    ? <PerformanceInsightsTab analysisId={selected!.id} initialEndpoint={insightsEndpoint} initialTimestamp={insightsTimestamp} onEndpointConsumed={handleInsightsConsumed} active={idx === activeTab} />
-                    : tab.component}
+                    ? <PerformanceInsightsTab analysisId={selected!.id} initialEndpoint={insightsEndpoint} initialTimestamp={insightsTimestamp} onEndpointConsumed={handleInsightsConsumed} onGoToApiCalls={handleGoToApiCalls} active={idx === activeTab} />
+                    : tab.key === 'apiCalls'
+                      ? <ApiCallsTab analysisId={selected!.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} timeRangeStart={selected!.timeRangeStart} timeRangeEnd={selected!.timeRangeEnd} onJumpToLine={handleJumpToLine} onJumpToRange={handleJumpToRange} onViewInsights={handleViewInsightsForCall} orphanRequestCount={selected!.orphanRequestCount} onGoToOrphans={() => goToTab('orphanRequests')} initialTimeFrom={apiCallsTimeFrom} initialTimeTo={apiCallsTimeTo} onTimeRangeConsumed={handleApiCallsTimeConsumed} />
+                      : tab.component}
               </Box>
             ))}
           </Paper>

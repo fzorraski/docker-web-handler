@@ -5,7 +5,7 @@ import {
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer, TableSortLabel,
   useTheme,
 } from '@mui/material'
-import { QueryStats, Refresh, InfoOutlined, Visibility } from '@mui/icons-material'
+import { QueryStats, Refresh, InfoOutlined, Visibility, OpenInNew } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis,
@@ -38,8 +38,9 @@ function formatTimeRange(timestamp: string, bucketWidth: string): string {
   return `${fmt(d)} — ${fmt(end)}`
 }
 
-export function PerformanceInsightsTab({ analysisId, initialEndpoint, initialTimestamp, onEndpointConsumed, active }: {
-  analysisId: string; initialEndpoint?: string | null; initialTimestamp?: string | null; onEndpointConsumed?: () => void; active?: boolean
+export function PerformanceInsightsTab({ analysisId, initialEndpoint, initialTimestamp, onEndpointConsumed, onGoToApiCalls, active }: {
+  analysisId: string; initialEndpoint?: string | null; initialTimestamp?: string | null; onEndpointConsumed?: () => void
+  onGoToApiCalls?: (timeFrom: string, timeTo: string) => void; active?: boolean
 }) {
   const { t } = useTranslation()
   const theme = useTheme()
@@ -454,6 +455,19 @@ export function PerformanceInsightsTab({ analysisId, initialEndpoint, initialTim
           )}
         </DialogContent>
         <DialogActions>
+          {onGoToApiCalls && selectedBucket && data && (
+            <Button
+              startIcon={<OpenInNew />}
+              onClick={() => {
+                const start = new Date(selectedBucket.timestamp)
+                const end = new Date(start.getTime() + (BUCKET_MINUTES[data.bucketWidth] ?? 15) * 60_000)
+                setBucketDialogOpen(false)
+                onGoToApiCalls(start.toISOString(), end.toISOString())
+              }}
+            >
+              {t('logAnalyzer.insights.viewApiCalls')}
+            </Button>
+          )}
           <Button onClick={() => setBucketDialogOpen(false)}>{t('common.close')}</Button>
         </DialogActions>
       </Dialog>

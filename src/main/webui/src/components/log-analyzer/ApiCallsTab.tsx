@@ -1,18 +1,22 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, useMemo, useCallback, Fragment } from 'react'
+import { copyToClipboard } from '../../utils/clipboard'
 import {
-  Autocomplete, Box, Typography, Chip, IconButton, Tooltip,
+  Autocomplete, Box, Collapse, Typography, Chip, IconButton, Tooltip,
   TextField, TablePagination, Switch, FormControlLabel, LinearProgress, Stack,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer, TableSortLabel,
   Menu, MenuItem, ListItemIcon, ListItemText,
   useTheme,
 } from '@mui/material'
-import { Clear, ContentCopy, Search, QueryStats, OpenInNew, Subject } from '@mui/icons-material'
+import { MobileDateTimePicker } from '@mui/x-date-pickers/MobileDateTimePicker'
+import dayjs, { type Dayjs } from 'dayjs'
+import { AccessTime, Clear, ContentCopy, Search, QueryStats, OpenInNew, Subject } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { usePaginatedFetch } from '../../hooks/usePaginatedFetch'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { maskSensitiveFields, tryFormatJson } from '../../utils/jsonUtils'
 import { formatDuration } from '../../utils/formatDuration'
+import { formatLogTimestamp, formatLogTimestampShort } from '../../utils/format'
 import { chartColor } from '../../utils/chartColors'
 import { LineLink } from './LineLink'
 import { ApiCallContextDialog } from './ApiCallContextDialog'
@@ -28,7 +32,7 @@ function PayloadBox({ label, payload, sensitiveFields, maskEnabled, isDark }: {
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(formatted)
+      await copyToClipboard(formatted)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch {
@@ -56,9 +60,11 @@ function PayloadBox({ label, payload, sensitiveFields, maskEnabled, isDark }: {
   )
 }
 
-export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onJumpToRange, onViewInsights, orphanRequestCount, onGoToOrphans }: {
-  analysisId: string; sensitiveFields: string[]; onJumpToLine?: (line: number) => void; onJumpToRange?: (from: number, to: number) => void; onViewInsights?: (endpoint: string, timestamp: string) => void
+export function ApiCallsTab({ analysisId, sensitiveFields, timeRangeStart, timeRangeEnd, onJumpToLine, onJumpToRange, onViewInsights, orphanRequestCount, onGoToOrphans, initialTimeFrom, initialTimeTo, onTimeRangeConsumed }: {
+  analysisId: string; sensitiveFields: string[]; timeRangeStart?: string; timeRangeEnd?: string
+  onJumpToLine?: (line: number) => void; onJumpToRange?: (from: number, to: number) => void; onViewInsights?: (endpoint: string, timestamp: string) => void
   orphanRequestCount?: number; onGoToOrphans?: () => void
+  initialTimeFrom?: string | null; initialTimeTo?: string | null; onTimeRangeConsumed?: () => void
 }) {
   const { t } = useTranslation()
   const theme = useTheme()
@@ -77,8 +83,26 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onJumpT
   }
   const [filterEndpoint, setFilterEndpoint] = useState('')
   const [filterThread, setFilterThread] = useState('')
+  const [timeFrom, setTimeFrom] = useState<Dayjs | null>(null)
+  const [timeTo, setTimeTo] = useState<Dayjs | null>(null)
+  const timeFromIso = useMemo(() => timeFrom?.format('YYYY-MM-DDTHH:mm:ss') ?? '', [timeFrom])
+  const timeToIso = useMemo(() => timeTo?.format('YYYY-MM-DDTHH:mm:ss') ?? '', [timeTo])
+  const debouncedTimeFrom = useDebouncedValue(timeFromIso, 400)
+  const debouncedTimeTo = useDebouncedValue(timeToIso, 400)
+  const [timeFilterOpen, setTimeFilterOpen] = useState(false)
   const [contentSearch, setContentSearch] = useState('')
   const debouncedContentSearch = useDebouncedValue(contentSearch, 300)
+
+  const minDatetime = useMemo(() => timeRangeStart ? dayjs(timeRangeStart) : null, [timeRangeStart])
+  const maxDatetime = useMemo(() => timeRangeEnd ? dayjs(timeRangeEnd) : null, [timeRangeEnd])
+  const hasTimeRange = !!(timeRangeStart && timeRangeEnd)
+  const timeFilterActive = !!(timeFrom || timeTo)
+
+  const applyQuickRange = useCallback((from: Dayjs, to: Dayjs) => {
+    setTimeFrom(from)
+    setTimeTo(to)
+    setPage(0)
+  }, [])
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
   const [maskEnabled, setMaskEnabled] = useState(true)
   const [endpoints, setEndpoints] = useState<string[]>([])
@@ -91,14 +115,26 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onJumpT
     logService.getThreads(analysisId).then(setThreads).catch(() => {})
   }, [analysisId])
 
+  // Apply time range when navigated from Performance Insights
+  useEffect(() => {
+    if (initialTimeFrom == null || initialTimeTo == null) return
+    setTimeFrom(dayjs(initialTimeFrom))
+    setTimeTo(dayjs(initialTimeTo))
+    setTimeFilterOpen(true)
+    setPage(0)
+    onTimeRangeConsumed?.()
+  }, [initialTimeFrom, initialTimeTo, onTimeRangeConsumed])
+
   const { data, total, loading } = usePaginatedFetch<ApiCallPair>(
     (signal) => logService.getApiCalls(analysisId, {
       endpoint: filterEndpoint || undefined,
       thread: filterThread || undefined,
       search: debouncedContentSearch || undefined,
+      timeFrom: debouncedTimeFrom || undefined,
+      timeTo: debouncedTimeTo || undefined,
       sort, sortDir, page, size: rowsPerPage, signal,
     }),
-    [analysisId, filterEndpoint, filterThread, debouncedContentSearch, sort, sortDir, page, rowsPerPage],
+    [analysisId, filterEndpoint, filterThread, debouncedContentSearch, debouncedTimeFrom, debouncedTimeTo, sort, sortDir, page, rowsPerPage],
   )
 
   return (
@@ -136,11 +172,72 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onJumpT
           } }}
           sx={{ minWidth: 280 }}
         />
+        <Tooltip title={t('logAnalyzer.apiCalls.timeFilter')} arrow>
+          <Chip
+            icon={<AccessTime sx={{ fontSize: 16 }} />}
+            label={timeFilterActive
+              ? `${timeFrom ? formatLogTimestampShort(timeFrom.format('YYYY-MM-DDTHH:mm:ss')) : '...'} — ${timeTo ? formatLogTimestampShort(timeTo.format('YYYY-MM-DDTHH:mm:ss')) : '...'}`
+              : t('logAnalyzer.apiCalls.timeFilter')}
+            size="small"
+            color={timeFilterActive ? 'primary' : 'default'}
+            variant={timeFilterActive ? 'filled' : 'outlined'}
+            onClick={() => setTimeFilterOpen(o => !o)}
+            onDelete={timeFilterActive ? () => { setTimeFrom(null); setTimeTo(null); setPage(0) } : undefined}
+            sx={{ cursor: 'pointer', fontSize: '0.75rem', fontFamily: timeFilterActive ? "'JetBrains Mono', monospace" : undefined }}
+          />
+        </Tooltip>
         <FormControlLabel
           control={<Switch checked={maskEnabled} onChange={(_, v) => setMaskEnabled(v)} size="small" />}
           label={<Typography variant="body2">{t('logAnalyzer.apiCalls.maskSensitive')}</Typography>}
         />
       </Stack>
+
+      <Collapse in={timeFilterOpen}>
+        <Box sx={{ mb: 2, p: 1.5, borderRadius: 1, bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', border: '1px solid', borderColor: 'divider' }}>
+          {hasTimeRange && (
+            <Typography variant="caption" color="text.secondary" display="block" mb={1}>
+              {t('logAnalyzer.apiCalls.logRange')}: {formatLogTimestamp(timeRangeStart)} — {formatLogTimestamp(timeRangeEnd)}
+            </Typography>
+          )}
+          <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" useFlexGap>
+            <MobileDateTimePicker
+              label={t('logAnalyzer.apiCalls.timeFrom')}
+              value={timeFrom}
+              onChange={(v) => { setTimeFrom(v); setPage(0) }}
+              minDateTime={minDatetime ?? undefined}
+              maxDateTime={timeTo ?? maxDatetime ?? undefined}
+              ampm={false}
+              slotProps={{ textField: { size: 'small', sx: { minWidth: 220 } } }}
+            />
+            <MobileDateTimePicker
+              label={t('logAnalyzer.apiCalls.timeTo')}
+              value={timeTo}
+              onChange={(v) => { setTimeTo(v); setPage(0) }}
+              minDateTime={timeFrom ?? minDatetime ?? undefined}
+              maxDateTime={maxDatetime ?? undefined}
+              ampm={false}
+              slotProps={{ textField: { size: 'small', sx: { minWidth: 220 } } }}
+            />
+            {hasTimeRange && (
+              <>
+                <Box sx={{ borderLeft: '1px solid', borderColor: 'divider', height: 24, mx: 0.5 }} />
+                <Chip size="small" label={t('logAnalyzer.apiCalls.quickFirstHour')} variant="outlined"
+                  onClick={() => applyQuickRange(minDatetime!, minDatetime!.add(1, 'hour').isAfter(maxDatetime!) ? maxDatetime! : minDatetime!.add(1, 'hour'))} />
+                <Chip size="small" label={t('logAnalyzer.apiCalls.quickLastHour')} variant="outlined"
+                  onClick={() => applyQuickRange(maxDatetime!.subtract(1, 'hour').isBefore(minDatetime!) ? minDatetime! : maxDatetime!.subtract(1, 'hour'), maxDatetime!)} />
+                <Chip size="small" label={t('logAnalyzer.apiCalls.quickFirstHalf')} variant="outlined"
+                  onClick={() => { const mid = minDatetime!.add(maxDatetime!.diff(minDatetime!) / 2, 'ms'); applyQuickRange(minDatetime!, mid) }} />
+                <Chip size="small" label={t('logAnalyzer.apiCalls.quickLastHalf')} variant="outlined"
+                  onClick={() => { const mid = minDatetime!.add(maxDatetime!.diff(minDatetime!) / 2, 'ms'); applyQuickRange(mid, maxDatetime!) }} />
+                <Box sx={{ borderLeft: '1px solid', borderColor: 'divider', height: 24, mx: 0.5 }} />
+                <Chip size="small" label={t('logAnalyzer.apiCalls.quickClear')} variant="outlined" color="default"
+                  onDelete={() => { setTimeFrom(null); setTimeTo(null); setPage(0) }}
+                  onClick={() => { setTimeFrom(null); setTimeTo(null); setPage(0) }} />
+              </>
+            )}
+          </Stack>
+        </Box>
+      </Collapse>
 
       <TableContainer>
         <Table size="small">
@@ -196,7 +293,7 @@ export function ApiCallsTab({ analysisId, sensitiveFields, onJumpToLine, onJumpT
                       <Typography variant="body2" fontSize="0.8rem">{call.thread}</Typography>
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2" fontSize="0.8rem">{call.requestTimestamp?.replace('T', ' ')}</Typography>
+                      <Typography variant="body2" fontSize="0.8rem">{formatLogTimestamp(call.requestTimestamp)}</Typography>
                     </TableCell>
                     <TableCell>
                       <Chip
