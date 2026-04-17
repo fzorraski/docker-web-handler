@@ -109,12 +109,13 @@ describe('logAnalyzerService', () => {
     it('builds query params from all filter options', async () => {
       mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 100 }))
 
-      await getLines('abc', { thread: 'main', level: 'ERROR', search: 'timeout', page: 1, size: 500 })
+      await getLines('abc', { thread: 'main', level: 'ERROR', search: 'timeout', exclude: 'debug,health', page: 1, size: 500 })
 
       const url = mockFetch.mock.calls[0][0] as string
       expect(url).toContain('thread=main')
       expect(url).toContain('level=ERROR')
       expect(url).toContain('search=timeout')
+      expect(url).toContain('exclude=debug%2Chealth')
       expect(url).toContain('page=1')
       expect(url).toContain('size=500')
     })
@@ -128,6 +129,16 @@ describe('logAnalyzerService', () => {
       expect(url).not.toContain('thread=')
       expect(url).not.toContain('level=')
       expect(url).not.toContain('search=')
+      expect(url).not.toContain('exclude=')
+    })
+
+    it('includes exclude param when provided', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 100 }))
+
+      await getLines('abc', { exclude: 'integration 002', page: 0, size: 100 })
+
+      const url = mockFetch.mock.calls[0][0] as string
+      expect(url).toContain('exclude=integration+002')
     })
 
     it('passes abort signal to fetch', async () => {
