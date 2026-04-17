@@ -859,6 +859,7 @@ const ptBR: typeof en = {
       maskSensitive: 'Mascarar campos sensíveis',
       orphanRequests: 'requisições orfãs',
       searchContent: 'Buscar nos payloads...',
+      excludeContent: 'Excluir padrões...',
       timeFilter: 'Intervalo de Tempo',
       timeFrom: 'De',
       timeTo: 'Até',

@@ -858,6 +858,7 @@ const en = {
       maskSensitive: 'Mask sensitive fields',
       orphanRequests: 'orphan requests',
       searchContent: 'Search in payloads...',
+      excludeContent: 'Exclude patterns...',
       timeFilter: 'Time Range',
       timeFrom: 'From',
       timeTo: 'To',

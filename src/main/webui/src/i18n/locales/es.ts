@@ -859,6 +859,7 @@ const es: typeof en = {
       maskSensitive: 'Enmascarar campos sensibles',
       orphanRequests: 'solicitudes huerfanas',
       searchContent: 'Buscar en payloads...',
+      excludeContent: 'Excluir patrones...',
       timeFilter: 'Rango de Tiempo',
       timeFrom: 'Desde',
       timeTo: 'Hasta',

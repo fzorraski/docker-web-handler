@@ -9,7 +9,7 @@ import {
 } from '@mui/material'
 import { MobileDateTimePicker } from '@mui/x-date-pickers/MobileDateTimePicker'
 import dayjs, { type Dayjs } from 'dayjs'
-import { AccessTime, Clear, ContentCopy, Search, QueryStats, OpenInNew, Subject } from '@mui/icons-material'
+import { AccessTime, Clear, ContentCopy, Search, QueryStats, OpenInNew, Subject, FilterListOff } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { usePaginatedFetch } from '../../hooks/usePaginatedFetch'
@@ -92,6 +92,8 @@ export function ApiCallsTab({ analysisId, sensitiveFields, timeRangeStart, timeR
   const [timeFilterOpen, setTimeFilterOpen] = useState(false)
   const [contentSearch, setContentSearch] = useState('')
   const debouncedContentSearch = useDebouncedValue(contentSearch, 300)
+  const [excludePatterns, setExcludePatterns] = useState('')
+  const debouncedExclude = useDebouncedValue(excludePatterns, 300)
 
   const minDatetime = useMemo(() => timeRangeStart ? dayjs(timeRangeStart) : null, [timeRangeStart])
   const maxDatetime = useMemo(() => timeRangeEnd ? dayjs(timeRangeEnd) : null, [timeRangeEnd])
@@ -130,11 +132,12 @@ export function ApiCallsTab({ analysisId, sensitiveFields, timeRangeStart, timeR
       endpoint: filterEndpoint || undefined,
       thread: filterThread || undefined,
       search: debouncedContentSearch || undefined,
+      exclude: debouncedExclude || undefined,
       timeFrom: debouncedTimeFrom || undefined,
       timeTo: debouncedTimeTo || undefined,
       sort, sortDir, page, size: rowsPerPage, signal,
     }),
-    [analysisId, filterEndpoint, filterThread, debouncedContentSearch, debouncedTimeFrom, debouncedTimeTo, sort, sortDir, page, rowsPerPage],
+    [analysisId, filterEndpoint, filterThread, debouncedContentSearch, debouncedExclude, debouncedTimeFrom, debouncedTimeTo, sort, sortDir, page, rowsPerPage],
   )
 
   return (
@@ -166,6 +169,21 @@ export function ApiCallsTab({ analysisId, sensitiveFields, timeRangeStart, timeR
             startAdornment: <Search sx={{ mr: 1, color: 'text.secondary', fontSize: 20 }} />,
             endAdornment: contentSearch ? (
               <IconButton size="small" onClick={() => { setContentSearch(''); setPage(0) }} sx={{ p: 0.25 }}>
+                <Clear sx={{ fontSize: 16 }} />
+              </IconButton>
+            ) : undefined,
+          } }}
+          sx={{ minWidth: 280 }}
+        />
+        <TextField
+          size="small"
+          placeholder={t('logAnalyzer.apiCalls.excludeContent')}
+          value={excludePatterns}
+          onChange={(e) => { setExcludePatterns(e.target.value); setPage(0) }}
+          slotProps={{ input: {
+            startAdornment: <FilterListOff sx={{ mr: 1, color: 'text.secondary', fontSize: 20 }} />,
+            endAdornment: excludePatterns ? (
+              <IconButton size="small" onClick={() => { setExcludePatterns(''); setPage(0) }} sx={{ p: 0.25 }}>
                 <Clear sx={{ fontSize: 16 }} />
               </IconButton>
             ) : undefined,

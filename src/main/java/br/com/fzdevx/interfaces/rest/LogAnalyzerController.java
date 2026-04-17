@@ -280,6 +280,7 @@ public class LogAnalyzerController {
                                 @QueryParam("thread") String thread,
                                 @QueryParam("minDuration") Long minDuration,
                                 @QueryParam("search") String search,
+                                @QueryParam("exclude") String exclude,
                                 @QueryParam("timeFrom") String timeFromStr,
                                 @QueryParam("timeTo") String timeToStr,
                                 @QueryParam("sort") @DefaultValue("time") String sort,
@@ -294,7 +295,7 @@ public class LogAnalyzerController {
         LocalDateTime timeTo = parseDateTime(timeToStr);
 
         var result = queryApiCallsUseCase.execute(analysis.getApiCalls(),
-                endpoint, thread, minDuration, search, timeFrom, timeTo, sort, sortDir, page, size);
+                endpoint, thread, minDuration, search, exclude, timeFrom, timeTo, sort, sortDir, page, size);
         return Response.ok(result.toMap()).build();
     }
 
