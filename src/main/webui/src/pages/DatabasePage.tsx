@@ -1,9 +1,12 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react'
 import type { DatabaseDump, DatabaseSnapshot } from '../types'
 import { listDumps, deleteDump, deleteDumpsBulk, getStorageInfo, getActiveRestores, updateDumpExpiration, type ActiveRestore } from '../services/dumpService'
 import { listSnapshots, deleteSnapshot, deleteSnapshotsBulk, getSnapshotStorageInfo, getActiveSnapshots, updateSnapshotExpiration, type ActiveSnapshot } from '../services/snapshotService'
+import { isManagedDatabasesEnabled } from '../services/managedDatabaseService'
 import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
+
+const DatabasesTab = lazy(() => import('../components/DatabasesTab'))
 import UploadDumpModal from '../components/UploadDumpModal'
 import RestoreDumpModal from '../components/RestoreDumpModal'
 import CreateSnapshotModal from '../components/CreateSnapshotModal'
@@ -78,6 +81,7 @@ export default function DatabasePage() {
   useStickyHeader(dumpTableRef)
   useStickyHeader(snapTableRef)
   const [activeTab, setActiveTab] = useState(0)
+  const [dbManagedEnabled, setDbManagedEnabled] = useState(false)
 
   // --- Dumps state ---
   const [dumps, setDumps] = useState<DatabaseDump[]>([])
@@ -182,6 +186,7 @@ export default function DatabasePage() {
   useEffect(() => {
     loadDumps()
     loadSnapshots()
+    isManagedDatabasesEnabled().then(setDbManagedEnabled).catch(() => setDbManagedEnabled(false))
   }, [loadDumps, loadSnapshots])
 
   useEffect(() => {
@@ -399,9 +404,10 @@ export default function DatabasePage() {
         <Tabs value={activeTab} onChange={(_e, v) => setActiveTab(v)} sx={{ mb: 3 }}>
           <Tab label={t('database.dumpsTab', { count: dumps.length })} />
           <Tab label={t('database.snapshotsTab', { count: snapshots.length })} />
+          {dbManagedEnabled && <Tab label={t('database.databasesTab')} />}
         </Tabs>
 
-        {currentStorageInfo && currentStorageInfo.maxBytes > 0 && (
+        {activeTab < 2 && currentStorageInfo && currentStorageInfo.maxBytes > 0 && (
           <Paper elevation={2} sx={{ p: 3, mb: 3, borderRadius: 2 }}>
             <Grid container spacing={3} alignItems="center">
               <Grid size={{ xs: 12, md: 4 }}>
@@ -457,7 +463,7 @@ export default function DatabasePage() {
           </Paper>
         )}
 
-        {activeRestores.length > 0 && (
+        {activeTab < 2 && activeRestores.length > 0 && (
           <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
             <AlertTitle>{t('database.restoreInProgress')}</AlertTitle>
             {activeRestores.map((r, i) => (
@@ -967,6 +973,13 @@ export default function DatabasePage() {
               labelRowsPerPage={t('common.rowsPerPage')}
             />
           </>
+        )}
+
+        {/* ==================== DATABASES TAB ==================== */}
+        {activeTab === 2 && dbManagedEnabled && (
+          <Suspense fallback={<CircularProgress size={28} sx={{ display: 'block', mx: 'auto', my: 4 }} />}>
+            <DatabasesTab />
+          </Suspense>
         )}
       </Box>
 

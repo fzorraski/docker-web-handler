@@ -109,3 +109,115 @@ export interface DatabaseSnapshot {
   description?: string
   lastUsedAt?: string
 }
+
+export interface ActiveSession {
+  user: string
+  state: string
+  query: string
+  clientAddr: string | null
+  durationSeconds: number
+  waitEventType: string | null
+}
+
+export interface UserConnectionCount {
+  user: string
+  connections: number
+  active: number
+  idle: number
+}
+
+export interface TopQuery {
+  queryText: string
+  calls: number
+  totalTimeMs: number
+  meanTimeMs: number
+  rows: number
+}
+
+export interface BlockedProcess {
+  blockedPid: number
+  blockedUser: string
+  blockedQuery: string
+  blockedMode: string
+  relName: string | null
+  blockingPid: number
+  blockingUser: string
+  blockingQuery: string
+  blockingMode: string
+  waitingSeconds: number
+}
+
+export interface DatabaseActivity {
+  sessions: ActiveSession[]
+  topUsers: UserConnectionCount[]
+  topQueries: TopQuery[]
+  blockedProcesses: BlockedProcess[]
+  pgStatStatementsAvailable: boolean
+}
+
+export interface TableStats {
+  tableName: string
+  schemaName: string
+  totalSizeBytes: number
+  tableSizeBytes: number
+  indexSizeBytes: number
+  liveTuples: number
+  deadTuples: number
+  seqScan: number
+  idxScan: number
+  lastVacuum: string | null
+  lastAutoVacuum: string | null
+  lastAnalyze: string | null
+  lastAutoAnalyze: string | null
+}
+
+export interface IndexInfo {
+  indexName: string
+  tableName: string
+  schemaName: string
+  sizeBytes: number
+  idxScan: number
+  isPrimary: boolean
+  isUnique: boolean
+}
+
+export interface DatabaseTableStats {
+  tables: TableStats[]
+  unusedIndexes: IndexInfo[]
+  usedIndexes: IndexInfo[]
+}
+
+export interface DatabaseHealthInfo {
+  sizeBytes: number
+  activeConnections: number
+  waitingConnections: number
+  longRunningQueries: number
+  cacheHitRatio: number
+  xactCommit: number
+  xactRollback: number
+  tempBytes: number
+  tempFiles: number
+  deadTuples: number
+  txIdAge: number
+}
+
+export interface ServerHealth {
+  pgVersion: string
+  serverStartedAt?: string
+  maxConnections: number
+  totalConnections: number
+  totalDiskSize: number
+}
+
+export interface ManagedDatabaseInfo {
+  name: string
+  repository: string
+  sizeBytes: number
+  activeConnections: number
+  pgLastActivity?: string
+  appLastUsedAt?: string
+  effectiveLastUsedAt?: string
+  protectedFlag: boolean
+  createdAt?: string
+  description?: string
+}

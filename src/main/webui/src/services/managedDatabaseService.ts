@@ -1,0 +1,184 @@
+import type { ManagedDatabaseInfo, ServerHealth, DatabaseHealthInfo, DatabaseActivity, DatabaseTableStats } from '../types'
+import fetchWithAuth from './fetchWithAuth'
+
+const API = '/api/database/managed/'
+
+export async function isManagedDatabasesEnabled(): Promise<boolean> {
+  const res = await fetchWithAuth(API + 'enabled')
+  if (!res.ok) return false
+  return res.json()
+}
+
+export async function getManagedDatabaseRepositories(): Promise<string[]> {
+  const res = await fetchWithAuth(API + 'repositories')
+  if (!res.ok) return []
+  return res.json()
+}
+
+export async function getDatabaseActivity(repository: string, name: string): Promise<DatabaseActivity | null> {
+  const res = await fetchWithAuth(API + 'activity/' + encodeURIComponent(repository) + '/' + encodeURIComponent(name))
+  if (!res.ok) return null
+  return res.json()
+}
+
+export async function getDatabaseTableStats(repository: string, name: string): Promise<DatabaseTableStats | null> {
+  const res = await fetchWithAuth(API + 'tables/' + encodeURIComponent(repository) + '/' + encodeURIComponent(name))
+  if (!res.ok) return null
+  return res.json()
+}
+
+export async function getDatabaseDetails(repository: string, name: string): Promise<{
+  health: DatabaseHealthInfo | null
+  activity: DatabaseActivity | null
+  tableStats: DatabaseTableStats | null
+} | null> {
+  const res = await fetchWithAuth(API + 'details/' + encodeURIComponent(repository) + '/' + encodeURIComponent(name))
+  if (!res.ok) return null
+  return res.json()
+}
+
+export async function enablePgStatStatements(
+  repository: string,
+  name: string,
+  password: string,
+): Promise<{ success: boolean; alreadyInstalled?: boolean; error?: string }> {
+  const res = await fetchWithAuth(
+    API + encodeURIComponent(repository) + '/' + encodeURIComponent(name) + '/enable-pgss',
+    {
+      method: 'POST',
+      headers: { 'X-Dump-Password': password },
+    },
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.error || res.statusText }
+  }
+  const data = await res.json()
+  return { success: true, alreadyInstalled: data.alreadyInstalled }
+}
+
+export async function getDatabaseHealth(repository: string, name: string): Promise<DatabaseHealthInfo | null> {
+  const res = await fetchWithAuth(API + 'health/' + encodeURIComponent(repository) + '/' + encodeURIComponent(name))
+  if (!res.ok) return null
+  return res.json()
+}
+
+export async function getServerHealth(repository: string): Promise<ServerHealth | null> {
+  const res = await fetchWithAuth(API + 'health/' + encodeURIComponent(repository))
+  if (!res.ok) return null
+  return res.json()
+}
+
+export async function listManagedDatabases(repository: string): Promise<ManagedDatabaseInfo[]> {
+  const res = await fetchWithAuth(API + 'list/' + encodeURIComponent(repository))
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || res.statusText)
+  }
+  return res.json()
+}
+
+export async function deleteManagedDatabase(
+  repository: string,
+  name: string,
+  password: string,
+): Promise<{ success: boolean; error?: string }> {
+  const res = await fetchWithAuth(
+    API + encodeURIComponent(repository) + '/' + encodeURIComponent(name),
+    {
+      method: 'DELETE',
+      headers: { 'X-Dump-Password': password },
+    },
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.error || res.statusText }
+  }
+  return { success: true }
+}
+
+export async function deleteManagedDatabasesBulk(
+  repository: string,
+  names: string[],
+  password: string,
+): Promise<{ success: boolean; deleted?: number; skipped?: number; error?: string }> {
+  const res = await fetchWithAuth(
+    API + encodeURIComponent(repository) + '/bulk',
+    {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Dump-Password': password,
+      },
+      body: JSON.stringify(names),
+    },
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.error || res.statusText }
+  }
+  const data = await res.json()
+  return { success: true, deleted: data.deleted, skipped: data.skipped }
+}
+
+export async function updateDatabaseDescription(
+  repository: string,
+  name: string,
+  description: string,
+  password: string,
+): Promise<{ success: boolean; error?: string }> {
+  const res = await fetchWithAuth(
+    API + encodeURIComponent(repository) + '/' + encodeURIComponent(name) + '/description',
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Dump-Password': password,
+      },
+      body: JSON.stringify({ description }),
+    },
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.error || res.statusText }
+  }
+  return { success: true }
+}
+
+export async function toggleDatabaseProtected(
+  repository: string,
+  name: string,
+  password: string,
+): Promise<{ success: boolean; protected?: boolean; error?: string }> {
+  const res = await fetchWithAuth(
+    API + encodeURIComponent(repository) + '/' + encodeURIComponent(name) + '/protected',
+    {
+      method: 'PUT',
+      headers: { 'X-Dump-Password': password },
+    },
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.error || res.statusText }
+  }
+  const data = await res.json()
+  return { success: true, protected: data.protected }
+}
+
+export async function cleanupIdleDatabases(
+  repository: string,
+  password: string,
+  minDays: number,
+): Promise<{ success: boolean; deleted?: number; error?: string }> {
+  const res = await fetchWithAuth(
+    API + encodeURIComponent(repository) + '/cleanup-idle',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password, minDays }),
+    },
+  )
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { success: false, error: data.error || res.statusText }
+  return { success: true, deleted: data.deleted }
+}
