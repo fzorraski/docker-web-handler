@@ -1,6 +1,8 @@
 package br.com.fzdevx.application.port;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 
@@ -23,6 +25,15 @@ public interface DatabasePort {
     Optional<String> getDbEnvVar(String repository);
 
     String getContainerImage(String repository);
+
+    Map<String, Long> getDatabaseSizes(String repository);
+
+    Map<String, Integer> getActiveConnectionCounts(String repository);
+
+    Map<String, Instant> getLastActivityTimes(String repository);
+
+    record ServerHealth(String pgVersion, Instant serverStartedAt, int maxConnections,
+                        int totalConnections, long totalDiskSize) {}
 
     record PgConnectionInfo(String host, int port, String user, String password) {}
 
