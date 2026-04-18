@@ -1,0 +1,505 @@
+package br.com.fzdevx.interfaces.rest;
+
+import br.com.fzdevx.application.dto.ManagedDatabaseInfo;
+import br.com.fzdevx.application.port.ManagedDatabaseRepository;
+import br.com.fzdevx.application.usecase.CleanupIdleDatabasesUseCase;
+import br.com.fzdevx.application.usecase.ListManagedDatabasesUseCase;
+import br.com.fzdevx.domain.model.ManagedDatabase;
+import br.com.fzdevx.domain.shared.InputValidator;
+import br.com.fzdevx.infrastructure.config.PasswordValidationService;
+import br.com.fzdevx.infrastructure.persistence.DatabaseService;
+import io.quarkus.logging.Log;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+
+import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+
+@Path("/database/managed")
+public class ManagedDatabaseController {
+
+    @Inject
+    @ConfigProperty(name = "database.managed.enabled", defaultValue = "false")
+    boolean managedEnabled;
+
+    @Inject
+    ListManagedDatabasesUseCase listManagedDatabasesUseCase;
+
+    @Inject
+    CleanupIdleDatabasesUseCase cleanupIdleDatabasesUseCase;
+
+    @Inject
+    ManagedDatabaseRepository managedDatabaseRepository;
+
+    @Inject
+    DatabaseService databaseService;
+
+    @Inject
+    PasswordValidationService passwordValidationService;
+
+    @GET
+    @Path("/enabled")
+    @Produces(MediaType.APPLICATION_JSON)
+    public boolean isEnabled() {
+        return managedEnabled;
+    }
+
+    @GET
+    @Path("/repositories")
+    @Produces(MediaType.APPLICATION_JSON)
+    public List<String> getRepositories() {
+        if (!managedEnabled) {
+            return Collections.emptyList();
+        }
+        return listManagedDatabasesUseCase.getRepositories();
+    }
+
+    @GET
+    @Path("/activity/{repository}/{databaseName}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getDatabaseActivity(@PathParam("repository") String repository,
+                                        @PathParam("databaseName") String databaseName) {
+        if (!managedEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
+        if (nameError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", nameError.get())).build();
+        }
+
+        var activity = databaseService.getDatabaseActivity(repository, databaseName);
+        return Response.ok(activity).build();
+    }
+
+    @GET
+    @Path("/details/{repository}/{databaseName}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getDatabaseDetails(@PathParam("repository") String repository,
+                                       @PathParam("databaseName") String databaseName) {
+        if (!managedEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
+        if (nameError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", nameError.get())).build();
+        }
+
+        Object health = null;
+        Object activity = null;
+        Object tableStats = null;
+
+        try {
+            health = databaseService.getDatabaseHealth(repository, databaseName);
+        } catch (Exception e) {
+            Log.warnf("Failed to get health for '%s': %s", databaseName, e.getMessage());
+        }
+
+        try {
+            activity = databaseService.getDatabaseActivity(repository, databaseName);
+        } catch (Exception e) {
+            Log.warnf("Failed to get activity for '%s': %s", databaseName, e.getMessage());
+        }
+
+        try {
+            tableStats = databaseService.getDatabaseTableStats(repository, databaseName);
+        } catch (Exception e) {
+            Log.warnf("Failed to get table stats for '%s': %s", databaseName, e.getMessage());
+        }
+
+        Map<String, Object> result = new java.util.HashMap<>();
+        if (health != null) result.put("health", health);
+        if (activity != null) result.put("activity", activity);
+        if (tableStats != null) result.put("tableStats", tableStats);
+
+        return Response.ok(result).build();
+    }
+
+    @GET
+    @Path("/tables/{repository}/{databaseName}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getDatabaseTableStats(@PathParam("repository") String repository,
+                                          @PathParam("databaseName") String databaseName) {
+        if (!managedEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
+        if (nameError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", nameError.get())).build();
+        }
+
+        var stats = databaseService.getDatabaseTableStats(repository, databaseName);
+        return Response.ok(stats).build();
+    }
+
+    @POST
+    @Path("/{repository}/{databaseName}/enable-pgss")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response enablePgStatStatements(@PathParam("repository") String repository,
+                                           @PathParam("databaseName") String databaseName,
+                                           @HeaderParam("X-Dump-Password") String password) {
+        if (!managedEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
+        if (nameError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", nameError.get())).build();
+        }
+
+        if (!passwordValidationService.validateOperationsPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
+        }
+
+        var result = databaseService.enablePgStatStatements(repository, databaseName);
+        return switch (result) {
+            case ENABLED -> Response.ok(Map.of("success", true)).build();
+            case ALREADY_INSTALLED -> Response.ok(Map.of("success", true, "alreadyInstalled", true)).build();
+            case NOT_AVAILABLE -> Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "pg_stat_statements module is not available. Add it to shared_preload_libraries in postgresql.conf and restart the server.")).build();
+        };
+    }
+
+    @GET
+    @Path("/health/{repository}/{databaseName}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getDatabaseHealth(@PathParam("repository") String repository,
+                                      @PathParam("databaseName") String databaseName) {
+        if (!managedEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
+        if (nameError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", nameError.get())).build();
+        }
+
+        var health = databaseService.getDatabaseHealth(repository, databaseName);
+        return Response.ok(health).build();
+    }
+
+    @GET
+    @Path("/health/{repository}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getServerHealth(@PathParam("repository") String repository) {
+        if (!managedEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        if (!databaseService.hasDatabaseConfig(repository)) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "No database configuration for repository: " + repository)).build();
+        }
+
+        var health = databaseService.getServerHealth(repository);
+        return Response.ok(health).build();
+    }
+
+    @GET
+    @Path("/list/{repository}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response listDatabases(@PathParam("repository") String repository) {
+        if (!managedEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        if (!databaseService.hasDatabaseConfig(repository)) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "No database configuration for repository: " + repository)).build();
+        }
+
+        try {
+            List<ManagedDatabaseInfo> databases = listManagedDatabasesUseCase.listDatabases(repository);
+            return Response.ok(databases).build();
+        } catch (Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage() : "Unknown error";
+            boolean isConnectionError = msg.contains("connection") || msg.contains("connect")
+                    || msg.contains("Connection") || msg.contains("timed out");
+            Log.errorf("Failed to list databases for repository '%s': %s", repository, msg);
+            return Response.status(Response.Status.SERVICE_UNAVAILABLE)
+                    .entity(Map.of(
+                            "error", isConnectionError
+                                    ? "Unable to connect to PostgreSQL for repository '" + repository + "'. Please check if the database server is running and accessible."
+                                    : "Failed to list databases: " + msg,
+                            "connectionError", isConnectionError
+                    )).build();
+        }
+    }
+
+    @DELETE
+    @Path("/{repository}/{databaseName}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response deleteDatabase(@PathParam("repository") String repository,
+                                   @PathParam("databaseName") String databaseName,
+                                   @HeaderParam("X-Dump-Password") String password) {
+        if (!managedEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
+        if (nameError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", nameError.get())).build();
+        }
+
+        if (!passwordValidationService.validateOperationsPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
+        }
+
+        Optional<ManagedDatabase> md = managedDatabaseRepository.find(repository, databaseName);
+        if (md.isPresent() && md.get().isProtectedFlag()) {
+            return Response.status(Response.Status.CONFLICT)
+                    .entity(Map.of("error", "Database is protected and cannot be deleted.")).build();
+        }
+
+        databaseService.dropDatabase(repository, databaseName);
+        managedDatabaseRepository.delete(repository, databaseName);
+        listManagedDatabasesUseCase.invalidateCache(repository);
+        return Response.ok(Map.of("success", true)).build();
+    }
+
+    @DELETE
+    @Path("/{repository}/bulk")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response deleteBulk(@PathParam("repository") String repository,
+                               @HeaderParam("X-Dump-Password") String password,
+                               List<String> names) {
+        if (!managedEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        if (names == null || names.isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "No database names provided.")).build();
+        }
+
+        if (names.size() > 100) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Cannot delete more than 100 databases at once.")).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        if (!passwordValidationService.validateOperationsPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
+        }
+
+        int deleted = 0;
+        int skipped = 0;
+        for (String name : names) {
+            if (InputValidator.validateDatabaseName(name).isPresent()) {
+                skipped++;
+                continue;
+            }
+
+            Optional<ManagedDatabase> md = managedDatabaseRepository.find(repository, name);
+            if (md.isPresent() && md.get().isProtectedFlag()) {
+                skipped++;
+                continue;
+            }
+
+            try {
+                databaseService.dropDatabase(repository, name);
+                managedDatabaseRepository.delete(repository, name);
+                deleted++;
+            } catch (Exception e) {
+                Log.errorf("Bulk delete: failed to drop database '%s': %s", name, e.getMessage());
+                skipped++;
+            }
+        }
+
+        listManagedDatabasesUseCase.invalidateCache(repository);
+        return Response.ok(Map.of("success", true, "deleted", deleted, "skipped", skipped)).build();
+    }
+
+    @PUT
+    @Path("/{repository}/{databaseName}/description")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response updateDescription(@PathParam("repository") String repository,
+                                      @PathParam("databaseName") String databaseName,
+                                      @HeaderParam("X-Dump-Password") String password,
+                                      Map<String, String> body) {
+        if (!managedEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
+        if (nameError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", nameError.get())).build();
+        }
+
+        if (!passwordValidationService.validateOperationsPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
+        }
+
+        String description = body.get("description");
+        if (description != null && description.length() > 500) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Description exceeds maximum length of 500 characters.")).build();
+        }
+        ManagedDatabase md = managedDatabaseRepository.find(repository, databaseName)
+                .orElseGet(() -> new ManagedDatabase(repository, databaseName));
+        md.setDescription(description);
+        managedDatabaseRepository.save(md);
+        listManagedDatabasesUseCase.invalidateCache(repository);
+
+        return Response.ok(Map.of("success", true)).build();
+    }
+
+    @PUT
+    @Path("/{repository}/{databaseName}/protected")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response toggleProtected(@PathParam("repository") String repository,
+                                    @PathParam("databaseName") String databaseName,
+                                    @HeaderParam("X-Dump-Password") String password) {
+        if (!managedEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
+        if (nameError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", nameError.get())).build();
+        }
+
+        if (!passwordValidationService.validateOperationsPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
+        }
+
+        ManagedDatabase md = managedDatabaseRepository.find(repository, databaseName)
+                .orElseGet(() -> new ManagedDatabase(repository, databaseName));
+
+        md.setProtectedFlag(!md.isProtectedFlag());
+        managedDatabaseRepository.save(md);
+        listManagedDatabasesUseCase.invalidateCache(repository);
+
+        return Response.ok(Map.of("success", true, "protected", md.isProtectedFlag())).build();
+    }
+
+    @POST
+    @Path("/{repository}/cleanup-idle")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response cleanupIdle(@PathParam("repository") String repository,
+                                Map<String, Object> body) {
+        if (!managedEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        String password = body.get("password") != null ? body.get("password").toString() : "";
+        int minDays;
+        try {
+            Object val = body.get("minDays");
+            minDays = val instanceof Number ? ((Number) val).intValue() : 0;
+        } catch (Exception e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Invalid minDays parameter.")).build();
+        }
+
+        if (!passwordValidationService.validateOperationsPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
+        }
+
+        if (minDays < 1 || minDays > 365) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "minDays must be between 1 and 365.")).build();
+        }
+
+        int deleted = cleanupIdleDatabasesUseCase.cleanup(repository, minDays);
+        listManagedDatabasesUseCase.invalidateCache(repository);
+        return Response.ok(Map.of("success", true, "deleted", deleted)).build();
+    }
+}
