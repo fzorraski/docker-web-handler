@@ -5,6 +5,8 @@ import br.com.fzdevx.application.dto.CreateSnapshotRequest;
 import br.com.fzdevx.domain.model.DatabaseSnapshot;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.application.port.DatabasePort;
+import br.com.fzdevx.application.port.ManagedDatabaseRepository;
+import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import br.com.fzdevx.infrastructure.persistence.SnapshotStorageService;
 import br.com.fzdevx.domain.shared.InputValidator;
@@ -51,6 +53,12 @@ public class CreateSnapshotUseCase {
 
     @Inject
     ResourceCounterService resourceCounterService;
+
+    @Inject
+    ManagedDatabaseRepository managedDatabaseRepository;
+
+    @Inject
+    ListManagedDatabasesUseCase listManagedDatabasesUseCase;
 
     public record ActiveSnapshotInfo(String repository, String sourceDatabaseName) {}
 
@@ -153,6 +161,19 @@ public class CreateSnapshotUseCase {
             eventSink.accept(ContainerEvent.info("Saving", "Snapshot saved successfully."));
             snapshotStorageService.saveMetadata(snapshot);
             resourceCounterService.increment(ResourceCounterService.SNAPSHOTS);
+
+            // Track app-level usage for managed databases
+            try {
+                ManagedDatabase md = managedDatabaseRepository
+                        .find(request.getRepository(), request.getSourceDatabaseName())
+                        .orElseGet(() -> new ManagedDatabase(request.getRepository(), request.getSourceDatabaseName()));
+                md.setAppLastUsedAt(Instant.now());
+                managedDatabaseRepository.save(md);
+                listManagedDatabasesUseCase.invalidateCache(request.getRepository());
+            } catch (Exception ignored) {
+                // Non-critical: don't fail the snapshot if tracking fails
+            }
+
             return snapshot.getId();
 
         } catch (Exception e) {

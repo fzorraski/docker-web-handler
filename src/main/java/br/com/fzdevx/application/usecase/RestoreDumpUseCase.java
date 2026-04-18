@@ -7,6 +7,8 @@ import br.com.fzdevx.domain.model.PostRestoreScriptInfo;
 import br.com.fzdevx.application.dto.RestoreDumpRequest;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.application.port.DatabasePort;
+import br.com.fzdevx.application.port.ManagedDatabaseRepository;
+import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
 import br.com.fzdevx.infrastructure.docker.MigrationService;
 import br.com.fzdevx.infrastructure.docker.PostRestoreScriptService;
@@ -32,6 +34,7 @@ import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -67,6 +70,12 @@ public class RestoreDumpUseCase {
 
     @Inject
     ResourceCounterService resourceCounterService;
+
+    @Inject
+    ManagedDatabaseRepository managedDatabaseRepository;
+
+    @Inject
+    ListManagedDatabasesUseCase listManagedDatabasesUseCase;
 
     public static final String EPHEMERAL_LABEL = "docker-web-handler.ephemeral";
     private static final long PROGRESS_THROTTLE_MS = 200;
@@ -403,6 +412,18 @@ public class RestoreDumpUseCase {
                 dumpStorageService.markUsed(request.getDumpId());
             }
             resourceCounterService.increment(ResourceCounterService.RESTORES);
+
+            // Track app-level usage for managed databases
+            try {
+                ManagedDatabase md = managedDatabaseRepository
+                        .find(request.getRepository(), request.getTargetDatabase())
+                        .orElseGet(() -> new ManagedDatabase(request.getRepository(), request.getTargetDatabase()));
+                md.setAppLastUsedAt(Instant.now());
+                managedDatabaseRepository.save(md);
+                listManagedDatabasesUseCase.invalidateCache(request.getRepository());
+            } catch (Exception ignored) {
+                // Non-critical: don't fail the restore if tracking fails
+            }
 
             return true;
 
