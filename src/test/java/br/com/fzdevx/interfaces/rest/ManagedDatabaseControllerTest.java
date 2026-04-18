@@ -1,0 +1,416 @@
+package br.com.fzdevx.interfaces.rest;
+
+import br.com.fzdevx.application.dto.ManagedDatabaseInfo;
+import br.com.fzdevx.application.port.ManagedDatabaseRepository;
+import br.com.fzdevx.application.usecase.CleanupIdleDatabasesUseCase;
+import br.com.fzdevx.application.usecase.ListManagedDatabasesUseCase;
+import br.com.fzdevx.domain.model.ManagedDatabase;
+import br.com.fzdevx.infrastructure.config.PasswordValidationService;
+import br.com.fzdevx.infrastructure.persistence.DatabaseService;
+import jakarta.ws.rs.core.Response;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
+class ManagedDatabaseControllerTest {
+
+    private static final String REPO = "myapp";
+    private static final String DB_NAME = "testdb";
+    private static final String PASSWORD = "secret";
+
+    @Mock ListManagedDatabasesUseCase listManagedDatabasesUseCase;
+    @Mock CleanupIdleDatabasesUseCase cleanupIdleDatabasesUseCase;
+    @Mock ManagedDatabaseRepository managedDatabaseRepository;
+    @Mock DatabaseService databaseService;
+    @Mock PasswordValidationService passwordValidationService;
+
+    @InjectMocks
+    ManagedDatabaseController controller;
+
+    @BeforeEach
+    void setUp() {
+        setField("managedEnabled", true);
+        when(passwordValidationService.validateOperationsPassword(PASSWORD)).thenReturn(true);
+        when(databaseService.hasDatabaseConfig(REPO)).thenReturn(true);
+    }
+
+    // ---- isEnabled ----
+
+    @Test
+    void isEnabled_returnsTrue_whenEnabled() {
+        assertTrue(controller.isEnabled());
+    }
+
+    @Test
+    void isEnabled_returnsFalse_whenDisabled() {
+        setField("managedEnabled", false);
+        assertFalse(controller.isEnabled());
+    }
+
+    // ---- getRepositories ----
+
+    @Test
+    void getRepositories_disabled_returnsEmpty() {
+        setField("managedEnabled", false);
+        assertTrue(controller.getRepositories().isEmpty());
+    }
+
+    @Test
+    void getRepositories_enabled_delegatesToUseCase() {
+        when(listManagedDatabasesUseCase.getRepositories()).thenReturn(List.of("repo1", "repo2"));
+        assertEquals(2, controller.getRepositories().size());
+    }
+
+    // ---- listDatabases ----
+
+    @Test
+    void listDatabases_disabled_returns404() {
+        setField("managedEnabled", false);
+        assertEquals(404, controller.listDatabases(REPO).getStatus());
+    }
+
+    @Test
+    void listDatabases_invalidRepo_returns400() {
+        assertEquals(400, controller.listDatabases("").getStatus());
+    }
+
+    @Test
+    void listDatabases_noConfig_returns400() {
+        when(databaseService.hasDatabaseConfig("unknown")).thenReturn(false);
+        assertEquals(400, controller.listDatabases("unknown").getStatus());
+    }
+
+    @Test
+    void listDatabases_success_returns200() {
+        ManagedDatabaseInfo db = makeDb("mydb");
+        when(listManagedDatabasesUseCase.listDatabases(REPO)).thenReturn(List.of(db));
+
+        Response response = controller.listDatabases(REPO);
+        assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    void listDatabases_connectionError_returns503() {
+        when(listManagedDatabasesUseCase.listDatabases(REPO))
+                .thenThrow(new RuntimeException("Failed to connect to PostgreSQL"));
+
+        Response response = controller.listDatabases(REPO);
+        assertEquals(503, response.getStatus());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertTrue((Boolean) body.get("connectionError"));
+    }
+
+    @Test
+    void listDatabases_genericError_returns503() {
+        when(listManagedDatabasesUseCase.listDatabases(REPO))
+                .thenThrow(new RuntimeException("Some other error"));
+
+        Response response = controller.listDatabases(REPO);
+        assertEquals(503, response.getStatus());
+    }
+
+    // ---- deleteDatabase ----
+
+    @Test
+    void deleteDatabase_disabled_returns404() {
+        setField("managedEnabled", false);
+        assertEquals(404, controller.deleteDatabase(REPO, DB_NAME, PASSWORD).getStatus());
+    }
+
+    @Test
+    void deleteDatabase_invalidRepo_returns400() {
+        assertEquals(400, controller.deleteDatabase("", DB_NAME, PASSWORD).getStatus());
+    }
+
+    @Test
+    void deleteDatabase_invalidName_returns400() {
+        assertEquals(400, controller.deleteDatabase(REPO, "", PASSWORD).getStatus());
+    }
+
+    @Test
+    void deleteDatabase_wrongPassword_returns403() {
+        when(passwordValidationService.validateOperationsPassword("wrong")).thenReturn(false);
+        assertEquals(403, controller.deleteDatabase(REPO, DB_NAME, "wrong").getStatus());
+    }
+
+    @Test
+    void deleteDatabase_protected_returns409() {
+        ManagedDatabase md = new ManagedDatabase(REPO, DB_NAME);
+        md.setProtectedFlag(true);
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(md));
+
+        assertEquals(409, controller.deleteDatabase(REPO, DB_NAME, PASSWORD).getStatus());
+        verify(databaseService, never()).dropDatabase(any(), any());
+    }
+
+    @Test
+    void deleteDatabase_success_returns200() {
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.empty());
+
+        Response response = controller.deleteDatabase(REPO, DB_NAME, PASSWORD);
+        assertEquals(200, response.getStatus());
+        verify(databaseService).dropDatabase(REPO, DB_NAME);
+        verify(managedDatabaseRepository).delete(REPO, DB_NAME);
+        verify(listManagedDatabasesUseCase).invalidateCache(REPO);
+    }
+
+    // ---- deleteBulk ----
+
+    @Test
+    void deleteBulk_disabled_returns404() {
+        setField("managedEnabled", false);
+        assertEquals(404, controller.deleteBulk(REPO, PASSWORD, List.of("db1")).getStatus());
+    }
+
+    @Test
+    void deleteBulk_emptyList_returns400() {
+        assertEquals(400, controller.deleteBulk(REPO, PASSWORD, List.of()).getStatus());
+    }
+
+    @Test
+    void deleteBulk_nullList_returns400() {
+        assertEquals(400, controller.deleteBulk(REPO, PASSWORD, null).getStatus());
+    }
+
+    @Test
+    void deleteBulk_tooMany_returns400() {
+        List<String> names = java.util.stream.IntStream.range(0, 101)
+                .mapToObj(i -> "db" + i).toList();
+        assertEquals(400, controller.deleteBulk(REPO, PASSWORD, names).getStatus());
+    }
+
+    @Test
+    void deleteBulk_wrongPassword_returns403() {
+        when(passwordValidationService.validateOperationsPassword("wrong")).thenReturn(false);
+        assertEquals(403, controller.deleteBulk(REPO, "wrong", List.of("db1")).getStatus());
+    }
+
+    @Test
+    void deleteBulk_skipsProtected() {
+        ManagedDatabase protectedDb = new ManagedDatabase(REPO, "protected_db");
+        protectedDb.setProtectedFlag(true);
+        when(managedDatabaseRepository.find(REPO, "protected_db")).thenReturn(Optional.of(protectedDb));
+        when(managedDatabaseRepository.find(REPO, "normal_db")).thenReturn(Optional.empty());
+
+        Response response = controller.deleteBulk(REPO, PASSWORD, List.of("protected_db", "normal_db"));
+        assertEquals(200, response.getStatus());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertEquals(1, body.get("deleted"));
+        assertEquals(1, body.get("skipped"));
+
+        verify(databaseService, never()).dropDatabase(REPO, "protected_db");
+        verify(databaseService).dropDatabase(REPO, "normal_db");
+    }
+
+    // ---- updateDescription ----
+
+    @Test
+    void updateDescription_disabled_returns404() {
+        setField("managedEnabled", false);
+        assertEquals(404, controller.updateDescription(REPO, DB_NAME, PASSWORD, Map.of("description", "test")).getStatus());
+    }
+
+    @Test
+    void updateDescription_wrongPassword_returns403() {
+        when(passwordValidationService.validateOperationsPassword("wrong")).thenReturn(false);
+        assertEquals(403, controller.updateDescription(REPO, DB_NAME, "wrong", Map.of("description", "test")).getStatus());
+    }
+
+    @Test
+    void updateDescription_tooLong_returns400() {
+        String longDesc = "x".repeat(501);
+        assertEquals(400, controller.updateDescription(REPO, DB_NAME, PASSWORD, Map.of("description", longDesc)).getStatus());
+    }
+
+    @Test
+    void updateDescription_exactly500_succeeds() {
+        String desc = "x".repeat(500);
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(new ManagedDatabase(REPO, DB_NAME)));
+
+        Response response = controller.updateDescription(REPO, DB_NAME, PASSWORD, Map.of("description", desc));
+        assertEquals(200, response.getStatus());
+        verify(managedDatabaseRepository).save(argThat(md -> md.getDescription().equals(desc)));
+    }
+
+    @Test
+    void updateDescription_success_savesAndInvalidatesCache() {
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(new ManagedDatabase(REPO, DB_NAME)));
+
+        Response response = controller.updateDescription(REPO, DB_NAME, PASSWORD, Map.of("description", "note"));
+        assertEquals(200, response.getStatus());
+        verify(managedDatabaseRepository).save(argThat(md -> "note".equals(md.getDescription())));
+        verify(listManagedDatabasesUseCase).invalidateCache(REPO);
+    }
+
+    @Test
+    void updateDescription_newDatabase_createsMetadata() {
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.empty());
+
+        controller.updateDescription(REPO, DB_NAME, PASSWORD, Map.of("description", "new note"));
+
+        verify(managedDatabaseRepository).save(argThat(md ->
+                md.getName().equals(DB_NAME) && "new note".equals(md.getDescription())));
+    }
+
+    // ---- toggleProtected ----
+
+    @Test
+    void toggleProtected_disabled_returns404() {
+        setField("managedEnabled", false);
+        assertEquals(404, controller.toggleProtected(REPO, DB_NAME, PASSWORD).getStatus());
+    }
+
+    @Test
+    void toggleProtected_wrongPassword_returns403() {
+        when(passwordValidationService.validateOperationsPassword("wrong")).thenReturn(false);
+        assertEquals(403, controller.toggleProtected(REPO, DB_NAME, "wrong").getStatus());
+    }
+
+    @Test
+    void toggleProtected_enablesProtection() {
+        ManagedDatabase md = new ManagedDatabase(REPO, DB_NAME);
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(md));
+
+        Response response = controller.toggleProtected(REPO, DB_NAME, PASSWORD);
+        assertEquals(200, response.getStatus());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertTrue((Boolean) body.get("protected"));
+        verify(listManagedDatabasesUseCase).invalidateCache(REPO);
+    }
+
+    @Test
+    void toggleProtected_disablesProtection() {
+        ManagedDatabase md = new ManagedDatabase(REPO, DB_NAME);
+        md.setProtectedFlag(true);
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(md));
+
+        Response response = controller.toggleProtected(REPO, DB_NAME, PASSWORD);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertFalse((Boolean) body.get("protected"));
+    }
+
+    // ---- cleanupIdle ----
+
+    @Test
+    void cleanupIdle_disabled_returns404() {
+        setField("managedEnabled", false);
+        assertEquals(404, controller.cleanupIdle(REPO, Map.of("password", PASSWORD, "minDays", 30)).getStatus());
+    }
+
+    @Test
+    void cleanupIdle_wrongPassword_returns403() {
+        assertEquals(403, controller.cleanupIdle(REPO, Map.of("password", "wrong", "minDays", 30)).getStatus());
+    }
+
+    @Test
+    void cleanupIdle_minDaysZero_returns400() {
+        assertEquals(400, controller.cleanupIdle(REPO, Map.of("password", PASSWORD, "minDays", 0)).getStatus());
+    }
+
+    @Test
+    void cleanupIdle_minDaysOver365_returns400() {
+        assertEquals(400, controller.cleanupIdle(REPO, Map.of("password", PASSWORD, "minDays", 366)).getStatus());
+    }
+
+    @Test
+    void cleanupIdle_invalidMinDaysType_returns400() {
+        assertEquals(400, controller.cleanupIdle(REPO, Map.of("password", PASSWORD, "minDays", "not_a_number")).getStatus());
+    }
+
+    @Test
+    void cleanupIdle_success_returns200() {
+        when(cleanupIdleDatabasesUseCase.cleanup(REPO, 30)).thenReturn(5);
+
+        Response response = controller.cleanupIdle(REPO, Map.of("password", PASSWORD, "minDays", 30));
+        assertEquals(200, response.getStatus());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertEquals(5, body.get("deleted"));
+        verify(listManagedDatabasesUseCase).invalidateCache(REPO);
+    }
+
+    // ---- enablePgStatStatements ----
+
+    @Test
+    void enablePgStatStatements_disabled_returns404() {
+        setField("managedEnabled", false);
+        assertEquals(404, controller.enablePgStatStatements(REPO, DB_NAME, PASSWORD).getStatus());
+    }
+
+    @Test
+    void enablePgStatStatements_wrongPassword_returns403() {
+        when(passwordValidationService.validateOperationsPassword("wrong")).thenReturn(false);
+        assertEquals(403, controller.enablePgStatStatements(REPO, DB_NAME, "wrong").getStatus());
+    }
+
+    @Test
+    void enablePgStatStatements_enabled_returns200() {
+        when(databaseService.enablePgStatStatements(REPO, DB_NAME))
+                .thenReturn(DatabaseService.PgssResult.ENABLED);
+
+        Response response = controller.enablePgStatStatements(REPO, DB_NAME, PASSWORD);
+        assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    void enablePgStatStatements_alreadyInstalled_returnsSuccess() {
+        when(databaseService.enablePgStatStatements(REPO, DB_NAME))
+                .thenReturn(DatabaseService.PgssResult.ALREADY_INSTALLED);
+
+        Response response = controller.enablePgStatStatements(REPO, DB_NAME, PASSWORD);
+        assertEquals(200, response.getStatus());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertTrue((Boolean) body.get("alreadyInstalled"));
+    }
+
+    @Test
+    void enablePgStatStatements_notAvailable_returns400() {
+        when(databaseService.enablePgStatStatements(REPO, DB_NAME))
+                .thenReturn(DatabaseService.PgssResult.NOT_AVAILABLE);
+
+        assertEquals(400, controller.enablePgStatStatements(REPO, DB_NAME, PASSWORD).getStatus());
+    }
+
+    // ---- helpers ----
+
+    private ManagedDatabaseInfo makeDb(String name) {
+        return new ManagedDatabaseInfo(name, REPO, 1024L, 0, null, null,
+                null, false, Instant.now(), null);
+    }
+
+    private void setField(String name, Object value) {
+        try {
+            java.lang.reflect.Field f = ManagedDatabaseController.class.getDeclaredField(name);
+            f.setAccessible(true);
+            f.set(controller, value);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+}
