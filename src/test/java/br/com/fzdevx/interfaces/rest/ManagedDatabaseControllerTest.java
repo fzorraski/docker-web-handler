@@ -4,6 +4,9 @@ import br.com.fzdevx.application.dto.ManagedDatabaseInfo;
 import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.application.usecase.CleanupIdleDatabasesUseCase;
 import br.com.fzdevx.application.usecase.ListManagedDatabasesUseCase;
+import br.com.fzdevx.domain.model.ContainerExpiration;
+import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
@@ -39,6 +42,8 @@ class ManagedDatabaseControllerTest {
     @Mock ManagedDatabaseRepository managedDatabaseRepository;
     @Mock DatabaseService databaseService;
     @Mock PasswordValidationService passwordValidationService;
+    @Mock ContainerExpirationService expirationService;
+    @Mock ResourceCounterService resourceCounterService;
 
     @InjectMocks
     ManagedDatabaseController controller;
@@ -131,23 +136,23 @@ class ManagedDatabaseControllerTest {
     @Test
     void deleteDatabase_disabled_returns404() {
         setField("managedEnabled", false);
-        assertEquals(404, controller.deleteDatabase(REPO, DB_NAME, PASSWORD).getStatus());
+        assertEquals(404, controller.deleteDatabase(REPO, DB_NAME, PASSWORD, false).getStatus());
     }
 
     @Test
     void deleteDatabase_invalidRepo_returns400() {
-        assertEquals(400, controller.deleteDatabase("", DB_NAME, PASSWORD).getStatus());
+        assertEquals(400, controller.deleteDatabase("", DB_NAME, PASSWORD, false).getStatus());
     }
 
     @Test
     void deleteDatabase_invalidName_returns400() {
-        assertEquals(400, controller.deleteDatabase(REPO, "", PASSWORD).getStatus());
+        assertEquals(400, controller.deleteDatabase(REPO, "", PASSWORD, false).getStatus());
     }
 
     @Test
     void deleteDatabase_wrongPassword_returns403() {
         when(passwordValidationService.validateOperationsPassword("wrong")).thenReturn(false);
-        assertEquals(403, controller.deleteDatabase(REPO, DB_NAME, "wrong").getStatus());
+        assertEquals(403, controller.deleteDatabase(REPO, DB_NAME, "wrong", false).getStatus());
     }
 
     @Test
@@ -156,19 +161,62 @@ class ManagedDatabaseControllerTest {
         md.setProtectedFlag(true);
         when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(md));
 
-        assertEquals(409, controller.deleteDatabase(REPO, DB_NAME, PASSWORD).getStatus());
+        assertEquals(409, controller.deleteDatabase(REPO, DB_NAME, PASSWORD, false).getStatus());
         verify(databaseService, never()).dropDatabase(any(), any());
     }
 
     @Test
     void deleteDatabase_success_returns200() {
         when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.empty());
+        when(expirationService.findByDatabaseName(DB_NAME)).thenReturn(List.of());
 
-        Response response = controller.deleteDatabase(REPO, DB_NAME, PASSWORD);
+        Response response = controller.deleteDatabase(REPO, DB_NAME, PASSWORD, false);
         assertEquals(200, response.getStatus());
         verify(databaseService).dropDatabase(REPO, DB_NAME);
         verify(managedDatabaseRepository).delete(REPO, DB_NAME);
         verify(listManagedDatabasesUseCase).invalidateCache(REPO);
+    }
+
+    @Test
+    void deleteDatabase_inUseByContainer_returns409() {
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.empty());
+        ContainerExpiration exp = new ContainerExpiration("c1", "full1",
+                java.time.Instant.now(), REPO, DB_NAME, false);
+        when(expirationService.findByDatabaseName(DB_NAME)).thenReturn(List.of(exp));
+
+        Response response = controller.deleteDatabase(REPO, DB_NAME, PASSWORD, false);
+        assertEquals(409, response.getStatus());
+        verify(databaseService, never()).dropDatabase(any(), any());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertTrue(body.get("error").toString().contains("in use"));
+    }
+
+    @Test
+    void deleteDatabase_activeConnections_requiresForce() {
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.empty());
+        when(expirationService.findByDatabaseName(DB_NAME)).thenReturn(List.of());
+        when(databaseService.getActiveConnectionCount(REPO, DB_NAME)).thenReturn(5);
+
+        Response response = controller.deleteDatabase(REPO, DB_NAME, PASSWORD, false);
+        assertEquals(409, response.getStatus());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertTrue((Boolean) body.get("requiresForce"));
+        assertEquals(5, body.get("activeConnections"));
+        verify(databaseService, never()).dropDatabase(any(), any());
+    }
+
+    @Test
+    void deleteDatabase_activeConnections_forceDeleteSucceeds() {
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.empty());
+        when(expirationService.findByDatabaseName(DB_NAME)).thenReturn(List.of());
+
+        Response response = controller.deleteDatabase(REPO, DB_NAME, PASSWORD, true);
+        assertEquals(200, response.getStatus());
+        verify(databaseService).dropDatabase(REPO, DB_NAME);
     }
 
     // ---- deleteBulk ----
@@ -312,6 +360,52 @@ class ManagedDatabaseControllerTest {
         assertFalse((Boolean) body.get("protected"));
     }
 
+    @Test
+    void toggleProtected_enablesProtection_autoDisablesContainers() {
+        ManagedDatabase md = new ManagedDatabase(REPO, DB_NAME);
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(md));
+
+        ContainerExpiration exp1 = new ContainerExpiration("c1", "full1",
+                java.time.Instant.now(), REPO, DB_NAME, true);
+        ContainerExpiration exp2 = new ContainerExpiration("c2", "full2",
+                java.time.Instant.now(), REPO, DB_NAME, false);
+        when(expirationService.findByDatabaseName(DB_NAME)).thenReturn(List.of(exp1, exp2));
+
+        Response response = controller.toggleProtected(REPO, DB_NAME, PASSWORD);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertTrue((Boolean) body.get("protected"));
+        assertEquals(1, body.get("disabledDeletionCount"));
+        verify(expirationService).disableDatabaseDeletion("c1");
+        verify(expirationService, never()).disableDatabaseDeletion("c2");
+    }
+
+    @Test
+    void toggleProtected_enablesProtection_noContainers_zeroDisabled() {
+        ManagedDatabase md = new ManagedDatabase(REPO, DB_NAME);
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(md));
+        when(expirationService.findByDatabaseName(DB_NAME)).thenReturn(List.of());
+
+        Response response = controller.toggleProtected(REPO, DB_NAME, PASSWORD);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertEquals(0, body.get("disabledDeletionCount"));
+    }
+
+    @Test
+    void toggleProtected_disablesProtection_doesNotAutoDisable() {
+        ManagedDatabase md = new ManagedDatabase(REPO, DB_NAME);
+        md.setProtectedFlag(true);
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(md));
+
+        controller.toggleProtected(REPO, DB_NAME, PASSWORD);
+
+        verify(expirationService, never()).findByDatabaseName(any());
+        verify(expirationService, never()).disableDatabaseDeletion(any());
+    }
+
     // ---- cleanupIdle ----
 
     @Test
@@ -401,7 +495,7 @@ class ManagedDatabaseControllerTest {
 
     private ManagedDatabaseInfo makeDb(String name) {
         return new ManagedDatabaseInfo(name, REPO, 1024L, 0, null, null,
-                null, false, Instant.now(), null);
+                null, false, Instant.now(), null, 0, null, false, null, null);
     }
 
     private void setField(String name, Object value) {

@@ -4,6 +4,7 @@ import br.com.fzdevx.application.dto.ManagedDatabaseInfo;
 import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
+import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +32,7 @@ class ListManagedDatabasesUseCaseTest {
     @Mock DatabaseService databaseService;
     @Mock ManagedDatabaseRepository managedDatabaseRepository;
     @Mock AllowedRepositoryResolver allowedRepositoryResolver;
+    @Mock ContainerExpirationService expirationService;
 
     @InjectMocks
     ListManagedDatabasesUseCase useCase;

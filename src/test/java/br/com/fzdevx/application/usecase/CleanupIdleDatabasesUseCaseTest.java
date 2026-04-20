@@ -3,6 +3,7 @@ package br.com.fzdevx.application.usecase;
 import br.com.fzdevx.application.dto.ManagedDatabaseInfo;
 import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
+import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -28,6 +29,7 @@ class CleanupIdleDatabasesUseCaseTest {
     @Mock DatabaseService databaseService;
     @Mock ManagedDatabaseRepository managedDatabaseRepository;
     @Mock ListManagedDatabasesUseCase listManagedDatabasesUseCase;
+    @Mock ResourceCounterService resourceCounterService;
 
     @InjectMocks
     CleanupIdleDatabasesUseCase useCase;
@@ -143,10 +145,34 @@ class CleanupIdleDatabasesUseCaseTest {
         verify(databaseService, never()).dropDatabase(REPO, "protected");
     }
 
+    @Test
+    void cleanup_skipsDatabasesInUseByContainers() {
+        ManagedDatabaseInfo inUse = new ManagedDatabaseInfo("in_use_db", REPO, 1024L, 0, null, null,
+                null, false, Instant.now(), null, 1, null, false, null, null);
+        when(listManagedDatabasesUseCase.listDatabases(REPO)).thenReturn(List.of(inUse));
+
+        int deleted = useCase.cleanup(REPO, 1);
+
+        assertEquals(0, deleted);
+        verify(databaseService, never()).dropDatabase(any(), any());
+    }
+
+    @Test
+    void cleanup_skipsDatabasesWithActiveConnections() {
+        ManagedDatabaseInfo withConns = new ManagedDatabaseInfo("active_db", REPO, 1024L, 5, null, null,
+                null, false, Instant.now(), null, 0, null, false, null, null);
+        when(listManagedDatabasesUseCase.listDatabases(REPO)).thenReturn(List.of(withConns));
+
+        int deleted = useCase.cleanup(REPO, 1);
+
+        assertEquals(0, deleted);
+        verify(databaseService, never()).dropDatabase(any(), any());
+    }
+
     // ---- helpers ----
 
     private ManagedDatabaseInfo makeDb(String name, boolean protectedFlag, Instant effectiveLastUsedAt) {
         return new ManagedDatabaseInfo(name, REPO, 1024L, 0, null, null,
-                effectiveLastUsedAt, protectedFlag, Instant.now(), null);
+                effectiveLastUsedAt, protectedFlag, Instant.now(), null, 0, null, false, null, null);
     }
 }
