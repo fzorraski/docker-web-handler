@@ -199,17 +199,6 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
           <OperationProgress events={sse.events} steps={SNAPSHOT_STEPS} />
         ) : (
           <>
-            <TextField
-              fullWidth
-              type="password"
-              label={t('common.operationsPassword')}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              size="small"
-              sx={{ mb: 3 }}
-              autoComplete="off"
-            />
-
             <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid size={{ xs: 12, md: 6 }}>
                 {locked ? (
@@ -351,6 +340,16 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
                 </Grid>
               )}
             </Grid>
+
+            <TextField
+              fullWidth
+              type="password"
+              label={t('common.operationsPassword')}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              size="small"
+              autoComplete="off"
+            />
           </>
         )}
       </DialogContent>

@@ -212,6 +212,23 @@ export async function cancelExpiration(id: string): Promise<boolean> {
   return handleResponse(res)
 }
 
+export interface UpdateExpirationRequest {
+  containerId: string
+  expiresAt: string | null
+  deleteDatabaseOnExpiration: boolean
+  operationsPassword?: string
+}
+
+export async function updateContainerExpiration(request: UpdateExpirationRequest): Promise<{ success: boolean; error?: string }> {
+  const res = await postJson(API + 'update-expiration', request)
+  if (res.status === 403 || res.status === 400 || res.status === 404) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.error || res.statusText }
+  }
+  if (!res.ok) throw new Error(res.statusText)
+  return res.json()
+}
+
 export async function validateOperationsPassword(password: string): Promise<boolean> {
   const res = await fetchWithAuth(API + 'validate-operations-password', {
     method: 'POST',

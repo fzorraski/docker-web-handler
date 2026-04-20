@@ -39,9 +39,10 @@ interface Props {
   snapshot?: DatabaseSnapshot | null
   onClose: () => void
   onRestored: () => void
+  initialTargetDatabase?: string
 }
 
-export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRestored }: Props) {
+export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRestored, initialTargetDatabase }: Props) {
   const source = snapshot ?? dump
   const isSnapshot = !!snapshot
   const { notify } = useNotification()
@@ -109,13 +110,17 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
 
   useEffect(() => {
     if (!open) return
-    if (snapshot) {
+    if (initialTargetDatabase) {
+      setTargetDb(initialTargetDatabase)
+    } else if (snapshot) {
       setTargetDb(buildSnapshotTargetDbName(snapshot))
-      setSelectedRepo(snapshot.repository)
     } else if (dump) {
       setTargetDb(buildTargetDbName(dump))
     }
-  }, [open, dump, snapshot])
+    if (snapshot) {
+      setSelectedRepo(snapshot.repository)
+    }
+  }, [open, dump, snapshot, initialTargetDatabase])
 
   useEffect(() => {
     const name = targetDb.trim()
