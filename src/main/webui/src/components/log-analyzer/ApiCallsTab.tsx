@@ -143,7 +143,7 @@ export function ApiCallsTab({ analysisId, sensitiveFields, timeRangeStart, timeR
   return (
     <Box>
       {loading && <LinearProgress sx={{ mb: 1 }} />}
-      <Stack direction="row" spacing={2} mb={2} flexWrap="wrap" useFlexGap alignItems="center">
+      <Stack direction="row" spacing={2} mb={1} flexWrap="wrap" useFlexGap alignItems="center">
         <Autocomplete
           size="small"
           sx={{ minWidth: 250 }}
@@ -159,36 +159,6 @@ export function ApiCallsTab({ analysisId, sensitiveFields, timeRangeStart, timeR
           value={filterThread || null}
           onChange={(_, v) => { setFilterThread(v ?? ''); setPage(0) }}
           renderInput={(params) => <TextField {...params} label={t('logAnalyzer.apiCalls.thread')} />}
-        />
-        <TextField
-          size="small"
-          placeholder={t('logAnalyzer.apiCalls.searchContent')}
-          value={contentSearch}
-          onChange={(e) => { setContentSearch(e.target.value); setPage(0) }}
-          slotProps={{ input: {
-            startAdornment: <Search sx={{ mr: 1, color: 'text.secondary', fontSize: 20 }} />,
-            endAdornment: contentSearch ? (
-              <IconButton size="small" onClick={() => { setContentSearch(''); setPage(0) }} sx={{ p: 0.25 }}>
-                <Clear sx={{ fontSize: 16 }} />
-              </IconButton>
-            ) : undefined,
-          } }}
-          sx={{ minWidth: 280 }}
-        />
-        <TextField
-          size="small"
-          placeholder={t('logAnalyzer.apiCalls.excludeContent')}
-          value={excludePatterns}
-          onChange={(e) => { setExcludePatterns(e.target.value); setPage(0) }}
-          slotProps={{ input: {
-            startAdornment: <FilterListOff sx={{ mr: 1, color: 'text.secondary', fontSize: 20 }} />,
-            endAdornment: excludePatterns ? (
-              <IconButton size="small" onClick={() => { setExcludePatterns(''); setPage(0) }} sx={{ p: 0.25 }}>
-                <Clear sx={{ fontSize: 16 }} />
-              </IconButton>
-            ) : undefined,
-          } }}
-          sx={{ minWidth: 280 }}
         />
         <Tooltip title={t('logAnalyzer.apiCalls.timeFilter')} arrow>
           <Chip
@@ -207,6 +177,38 @@ export function ApiCallsTab({ analysisId, sensitiveFields, timeRangeStart, timeR
         <FormControlLabel
           control={<Switch checked={maskEnabled} onChange={(_, v) => setMaskEnabled(v)} size="small" />}
           label={<Typography variant="body2">{t('logAnalyzer.apiCalls.maskSensitive')}</Typography>}
+        />
+      </Stack>
+      <Stack direction="row" spacing={2} mb={2} flexWrap="wrap" useFlexGap alignItems="center">
+        <TextField
+          size="small"
+          placeholder={t('logAnalyzer.apiCalls.searchContent')}
+          value={contentSearch}
+          onChange={(e) => { setContentSearch(e.target.value); setPage(0) }}
+          slotProps={{ input: {
+            startAdornment: <Search sx={{ mr: 1, color: 'text.secondary', fontSize: 20 }} />,
+            endAdornment: contentSearch ? (
+              <IconButton size="small" onClick={() => { setContentSearch(''); setPage(0) }} sx={{ p: 0.25 }}>
+                <Clear sx={{ fontSize: 16 }} />
+              </IconButton>
+            ) : undefined,
+          } }}
+          sx={{ flex: 1, minWidth: 280 }}
+        />
+        <TextField
+          size="small"
+          placeholder={t('logAnalyzer.apiCalls.excludeContent')}
+          value={excludePatterns}
+          onChange={(e) => { setExcludePatterns(e.target.value); setPage(0) }}
+          slotProps={{ input: {
+            startAdornment: <FilterListOff sx={{ mr: 1, color: 'text.secondary', fontSize: 20 }} />,
+            endAdornment: excludePatterns ? (
+              <IconButton size="small" onClick={() => { setExcludePatterns(''); setPage(0) }} sx={{ p: 0.25 }}>
+                <Clear sx={{ fontSize: 16 }} />
+              </IconButton>
+            ) : undefined,
+          } }}
+          sx={{ flex: 1, minWidth: 280 }}
         />
       </Stack>
 

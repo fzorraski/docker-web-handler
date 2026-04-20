@@ -29,6 +29,10 @@ export function useContainerDialogs() {
   const [scheduleOpen, setScheduleOpen] = useState(false)
   const [scheduleInitialTab, setScheduleInitialTab] = useState(0)
 
+  // Edit Expiration
+  const [editExpirationOpen, setEditExpirationOpen] = useState(false)
+  const [editExpirationContainer, setEditExpirationContainer] = useState<DockerContainer | null>(null)
+
   // Cleanup
   const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false)
   const [cleanupMinDays, setCleanupMinDays] = useState(7)
@@ -81,6 +85,16 @@ export function useContainerDialogs() {
 
   const closeSchedule = useCallback(() => setScheduleOpen(false), [])
 
+  const openEditExpiration = useCallback((c: DockerContainer) => {
+    setEditExpirationContainer(c)
+    setEditExpirationOpen(true)
+  }, [])
+
+  const closeEditExpiration = useCallback(() => {
+    setEditExpirationOpen(false)
+    setEditExpirationContainer(null)
+  }, [])
+
   return {
     snapshot: { open: snapshotOpen, repo: snapshotRepo, db: snapshotDb, containerName: snapshotContainerName },
     openSnapshot, closeSnapshot,
@@ -96,6 +110,9 @@ export function useContainerDialogs() {
 
     schedule: { open: scheduleOpen, containerId: scheduleContainerId, containerName: scheduleContainerName, expiresAt: scheduleExpiresAt, initialTab: scheduleInitialTab },
     openSchedule, closeSchedule,
+
+    editExpiration: { open: editExpirationOpen, container: editExpirationContainer },
+    openEditExpiration, closeEditExpiration,
 
     cleanup: { open: cleanupDialogOpen, minDays: cleanupMinDays, running: cleanupRunning },
     openCleanup: useCallback(() => setCleanupDialogOpen(true), []),

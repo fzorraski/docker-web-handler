@@ -8,9 +8,10 @@ interface Props {
   expiresAt: string
   onCancel: () => void
   onExpired: () => void
+  onClick?: () => void
 }
 
-export default function ExpirationChip({ expiresAt, onCancel, onExpired }: Props) {
+export default function ExpirationChip({ expiresAt, onCancel, onExpired, onClick }: Props) {
   const { t } = useTranslation()
   const expiresMs = useMemo(() => new Date(expiresAt).getTime(), [expiresAt])
   const [remaining, setRemaining] = useState('')
@@ -53,6 +54,8 @@ export default function ExpirationChip({ expiresAt, onCancel, onExpired }: Props
       icon={<Timer />}
       variant="outlined"
       onDelete={onCancel}
+      onClick={onClick}
+      sx={onClick ? { cursor: 'pointer' } : undefined}
     />
   )
 }

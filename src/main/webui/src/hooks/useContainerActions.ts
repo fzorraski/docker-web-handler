@@ -7,10 +7,12 @@ import {
   cancelDatabaseDeletion,
   cancelExpiration,
   extendExpiration,
+  updateContainerExpiration,
   lockContainers,
   unlockContainers,
   MemoryGuardError,
   type StartResult,
+  type UpdateExpirationRequest,
 } from '../services/containerService'
 import { streamRemoveContainer } from '../services/sseService'
 import { useSseOperation } from './useSseOperation'
@@ -168,6 +170,21 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
     loadContainers()
   }, [confirm, t, notify, loadContainers])
 
+  const handleUpdateExpiration = useCallback(async (
+    request: UpdateExpirationRequest,
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const result = await updateContainerExpiration(request)
+      if (result.success) {
+        notify(t('containers.expirationUpdated'), 'success')
+        loadContainers()
+      }
+      return result
+    } catch {
+      return { success: false, error: t('containers.failedToUpdateExpiration') }
+    }
+  }, [t, notify, loadContainers])
+
   const handleCancelDbDeletion = useCallback(async (id: string, name: string) => {
     if (!(await confirm(t('containers.cancelDbDeletion', { name })))) return
     try {
@@ -238,6 +255,7 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
     handleRemove,
     handleRemoveDialogClose,
     handleExtendExpiration,
+    handleUpdateExpiration,
     handleCancelExpiration,
     handleCancelDbDeletion,
     handleCleanup,
