@@ -2,8 +2,10 @@ package br.com.fzdevx.application.usecase;
 
 import br.com.fzdevx.application.dto.ManagedDatabaseInfo;
 import br.com.fzdevx.application.port.ManagedDatabaseRepository;
+import br.com.fzdevx.domain.model.ContainerExpiration;
 import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
+import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -30,6 +32,9 @@ public class ListManagedDatabasesUseCase {
 
     @Inject
     AllowedRepositoryResolver allowedRepositoryResolver;
+
+    @Inject
+    ContainerExpirationService expirationService;
 
     @Inject
     @ConfigProperty(name = "database.managed.cache.ttl-seconds", defaultValue = "15")
@@ -86,6 +91,11 @@ public class ListManagedDatabasesUseCase {
                 .stream()
                 .collect(Collectors.toMap(ManagedDatabase::getName, Function.identity()));
 
+        // Fetch all expirations once and group by database name (avoids N+1)
+        Map<String, List<ContainerExpiration>> expirationsByDb = expirationService.findAll().stream()
+                .filter(e -> e.getDatabaseName() != null)
+                .collect(Collectors.groupingBy(ContainerExpiration::getDatabaseName));
+
         List<ManagedDatabaseInfo> result = new ArrayList<>();
 
         for (String name : dbNames) {
@@ -99,6 +109,16 @@ public class ListManagedDatabasesUseCase {
             Instant appLast = md.getAppLastUsedAt();
             Instant effective = latest(pgLast, appLast);
 
+            // Container association
+            List<ContainerExpiration> expirations = expirationsByDb.getOrDefault(name, List.of());
+            int containerCount = expirations.size();
+            Instant earliestExp = expirations.stream()
+                    .map(ContainerExpiration::getExpiresAt)
+                    .filter(e -> e != null)
+                    .min(Instant::compareTo).orElse(null);
+            boolean scheduledForDeletion = expirations.stream()
+                    .anyMatch(ContainerExpiration::isDeleteDatabaseOnExpiration);
+
             result.add(new ManagedDatabaseInfo(
                     name,
                     repository,
@@ -109,7 +129,12 @@ public class ListManagedDatabasesUseCase {
                     effective,
                     md.isProtectedFlag(),
                     md.getCreatedAt(),
-                    md.getDescription()
+                    md.getDescription(),
+                    containerCount,
+                    earliestExp,
+                    scheduledForDeletion,
+                    md.getLastRestoredFrom(),
+                    md.getLastRestoredAt()
             ));
         }
 

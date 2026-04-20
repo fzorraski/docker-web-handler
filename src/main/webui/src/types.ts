@@ -31,6 +31,7 @@ export interface DatabaseConflict {
   scheduledForDeletionBy?: string | null
   inUseByContainers: string[]
   expiresAt?: string | null
+  protectedFlag?: boolean
 }
 
 export interface ApiResponse {
@@ -220,4 +221,9 @@ export interface ManagedDatabaseInfo {
   protectedFlag: boolean
   createdAt?: string
   description?: string
+  containerCount: number
+  earliestExpiration?: string
+  scheduledForDeletion: boolean
+  lastRestoredFrom?: string
+  lastRestoredAt?: string
 }

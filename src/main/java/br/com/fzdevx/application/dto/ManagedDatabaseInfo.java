@@ -13,5 +13,10 @@ public record ManagedDatabaseInfo(
         Instant effectiveLastUsedAt,
         boolean protectedFlag,
         Instant createdAt,
-        String description
+        String description,
+        int containerCount,
+        Instant earliestExpiration,
+        boolean scheduledForDeletion,
+        String lastRestoredFrom,
+        Instant lastRestoredAt
 ) {}

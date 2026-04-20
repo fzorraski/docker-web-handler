@@ -413,12 +413,14 @@ public class RestoreDumpUseCase {
             }
             resourceCounterService.increment(ResourceCounterService.RESTORES);
 
-            // Track app-level usage for managed databases
+            // Track app-level usage and restore info for managed databases
             try {
                 ManagedDatabase md = managedDatabaseRepository
                         .find(request.getRepository(), request.getTargetDatabase())
                         .orElseGet(() -> new ManagedDatabase(request.getRepository(), request.getTargetDatabase()));
                 md.setAppLastUsedAt(Instant.now());
+                md.setLastRestoredFrom(displayName);
+                md.setLastRestoredAt(Instant.now());
                 managedDatabaseRepository.save(md);
                 listManagedDatabasesUseCase.invalidateCache(request.getRepository());
             } catch (Exception ignored) {

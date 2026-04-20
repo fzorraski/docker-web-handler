@@ -12,6 +12,8 @@ public class ManagedDatabase {
     private Instant appLastUsedAt;
     private Instant createdAt;
     private String description;
+    private String lastRestoredFrom;
+    private Instant lastRestoredAt;
 
     public ManagedDatabase() {
     }
@@ -40,6 +42,12 @@ public class ManagedDatabase {
 
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+
+    public String getLastRestoredFrom() { return lastRestoredFrom; }
+    public void setLastRestoredFrom(String lastRestoredFrom) { this.lastRestoredFrom = lastRestoredFrom; }
+
+    public Instant getLastRestoredAt() { return lastRestoredAt; }
+    public void setLastRestoredAt(Instant lastRestoredAt) { this.lastRestoredAt = lastRestoredAt; }
 
     @Override
     public boolean equals(Object o) {
