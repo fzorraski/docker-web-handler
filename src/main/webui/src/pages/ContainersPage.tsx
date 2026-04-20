@@ -25,11 +25,12 @@ import ContainerStatsDialog from '../components/ContainerStatsDialog'
 import ContainerTerminalDialog from '../components/ContainerTerminalDialog'
 import PasswordConfirmDialog from '../components/PasswordConfirmDialog'
 import ExpirationChip from '../components/ExpirationChip'
+import EditContainerExpirationDialog from '../components/EditContainerExpirationDialog'
 import OperationProgress, { REMOVE_STEPS } from '../components/OperationProgress'
 import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
 import { useTranslation } from 'react-i18next'
-import { formatBackendDate } from '../utils/format'
+import { formatBackendDate, formatDate } from '../utils/format'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
 import { useStickyHeader } from '../hooks/useStickyHeader'
 import { useContainerActions } from '../hooks/useContainerActions'
@@ -73,7 +74,7 @@ import {
   TablePagination,
   LinearProgress,
 } from '@mui/material'
-import { Search, AddCircleOutline, Stop, PlayArrow, Delete, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord, Code, Memory } from '@mui/icons-material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord, Code, Memory, Timer } from '@mui/icons-material'
 import { isSchedulingEnabled, listSchedules } from '../services/scheduleService'
 import { subscribeContainerUpdates } from '../services/sseService'
 import type { ContainerSchedule } from '../types'
@@ -132,6 +133,8 @@ export default function ContainersPage() {
   const [showStoppedOnly, setShowStoppedOnly] = useState(false)
   const [memoryGuardEnabled, setMemoryGuardEnabled] = useState(false)
   const [memoryStatus, setMemoryStatus] = useState<HostMemoryStatus | null>(null)
+  const [dbDeletionEnabled, setDbDeletionEnabled] = useState(false)
+  const [opsPwRequired, setOpsPwRequired] = useState(true)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [remoteLockIds, setRemoteLockIds] = useState<Set<string>>(new Set())
 
@@ -225,6 +228,8 @@ export default function ContainersPage() {
       setTerminalUploadEnabled(f.terminalUpload)
       setTerminalUploadMaxSizeMb(f.terminalUploadMaxSizeMb)
       setTerminalUploadDefaultPath(f.terminalUploadDefaultPath)
+      setDbDeletionEnabled(f.deletionOnExpiration)
+      setOpsPwRequired(f.operationsPasswordRequired)
     }).catch(() => setTerminalFeatureEnabled(false))
     isSchedulingEnabled().then((enabled) => {
       setSchedulingFeatureEnabled(enabled)
@@ -678,8 +683,8 @@ export default function ContainersPage() {
                   {vis.has('ports') && (
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                        {c.ports !== '-'
-                          ? c.ports.split(',').map((port, i) => (
+                        {c.ports && c.ports !== '-'
+                          ? c.ports.split(',').filter(p => p.trim()).map((port, i) => (
                               <Chip
                                 key={i}
                                 label={port.trim()}
@@ -714,9 +719,10 @@ export default function ContainersPage() {
                             <Typography variant="body2">{c.databaseName}</Typography>
                             {migration && (
                               <Tooltip title={
-                                migration.mode === 'API' && migration.sourceVersion && migration.targetVersion
+                                (migration.mode === 'API' && migration.sourceVersion && migration.targetVersion
                                   ? t('containers.dbMigrated') + ` (${migration.sourceVersion} \u2192 ${migration.targetVersion})`
-                                  : t('containers.dbMigrated')
+                                  : t('containers.dbMigrated'))
+                                + (migration.migratedAt ? ` — ${formatDate(migration.migratedAt)}` : '')
                               }>
                                 <SwapHoriz sx={{ fontSize: 16, color: 'info.main' }} />
                               </Tooltip>
@@ -733,7 +739,7 @@ export default function ContainersPage() {
                       {c.expiresAt ? (
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <ExpirationChip expiresAt={c.expiresAt} onCancel={() => actions.handleCancelExpiration(c.containerId, c.names)} onExpired={loadContainers} />
+                            <ExpirationChip expiresAt={c.expiresAt} onCancel={() => actions.handleCancelExpiration(c.containerId, c.names)} onExpired={loadContainers} onClick={() => dialogs.openEditExpiration(c)} />
                             <Tooltip title={t('containers.extendBy10')}>
                               <IconButton size="small" onClick={() => actions.handleExtendExpiration(c.containerId)} sx={{ p: 0.25 }}>
                                 <MoreTime fontSize="small" />
@@ -743,7 +749,7 @@ export default function ContainersPage() {
                           {c.databaseName && c.deleteDatabaseOnExpiration && (
                             <Tooltip title={t('containers.dbWillBeDeleted', { database: c.databaseName })}>
                               <Chip
-                                label={`DB: ${c.databaseName}`}
+                                label={t('containers.dbWillBeDeletedShort')}
                                 size="small"
                                 color="warning"
                                 icon={<Warning />}
@@ -755,7 +761,7 @@ export default function ContainersPage() {
                           {c.databaseName && !c.deleteDatabaseOnExpiration && dbsScheduledForDeletion.has(c.databaseName) && (
                             <Tooltip title={t('containers.dbScheduledByContainer', { database: c.databaseName, container: dbsScheduledForDeletion.get(c.databaseName) })}>
                               <Chip
-                                label={`DB: ${c.databaseName}`}
+                                label={t('containers.dbScheduledByContainerShort')}
                                 size="small"
                                 color="error"
                                 icon={<Warning />}
@@ -765,7 +771,16 @@ export default function ContainersPage() {
                           )}
                         </Box>
                       ) : (
-                        <Typography variant="body2" color="text.secondary">-</Typography>
+                        <Tooltip title={t('containers.addExpiration')}>
+                          <Chip
+                            icon={<Timer />}
+                            label={t('containers.addExpiration')}
+                            size="small"
+                            variant="outlined"
+                            onClick={() => dialogs.openEditExpiration(c)}
+                            clickable
+                          />
+                        </Tooltip>
                       )}
                     </TableCell>
                   )}
@@ -963,6 +978,19 @@ export default function ContainersPage() {
               </MenuItem>
             ),
 
+            <Divider key="exp-divider" />,
+
+            <MenuItem
+              key="edit-expiration"
+              onClick={() => {
+                dialogs.openEditExpiration(actionMenu.target!)
+                actionMenu.close()
+              }}
+            >
+              <ListItemIcon><Timer fontSize="small" /></ListItemIcon>
+              <ListItemText>{actionMenu.target.expiresAt ? t('containers.editExpiration') : t('containers.addExpiration')}</ListItemText>
+            </MenuItem>,
+
             <Divider key="delete-divider" />,
 
             <MenuItem
@@ -1025,6 +1053,15 @@ export default function ContainersPage() {
         containerId={dialogs.stats.containerId ?? ''}
         containerName={dialogs.stats.containerName}
         onClose={dialogs.closeStats}
+      />
+
+      <EditContainerExpirationDialog
+        open={dialogs.editExpiration.open}
+        container={dialogs.editExpiration.container}
+        dbDeletionEnabled={dbDeletionEnabled}
+        operationsPasswordRequired={opsPwRequired}
+        onClose={dialogs.closeEditExpiration}
+        onSave={actions.handleUpdateExpiration}
       />
 
       <PasswordConfirmDialog

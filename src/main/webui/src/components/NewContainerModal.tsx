@@ -672,7 +672,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                             <Switch
                               checked={deleteDbOnExpiration}
                               onChange={(e) => setDeleteDbOnExpiration(e.target.checked)}
-                              disabled={hasDbUsageConflict}
+                              disabled={hasDbUsageConflict || dbConflict?.protectedFlag}
                               color="warning"
                             />
                           }
@@ -684,7 +684,14 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                         />
                       </Grid>
                     )}
-                    {hasDbUsageConflict && dbDeletionEnabled && selectedDb && expirationEnabled && (
+                    {dbConflict?.protectedFlag && dbDeletionEnabled && selectedDb && expirationEnabled && (
+                      <Grid size={{ xs: 12 }}>
+                        <Alert severity="info" variant="outlined">
+                          <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbProtectedNoDeletion', { database: selectedDb }) }} />
+                        </Alert>
+                      </Grid>
+                    )}
+                    {hasDbUsageConflict && !dbConflict?.protectedFlag && dbDeletionEnabled && selectedDb && expirationEnabled && (
                       <Grid size={{ xs: 12 }}>
                         <Alert severity="error" variant="outlined">
                           <span dangerouslySetInnerHTML={{ __html: t('newContainer.cannotEnableDbDeletion', { database: selectedDb, containers: dbConflict!.inUseByContainers.join(', ') }) }} />
@@ -709,6 +716,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                                 setMigrationEnabled(e.target.checked)
                                 if (e.target.checked && !migrationConfig) {
                                   setMigrationModalOpen(true)
+                                } else if (!e.target.checked) {
+                                  setMigrationConfig(null)
                                 }
                               }}
                             />
@@ -851,7 +860,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                             <Switch
                               checked={deleteDbOnExpiration}
                               onChange={(e) => setDeleteDbOnExpiration(e.target.checked)}
-                              disabled={hasDbUsageConflict}
+                              disabled={hasDbUsageConflict || dbConflict?.protectedFlag}
                               color="warning"
                             />
                           }
@@ -863,7 +872,14 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                         />
                       </Grid>
                     )}
-                    {hasDbUsageConflict && dbDeletionEnabled && restoreTargetDb.trim() && expirationEnabled && (
+                    {dbConflict?.protectedFlag && dbDeletionEnabled && restoreTargetDb.trim() && expirationEnabled && (
+                      <Grid size={{ xs: 12 }}>
+                        <Alert severity="info" variant="outlined">
+                          <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbProtectedNoDeletion', { database: restoreTargetDb.trim() }) }} />
+                        </Alert>
+                      </Grid>
+                    )}
+                    {hasDbUsageConflict && !dbConflict?.protectedFlag && dbDeletionEnabled && restoreTargetDb.trim() && expirationEnabled && (
                       <Grid size={{ xs: 12 }}>
                         <Alert severity="error" variant="outlined">
                           <span dangerouslySetInnerHTML={{ __html: t('newContainer.cannotEnableDbDeletion', { database: restoreTargetDb.trim(), containers: dbConflict!.inUseByContainers.join(', ') }) }} />
@@ -947,6 +963,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                                 setMigrationEnabled(e.target.checked)
                                 if (e.target.checked && !migrationConfig) {
                                   setMigrationModalOpen(true)
+                                } else if (!e.target.checked) {
+                                  setMigrationConfig(null)
                                 }
                               }}
                             />
@@ -962,6 +980,11 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                             onClick={() => setMigrationModalOpen(true)}
                             sx={{ ml: 1 }}
                           />
+                        )}
+                        {!migrationEnabled && selectedDump?.version && selectedTag && compareTagsDesc(selectedDump.version, selectedTag) > 0 && (
+                          <Alert severity="info" variant="outlined" sx={{ mt: 1 }}>
+                            <span dangerouslySetInnerHTML={{ __html: t('newContainer.migrationVersionHint', { dumpVersion: selectedDump.version, tagVersion: selectedTag }) }} />
+                          </Alert>
                         )}
                       </Grid>
                     )}
