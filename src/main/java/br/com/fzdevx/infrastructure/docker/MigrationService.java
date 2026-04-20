@@ -4,6 +4,7 @@ import br.com.fzdevx.application.port.DatabasePort;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.model.DatabaseMigrationRecord;
 import br.com.fzdevx.infrastructure.persistence.JsonFileMigrationRepository;
+import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.ExecCreateCmdResponse;
@@ -52,6 +53,9 @@ public class MigrationService {
     JsonFileMigrationRepository migrationRepository;
 
     @Inject
+    ResourceCounterService resourceCounterService;
+
+    @Inject
     Config config;
 
     @Inject
@@ -96,6 +100,7 @@ public class MigrationService {
                 result != null ? result.versionsIncluded() : null,
                 result != null ? result.totalStatements() : null);
         migrationRepository.save(record);
+        resourceCounterService.increment(ResourceCounterService.MIGRATIONS_EXECUTED);
     }
 
     public List<DatabaseMigrationRecord> getMigratedDatabases() {

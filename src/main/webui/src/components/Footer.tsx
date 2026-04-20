@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Box, Typography, Tooltip, useTheme, Dialog, DialogTitle, DialogContent, LinearProgress, IconButton, Table, TableBody, TableCell, TableRow, TableHead } from '@mui/material'
-import { Dns, DeleteSweep, Storage, CameraAlt, SettingsBackupRestore, Schedule, Memory, Speed, SdStorage, Close, Monitor, Assessment, Description } from '@mui/icons-material'
+import { Dns, DeleteSweep, Storage, CameraAlt, SettingsBackupRestore, Schedule, Memory, Speed, SdStorage, Close, Monitor, Assessment, Description, DeleteForever, SwapHoriz } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 
 interface Stats {
@@ -14,6 +14,8 @@ interface Stats {
   restores: number
   schedulesExecuted: number
   logsAnalyzed: number
+  databasesDeleted: number
+  migrationsExecuted: number
   startedAt: string
 }
 
@@ -117,6 +119,9 @@ export default function Footer() {
               )}
               {stats.logsAnalyzed > 0 && (
                 <StatItem icon={<Description />} label={t('footer.logsAnalyzed')} value={stats.logsAnalyzed} isDark={isDark} />
+              )}
+              {stats.databasesDeleted > 0 && (
+                <StatItem icon={<DeleteForever />} label={t('footer.databasesDeleted')} value={stats.databasesDeleted} isDark={isDark} />
               )}
             </Box>
           </>
@@ -249,6 +254,12 @@ function StatsModal({ open, onClose, stats, isDark, appVersion }: { open: boolea
   }
   if (stats.logsAnalyzed > 0) {
     rows.push({ icon: <Description color="action" />, label: t('footer.logsAnalyzed'), total: stats.logsAnalyzed })
+  }
+  if (stats.databasesDeleted > 0) {
+    rows.push({ icon: <DeleteForever color="action" />, label: t('footer.databasesDeleted'), total: stats.databasesDeleted })
+  }
+  if (stats.migrationsExecuted > 0) {
+    rows.push({ icon: <SwapHoriz color="action" />, label: t('footer.migrationsExecuted'), total: stats.migrationsExecuted })
   }
 
   return (

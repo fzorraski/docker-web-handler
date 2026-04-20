@@ -40,6 +40,8 @@ public class ResourceCounterService {
     public static final String RESTORES = "restores";
     public static final String SCHEDULES_EXECUTED = "schedulesExecuted";
     public static final String LOGS_ANALYZED = "logsAnalyzed";
+    public static final String DATABASES_DELETED = "databasesDeleted";
+    public static final String MIGRATIONS_EXECUTED = "migrationsExecuted";
     private static final String STARTED_AT_KEY = "_startedAt";
 
     private volatile String startedAt;
@@ -77,6 +79,8 @@ public class ResourceCounterService {
         result.put(RESTORES, get(RESTORES));
         result.put(SCHEDULES_EXECUTED, get(SCHEDULES_EXECUTED));
         result.put(LOGS_ANALYZED, get(LOGS_ANALYZED));
+        result.put(DATABASES_DELETED, get(DATABASES_DELETED));
+        result.put(MIGRATIONS_EXECUTED, get(MIGRATIONS_EXECUTED));
         return result;
     }
 
