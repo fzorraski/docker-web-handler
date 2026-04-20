@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import type { ManagedDatabaseInfo, ServerHealth, DatabaseHealthInfo, DatabaseActivity, DatabaseTableStats } from '../types'
+import type { ManagedDatabaseInfo, ServerHealth, DatabaseHealthInfo, DatabaseActivity, DatabaseTableStats, DatabaseDump, DatabaseSnapshot } from '../types'
 import {
   getManagedDatabaseRepositories,
   listManagedDatabases,
@@ -15,13 +15,20 @@ import {
 import { useNotification } from './NotificationProvider'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
 import FullscreenToggleButton from './FullscreenToggleButton'
+import CreateSnapshotModal from './CreateSnapshotModal'
+import DumpBrowserModal from './DumpBrowserModal'
+import RestoreDumpModal from './RestoreDumpModal'
+import RunMigrationModal from './RunMigrationModal'
+import { listDumps } from '../services/dumpService'
+import { isMigrationEnabled, getMigratedDatabases, type MigratedDatabase } from '../services/containerService'
+import { validateOperationsPassword } from '../services/containerService'
 import { RateLimitError } from '../services/fetchWithAuth'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
 import { useStickyHeader } from '../hooks/useStickyHeader'
 import { useTablePagination } from '../hooks/useTablePagination'
 import { useActionMenu } from '../hooks/useActionMenu'
 import { useDatabaseCleanup } from '../hooks/useDatabaseCleanup'
-import { formatBytes } from '../utils/format'
+import { formatBytes, formatDate } from '../utils/format'
 import { copyToClipboard } from '../utils/clipboard'
 import { getLastUsedColor, getLastUsedLabel } from '../utils/lastUsedColor'
 import { useTranslation } from 'react-i18next'
@@ -86,6 +93,9 @@ import {
   Check,
   Close,
   InfoOutlined,
+  CameraAlt,
+  Restore,
+  SwapHoriz,
 } from '@mui/icons-material'
 
 type PendingDelete =
@@ -124,6 +134,18 @@ export default function DatabasesTab() {
 
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [pendingProtect, setPendingProtect] = useState<PendingProtect | null>(null)
+  const [forceDeleteConfirm, setForceDeleteConfirm] = useState<{ db: ManagedDatabaseInfo; password: string; activeConnections: number } | null>(null)
+  const [snapshotTarget, setSnapshotTarget] = useState<ManagedDatabaseInfo | null>(null)
+  const [restoreTarget, setRestoreTarget] = useState<ManagedDatabaseInfo | null>(null)
+  const [restorePasswordOpen, setRestorePasswordOpen] = useState(false)
+  const [dumpBrowserOpen, setDumpBrowserOpen] = useState(false)
+  const [restoreOpen, setRestoreOpen] = useState(false)
+  const [restoreDump, setRestoreDump] = useState<DatabaseDump | null>(null)
+  const [restoreSnapshot, setRestoreSnapshot] = useState<DatabaseSnapshot | null>(null)
+  const [browseDumps, setBrowseDumps] = useState<DatabaseDump[]>([])
+  const [migrationEnabled, setMigrationEnabled] = useState(false)
+  const [migrationTarget, setMigrationTarget] = useState<ManagedDatabaseInfo | null>(null)
+  const [migratedDatabases, setMigratedDatabases] = useState<MigratedDatabase[]>([])
   const [healthOpen, setHealthOpen] = useState(false)
   const [health, setHealth] = useState<ServerHealth | null>(null)
   const [healthLoading, setHealthLoading] = useState(false)
@@ -183,10 +205,13 @@ export default function DatabasesTab() {
     })
   }, [])
 
-  // Load databases when repo changes
+  // Load databases and feature flags when repo changes
   useEffect(() => {
+    if (!currentRepo) return
     loadDatabases()
-  }, [loadDatabases])
+    isMigrationEnabled().then(setMigrationEnabled).catch(() => setMigrationEnabled(false))
+    getMigratedDatabases().then(setMigratedDatabases).catch(() => setMigratedDatabases([]))
+  }, [currentRepo, loadDatabases])
 
   // Auto-refresh every 60s
   useEffect(() => {
@@ -203,6 +228,7 @@ export default function DatabasesTab() {
     const cutoff = Date.now() - cleanup.minDays * 24 * 60 * 60 * 1000
     return databases.filter((db) => {
       if (db.protectedFlag) return false
+      if (db.activeConnections > 0) return false // in use by containers
       // "Never used" databases are always eligible — they've been idle since forever
       if (!db.effectiveLastUsedAt) return true
       return new Date(db.effectiveLastUsedAt).getTime() < cutoff
@@ -363,6 +389,36 @@ export default function DatabasesTab() {
     )
   }
 
+  function openRestorePassword(db: ManagedDatabaseInfo) {
+    setRestoreTarget(db)
+    setRestorePasswordOpen(true)
+  }
+
+  async function handleRestorePasswordConfirm(password: string) {
+    const valid = await validateOperationsPassword(password)
+    if (!valid) {
+      notify(t('common.invalidOperationsPassword'), 'error')
+      return
+    }
+    setRestorePasswordOpen(false)
+    listDumps().then(setBrowseDumps).catch(() => setBrowseDumps([]))
+    setDumpBrowserOpen(true)
+  }
+
+  function handleDumpSelected(dump: DatabaseDump) {
+    setRestoreDump(dump)
+    setRestoreSnapshot(null)
+    setDumpBrowserOpen(false)
+    setRestoreOpen(true)
+  }
+
+  function handleSnapshotSelected(snapshot: DatabaseSnapshot) {
+    setRestoreSnapshot(snapshot)
+    setRestoreDump(null)
+    setDumpBrowserOpen(false)
+    setRestoreOpen(true)
+  }
+
   function startEditDesc(db: ManagedDatabaseInfo) {
     setEditingDesc(db.name)
     setEditDescValue(db.description ?? '')
@@ -464,6 +520,10 @@ export default function DatabasesTab() {
           notify(t('database.databaseDeleted'), 'success')
           setPendingDelete(null)
           loadDatabases()
+        } else if (result.requiresForce) {
+          // Active connections detected — ask user to confirm force delete
+          setPendingDelete(null)
+          setForceDeleteConfirm({ db: pendingDelete.db, password, activeConnections: result.activeConnections ?? 0 })
         } else {
           notify(result.error || t('database.deleteFailed'), 'error')
         }
@@ -484,6 +544,23 @@ export default function DatabasesTab() {
     }
   }
 
+  async function handleForceDelete() {
+    if (!forceDeleteConfirm) return
+    const { db, password } = forceDeleteConfirm
+    setForceDeleteConfirm(null) // clear immediately before API call
+    try {
+      const result = await deleteManagedDatabase(currentRepo, db.name, password, true)
+      if (result.success) {
+        notify(t('database.databaseDeleted'), 'success')
+        loadDatabases()
+      } else {
+        notify(result.error || t('database.deleteFailed'), 'error')
+      }
+    } catch (e) {
+      notify(t('common.unexpectedError'), 'error')
+    }
+  }
+
   async function handleProtectConfirm(password: string) {
     if (!pendingProtect) return
     try {
@@ -493,6 +570,9 @@ export default function DatabasesTab() {
           ? t('database.protectedEnabled', { name: pendingProtect.db.name })
           : t('database.protectedDisabled', { name: pendingProtect.db.name })
         notify(msg, 'success')
+        if (result.protected && result.disabledDeletionCount && result.disabledDeletionCount > 0) {
+          notify(t('database.protectedAutoDisabledContainers', { count: result.disabledDeletionCount }), 'info')
+        }
         setPendingProtect(null)
         loadDatabases()
       } else {
@@ -813,6 +893,51 @@ export default function DatabasesTab() {
                           </Typography>
                           {db.description && <InfoOutlined sx={{ fontSize: 14, color: 'text.secondary' }} />}
                           <Edit className="edit-icon" sx={{ fontSize: 14, opacity: 0, color: 'text.secondary', transition: 'opacity 0.2s' }} />
+                          {db.containerCount > 0 && (
+                            <Tooltip title={t('database.containerCountTooltip', { count: db.containerCount })}>
+                              <Chip
+                                label={db.containerCount}
+                                size="small"
+                                color="info"
+                                variant="outlined"
+                                icon={<Dns sx={{ fontSize: 12 }} />}
+                                sx={{ fontSize: '0.65rem', height: 18, ml: 0.5 }}
+                              />
+                            </Tooltip>
+                          )}
+                          {db.earliestExpiration && (
+                            <Tooltip title={db.scheduledForDeletion
+                              ? t('database.expirationDeleteTooltip', { date: formatDate(db.earliestExpiration) })
+                              : t('database.expirationTooltip', { date: formatDate(db.earliestExpiration) })
+                            }>
+                              <Chip
+                                label={formatDate(db.earliestExpiration)}
+                                size="small"
+                                color={db.scheduledForDeletion ? 'error' : 'warning'}
+                                variant="outlined"
+                                icon={<AccessTime sx={{ fontSize: 12 }} />}
+                                sx={{ fontSize: '0.65rem', height: 18, ml: 0.5 }}
+                              />
+                            </Tooltip>
+                          )}
+                          {(() => {
+                            const migration = migratedDatabases.find(m => m.databaseName === db.name)
+                            if (!migration) return null
+                            let label = migration.mode === 'API' && migration.sourceVersion && migration.targetVersion
+                              ? `${t('database.dbMigrated')} (${migration.sourceVersion} \u2192 ${migration.targetVersion})`
+                              : t('database.dbMigrated')
+                            if (migration.migratedAt) label += ` — ${formatDate(migration.migratedAt)}`
+                            return (
+                              <Tooltip title={label}>
+                                <SwapHoriz sx={{ fontSize: 16, color: 'info.main', ml: 0.5 }} />
+                              </Tooltip>
+                            )
+                          })()}
+                          {db.lastRestoredFrom && (
+                            <Tooltip title={`${t('database.dbRestored')}: ${db.lastRestoredFrom}${db.lastRestoredAt ? ' (' + formatDate(db.lastRestoredAt) + ')' : ''}`}>
+                              <Restore sx={{ fontSize: 16, color: 'success.main', ml: 0.5 }} />
+                            </Tooltip>
+                          )}
                         </Box>
                       </Tooltip>
                     )}
@@ -918,6 +1043,30 @@ export default function DatabasesTab() {
             <ListItemIcon><MonitorHeart fontSize="small" color="info" /></ListItemIcon>
             <ListItemText>{t('database.dbHealth.button')}</ListItemText>
           </MenuItem>,
+          <Divider key="divider0" />,
+          <MenuItem
+            key="snapshot"
+            onClick={() => { setSnapshotTarget(menu.target!); menu.close() }}
+          >
+            <ListItemIcon><CameraAlt fontSize="small" color="primary" /></ListItemIcon>
+            <ListItemText>{t('database.createSnapshot')}</ListItemText>
+          </MenuItem>,
+          <MenuItem
+            key="restore"
+            onClick={() => { openRestorePassword(menu.target!); menu.close() }}
+          >
+            <ListItemIcon><Restore fontSize="small" color="success" /></ListItemIcon>
+            <ListItemText>{t('common.restore')}</ListItemText>
+          </MenuItem>,
+          ...(migrationEnabled ? [
+            <MenuItem
+              key="migration"
+              onClick={() => { setMigrationTarget(menu.target!); menu.close() }}
+            >
+              <ListItemIcon><SwapHoriz fontSize="small" /></ListItemIcon>
+              <ListItemText>{t('database.runMigration')}</ListItemText>
+            </MenuItem>,
+          ] : []),
           <Divider key="divider1" />,
           <MenuItem
             key="protect"
@@ -928,7 +1077,7 @@ export default function DatabasesTab() {
                 ? <ShieldOutlined fontSize="small" color="warning" />
                 : <Shield fontSize="small" color="success" />}
             </ListItemIcon>
-            <ListItemText>{t('database.toggleProtected')}</ListItemText>
+            <ListItemText>{menu.target.protectedFlag ? t('database.removeProtection') : t('database.enableProtection')}</ListItemText>
           </MenuItem>,
           <Divider key="divider2" />,
           <MenuItem
@@ -1756,6 +1905,31 @@ export default function DatabasesTab() {
         </DialogActions>
       </Dialog>
 
+      {/* Force delete confirmation (active connections warning) */}
+      <Dialog open={forceDeleteConfirm !== null} onClose={() => setForceDeleteConfirm(null)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: 'warning.main', color: 'white' }}>
+          <Warning sx={{ mr: 1, verticalAlign: 'middle' }} />
+          {t('database.forceDeleteTitle')}
+        </DialogTitle>
+        <DialogContent dividers sx={{ pt: 3 }}>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <span dangerouslySetInnerHTML={{ __html: t('database.forceDeleteMessage', {
+              name: forceDeleteConfirm?.db.name ?? '',
+              count: forceDeleteConfirm?.activeConnections ?? 0,
+            }) }} />
+          </Alert>
+          <Typography variant="body2" color="text.secondary">
+            {t('database.forceDeleteHint')}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setForceDeleteConfirm(null)}>{t('common.cancel')}</Button>
+          <Button variant="contained" color="error" onClick={handleForceDelete}>
+            {t('database.forceDeleteConfirm')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Description edit confirmation */}
       <PasswordConfirmDialog
         open={descPasswordOpen}
@@ -1768,6 +1942,53 @@ export default function DatabasesTab() {
         confirmColor="primary"
         icon={<Edit />}
       />
+
+      {/* Create Snapshot */}
+      <CreateSnapshotModal
+        open={snapshotTarget !== null}
+        onClose={() => setSnapshotTarget(null)}
+        onCreated={() => { setSnapshotTarget(null); loadDatabases() }}
+        initialRepository={currentRepo}
+        initialDatabase={snapshotTarget?.name}
+      />
+
+      {/* Restore — Password + Dump Browser + Restore Modal */}
+      <PasswordConfirmDialog
+        open={restorePasswordOpen}
+        onClose={() => { setRestorePasswordOpen(false); setRestoreTarget(null) }}
+        onConfirm={handleRestorePasswordConfirm}
+        title={t('common.restore')}
+        message={t('database.restoreConfirmMessage', { name: restoreTarget?.name ?? '' })}
+        confirmLabel={t('common.restore')}
+        confirmColor="success"
+        icon={<Restore />}
+      />
+      <DumpBrowserModal
+        open={dumpBrowserOpen}
+        dumps={browseDumps}
+        onClose={() => setDumpBrowserOpen(false)}
+        onSelect={handleDumpSelected}
+        onSelectSnapshot={handleSnapshotSelected}
+      />
+      <RestoreDumpModal
+        open={restoreOpen}
+        dump={restoreDump}
+        snapshot={restoreSnapshot}
+        initialTargetDatabase={restoreTarget?.name}
+        onClose={() => { setRestoreOpen(false); setRestoreDump(null); setRestoreSnapshot(null) }}
+        onRestored={() => { setRestoreOpen(false); setRestoreDump(null); setRestoreSnapshot(null); loadDatabases() }}
+      />
+
+      {/* Run Migration */}
+      {migrationTarget && (
+        <RunMigrationModal
+          open={migrationTarget !== null}
+          repository={currentRepo}
+          databaseName={migrationTarget.name}
+          onClose={() => setMigrationTarget(null)}
+          onCompleted={() => { setMigrationTarget(null); loadDatabases() }}
+        />
+      )}
 
       {/* Enable pg_stat_statements confirmation */}
       <PasswordConfirmDialog
