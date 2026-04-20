@@ -3,6 +3,7 @@ package br.com.fzdevx.application.usecase;
 import br.com.fzdevx.application.dto.ManagedDatabaseInfo;
 import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.domain.model.ManagedDatabase;
+import br.com.fzdevx.domain.model.ContainerExpiration;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
@@ -204,6 +205,62 @@ class ListManagedDatabasesUseCaseTest {
         List<ManagedDatabaseInfo> result = useCase.listDatabases(REPO);
 
         assertThrows(UnsupportedOperationException.class, () -> result.add(null));
+    }
+
+    // ---- container association ----
+
+    @Test
+    void listDatabases_populatesContainerCount() {
+        stubDatabaseQueries(List.of("db1"));
+        when(managedDatabaseRepository.findByRepository(REPO)).thenReturn(List.of());
+        ContainerExpiration exp = new ContainerExpiration("c1", "full1",
+                Instant.now().plusSeconds(3600), REPO, "db1", false);
+        when(expirationService.findAll()).thenReturn(List.of(exp));
+
+        List<ManagedDatabaseInfo> result = useCase.listDatabases(REPO);
+
+        assertEquals(1, result.getFirst().containerCount());
+        assertNotNull(result.getFirst().earliestExpiration());
+        assertFalse(result.getFirst().scheduledForDeletion());
+    }
+
+    @Test
+    void listDatabases_detectsScheduledForDeletion() {
+        stubDatabaseQueries(List.of("db1"));
+        when(managedDatabaseRepository.findByRepository(REPO)).thenReturn(List.of());
+        ContainerExpiration exp = new ContainerExpiration("c1", "full1",
+                Instant.now().plusSeconds(3600), REPO, "db1", true);
+        when(expirationService.findAll()).thenReturn(List.of(exp));
+
+        List<ManagedDatabaseInfo> result = useCase.listDatabases(REPO);
+
+        assertTrue(result.getFirst().scheduledForDeletion());
+    }
+
+    @Test
+    void listDatabases_zeroContainers_whenNoExpirations() {
+        stubDatabaseQueries(List.of("db1"));
+        when(managedDatabaseRepository.findByRepository(REPO)).thenReturn(List.of());
+        when(expirationService.findAll()).thenReturn(List.of());
+
+        List<ManagedDatabaseInfo> result = useCase.listDatabases(REPO);
+
+        assertEquals(0, result.getFirst().containerCount());
+        assertNull(result.getFirst().earliestExpiration());
+    }
+
+    @Test
+    void listDatabases_populatesRestoreInfo() {
+        stubDatabaseQueries(List.of("db1"));
+        ManagedDatabase md = new ManagedDatabase(REPO, "db1");
+        md.setLastRestoredFrom("dump_file.sql");
+        md.setLastRestoredAt(Instant.now());
+        when(managedDatabaseRepository.findByRepository(REPO)).thenReturn(List.of(md));
+
+        List<ManagedDatabaseInfo> result = useCase.listDatabases(REPO);
+
+        assertEquals("dump_file.sql", result.getFirst().lastRestoredFrom());
+        assertNotNull(result.getFirst().lastRestoredAt());
     }
 
     // ---- helpers ----

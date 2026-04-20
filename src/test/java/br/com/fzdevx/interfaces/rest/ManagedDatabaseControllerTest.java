@@ -491,6 +491,79 @@ class ManagedDatabaseControllerTest {
         assertEquals(400, controller.enablePgStatStatements(REPO, DB_NAME, PASSWORD).getStatus());
     }
 
+    // ---- getDatabaseDetails ----
+
+    @Test
+    void getDatabaseDetails_disabled_returns404() {
+        setField("managedEnabled", false);
+        assertEquals(404, controller.getDatabaseDetails(REPO, DB_NAME).getStatus());
+    }
+
+    @Test
+    void getDatabaseDetails_invalidRepo_returns400() {
+        assertEquals(400, controller.getDatabaseDetails("", DB_NAME).getStatus());
+    }
+
+    @Test
+    void getDatabaseDetails_invalidName_returns400() {
+        assertEquals(400, controller.getDatabaseDetails(REPO, "").getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getDatabaseDetails_partialFailure_returnsAvailableData() {
+        when(databaseService.getDatabaseHealth(REPO, DB_NAME)).thenThrow(new RuntimeException("health failed"));
+        when(databaseService.getDatabaseActivity(REPO, DB_NAME)).thenReturn(null);
+        when(databaseService.getDatabaseTableStats(REPO, DB_NAME)).thenReturn(null);
+
+        Response response = controller.getDatabaseDetails(REPO, DB_NAME);
+        assertEquals(200, response.getStatus());
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertFalse(body.containsKey("health"));
+    }
+
+    // ---- getServerHealth ----
+
+    @Test
+    void getServerHealth_disabled_returns404() {
+        setField("managedEnabled", false);
+        assertEquals(404, controller.getServerHealth(REPO).getStatus());
+    }
+
+    @Test
+    void getServerHealth_invalidRepo_returns400() {
+        assertEquals(400, controller.getServerHealth("").getStatus());
+    }
+
+    // ---- getDatabaseHealth ----
+
+    @Test
+    void getDatabaseHealth_disabled_returns404() {
+        setField("managedEnabled", false);
+        assertEquals(404, controller.getDatabaseHealth(REPO, DB_NAME).getStatus());
+    }
+
+    @Test
+    void getDatabaseHealth_invalidName_returns400() {
+        assertEquals(400, controller.getDatabaseHealth(REPO, "").getStatus());
+    }
+
+    // ---- getDatabaseActivity ----
+
+    @Test
+    void getDatabaseActivity_disabled_returns404() {
+        setField("managedEnabled", false);
+        assertEquals(404, controller.getDatabaseActivity(REPO, DB_NAME).getStatus());
+    }
+
+    // ---- getDatabaseTableStats ----
+
+    @Test
+    void getDatabaseTableStats_disabled_returns404() {
+        setField("managedEnabled", false);
+        assertEquals(404, controller.getDatabaseTableStats(REPO, DB_NAME).getStatus());
+    }
+
     // ---- helpers ----
 
     private ManagedDatabaseInfo makeDb(String name) {

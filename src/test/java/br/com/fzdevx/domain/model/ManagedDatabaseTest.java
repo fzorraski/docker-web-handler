@@ -115,4 +115,25 @@ class ManagedDatabaseTest {
 
         assertEquals(a, b);
     }
+
+    // ---- restore tracking ----
+
+    @Test
+    void setLastRestoredFrom_updatesValue() {
+        ManagedDatabase db = new ManagedDatabase("repo", "db");
+        assertNull(db.getLastRestoredFrom());
+
+        db.setLastRestoredFrom("dump_file.sql");
+        assertEquals("dump_file.sql", db.getLastRestoredFrom());
+    }
+
+    @Test
+    void setLastRestoredAt_updatesValue() {
+        ManagedDatabase db = new ManagedDatabase("repo", "db");
+        assertNull(db.getLastRestoredAt());
+
+        Instant now = Instant.now();
+        db.setLastRestoredAt(now);
+        assertEquals(now, db.getLastRestoredAt());
+    }
 }
