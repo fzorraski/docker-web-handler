@@ -65,6 +65,29 @@ describe('compareTagsDesc', () => {
   })
 })
 
+describe('migration version hint detection', () => {
+  it('detects dump version older than tag', () => {
+    // compareTagsDesc > 0 means a is smaller (older) than b
+    expect(compareTagsDesc('20.30.2', '20.88.3')).toBeGreaterThan(0)
+  })
+
+  it('detects dump version newer than tag (no hint needed)', () => {
+    expect(compareTagsDesc('20.88.3', '20.30.2')).toBeLessThan(0)
+  })
+
+  it('same version returns zero (no hint needed)', () => {
+    expect(compareTagsDesc('20.30.2', '20.30.2')).toBe(0)
+  })
+
+  it('detects major version difference', () => {
+    expect(compareTagsDesc('14', '16')).toBeGreaterThan(0)
+  })
+
+  it('detects minor version difference', () => {
+    expect(compareTagsDesc('16.2', '16.4')).toBeGreaterThan(0)
+  })
+})
+
 describe('containerNameValid', () => {
   it('accepts valid names', () => {
     expect(CONTAINER_NAME_RE.test('my-container')).toBe(true)

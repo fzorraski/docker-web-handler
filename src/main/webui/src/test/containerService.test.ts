@@ -22,6 +22,8 @@ import {
   extendExpiration,
   cancelDatabaseDeletion,
   cancelExpiration,
+  updateContainerExpiration,
+  validateOperationsPassword,
   runContainer,
 } from '../services/containerService'
 
@@ -322,6 +324,149 @@ describe('containerService', () => {
       await runContainer('postgres', '16', 'my-pg', [], '2025-12-31T23:59:00Z')
       const body = JSON.parse(mockFetch.mock.calls[0][1].body)
       expect(body.expiresAt).toBe('2025-12-31T23:59:00Z')
+    })
+  })
+
+  // ---- updateContainerExpiration ----
+
+  describe('updateContainerExpiration', () => {
+    it('sends POST with full request body', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ success: true }))
+      const result = await updateContainerExpiration({
+        containerId: 'abc123def4',
+        expiresAt: '2026-12-31T23:59:00',
+        deleteDatabaseOnExpiration: false,
+      })
+      expect(mockFetch).toHaveBeenCalledWith('/api/containers/update-expiration', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          containerId: 'abc123def4',
+          expiresAt: '2026-12-31T23:59:00',
+          deleteDatabaseOnExpiration: false,
+        }),
+      })
+      expect(result).toEqual({ success: true })
+    })
+
+    it('sends null expiresAt to remove expiration', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ success: true }))
+      await updateContainerExpiration({
+        containerId: 'abc123def4',
+        expiresAt: null,
+        deleteDatabaseOnExpiration: false,
+      })
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+      expect(body.expiresAt).toBeNull()
+    })
+
+    it('includes operationsPassword when enabling DB deletion', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ success: true }))
+      await updateContainerExpiration({
+        containerId: 'abc123def4',
+        expiresAt: '2026-12-31T23:59:00',
+        deleteDatabaseOnExpiration: true,
+        operationsPassword: 'secret',
+      })
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+      expect(body.deleteDatabaseOnExpiration).toBe(true)
+      expect(body.operationsPassword).toBe('secret')
+    })
+
+    it('returns error on 400 response', async () => {
+      mockFetch.mockReturnValue(Promise.resolve({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        json: () => Promise.resolve({ error: 'Expiration time must be in the future.' }),
+      } as Response))
+      const result = await updateContainerExpiration({
+        containerId: 'abc123def4',
+        expiresAt: '2020-01-01T00:00:00',
+        deleteDatabaseOnExpiration: false,
+      })
+      expect(result).toEqual({ success: false, error: 'Expiration time must be in the future.' })
+    })
+
+    it('returns error on 403 response', async () => {
+      mockFetch.mockReturnValue(Promise.resolve({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        json: () => Promise.resolve({ error: 'Invalid operations password.' }),
+      } as Response))
+      const result = await updateContainerExpiration({
+        containerId: 'abc123def4',
+        expiresAt: '2026-12-31T23:59:00',
+        deleteDatabaseOnExpiration: true,
+        operationsPassword: 'wrong',
+      })
+      expect(result).toEqual({ success: false, error: 'Invalid operations password.' })
+    })
+
+    it('returns error on 404 response', async () => {
+      mockFetch.mockReturnValue(Promise.resolve({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        json: () => Promise.resolve({ error: 'Container expiration not found.' }),
+      } as Response))
+      const result = await updateContainerExpiration({
+        containerId: 'abc123def4',
+        expiresAt: '2026-12-31T23:59:00',
+        deleteDatabaseOnExpiration: false,
+      })
+      expect(result).toEqual({ success: false, error: 'Container expiration not found.' })
+    })
+
+    it('falls back to statusText when error body parse fails', async () => {
+      mockFetch.mockReturnValue(Promise.resolve({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        json: () => Promise.reject(new Error('parse error')),
+      } as Response))
+      const result = await updateContainerExpiration({
+        containerId: 'abc123def4',
+        expiresAt: null,
+        deleteDatabaseOnExpiration: false,
+      })
+      expect(result).toEqual({ success: false, error: 'Bad Request' })
+    })
+
+    it('throws on unexpected non-ok response', async () => {
+      mockFetch.mockReturnValue(Promise.resolve({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        json: () => Promise.resolve({}),
+      } as Response))
+      await expect(updateContainerExpiration({
+        containerId: 'abc123def4',
+        expiresAt: null,
+        deleteDatabaseOnExpiration: false,
+      })).rejects.toThrow('Internal Server Error')
+    })
+  })
+
+  // ---- validateOperationsPassword ----
+
+  describe('validateOperationsPassword', () => {
+    it('returns true on success', async () => {
+      mockFetch.mockReturnValue(Promise.resolve({ ok: true, status: 200 } as Response))
+      const result = await validateOperationsPassword('correct')
+      expect(result).toBe(true)
+    })
+
+    it('returns false on 403', async () => {
+      mockFetch.mockReturnValue(Promise.resolve({ ok: false, status: 403, statusText: 'Forbidden' } as Response))
+      const result = await validateOperationsPassword('wrong')
+      expect(result).toBe(false)
+    })
+
+    it('throws on other error', async () => {
+      mockFetch.mockReturnValue(Promise.resolve({ ok: false, status: 500, statusText: 'Internal Server Error' } as Response))
+      await expect(validateOperationsPassword('test')).rejects.toThrow('Internal Server Error')
     })
   })
 })
