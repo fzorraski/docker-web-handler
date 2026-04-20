@@ -82,17 +82,17 @@ export async function deleteManagedDatabase(
   repository: string,
   name: string,
   password: string,
-): Promise<{ success: boolean; error?: string }> {
-  const res = await fetchWithAuth(
-    API + encodeURIComponent(repository) + '/' + encodeURIComponent(name),
-    {
-      method: 'DELETE',
-      headers: { 'X-Dump-Password': password },
-    },
-  )
+  force?: boolean,
+): Promise<{ success: boolean; error?: string; requiresForce?: boolean; activeConnections?: number }> {
+  let url = API + encodeURIComponent(repository) + '/' + encodeURIComponent(name)
+  if (force) url += '?force=true'
+  const res = await fetchWithAuth(url, {
+    method: 'DELETE',
+    headers: { 'X-Dump-Password': password },
+  })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: data.error || res.statusText, requiresForce: data.requiresForce, activeConnections: data.activeConnections }
   }
   return { success: true }
 }
@@ -149,7 +149,7 @@ export async function toggleDatabaseProtected(
   repository: string,
   name: string,
   password: string,
-): Promise<{ success: boolean; protected?: boolean; error?: string }> {
+): Promise<{ success: boolean; protected?: boolean; disabledDeletionCount?: number; error?: string }> {
   const res = await fetchWithAuth(
     API + encodeURIComponent(repository) + '/' + encodeURIComponent(name) + '/protected',
     {
@@ -162,7 +162,7 @@ export async function toggleDatabaseProtected(
     return { success: false, error: data.error || res.statusText }
   }
   const data = await res.json()
-  return { success: true, protected: data.protected }
+  return { success: true, protected: data.protected, disabledDeletionCount: data.disabledDeletionCount }
 }
 
 export async function cleanupIdleDatabases(

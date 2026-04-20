@@ -3,6 +3,7 @@ package br.com.fzdevx.application.usecase;
 import br.com.fzdevx.application.dto.ManagedDatabaseInfo;
 import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
+import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -24,6 +25,9 @@ public class CleanupIdleDatabasesUseCase {
     @Inject
     ListManagedDatabasesUseCase listManagedDatabasesUseCase;
 
+    @Inject
+    ResourceCounterService resourceCounterService;
+
     public int cleanup(String repository, int minDays) {
         List<ManagedDatabaseInfo> databases = listManagedDatabasesUseCase.listDatabases(repository);
         Instant cutoff = Instant.now().minus(minDays, ChronoUnit.DAYS);
@@ -31,6 +35,16 @@ public class CleanupIdleDatabasesUseCase {
         int deleted = 0;
         for (ManagedDatabaseInfo db : databases) {
             if (db.protectedFlag()) {
+                continue;
+            }
+
+            // Skip databases in use by containers
+            if (db.containerCount() > 0) {
+                continue;
+            }
+
+            // Skip databases with active connections
+            if (db.activeConnections() > 0) {
                 continue;
             }
 
@@ -42,6 +56,7 @@ public class CleanupIdleDatabasesUseCase {
                 try {
                     databaseService.dropDatabase(repository, db.name());
                     managedDatabaseRepository.delete(repository, db.name());
+                    resourceCounterService.increment(ResourceCounterService.DATABASES_DELETED);
                     deleted++;
                     Log.infof("Cleanup: dropped idle database '%s' on repository '%s'.", db.name(), repository);
                 } catch (Exception e) {
