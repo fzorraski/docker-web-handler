@@ -225,50 +225,28 @@ public class DatabaseService implements DatabasePort {
             long deadTuples = 0;
             long txAge = 0;
 
-            // Size
+            // Combined query: size, connections, pg_stat_database, and txid age in 1 round-trip
             try (PreparedStatement stmt = conn.prepareStatement(
-                    "SELECT pg_database_size(?)")) {
-                stmt.setString(1, databaseName);
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (rs.next()) size = rs.getLong(1);
-                }
-            }
-
-            // Active connections
-            try (PreparedStatement stmt = conn.prepareStatement(
-                    "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = ?")) {
-                stmt.setString(1, databaseName);
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (rs.next()) active = rs.getInt(1);
-                }
-            }
-
-            // Waiting (blocked) connections
-            try (PreparedStatement stmt = conn.prepareStatement(
-                    "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = ? AND wait_event_type = 'Lock'")) {
-                stmt.setString(1, databaseName);
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (rs.next()) waiting = rs.getInt(1);
-                }
-            }
-
-            // Long-running queries (> 5 seconds)
-            try (PreparedStatement stmt = conn.prepareStatement(
-                    "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = ? AND state = 'active' "
-                            + "AND now() - query_start > interval '5 seconds'")) {
-                stmt.setString(1, databaseName);
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (rs.next()) longRunning = rs.getInt(1);
-                }
-            }
-
-            // Cache hit ratio, transactions, temp files from pg_stat_database
-            try (PreparedStatement stmt = conn.prepareStatement(
-                    "SELECT blks_hit, blks_read, xact_commit, xact_rollback, temp_bytes, temp_files "
-                            + "FROM pg_stat_database WHERE datname = ?")) {
+                    "SELECT "
+                            + "pg_database_size(d.datname) AS size_bytes, "
+                            + "(SELECT COUNT(*) FROM pg_stat_activity WHERE datname = d.datname) AS active_conn, "
+                            + "(SELECT COUNT(*) FROM pg_stat_activity WHERE datname = d.datname AND wait_event_type = 'Lock') AS waiting_conn, "
+                            + "(SELECT COUNT(*) FROM pg_stat_activity WHERE datname = d.datname AND state = 'active' "
+                            + "AND now() - query_start > interval '5 seconds') AS long_running, "
+                            + "COALESCE(s.blks_hit, 0) AS blks_hit, COALESCE(s.blks_read, 0) AS blks_read, "
+                            + "COALESCE(s.xact_commit, 0) AS xact_commit, COALESCE(s.xact_rollback, 0) AS xact_rollback, "
+                            + "COALESCE(s.temp_bytes, 0) AS temp_bytes, COALESCE(s.temp_files, 0) AS temp_files, "
+                            + "age(d.datfrozenxid) AS tx_age "
+                            + "FROM pg_database d "
+                            + "LEFT JOIN pg_stat_database s ON s.datname = d.datname "
+                            + "WHERE d.datname = ?")) {
                 stmt.setString(1, databaseName);
                 try (ResultSet rs = stmt.executeQuery()) {
                     if (rs.next()) {
+                        size = rs.getLong("size_bytes");
+                        active = rs.getInt("active_conn");
+                        waiting = rs.getInt("waiting_conn");
+                        longRunning = rs.getInt("long_running");
                         long hit = rs.getLong("blks_hit");
                         long read = rs.getLong("blks_read");
                         cacheHit = (hit + read) > 0 ? (double) hit / (hit + read) * 100.0 : 100.0;
@@ -276,33 +254,18 @@ public class DatabaseService implements DatabasePort {
                         rollbacks = rs.getLong("xact_rollback");
                         tempBytes = rs.getLong("temp_bytes");
                         tempFiles = rs.getInt("temp_files");
+                        txAge = rs.getLong("tx_age");
                     }
-                }
-            }
-
-            // Transaction ID age (wraparound risk)
-            try (PreparedStatement stmt = conn.prepareStatement(
-                    "SELECT age(datfrozenxid) FROM pg_database WHERE datname = ?")) {
-                stmt.setString(1, databaseName);
-                try (ResultSet rs = stmt.executeQuery()) {
-                    if (rs.next()) txAge = rs.getLong(1);
                 }
             }
 
             // Dead tuples — SUM across all tables visible from pg_stat_user_tables
             // This requires connecting to the target database, not postgres
-            try {
-                String host = config.getOptionalValue("repository.pg-host." + repository, String.class).orElse("");
-                int port = config.getOptionalValue("repository.pg-port." + repository, Integer.class).orElse(5432);
-                String user = config.getOptionalValue("repository.pg-user." + repository, String.class).orElse("postgres");
-                String pwd = config.getOptionalValue("repository.pg-password." + repository, String.class).orElse("");
-                String url = "jdbc:postgresql://" + host + ":" + port + "/" + databaseName + "?connectTimeout=5&socketTimeout=10";
-                try (Connection dbConn = DriverManager.getConnection(url, user, pwd);
-                     PreparedStatement stmt = dbConn.prepareStatement(
-                             "SELECT COALESCE(SUM(n_dead_tup), 0) FROM pg_stat_user_tables");
-                     ResultSet rs = stmt.executeQuery()) {
-                    if (rs.next()) deadTuples = rs.getLong(1);
-                }
+            try (Connection dbConn = getTargetDbConnection(repository, databaseName);
+                 PreparedStatement stmt = dbConn.prepareStatement(
+                         "SELECT COALESCE(SUM(n_dead_tup), 0) FROM pg_stat_user_tables");
+                 ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) deadTuples = rs.getLong(1);
             } catch (Exception e) {
                 Log.debugf("Could not fetch dead tuples for '%s': %s", databaseName, e.getMessage());
             }
@@ -685,6 +648,20 @@ public class DatabaseService implements DatabasePort {
         } catch (Exception e) {
             throw new RuntimeException("Failed to get server health: " + e.getMessage(), e);
         }
+    }
+
+    public int getActiveConnectionCount(String repository, String databaseName) {
+        try (Connection conn = getConnection(repository);
+             PreparedStatement stmt = conn.prepareStatement(
+                     "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = ?")) {
+            stmt.setString(1, databaseName);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        } catch (Exception e) {
+            Log.debugf("Failed to get connection count for '%s': %s", databaseName, e.getMessage());
+        }
+        return 0;
     }
 
     public boolean databaseExists(String repository, String databaseName) {
