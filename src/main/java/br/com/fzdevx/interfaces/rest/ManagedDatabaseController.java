@@ -4,9 +4,12 @@ import br.com.fzdevx.application.dto.ManagedDatabaseInfo;
 import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.application.usecase.CleanupIdleDatabasesUseCase;
 import br.com.fzdevx.application.usecase.ListManagedDatabasesUseCase;
+import br.com.fzdevx.domain.model.ContainerExpiration;
+import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
+import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
@@ -43,6 +46,12 @@ public class ManagedDatabaseController {
 
     @Inject
     PasswordValidationService passwordValidationService;
+
+    @Inject
+    ContainerExpirationService expirationService;
+
+    @Inject
+    ResourceCounterService resourceCounterService;
 
     @GET
     @Path("/enabled")
@@ -288,7 +297,8 @@ public class ManagedDatabaseController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response deleteDatabase(@PathParam("repository") String repository,
                                    @PathParam("databaseName") String databaseName,
-                                   @HeaderParam("X-Dump-Password") String password) {
+                                   @HeaderParam("X-Dump-Password") String password,
+                                   @QueryParam("force") @DefaultValue("false") boolean force) {
         if (!managedEnabled) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
@@ -316,9 +326,38 @@ public class ManagedDatabaseController {
                     .entity(Map.of("error", "Database is protected and cannot be deleted.")).build();
         }
 
+        // Check if any containers are using this database
+        List<ContainerExpiration> usedBy = expirationService.findByDatabaseName(databaseName);
+        if (!usedBy.isEmpty()) {
+            List<String> containerIds = usedBy.stream().map(ContainerExpiration::getShortId).toList();
+            return Response.status(Response.Status.CONFLICT)
+                    .entity(Map.of(
+                            "error", "Database is in use by " + usedBy.size() + " container(s) and cannot be deleted.",
+                            "inUseByContainers", containerIds
+                    )).build();
+        }
+
+        // Check active connections (warn, don't block — user can force)
+        if (!force) {
+            try {
+                int active = databaseService.getActiveConnectionCount(repository, databaseName);
+                if (active > 0) {
+                    return Response.status(Response.Status.CONFLICT)
+                            .entity(Map.of(
+                                    "error", "Database has " + active + " active connection(s). Deleting it will terminate all connections.",
+                                    "activeConnections", active,
+                                    "requiresForce", true
+                            )).build();
+                }
+            } catch (Exception e) {
+                Log.debugf("Could not check active connections for '%s': %s", databaseName, e.getMessage());
+            }
+        }
+
         databaseService.dropDatabase(repository, databaseName);
         managedDatabaseRepository.delete(repository, databaseName);
         listManagedDatabasesUseCase.invalidateCache(repository);
+        resourceCounterService.increment(ResourceCounterService.DATABASES_DELETED);
         return Response.ok(Map.of("success", true)).build();
     }
 
@@ -354,6 +393,8 @@ public class ManagedDatabaseController {
                     .entity(Map.of("error", "Invalid operations password.")).build();
         }
 
+        Map<String, Integer> activeConnections = null; // lazy-loaded on first valid name
+
         int deleted = 0;
         int skipped = 0;
         for (String name : names) {
@@ -368,9 +409,29 @@ public class ManagedDatabaseController {
                 continue;
             }
 
+            // Skip databases in use by containers
+            if (!expirationService.findByDatabaseName(name).isEmpty()) {
+                skipped++;
+                continue;
+            }
+
+            // Skip databases with active connections (lazy-load once)
+            if (activeConnections == null) {
+                try {
+                    activeConnections = databaseService.getActiveConnectionCounts(repository);
+                } catch (Exception e) {
+                    activeConnections = Map.of();
+                }
+            }
+            if (activeConnections.getOrDefault(name, 0) > 0) {
+                skipped++;
+                continue;
+            }
+
             try {
                 databaseService.dropDatabase(repository, name);
                 managedDatabaseRepository.delete(repository, name);
+                resourceCounterService.increment(ResourceCounterService.DATABASES_DELETED);
                 deleted++;
             } catch (Exception e) {
                 Log.errorf("Bulk delete: failed to drop database '%s': %s", name, e.getMessage());
@@ -459,7 +520,24 @@ public class ManagedDatabaseController {
         managedDatabaseRepository.save(md);
         listManagedDatabasesUseCase.invalidateCache(repository);
 
-        return Response.ok(Map.of("success", true, "protected", md.isProtectedFlag())).build();
+        // Auto-disable database deletion on containers when protecting
+        int disabledDeletionCount = 0;
+        if (md.isProtectedFlag()) {
+            List<ContainerExpiration> expirations = expirationService.findByDatabaseName(databaseName);
+            for (ContainerExpiration exp : expirations) {
+                if (exp.isDeleteDatabaseOnExpiration()) {
+                    expirationService.disableDatabaseDeletion(exp.getShortId());
+                    disabledDeletionCount++;
+                }
+            }
+            if (disabledDeletionCount > 0) {
+                Log.infof("Auto-disabled database deletion on %d container(s) for protected database '%s'.",
+                        disabledDeletionCount, databaseName);
+            }
+        }
+
+        return Response.ok(Map.of("success", true, "protected", md.isProtectedFlag(),
+                "disabledDeletionCount", disabledDeletionCount)).build();
     }
 
     @POST

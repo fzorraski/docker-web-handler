@@ -8,6 +8,8 @@ import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.infrastructure.docker.MemoryGuardService;
 import br.com.fzdevx.infrastructure.docker.MigrationService;
+import br.com.fzdevx.application.port.ManagedDatabaseRepository;
+import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
 import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
@@ -89,6 +91,12 @@ public class RunContainerUseCase {
 
     @Inject
     MemoryGuardService memoryGuardService;
+
+    @Inject
+    ManagedDatabaseRepository managedDatabaseRepository;
+
+    @Inject
+    ListManagedDatabasesUseCase listManagedDatabasesUseCase;
 
     @ConfigProperty(name = "container.log-rotation.enabled", defaultValue = "true")
     boolean logRotationEnabled;
@@ -350,6 +358,20 @@ public class RunContainerUseCase {
             String expirationMessage = scheduleExpiration(request, container.getId(), startedAt);
 
             resourceCounterService.increment(ResourceCounterService.CONTAINERS);
+
+            // Track app-level usage for managed databases
+            if (request.getDatabaseName() != null && !request.getDatabaseName().isBlank()) {
+                try {
+                    ManagedDatabase md = managedDatabaseRepository
+                            .find(request.getRepository(), request.getDatabaseName())
+                            .orElseGet(() -> new ManagedDatabase(request.getRepository(), request.getDatabaseName()));
+                    md.setAppLastUsedAt(Instant.now());
+                    managedDatabaseRepository.save(md);
+                    listManagedDatabasesUseCase.invalidateCache(request.getRepository());
+                } catch (Exception ignored) {
+                    // Non-critical: don't fail the container start if tracking fails
+                }
+            }
 
             createdContainerId = null; // success — don't clean up
             eventSink.accept(ContainerEvent.success("Complete",

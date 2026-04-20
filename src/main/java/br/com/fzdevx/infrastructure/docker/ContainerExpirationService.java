@@ -1,7 +1,9 @@
 package br.com.fzdevx.infrastructure.docker;
 
 import br.com.fzdevx.domain.model.ContainerExpiration;
+import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.application.port.ExpirationRepository;
+import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.interfaces.rest.util.ContainerListBroadcaster;
 import com.github.dockerjava.api.DockerClient;
@@ -15,6 +17,7 @@ import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.*;
 
@@ -32,6 +35,9 @@ public class ContainerExpirationService {
 
     @Inject
     DatabaseService databaseService;
+
+    @Inject
+    ManagedDatabaseRepository managedDatabaseRepository;
 
     @Inject
     ContainerSchedulingService schedulingService;
@@ -116,6 +122,10 @@ public class ContainerExpirationService {
         return expirationRepository.findByDatabaseName(databaseName);
     }
 
+    public List<ContainerExpiration> findAll() {
+        return expirationRepository.findAll();
+    }
+
     public boolean extendExpiration(String shortId, int minutes) {
         return expirationRepository.findByContainerId(shortId)
                 .filter(expiration -> expiration.getExpiresAt() != null)
@@ -133,6 +143,71 @@ public class ContainerExpirationService {
         return expirationRepository.findByContainerId(shortId)
                 .map(expiration -> {
                     expiration.setDeleteDatabaseOnExpiration(false);
+                    expirationRepository.save(expiration);
+                    return true;
+                })
+                .orElse(false);
+    }
+
+    public boolean updateExpiration(String shortId, Instant expiresAt, boolean deleteDatabaseOnExpiration) {
+        Optional<ContainerExpiration> existing = expirationRepository.findByContainerId(shortId);
+        if (existing.isPresent()) {
+            ContainerExpiration expiration = existing.get();
+            ScheduledFuture<?> future = scheduledTasks.remove(shortId);
+            if (future != null) {
+                future.cancel(false);
+            }
+            if (expiresAt == null) {
+                expiration.setExpiresAt(null);
+                expiration.setDeleteDatabaseOnExpiration(false);
+            } else {
+                expiration.setExpiresAt(expiresAt);
+                expiration.setDeleteDatabaseOnExpiration(deleteDatabaseOnExpiration);
+                scheduleTask(expiration);
+            }
+            expirationRepository.save(expiration);
+            return true;
+        }
+        // No record exists — create one if we have an expiration time.
+        // Synchronized to prevent two concurrent requests from both creating a record.
+        if (expiresAt == null) {
+            return false;
+        }
+        synchronized (this) {
+            // Re-check after acquiring lock
+            if (expirationRepository.findByContainerId(shortId).isPresent()) {
+                return updateExpiration(shortId, expiresAt, deleteDatabaseOnExpiration);
+            }
+            String fullContainerId = resolveFullContainerId(shortId);
+            if (fullContainerId == null) {
+                return false;
+            }
+            schedule(shortId, fullContainerId, expiresAt, null, null, deleteDatabaseOnExpiration);
+            return true;
+        }
+    }
+
+    private String resolveFullContainerId(String shortId) {
+        try {
+            for (com.github.dockerjava.api.model.Container c :
+                    dockerClient.listContainersCmd().withShowAll(true).exec()) {
+                if (c.getId().startsWith(shortId)) {
+                    return c.getId();
+                }
+            }
+        } catch (Exception e) {
+            Log.warnf("Failed to resolve full container ID for %s: %s", shortId, e.getMessage());
+        }
+        return null;
+    }
+
+    public boolean enableDatabaseDeletion(String shortId) {
+        return expirationRepository.findByContainerId(shortId)
+                .filter(expiration -> expiration.getExpiresAt() != null)
+                .filter(expiration -> expiration.getDatabaseName() != null
+                        && !expiration.getDatabaseName().isBlank())
+                .map(expiration -> {
+                    expiration.setDeleteDatabaseOnExpiration(true);
                     expirationRepository.save(expiration);
                     return true;
                 })
@@ -233,6 +308,14 @@ public class ContainerExpirationService {
             return;
         }
         if (!databaseService.hasDatabaseConfig(current.getRepository())) {
+            return;
+        }
+        // Check if database is protected
+        boolean isProtected = managedDatabaseRepository.find(current.getRepository(), current.getDatabaseName())
+                .map(ManagedDatabase::isProtectedFlag).orElse(false);
+        if (isProtected) {
+            Log.infof("Skipping deletion of protected database '%s' on container %s expiration.",
+                    current.getDatabaseName(), current.getShortId());
             return;
         }
         try {

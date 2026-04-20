@@ -3,14 +3,24 @@ package br.com.fzdevx.interfaces.rest;
 import br.com.fzdevx.domain.model.ContainerExpiration;
 import br.com.fzdevx.domain.model.DatabaseConflict;
 import br.com.fzdevx.domain.model.DockerContainer;
+import br.com.fzdevx.domain.model.ManagedDatabase;
+import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.config.PasswordValidationService;
+import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.domain.shared.InputValidator;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.model.Container;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -28,6 +38,15 @@ public class ContainerExpirationController {
     @Inject
     ContainerExpirationService expirationService;
 
+    @Inject
+    ManagedDatabaseRepository managedDatabaseRepository;
+
+    @Inject
+    PasswordValidationService passwordValidationService;
+
+    @Inject
+    DatabaseService databaseService;
+
     @GET
     @Path("/database-conflicts")
     @Produces(MediaType.APPLICATION_JSON)
@@ -38,8 +57,22 @@ public class ContainerExpirationController {
         }
 
         List<ContainerExpiration> expirations = expirationService.findByDatabaseName(databaseName);
-        if (expirations.isEmpty()) {
-            return new DatabaseConflict(null, Collections.emptyList(), null);
+
+        // Check protected flag — use repository from expiration entries if available
+        boolean isProtected = false;
+        if (!expirations.isEmpty()) {
+            String repo = expirations.getFirst().getRepository();
+            if (repo != null) {
+                isProtected = managedDatabaseRepository.find(repo, databaseName)
+                        .map(ManagedDatabase::isProtectedFlag).orElse(false);
+            }
+        } else {
+            // No containers use this database — check all repos for the protected flag
+            isProtected = managedDatabaseRepository.findAll().stream()
+                    .anyMatch(md -> md.getName().equals(databaseName) && md.isProtectedFlag());
+            DatabaseConflict conflict = new DatabaseConflict(null, Collections.emptyList(), null);
+            conflict.setProtectedFlag(isProtected);
+            return conflict;
         }
 
         Map<String, String> containerNames = resolveContainerNames();
@@ -57,7 +90,9 @@ public class ContainerExpirationController {
             inUseByContainers.add(displayName);
         }
 
-        return new DatabaseConflict(scheduledForDeletionBy, inUseByContainers, expiresAt);
+        DatabaseConflict conflict = new DatabaseConflict(scheduledForDeletionBy, inUseByContainers, expiresAt);
+        conflict.setProtectedFlag(isProtected);
+        return conflict;
     }
 
     @POST
@@ -96,6 +131,71 @@ public class ContainerExpirationController {
         }
         expirationService.cancel(dockerContainer.getContainerId());
         return true;
+    }
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("/update-expiration")
+    public Response updateExpiration(UpdateExpirationRequest request) {
+        if (request == null || InputValidator.validateContainerId(request.containerId).isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Invalid container ID.")).build();
+        }
+
+        Instant expiresInstant = null;
+        if (request.expiresAt != null && !request.expiresAt.isBlank()) {
+            try {
+                LocalDateTime ldt = LocalDateTime.parse(request.expiresAt, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+                expiresInstant = ldt.atZone(ZoneId.systemDefault()).toInstant();
+            } catch (DateTimeParseException e) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Invalid date format.")).build();
+            }
+            if (expiresInstant.isBefore(Instant.now())) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Expiration time must be in the future.")).build();
+            }
+        }
+
+        if (request.deleteDatabaseOnExpiration) {
+            if (expiresInstant == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Cannot enable database deletion without expiration.")).build();
+            }
+            if (!databaseService.isDeletionOnExpirationEnabled()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Database deletion on expiration is not enabled.")).build();
+            }
+            // Verify the container has a valid database associated
+            String dbName = expirationService.getDatabaseName(request.containerId);
+            if (dbName == null || dbName.isBlank()
+                    || InputValidator.validateDatabaseName(dbName).isPresent()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Container has no database associated.")).build();
+            }
+            if (passwordValidationService.isOperationsPasswordRequired()
+                    && !passwordValidationService.validateOperationsPassword(request.operationsPassword)) {
+                return Response.status(Response.Status.FORBIDDEN)
+                        .entity(Map.of("error", "Invalid operations password.")).build();
+            }
+        }
+
+        boolean success = expirationService.updateExpiration(
+                request.containerId, expiresInstant, request.deleteDatabaseOnExpiration);
+
+        if (!success) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", "Container expiration not found.")).build();
+        }
+        return Response.ok(Map.of("success", true)).build();
+    }
+
+    public static class UpdateExpirationRequest {
+        public String containerId;
+        public String expiresAt;
+        public boolean deleteDatabaseOnExpiration;
+        public String operationsPassword;
     }
 
     private Map<String, String> resolveContainerNames() {

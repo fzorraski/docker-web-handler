@@ -7,6 +7,7 @@ public class DatabaseConflict {
     private String scheduledForDeletionBy;
     private List<String> inUseByContainers;
     private String expiresAt;
+    private boolean protectedFlag;
 
     public DatabaseConflict() {
     }
@@ -39,5 +40,13 @@ public class DatabaseConflict {
 
     public void setExpiresAt(String expiresAt) {
         this.expiresAt = expiresAt;
+    }
+
+    public boolean isProtectedFlag() {
+        return protectedFlag;
+    }
+
+    public void setProtectedFlag(boolean protectedFlag) {
+        this.protectedFlag = protectedFlag;
     }
 }
