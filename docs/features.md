@@ -17,6 +17,8 @@
 
 - Every container has a configurable lifespan (default: 8 hours)
 - Extend the expiration at any time with a single click
+- **Edit expiration** after creation: click the countdown chip or use the action menu to change the time or add an expiration
+- **Enable database deletion** after creation with same validation and confirmation flow as during creation
 - Cancel expiration to keep the container indefinitely
 - Option to automatically delete the database when the container expires
 - Conflict alert when another container is already using the same database
@@ -107,6 +109,16 @@
 - Two modes: paste the SQL manually or fetch from an API automatically
 - SQL preview before execution — view the commands and the number of statements
 - Database version control with migration history
+- **Version mismatch hint**: when restoring a dump with a version older than the selected tag, an info alert suggests enabling migration
+
+## Container Upgrade
+
+- **Change a container's image tag** without losing its configuration — the container is recreated with the new image while preserving name, environment variables, memory, ports, expiration, and schedules
+- Optionally **run a database migration** as part of the upgrade process
+- Tag selector sorted by version (newest first)
+- Port reuse: attempts to keep the same host ports, falls back to new allocation if unavailable
+- Enabled per repository via `repository.upgrade-enabled.<repo>=true`
+- Also supports **migration-only mode** (run SQL without changing the tag)
 
 ---
 

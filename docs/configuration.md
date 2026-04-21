@@ -179,8 +179,27 @@ repository.pg-image.myapp=postgres:16
 | Property | Description | Default |
 |----------|-------------|---------|
 | `database.migration.enabled` | Enable migration feature | false |
-| `database.migration.api-url` | Global API URL template (`{sourceVersion}`, `{targetVersion}` placeholders) | — |
-| `repository.migration-api-url.<repo>` | Per-repository API URL override | — |
+| `database.migration.api-url` | Global API URL template (`{sourceVersion}`, `{targetVersion}` placeholders) | -- |
+| `repository.migration-api-url.<repo>` | Per-repository API URL override | -- |
+
+---
+
+## Container Upgrade
+
+| Property | Description | Default |
+|----------|-------------|---------|
+| `repository.upgrade-enabled.<repo>` | Enable container image tag upgrade for this repository | false |
+
+When enabled, the **Upgrade Container** option in the action menu allows changing the container's Docker image tag. The container is stopped, removed, and recreated with the new image while preserving its configuration (name, environment variables, memory, ports, expiration, schedules).
+
+### Example
+
+```properties
+repository.upgrade-enabled.myapp=true
+repository.upgrade-enabled.postgres=false
+```
+
+See [Database Migrations](database-migrations.md#container-upgrade) for full documentation.
 
 ---
 
