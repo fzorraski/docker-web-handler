@@ -95,8 +95,13 @@ export default function EditContainerExpirationDialog({
     }
     if (isEnablingDbDeletion && container.databaseName) {
       if (operationsPasswordRequired) {
-        const valid = await validateOperationsPassword(operationsPassword)
-        if (!valid) {
+        try {
+          const valid = await validateOperationsPassword(operationsPassword)
+          if (!valid) {
+            setError(t('editContainerExpiration.invalidPassword'))
+            return
+          }
+        } catch {
           setError(t('editContainerExpiration.invalidPassword'))
           return
         }

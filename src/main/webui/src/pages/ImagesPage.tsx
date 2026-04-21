@@ -124,6 +124,16 @@ export default function ImagesPage() {
 
   const prune = usePruneDialog({ notify, t, loadImages })
 
+  const pruneByIdleCandidates = useMemo(() => {
+    if (prune.mode !== 'byDate') return []
+    const cutoff = Date.now() - prune.minDays * 24 * 60 * 60 * 1000
+    return images.filter(img => {
+      if (img.inUse) return false
+      if (!img.lastUsedAt) return true
+      return new Date(img.lastUsedAt).getTime() < cutoff
+    })
+  }, [images, prune.mode, prune.minDays])
+
   useEffect(() => {
     loadImages()
   }, [loadImages])
@@ -437,6 +447,35 @@ export default function ImagesPage() {
                   valueLabelFormat={(v) => t('images.daysValue', { count: v })}
                 />
               </Box>
+
+              {pruneByIdleCandidates.length > 0 ? (
+                <>
+                  <Alert severity="warning" sx={{ mb: 1 }}>
+                    <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>
+                      {t('images.cleanupAffected', { count: pruneByIdleCandidates.length })}
+                    </Typography>
+                    <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                      {pruneByIdleCandidates.map((img) => (
+                        <li key={img.imageId}>
+                          <Typography variant="body2" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem' }}>
+                            {img.repository}:{img.tag}
+                            <Typography component="span" variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
+                              ({img.size})
+                            </Typography>
+                          </Typography>
+                        </li>
+                      ))}
+                    </Box>
+                  </Alert>
+                  <Alert severity="info" sx={{ mb: 3 }}>
+                    {t('images.parentImageSkipWarning')}
+                  </Alert>
+                </>
+              ) : (
+                <Alert severity="success" sx={{ mb: 3 }}>
+                  {t('images.cleanupNoneAffected')}
+                </Alert>
+              )}
             </>
           )}
 

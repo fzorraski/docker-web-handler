@@ -183,6 +183,21 @@ export default function DatabasePage() {
 
   const cleanup = useCleanupByIdle({ notify, t, loadDumps, loadSnapshots })
 
+  const cleanupCandidates = useMemo(() => {
+    if (cleanup.target === null) return []
+    const cutoff = Date.now() - cleanup.minDays * 24 * 60 * 60 * 1000
+    if (cleanup.target === 'dump') {
+      return dumps.filter(d => {
+        if (!d.lastUsedAt) return true
+        return new Date(d.lastUsedAt).getTime() < cutoff
+      })
+    }
+    return snapshots.filter(s => {
+      if (!s.lastUsedAt) return true
+      return new Date(s.lastUsedAt).getTime() < cutoff
+    })
+  }, [dumps, snapshots, cleanup.target, cleanup.minDays])
+
   useEffect(() => {
     loadDumps()
     loadSnapshots()
@@ -1162,6 +1177,32 @@ export default function DatabasePage() {
               valueLabelFormat={(v) => t('database.daysValue', { count: v })}
             />
           </Box>
+
+          {cleanupCandidates.length > 0 ? (
+            <Alert severity="warning" sx={{ mb: 3 }}>
+              <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>
+                {t('database.cleanupAffected', { count: cleanupCandidates.length })}
+              </Typography>
+              <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                {cleanupCandidates.map((item) => (
+                  <li key={'id' in item ? item.id : ''}>
+                    <Typography variant="body2" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem' }}>
+                      {cleanup.target === 'dump'
+                        ? (item as DatabaseDump).originalFilename
+                        : (item as DatabaseSnapshot).label || (item as DatabaseSnapshot).sourceDatabaseName}
+                      <Typography component="span" variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
+                        ({formatBytes((item as DatabaseDump | DatabaseSnapshot).fileSize)})
+                      </Typography>
+                    </Typography>
+                  </li>
+                ))}
+              </Box>
+            </Alert>
+          ) : (
+            <Alert severity="success" sx={{ mb: 3 }}>
+              {t('database.cleanupNoneAffected')}
+            </Alert>
+          )}
 
           <TextField
             fullWidth
