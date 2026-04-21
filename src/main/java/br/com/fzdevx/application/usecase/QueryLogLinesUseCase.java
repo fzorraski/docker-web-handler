@@ -21,25 +21,64 @@ public class QueryLogLinesUseCase {
                                                String thread, String level, String search,
                                                String exclude,
                                                int page, int size) {
+        return PaginatedResult.of(applyFilters(allLines, thread, level, search, exclude), page, size);
+    }
+
+    /**
+     * Resolves which page a specific line number falls on within the filtered results.
+     * Uses early termination — stops iterating as soon as the target line is found.
+     *
+     * @return the zero-indexed page number, or -1 if the line is not in the filtered results
+     */
+    public int resolvePageForLine(List<LogLine> allLines,
+                                  String thread, String level, String search,
+                                  String exclude, int lineNumber, int size) {
+        size = Math.clamp(size, 1, 15000);
         String searchLower = search != null ? search.toLowerCase() : null;
-        List<String> excludePatterns = (exclude != null && !exclude.isBlank())
+        List<String> excludePatterns = parseExcludePatterns(exclude);
+
+        int count = 0;
+        for (LogLine l : allLines) {
+            if (!matchesFilters(l, thread, level, searchLower, excludePatterns)) continue;
+            if (l.lineNumber() == lineNumber) return count / size;
+            count++;
+        }
+        return -1;
+    }
+
+    private List<LogLine> applyFilters(List<LogLine> allLines,
+                                       String thread, String level,
+                                       String search, String exclude) {
+        String searchLower = search != null ? search.toLowerCase() : null;
+        List<String> excludePatterns = parseExcludePatterns(exclude);
+
+        return allLines.stream()
+                .filter(l -> matchesFilters(l, thread, level, searchLower, excludePatterns))
+                .toList();
+    }
+
+    private static List<String> parseExcludePatterns(String exclude) {
+        return (exclude != null && !exclude.isBlank())
                 ? Arrays.stream(exclude.split(","))
                         .map(s -> s.trim().toLowerCase())
                         .filter(s -> !s.isEmpty())
                         .toList()
                 : List.of();
+    }
 
-        var filtered = allLines.stream()
-                .filter(l -> thread == null || thread.isBlank() || thread.equals(l.thread()))
-                .filter(l -> level == null || level.isBlank() || LogLevelMatcher.matchesLevelGroup(level, l.level()))
-                .filter(l -> {
-                    if (l.message() == null) return searchLower == null;
-                    String msgLower = l.message().toLowerCase();
-                    if (searchLower != null && !msgLower.contains(searchLower)) return false;
-                    return excludePatterns.isEmpty() || excludePatterns.stream().noneMatch(msgLower::contains);
-                });
-
-        return PaginatedResult.of(filtered.toList(), page, size);
+    private static boolean matchesFilters(LogLine l, String thread, String level,
+                                          String searchLower, List<String> excludePatterns) {
+        if (thread != null && !thread.isBlank() && !thread.equals(l.thread())) return false;
+        if (level != null && !level.isBlank() && !LogLevelMatcher.matchesLevelGroup(level, l.level())) return false;
+        if (l.message() == null) return searchLower == null;
+        String msgLower = l.message().toLowerCase();
+        if (searchLower != null && !msgLower.contains(searchLower)) return false;
+        if (!excludePatterns.isEmpty()) {
+            for (String pattern : excludePatterns) {
+                if (msgLower.contains(pattern)) return false;
+            }
+        }
+        return true;
     }
 
     public PaginatedResult<LogLine> queryLineRange(List<LogLine> allLines,

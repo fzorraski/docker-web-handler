@@ -165,6 +165,7 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
   const prevPageRef = useRef(page)
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const linesRef = useRef<LogLine[]>([])
+  const resolveAbortRef = useRef<AbortController | undefined>(undefined)
   const isFirstMount = useRef(true)
   const listRef = useListRef(null)
   const wrapContainerRef = useRef<HTMLDivElement>(null)
@@ -199,6 +200,7 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
   useEffect(() => () => {
     if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
     cancelAnimationFrame(wrapScrollRafRef.current)
+    resolveAbortRef.current?.abort()
   }, [])
 
   // Measure available viewer height in fullscreen from toolbar + pagination
@@ -286,7 +288,11 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
   const activeScrollTarget = scrollTarget
   useEffect(() => {
     const curLines = linesRef.current
-    if (activeScrollTarget == null || curLines.length === 0) return
+    if (activeScrollTarget == null) return
+    if (curLines.length === 0) {
+      setScrollTarget(null)
+      return
+    }
     const idx = curLines.findIndex(l => l.lineNumber === activeScrollTarget)
     if (idx === -1) return
     setScrollTarget(null)
@@ -375,14 +381,47 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
     if (currentMarkIdx >= sortedMarks.length) setCurrentMarkIdx(sortedMarks.length - 1)
   }, [sortedMarks.length, currentMarkIdx])
 
-  const scrollToLine = useCallback((targetLine: number) => {
+  const clearAllFilters = useCallback(() => {
+    setSearch(''); setActiveSearch(''); setExclude(''); setActiveExclude('')
+    setFilterLevel(''); setFilterThread('')
+  }, [])
+
+  const scrollToLine = useCallback(async (targetLine: number) => {
+    resolveAbortRef.current?.abort()
+
     const rpp = wordWrap ? Math.min(rowsPerPage, 1000) : rowsPerPage
-    const targetPage = Math.floor((targetLine - 1) / rpp)
+    const hasFilters = !!(activeSearch || activeExclude || filterLevel || filterThread)
+    let targetPage: number
+
+    if (hasFilters) {
+      const controller = new AbortController()
+      resolveAbortRef.current = controller
+      try {
+        const result = await logService.resolveLinePage(analysisId, {
+          line: targetLine, thread: filterThread || undefined,
+          level: filterLevel || undefined, search: activeSearch || undefined,
+          exclude: activeExclude || undefined, size: rpp, signal: controller.signal,
+        })
+        if (result.found) {
+          targetPage = result.page
+        } else {
+          clearAllFilters()
+          targetPage = Math.floor((targetLine - 1) / rpp)
+        }
+      } catch (e) {
+        if ((e as Error)?.name === 'AbortError') return
+        clearAllFilters()
+        targetPage = Math.floor((targetLine - 1) / rpp)
+      }
+    } else {
+      targetPage = Math.floor((targetLine - 1) / rpp)
+    }
+
     setPage(targetPage)
     setScrollTarget(targetLine)
     setScrollGen(g => g + 1)
     setFlashLine(targetLine)
-  }, [wordWrap, rowsPerPage])
+  }, [wordWrap, rowsPerPage, activeSearch, activeExclude, filterLevel, filterThread, analysisId, clearAllFilters])
 
   const jumpToNextMark = useCallback(() => {
     if (sortedMarks.length === 0) return
@@ -689,7 +728,7 @@ export function RawLogTab({ analysisId, initialThread, initialLevel, levelCounts
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             const val = Number((e.target as HTMLInputElement).value)
-            if (val > 0 && val <= total) {
+            if (val > 0) {
               scrollToLine(val);
               (e.target as HTMLInputElement).value = ''
             }
