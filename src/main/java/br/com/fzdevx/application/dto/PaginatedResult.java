@@ -7,6 +7,7 @@ package br.com.fzdevx.application.dto;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 public record PaginatedResult<T>(List<T> data, int total, int page, int size) {
 
@@ -17,6 +18,10 @@ public record PaginatedResult<T>(List<T> data, int total, int page, int size) {
         int from = Math.min(page * size, total);
         int to = Math.min(from + size, total);
         return new PaginatedResult<>(List.copyOf(all.subList(from, to)), total, page, size);
+    }
+
+    public <R> PaginatedResult<R> map(Function<T, R> mapper) {
+        return new PaginatedResult<>(data.stream().map(mapper).toList(), total, page, size);
     }
 
     public Map<String, Object> toMap() {

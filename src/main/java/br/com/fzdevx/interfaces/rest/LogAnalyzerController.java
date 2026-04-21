@@ -15,18 +15,22 @@ import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.infrastructure.config.LogPresetProvider;
 import br.com.fzdevx.interfaces.rest.util.AnalysisSummaryMapper;
 import br.com.fzdevx.interfaces.rest.util.ContentDispositionHelper;
+import br.com.fzdevx.interfaces.rest.util.PayloadTruncationMapper;
 import br.com.fzdevx.interfaces.rest.util.UploadFormParser;
 import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.StreamingOutput;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.*;
@@ -109,6 +113,10 @@ public class LogAnalyzerController {
     @Inject
     @ConfigProperty(name = "log.analyzer.default-preset", defaultValue = "WILDFLY")
     String defaultPresetName;
+
+    @Inject
+    @ConfigProperty(name = "log.analyzer.payload-truncate-threshold", defaultValue = "102400")
+    int payloadTruncateThreshold;
 
     @GET
     @Path("/status")
@@ -279,6 +287,8 @@ public class LogAnalyzerController {
                                 @QueryParam("endpoint") String endpoint,
                                 @QueryParam("thread") String thread,
                                 @QueryParam("minDuration") Long minDuration,
+                                @QueryParam("maxDuration") Long maxDuration,
+                                @QueryParam("slowOnly") @DefaultValue("false") boolean slowOnly,
                                 @QueryParam("search") String search,
                                 @QueryParam("exclude") String exclude,
                                 @QueryParam("timeFrom") String timeFromStr,
@@ -295,8 +305,9 @@ public class LogAnalyzerController {
         LocalDateTime timeTo = parseDateTime(timeToStr);
 
         var result = queryApiCallsUseCase.execute(analysis.getApiCalls(),
-                endpoint, thread, minDuration, search, exclude, timeFrom, timeTo, sort, sortDir, page, size);
-        return Response.ok(result.toMap()).build();
+                endpoint, thread, minDuration, maxDuration, slowOnly, search, exclude, timeFrom, timeTo, sort, sortDir, page, size);
+        var truncated = result.map(p -> PayloadTruncationMapper.toResponse(p, payloadTruncateThreshold));
+        return Response.ok(truncated.toMap()).build();
     }
 
     private LocalDateTime parseDateTime(String value) {
@@ -392,7 +403,33 @@ public class LogAnalyzerController {
         if (analysis == null) return analysisNotFound();
 
         var result = queryLogLinesUseCase.queryLines(analysis.getAllLines(), thread, level, search, exclude, page, size);
-        return Response.ok(result.toMap()).build();
+        var truncated = result.map(l -> PayloadTruncationMapper.toResponse(l, payloadTruncateThreshold));
+        return Response.ok(truncated.toMap()).build();
+    }
+
+    @GET
+    @Path("/{id}/lines/resolve-page")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response resolvePageForLine(@PathParam("id") String id,
+                                       @QueryParam("line") int line,
+                                       @QueryParam("thread") String thread,
+                                       @QueryParam("level") String level,
+                                       @QueryParam("search") String search,
+                                       @QueryParam("exclude") String exclude,
+                                       @QueryParam("size") @DefaultValue("1000") int size) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+
+        if (line <= 0) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Parameter 'line' must be positive."))
+                    .build();
+        }
+
+        int page = queryLogLinesUseCase.resolvePageForLine(
+                analysis.getAllLines(), thread, level, search, exclude, line, size);
+        return Response.ok(Map.of("page", page, "found", page >= 0)).build();
     }
 
     @GET
@@ -414,7 +451,36 @@ public class LogAnalyzerController {
         }
 
         var result = queryLogLinesUseCase.queryLineRange(analysis.getAllLines(), from, to, level, page, size);
-        return Response.ok(result.toMap()).build();
+        var truncated = result.map(l -> PayloadTruncationMapper.toResponse(l, payloadTruncateThreshold));
+        return Response.ok(truncated.toMap()).build();
+    }
+
+    @GET
+    @Path("/{id}/lines/content")
+    @Produces(MediaType.TEXT_PLAIN)
+    public Response downloadLineContent(@PathParam("id") String id,
+                                         @QueryParam("line") int line) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+
+        var match = analysis.getAllLines().stream()
+                .filter(l -> l.lineNumber() == line)
+                .findFirst();
+        if (match.isEmpty()) return Response.status(Response.Status.NOT_FOUND).build();
+
+        String message = match.get().message();
+        if (message == null) message = "";
+
+        String finalMessage = message;
+        StreamingOutput stream = out -> {
+            try (var writer = new OutputStreamWriter(out, StandardCharsets.UTF_8)) {
+                writer.write(finalMessage);
+            }
+        };
+        return Response.ok(stream, MediaType.TEXT_PLAIN)
+                .header("Content-Disposition", "attachment; filename=\"log-line-" + line + ".txt\"")
+                .build();
     }
 
     @GET
@@ -475,7 +541,9 @@ public class LogAnalyzerController {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
-        return Response.ok(PaginatedResult.of(analysis.getRepeatedFailures(), page, size).toMap()).build();
+        var result = PaginatedResult.of(analysis.getRepeatedFailures(), page, size);
+        var truncated = result.map(f -> PayloadTruncationMapper.toResponse(f, payloadTruncateThreshold));
+        return Response.ok(truncated.toMap()).build();
     }
 
     @GET
@@ -491,7 +559,66 @@ public class LogAnalyzerController {
         if (analysis == null) return analysisNotFound();
 
         var result = queryOrphanRequestsUseCase.execute(analysis.getOrphanRequests(), endpoint, thread, page, size);
-        return Response.ok(result.toMap()).build();
+        var truncated = result.map(o -> PayloadTruncationMapper.toResponse(o, payloadTruncateThreshold));
+        return Response.ok(truncated.toMap()).build();
+    }
+
+    @GET
+    @Path("/{id}/api-calls/payload")
+    @Produces(MediaType.TEXT_PLAIN)
+    public Response downloadApiCallPayload(@PathParam("id") String id,
+                                           @QueryParam("line") int line,
+                                           @QueryParam("type") @DefaultValue("request") String type) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+
+        var match = analysis.getApiCalls().stream()
+                .filter(c -> c.requestLineNumber() == line)
+                .findFirst();
+        if (match.isEmpty()) return Response.status(Response.Status.NOT_FOUND).build();
+
+        ApiCallPair call = match.get();
+        String payload = "response".equalsIgnoreCase(type) ? call.responsePayload() : call.requestPayload();
+        if (payload == null) payload = "";
+
+        String finalPayload = payload;
+        StreamingOutput stream = out -> {
+            try (var writer = new OutputStreamWriter(out, StandardCharsets.UTF_8)) {
+                writer.write(finalPayload);
+            }
+        };
+        return Response.ok(stream, MediaType.TEXT_PLAIN)
+                .header("Content-Disposition", "attachment; filename=\"payload-" + type + "-line" + line + ".txt\"")
+                .build();
+    }
+
+    @GET
+    @Path("/{id}/orphan-requests/payload")
+    @Produces(MediaType.TEXT_PLAIN)
+    public Response downloadOrphanPayload(@PathParam("id") String id,
+                                           @QueryParam("line") int line) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+
+        var match = analysis.getOrphanRequests().stream()
+                .filter(o -> o.lineNumber() == line)
+                .findFirst();
+        if (match.isEmpty()) return Response.status(Response.Status.NOT_FOUND).build();
+
+        String payload = match.get().payload();
+        if (payload == null) payload = "";
+
+        String finalPayload = payload;
+        StreamingOutput stream = out -> {
+            try (var writer = new OutputStreamWriter(out, StandardCharsets.UTF_8)) {
+                writer.write(finalPayload);
+            }
+        };
+        return Response.ok(stream, MediaType.TEXT_PLAIN)
+                .header("Content-Disposition", "attachment; filename=\"payload-orphan-line" + line + ".txt\"")
+                .build();
     }
 
     @GET
@@ -503,7 +630,11 @@ public class LogAnalyzerController {
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        return Response.ok(queryCriticalIssuesUseCase.queryByCategory(analysis.getCriticalIssues(), category)).build();
+        var summaries = queryCriticalIssuesUseCase.queryByCategory(analysis.getCriticalIssues(), category);
+        var truncated = summaries.stream()
+                .map(s -> PayloadTruncationMapper.toResponse(s, payloadTruncateThreshold))
+                .toList();
+        return Response.ok(truncated).build();
     }
 
     @GET
@@ -566,7 +697,8 @@ public class LogAnalyzerController {
         if (analysis == null) return analysisNotFound();
 
         var result = queryNpeAnalysisUseCase.querySummaries(analysis.getNpeAnalysis(), page, size);
-        return Response.ok(result.toMap()).build();
+        var truncated = result.map(s -> PayloadTruncationMapper.toResponse(s, payloadTruncateThreshold));
+        return Response.ok(truncated.toMap()).build();
     }
 
     @GET
@@ -581,7 +713,8 @@ public class LogAnalyzerController {
         if (analysis == null) return analysisNotFound();
 
         var result = queryNpeAnalysisUseCase.queryOccurrences(analysis.getNpeAnalysis(), origin, page, size);
-        return Response.ok(result.toMap()).build();
+        var truncated = result.map(o -> PayloadTruncationMapper.toResponse(o, payloadTruncateThreshold));
+        return Response.ok(truncated.toMap()).build();
     }
 
     @GET
@@ -595,7 +728,8 @@ public class LogAnalyzerController {
         if (analysis == null) return analysisNotFound();
 
         var result = queryExceptionAnalysisUseCase.querySummaries(analysis.getExceptionAnalysis(), page, size);
-        return Response.ok(result.toMap()).build();
+        var truncated = result.map(s -> PayloadTruncationMapper.toResponse(s, payloadTruncateThreshold));
+        return Response.ok(truncated.toMap()).build();
     }
 
     @GET
@@ -610,7 +744,8 @@ public class LogAnalyzerController {
         if (analysis == null) return analysisNotFound();
 
         var result = queryExceptionAnalysisUseCase.queryOccurrences(analysis.getExceptionAnalysis(), origin, page, size);
-        return Response.ok(result.toMap()).build();
+        var truncated = result.map(o -> PayloadTruncationMapper.toResponse(o, payloadTruncateThreshold));
+        return Response.ok(truncated.toMap()).build();
     }
 
     @GET
@@ -649,7 +784,8 @@ public class LogAnalyzerController {
             )).build();
         }
 
-        return Response.ok(result.paginated().toMap()).build();
+        var truncated = result.paginated().map(m -> PayloadTruncationMapper.toResponse(m, payloadTruncateThreshold));
+        return Response.ok(truncated.toMap()).build();
     }
 
     @GET

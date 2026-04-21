@@ -5,8 +5,9 @@ import {
   Box, Typography, Chip, CircularProgress, Stack, Tooltip, TablePagination,
   useTheme,
 } from '@mui/material'
-import { ContentCopy } from '@mui/icons-material'
+import { ContentCopy, Download } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
+import { formatBytes } from '../../utils/format'
 import type { LogLine } from '../../services/logAnalyzerService'
 import * as logService from '../../services/logAnalyzerService'
 
@@ -80,6 +81,20 @@ export function ApiCallContextDialog({ open, onClose, analysisId, from, to, endp
     })
   }
 
+  const handleDownloadLine = useCallback(async (lineNumber: number) => {
+    try {
+      const blob = await logService.downloadLineContent(analysisId, lineNumber)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `log-line-${lineNumber}.txt`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      // download failed
+    }
+  }, [analysisId])
+
   const lineNumWidth = to > 0 ? String(to).length : 4
 
   return (
@@ -138,6 +153,16 @@ export function ApiCallContextDialog({ open, onClose, analysisId, from, to, endp
                   display: 'flex', px: 1.5, py: '1px',
                   '&:hover': { bgcolor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' },
                 }}>
+                  {line.messageTruncated ? (
+                    <Tooltip title={`${t('logAnalyzer.rawLog.lineTruncated')} (${formatBytes(line.messageSize)})`} arrow>
+                      <Box onClick={() => handleDownloadLine(line.lineNumber)}
+                        sx={{ width: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#FF6D00' }}>
+                        <Download sx={{ fontSize: 12 }} />
+                      </Box>
+                    </Tooltip>
+                  ) : (
+                    <Box sx={{ width: 18, flexShrink: 0 }} />
+                  )}
                   <Box sx={{
                     minWidth: lineNumWidth * 9 + 12,
                     textAlign: 'right',

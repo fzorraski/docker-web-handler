@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react'
 import { copyToClipboard } from '../../utils/clipboard'
 import {
   Autocomplete, Box, Typography, Chip, Button, Paper, LinearProgress, Stack,
@@ -6,10 +6,11 @@ import {
   TablePagination, Collapse, TextField, InputAdornment,
   useTheme,
 } from '@mui/material'
-import { ExpandMore, ExpandLess, ContentCopy, Search } from '@mui/icons-material'
+import { Download, ExpandMore, ExpandLess, ContentCopy, Search } from '@mui/icons-material'
 import { IconButton, Tooltip } from '@mui/material'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
+import { formatBytes } from '../../utils/format'
 import { LineLink } from './LineLink'
 import type { ExceptionLocationSummary } from '../../services/logAnalyzerService'
 import * as logService from '../../services/logAnalyzerService'
@@ -94,6 +95,18 @@ export function ExceptionAnalysisTab({ analysisId, onJumpToLine }: { analysisId:
   const toggleTrace = (key: string) => {
     setTraceOpen(prev => ({ ...prev, [key]: !prev[key] }))
   }
+
+  const handleDownloadLine = useCallback(async (lineNumber: number) => {
+    try {
+      const blob = await logService.downloadLineContent(analysisId, lineNumber)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `log-line-${lineNumber}.txt`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch { /* download failed */ }
+  }, [analysisId])
 
   const fetchOccurrences = (origin: string, pg: number) => {
     setOccLoading(true)
@@ -240,9 +253,19 @@ export function ExceptionAnalysisTab({ analysisId, onJumpToLine }: { analysisId:
                                         </Typography>
                                       )}
                                       {occ.message && (
-                                        <Typography variant="body2" fontSize="0.75rem" sx={{ ml: 1 }}>
-                                          {occ.message}
-                                        </Typography>
+                                        <>
+                                          {occ.messageTruncated && (
+                                            <Tooltip title={`${t('logAnalyzer.rawLog.lineTruncated')} (${formatBytes(occ.messageSize)})`} arrow>
+                                              <Box component="span" onClick={(e) => { e.stopPropagation(); handleDownloadLine(occ.logLineNumber) }}
+                                                sx={{ width: 18, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#FF6D00' }}>
+                                                <Download sx={{ fontSize: 12 }} />
+                                              </Box>
+                                            </Tooltip>
+                                          )}
+                                          <Typography variant="body2" fontSize="0.75rem" sx={{ ml: occ.messageTruncated ? 0 : 1 }}>
+                                            {occ.message}
+                                          </Typography>
+                                        </>
                                       )}
                                       {occ.stackTrace.length > 0 && (
                                         <>

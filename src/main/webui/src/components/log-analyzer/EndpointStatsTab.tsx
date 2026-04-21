@@ -113,7 +113,7 @@ export function EndpointStatsTab({ analysisId, onViewInsights }: { analysisId: s
           options={endpointOptions}
           value={filterEndpoint || null}
           onInputChange={(_, v) => setFilterEndpoint(v ?? '')}
-          renderInput={(params) => <TextField {...params} label={t('logAnalyzer.stats.endpoint')} />}
+          renderInput={(params) => <TextField {...params} label={t('logAnalyzer.stats.filterEndpoint')} />}
         />
         <Typography variant="caption" color="text.secondary">
           {sorted.length} / {stats.length}

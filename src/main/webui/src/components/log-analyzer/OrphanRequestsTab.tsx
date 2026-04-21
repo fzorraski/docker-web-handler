@@ -1,19 +1,72 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, useMemo, useCallback, Fragment } from 'react'
 import { copyToClipboard } from '../../utils/clipboard'
 import {
-  Autocomplete, Box, Typography, IconButton, Tooltip, LinearProgress, TextField, Stack,
+  Alert, Autocomplete, Box, Button, Typography, IconButton, Tooltip, LinearProgress, TextField, Stack,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
   TablePagination,
   useTheme,
 } from '@mui/material'
-import { ContentCopy } from '@mui/icons-material'
+import { ContentCopy, Download } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { usePaginatedFetch } from '../../hooks/usePaginatedFetch'
 import { maskSensitiveFields, tryFormatJson } from '../../utils/jsonUtils'
+import { formatBytes } from '../../utils/format'
 import { LineLink } from './LineLink'
 import type { OrphanRequest } from '../../services/logAnalyzerService'
 import * as logService from '../../services/logAnalyzerService'
+
+function OrphanPayloadBox({ payload, sensitiveFields, maskEnabled, isDark, truncated, fullSize, onDownload }: {
+  payload: string; sensitiveFields: string[]; maskEnabled: boolean; isDark: boolean
+  truncated?: boolean; fullSize?: number; onDownload?: () => void
+}) {
+  const { t } = useTranslation()
+  const formatted = useMemo(() => {
+    const processed = maskSensitiveFields(payload, sensitiveFields, maskEnabled)
+    return tryFormatJson(processed).formatted
+  }, [payload, sensitiveFields, maskEnabled])
+
+  return (
+    <>
+      <Box sx={{
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: '0.75rem',
+        p: 1.5,
+        borderRadius: 1,
+        bgcolor: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.04)',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-all',
+        maxHeight: 300,
+        overflow: 'auto',
+        position: 'relative',
+      }}>
+        <Tooltip title={t('containers.logs.copyAll')} arrow>
+          <IconButton
+            size="small"
+            sx={{ position: 'absolute', top: 4, right: 4, opacity: 0.6, '&:hover': { opacity: 1 } }}
+            onClick={(e) => {
+              e.stopPropagation()
+              copyToClipboard(formatted).catch(() => {})
+            }}
+          >
+            <ContentCopy sx={{ fontSize: 14 }} />
+          </IconButton>
+        </Tooltip>
+        {formatted}
+      </Box>
+      {truncated && (
+        <Alert severity="info" sx={{ mt: 1, py: 0.5 }}
+          action={onDownload && (
+            <Button size="small" startIcon={<Download />} onClick={onDownload}>
+              {t('logAnalyzer.apiCalls.downloadFullPayload')}
+            </Button>
+          )}>
+          {t('logAnalyzer.apiCalls.payloadTruncated', { size: formatBytes(fullSize ?? 0) })}
+        </Alert>
+      )}
+    </>
+  )
+}
 
 export function OrphanRequestsTab({ analysisId, sensitiveFields, maskEnabled, onJumpToLine }: {
   analysisId: string; sensitiveFields?: string[]; maskEnabled?: boolean; onJumpToLine?: (line: number) => void
@@ -30,6 +83,20 @@ export function OrphanRequestsTab({ analysisId, sensitiveFields, maskEnabled, on
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
   const [endpoints, setEndpoints] = useState<string[]>([])
   const [threads, setThreads] = useState<string[]>([])
+
+  const handleDownloadPayload = useCallback(async (line: number) => {
+    try {
+      const blob = await logService.downloadOrphanPayload(analysisId, line)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `payload-orphan-line${line}.txt`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      // download failed
+    }
+  }, [analysisId])
 
   useEffect(() => {
     logService.getOrphanRequests(analysisId, { size: 5000 }).then(res => {
@@ -114,33 +181,15 @@ export function OrphanRequestsTab({ analysisId, sensitiveFields, maskEnabled, on
                         <Typography variant="caption" fontWeight={600} display="block" mb={0.5}>
                           {t('logAnalyzer.orphanRequests.payload')}
                         </Typography>
-                        <Box sx={{
-                          fontFamily: "'JetBrains Mono', monospace",
-                          fontSize: '0.75rem',
-                          p: 1.5,
-                          borderRadius: 1,
-                          bgcolor: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.04)',
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-all',
-                          maxHeight: 300,
-                          overflow: 'auto',
-                          position: 'relative',
-                        }}>
-                          <Tooltip title={t('containers.logs.copyAll')} arrow>
-                            <IconButton
-                              size="small"
-                              sx={{ position: 'absolute', top: 4, right: 4, opacity: 0.6, '&:hover': { opacity: 1 } }}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                const text = tryFormatJson(maskSensitiveFields(o.payload!, sensitiveFields ?? [], maskEnabled ?? false)).formatted
-                                copyToClipboard(text).catch(() => {})
-                              }}
-                            >
-                              <ContentCopy sx={{ fontSize: 14 }} />
-                            </IconButton>
-                          </Tooltip>
-                          {tryFormatJson(maskSensitiveFields(o.payload, sensitiveFields ?? [], maskEnabled ?? false)).formatted}
-                        </Box>
+                        <OrphanPayloadBox
+                          payload={o.payload}
+                          sensitiveFields={sensitiveFields ?? []}
+                          maskEnabled={maskEnabled ?? false}
+                          isDark={isDark}
+                          truncated={o.payloadTruncated}
+                          fullSize={o.payloadSize}
+                          onDownload={() => handleDownloadPayload(o.lineNumber)}
+                        />
                       </TableCell>
                     </TableRow>
                   )}

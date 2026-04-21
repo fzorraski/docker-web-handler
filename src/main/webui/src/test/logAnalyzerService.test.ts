@@ -191,6 +191,64 @@ describe('logAnalyzerService', () => {
 
       await expect(getApiCalls('abc')).rejects.toThrow('fail')
     })
+
+    it('sends slowOnly param when true', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 50 }))
+
+      await getApiCalls('abc', { slowOnly: true, page: 0, size: 50 })
+
+      const url = mockFetch.mock.calls[0][0] as string
+      expect(url).toContain('slowOnly=true')
+    })
+
+    it('omits slowOnly param when false', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 50 }))
+
+      await getApiCalls('abc', { slowOnly: false, page: 0, size: 50 })
+
+      const url = mockFetch.mock.calls[0][0] as string
+      expect(url).not.toContain('slowOnly')
+    })
+
+    it('sends maxDuration param', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 50 }))
+
+      await getApiCalls('abc', { maxDuration: 5000, page: 0, size: 50 })
+
+      const url = mockFetch.mock.calls[0][0] as string
+      expect(url).toContain('maxDuration=5000')
+    })
+
+    it('sends duration range with both min and max', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 50 }))
+
+      await getApiCalls('abc', { minDuration: 1000, maxDuration: 30000, page: 0, size: 50 })
+
+      const url = mockFetch.mock.calls[0][0] as string
+      expect(url).toContain('minDuration=1000')
+      expect(url).toContain('maxDuration=30000')
+    })
+
+    it('sends endpoint substring filter', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 50 }))
+
+      await getApiCalls('abc', { endpoint: 'vehicle', page: 0, size: 50 })
+
+      const url = mockFetch.mock.calls[0][0] as string
+      expect(url).toContain('endpoint=vehicle')
+    })
+
+    it('sends combined advanced filters', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [], total: 0, page: 0, size: 50 }))
+
+      await getApiCalls('abc', { endpoint: 'vehicle', slowOnly: true, minDuration: 500, maxDuration: 10000, page: 0, size: 50 })
+
+      const url = mockFetch.mock.calls[0][0] as string
+      expect(url).toContain('endpoint=vehicle')
+      expect(url).toContain('slowOnly=true')
+      expect(url).toContain('minDuration=500')
+      expect(url).toContain('maxDuration=10000')
+    })
   })
 
   // ---- getOrphanRequests ----

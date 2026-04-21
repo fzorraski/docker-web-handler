@@ -1,12 +1,14 @@
-import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react'
 import {
-  Autocomplete, Box, Typography, Chip, Button, Paper, LinearProgress, Stack,
+  Autocomplete, Box, Tooltip, Typography, Chip, Button, Paper, LinearProgress, Stack,
   Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
   TablePagination, TextField,
   useTheme,
 } from '@mui/material'
+import { Download } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
+import { formatBytes } from '../../utils/format'
 import { formatDuration } from '../../utils/formatDuration'
 import { LineLink } from './LineLink'
 import type { RepeatedFailure } from '../../services/logAnalyzerService'
@@ -66,6 +68,18 @@ export function FailuresTab({ analysisId, onJumpToLine }: { analysisId: string; 
   const totalOccurrences = useMemo(() => allFailures.reduce((sum, f) => sum + f.occurrences, 0), [allFailures])
 
   const DETAIL_PAGE_SIZE = 20
+
+  const handleDownloadLine = useCallback(async (lineNumber: number) => {
+    try {
+      const blob = await logService.downloadLineContent(analysisId, lineNumber)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `log-line-${lineNumber}.txt`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch { /* download failed */ }
+  }, [analysisId])
 
   const countColor = (count: number): 'default' | 'warning' | 'error' => {
     if (count >= 500) return 'error'
@@ -158,7 +172,16 @@ export function FailuresTab({ analysisId, onJumpToLine }: { analysisId: string; 
                               {onJumpToLine ? (
                                 <LineLink line={d.lineNumber} onClick={onJumpToLine} />
                               ) : `L${d.lineNumber}`}
-                              {' — '}{d.message}
+                              {' — '}
+                              {d.messageTruncated && (
+                                <Tooltip title={`${t('logAnalyzer.rawLog.lineTruncated')} (${formatBytes(d.messageSize)})`} arrow>
+                                  <Box component="span" onClick={(e) => { e.stopPropagation(); handleDownloadLine(d.lineNumber) }}
+                                    sx={{ width: 18, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#FF6D00', verticalAlign: 'middle' }}>
+                                    <Download sx={{ fontSize: 12 }} />
+                                  </Box>
+                                </Tooltip>
+                              )}
+                              {d.message}
                             </Typography>
                           ))}
                         </Box>

@@ -5,6 +5,7 @@ import br.com.fzdevx.application.usecase.AnalyzeContainerLogsUseCase;
 import br.com.fzdevx.application.usecase.AnalyzeLogFileUseCase;
 import br.com.fzdevx.domain.model.*;
 import br.com.fzdevx.domain.model.anomaly.*;
+import br.com.fzdevx.interfaces.rest.dto.*;
 import br.com.fzdevx.application.port.AnomalyDetectionPort;
 import br.com.fzdevx.application.port.CriticalBurstPort;
 import br.com.fzdevx.application.port.ReportGeneratorPort;
@@ -93,6 +94,7 @@ class LogAnalyzerControllerTest {
         setField("defaultSlowThresholdMs", 1000);
         setField("defaultPresetName", "WILDFLY");
         setField("defaultContainerTail", 10000);
+        setField("payloadTruncateThreshold", 102400);
         when(logPresetProvider.allPresets()).thenReturn(LogPreset.allPresets());
         when(logPresetProvider.byName(anyString())).thenAnswer(inv -> LogPreset.byName(inv.getArgument(0)));
         when(anomalyDetectorService.validMethods()).thenReturn(java.util.Set.of("ratio", "zscore"));
@@ -339,7 +341,7 @@ class LogAnalyzerControllerTest {
     void getApiCalls_disabled_returnsForbidden() {
         setField("enabled", false);
 
-        Response response = controller.getApiCalls(ANALYSIS_ID, null, null, null, null, null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(ANALYSIS_ID, null, null, null, null, false, null, null, null, null, "time", "asc", 0, 50);
 
         assertEquals(403, response.getStatus());
     }
@@ -442,7 +444,7 @@ class LogAnalyzerControllerTest {
     void getApiCalls_notFound_returns404() {
         when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
 
-        Response response = controller.getApiCalls("nonexistent", null, null, null, null, null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls("nonexistent", null, null, null, null, false, null, null, null, null, "time", "asc", 0, 50);
 
         assertEquals(404, response.getStatus());
     }
@@ -543,7 +545,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, null, null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -562,14 +564,14 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, "item", null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, "item", null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
         List<?> data = (List<?>) entity.get("data");
         assertEquals(1, data.size());
         assertEquals(1, entity.get("total"));
-        ApiCallPair match = (ApiCallPair) data.getFirst();
+        ApiCallPairResponse match = (ApiCallPairResponse) data.getFirst();
         assertEquals("OrderResource/create", match.endpoint());
     }
 
@@ -579,13 +581,13 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, "\"id\":1", null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, "\"id\":1", null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
         List<?> data = (List<?>) entity.get("data");
         assertEquals(1, data.size());
-        ApiCallPair match = (ApiCallPair) data.getFirst();
+        ApiCallPairResponse match = (ApiCallPairResponse) data.getFirst();
         assertEquals("UserResource/getUser", match.endpoint());
     }
 
@@ -595,13 +597,13 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, "102", null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, "102", null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
         List<?> data = (List<?>) entity.get("data");
         assertEquals(1, data.size());
-        ApiCallPair match = (ApiCallPair) data.getFirst();
+        ApiCallPairResponse match = (ApiCallPairResponse) data.getFirst();
         assertEquals("OrderResource/create", match.endpoint());
     }
 
@@ -611,7 +613,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, "ITEM", null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, "ITEM", null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -624,7 +626,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, "nonexistent-value", null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, "nonexistent-value", null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -640,13 +642,13 @@ class LogAnalyzerControllerTest {
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
         // search "id" matches both calls, but endpoint filter narrows to one
-        Response response = controller.getApiCalls(analysis.getId(), "UserResource/getUser", null, null, "id", null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), "UserResource/getUser", null, null, null, false, "id", null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
         List<?> data = (List<?>) entity.get("data");
         assertEquals(1, data.size());
-        ApiCallPair match = (ApiCallPair) data.getFirst();
+        ApiCallPairResponse match = (ApiCallPairResponse) data.getFirst();
         assertEquals("UserResource/getUser", match.endpoint());
     }
 
@@ -656,7 +658,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, "   ", null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, "   ", null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -669,7 +671,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, null, null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -932,7 +934,7 @@ class LogAnalyzerControllerTest {
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<OrphanRequest> data = (List<OrphanRequest>) entity.get("data");
+        List<OrphanRequestResponse> data = (List<OrphanRequestResponse>) entity.get("data");
         assertEquals(1, data.size());
         assertEquals("OrderWS/create", data.getFirst().endpoint());
     }
@@ -947,7 +949,7 @@ class LogAnalyzerControllerTest {
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<OrphanRequest> data = (List<OrphanRequest>) entity.get("data");
+        List<OrphanRequestResponse> data = (List<OrphanRequestResponse>) entity.get("data");
         assertEquals(1, data.size());
         assertEquals("http-thread-2", data.getFirst().thread());
     }
@@ -1870,7 +1872,7 @@ class LogAnalyzerControllerTest {
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<LogLine> data = (List<LogLine>) entity.get("data");
+        List<LogLineResponse> data = (List<LogLineResponse>) entity.get("data");
         assertEquals(1, data.size());
         assertEquals("ERROR", data.getFirst().level());
     }
@@ -1943,7 +1945,7 @@ class LogAnalyzerControllerTest {
         Response response = controller.getCriticalIssues(analysis.getId(), null);
 
         assertEquals(200, response.getStatus());
-        List<CriticalIssueSummary> summaries = (List<CriticalIssueSummary>) response.getEntity();
+        List<CriticalIssueSummaryResponse> summaries = (List<CriticalIssueSummaryResponse>) response.getEntity();
         assertEquals(2, summaries.size());
     }
 
@@ -1956,7 +1958,7 @@ class LogAnalyzerControllerTest {
         Response response = controller.getCriticalIssues(analysis.getId(), "OUT_OF_MEMORY");
 
         assertEquals(200, response.getStatus());
-        List<CriticalIssueSummary> summaries = (List<CriticalIssueSummary>) response.getEntity();
+        List<CriticalIssueSummaryResponse> summaries = (List<CriticalIssueSummaryResponse>) response.getEntity();
         assertEquals(1, summaries.size());
         assertEquals("OUT_OF_MEMORY", summaries.getFirst().category());
     }
@@ -1970,7 +1972,7 @@ class LogAnalyzerControllerTest {
         Response response = controller.getCriticalIssues(analysis.getId(), "out_of_memory");
 
         assertEquals(200, response.getStatus());
-        List<CriticalIssueSummary> summaries = (List<CriticalIssueSummary>) response.getEntity();
+        List<CriticalIssueSummaryResponse> summaries = (List<CriticalIssueSummaryResponse>) response.getEntity();
         assertEquals(1, summaries.size());
     }
 
@@ -1983,7 +1985,7 @@ class LogAnalyzerControllerTest {
         Response response = controller.getCriticalIssues(analysis.getId(), "  ");
 
         assertEquals(200, response.getStatus());
-        List<CriticalIssueSummary> summaries = (List<CriticalIssueSummary>) response.getEntity();
+        List<CriticalIssueSummaryResponse> summaries = (List<CriticalIssueSummaryResponse>) response.getEntity();
         assertEquals(2, summaries.size());
     }
 
@@ -2278,9 +2280,9 @@ class LogAnalyzerControllerTest {
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<NpeLocationSummary> data = (List<NpeLocationSummary>) entity.get("data");
+        List<NpeLocationSummaryResponse> data = (List<NpeLocationSummaryResponse>) entity.get("data");
         assertEquals(1, data.size());
-        NpeLocationSummary summary = data.getFirst();
+        NpeLocationSummaryResponse summary = data.getFirst();
         assertEquals("com.example.Service.process(Service.java:42)", summary.origin());
         assertEquals(2, summary.count());
         assertTrue(summary.occurrences().isEmpty(), "Occurrences should be stripped in summary");
@@ -2391,9 +2393,9 @@ class LogAnalyzerControllerTest {
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<ExceptionLocationSummary> data = (List<ExceptionLocationSummary>) entity.get("data");
+        List<ExceptionLocationSummaryResponse> data = (List<ExceptionLocationSummaryResponse>) entity.get("data");
         assertEquals(1, data.size());
-        ExceptionLocationSummary summary = data.getFirst();
+        ExceptionLocationSummaryResponse summary = data.getFirst();
         assertEquals("IllegalStateException", summary.exceptionType());
         assertEquals(2, summary.count());
         assertTrue(summary.occurrences().isEmpty(), "Occurrences should be stripped in summary");
@@ -2476,7 +2478,7 @@ class LogAnalyzerControllerTest {
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<LogLine> data = (List<LogLine>) entity.get("data");
+        List<LogLineResponse> data = (List<LogLineResponse>) entity.get("data");
         assertEquals(2, data.size());
         assertTrue(data.stream().allMatch(l -> "http-thread-1".equals(l.thread())));
     }
@@ -2491,7 +2493,7 @@ class LogAnalyzerControllerTest {
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<LogLine> data = (List<LogLine>) entity.get("data");
+        List<LogLineResponse> data = (List<LogLineResponse>) entity.get("data");
         assertEquals(1, data.size());
         assertEquals("ERROR", data.getFirst().level());
     }
@@ -2506,7 +2508,7 @@ class LogAnalyzerControllerTest {
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<LogLine> data = (List<LogLine>) entity.get("data");
+        List<LogLineResponse> data = (List<LogLineResponse>) entity.get("data");
         assertEquals(1, data.size());
         assertTrue(data.getFirst().message().contains("Slow query"));
     }
@@ -2521,7 +2523,7 @@ class LogAnalyzerControllerTest {
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<LogLine> data = (List<LogLine>) entity.get("data");
+        List<LogLineResponse> data = (List<LogLineResponse>) entity.get("data");
         assertTrue(data.stream().noneMatch(l -> l.message() != null && l.message().toLowerCase().contains("slow query")));
         assertEquals(3, data.size());
     }
@@ -2536,7 +2538,7 @@ class LogAnalyzerControllerTest {
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<LogLine> data = (List<LogLine>) entity.get("data");
+        List<LogLineResponse> data = (List<LogLineResponse>) entity.get("data");
         assertTrue(data.stream().noneMatch(l -> l.message() != null &&
                 (l.message().toLowerCase().contains("slow query") || l.message().toLowerCase().contains("started"))));
     }
@@ -2551,7 +2553,7 @@ class LogAnalyzerControllerTest {
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<LogLine> data = (List<LogLine>) entity.get("data");
+        List<LogLineResponse> data = (List<LogLineResponse>) entity.get("data");
         assertEquals(3, data.size());
         assertTrue(data.stream().noneMatch(l -> l.message() != null && l.message().toLowerCase().contains("slow query")));
     }
@@ -2566,7 +2568,7 @@ class LogAnalyzerControllerTest {
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<LogLine> data = (List<LogLine>) entity.get("data");
+        List<LogLineResponse> data = (List<LogLineResponse>) entity.get("data");
         assertEquals(4, data.size());
     }
 
@@ -2581,7 +2583,7 @@ class LogAnalyzerControllerTest {
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<LogLine> data = (List<LogLine>) entity.get("data");
+        List<LogLineResponse> data = (List<LogLineResponse>) entity.get("data");
         assertTrue(data.stream().allMatch(l -> l.message().toLowerCase().contains("e")));
         assertTrue(data.stream().noneMatch(l -> l.message().toLowerCase().contains("slow query")));
     }
@@ -2596,7 +2598,7 @@ class LogAnalyzerControllerTest {
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<LogLine> data = (List<LogLine>) entity.get("data");
+        List<LogLineResponse> data = (List<LogLineResponse>) entity.get("data");
         assertTrue(data.stream().noneMatch(l -> l.message() != null &&
                 (l.message().toLowerCase().contains("slow query") || l.message().toLowerCase().contains("started"))));
     }
@@ -2611,11 +2613,11 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, null, null, null, "duration", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, null, null, null, null, "duration", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<ApiCallPair> data = (List<ApiCallPair>) entity.get("data");
+        List<ApiCallPairResponse> data = (List<ApiCallPairResponse>) entity.get("data");
         assertEquals(2, data.size());
         assertTrue(data.get(0).durationMs() <= data.get(1).durationMs());
     }
@@ -2626,11 +2628,11 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, null, null, null, "duration", "desc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, null, null, null, null, "duration", "desc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<ApiCallPair> data = (List<ApiCallPair>) entity.get("data");
+        List<ApiCallPairResponse> data = (List<ApiCallPairResponse>) entity.get("data");
         assertEquals(2, data.size());
         assertTrue(data.get(0).durationMs() >= data.get(1).durationMs());
     }
@@ -2641,11 +2643,11 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, null, null, null, "endpoint", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, null, null, null, null, "endpoint", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<ApiCallPair> data = (List<ApiCallPair>) entity.get("data");
+        List<ApiCallPairResponse> data = (List<ApiCallPairResponse>) entity.get("data");
         assertEquals(2, data.size());
         assertTrue(data.get(0).endpoint().compareTo(data.get(1).endpoint()) <= 0);
     }
@@ -2656,11 +2658,11 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, 1000L, null, null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, 1000L, null, false, null, null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<ApiCallPair> data = (List<ApiCallPair>) entity.get("data");
+        List<ApiCallPairResponse> data = (List<ApiCallPairResponse>) entity.get("data");
         assertEquals(1, data.size());
         assertEquals("OrderResource/create", data.getFirst().endpoint());
     }
@@ -2675,11 +2677,11 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, "UserResource", null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, null, "UserResource", null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<ApiCallPair> data = (List<ApiCallPair>) entity.get("data");
+        List<ApiCallPairResponse> data = (List<ApiCallPairResponse>) entity.get("data");
         assertEquals(1, data.size());
         assertEquals("OrderResource/create", data.getFirst().endpoint());
     }
@@ -2690,11 +2692,11 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, "UserResource,OrderResource", null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, null, "UserResource,OrderResource", null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<ApiCallPair> data = (List<ApiCallPair>) entity.get("data");
+        List<ApiCallPairResponse> data = (List<ApiCallPairResponse>) entity.get("data");
         assertEquals(0, data.size());
     }
 
@@ -2704,11 +2706,11 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, "item", null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, null, "item", null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
-        List<ApiCallPair> data = (List<ApiCallPair>) entity.get("data");
+        List<ApiCallPairResponse> data = (List<ApiCallPairResponse>) entity.get("data");
         assertEquals(1, data.size());
         assertEquals("UserResource/getUser", data.getFirst().endpoint());
     }

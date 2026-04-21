@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react'
 import { copyToClipboard } from '../../utils/clipboard'
 import {
   Box, Typography, Chip, Button, Paper, LinearProgress, Stack,
@@ -6,10 +6,11 @@ import {
   TablePagination, Collapse,
   useTheme,
 } from '@mui/material'
-import { ExpandMore, ExpandLess, ContentCopy } from '@mui/icons-material'
+import { Download, ExpandMore, ExpandLess, ContentCopy } from '@mui/icons-material'
 import { IconButton, Tooltip } from '@mui/material'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
+import { formatBytes } from '../../utils/format'
 import { LineLink } from './LineLink'
 import { truncatedTooltipProps } from './tooltipStyles'
 import type { NpeLocationSummary } from '../../services/logAnalyzerService'
@@ -57,6 +58,18 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
   const toggleTrace = (key: string) => {
     setTraceOpen(prev => ({ ...prev, [key]: !prev[key] }))
   }
+
+  const handleDownloadLine = useCallback(async (lineNumber: number) => {
+    try {
+      const blob = await logService.downloadLineContent(analysisId, lineNumber)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `log-line-${lineNumber}.txt`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch { /* download failed */ }
+  }, [analysisId])
 
   const fetchOccurrences = (origin: string, pg: number) => {
     setOccLoading(true)
@@ -154,12 +167,22 @@ export function NpeAnalysisTab({ analysisId, onJumpToLine }: { analysisId: strin
                                         </Typography>
                                       )}
                                       {occ.message && !isTraceOpen && (
-                                        <Tooltip title={occ.message} arrow enterDelay={300}
-                                          slotProps={truncatedTooltipProps}>
-                                          <Typography variant="body2" fontSize="0.75rem" sx={{ ml: 1, maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                            {occ.message}
-                                          </Typography>
-                                        </Tooltip>
+                                        <>
+                                          {occ.messageTruncated && (
+                                            <Tooltip title={`${t('logAnalyzer.rawLog.lineTruncated')} (${formatBytes(occ.messageSize)})`} arrow>
+                                              <Box component="span" onClick={(e) => { e.stopPropagation(); handleDownloadLine(occ.logLineNumber) }}
+                                                sx={{ width: 18, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#FF6D00' }}>
+                                                <Download sx={{ fontSize: 12 }} />
+                                              </Box>
+                                            </Tooltip>
+                                          )}
+                                          <Tooltip title={occ.message} arrow enterDelay={300}
+                                            slotProps={truncatedTooltipProps}>
+                                            <Typography variant="body2" fontSize="0.75rem" sx={{ ml: occ.messageTruncated ? 0 : 1, maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                              {occ.message}
+                                            </Typography>
+                                          </Tooltip>
+                                        </>
                                       )}
                                       {(occ.stackTrace.length > 0 || occ.message) && (
                                         <>

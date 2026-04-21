@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react'
 import { copyToClipboard } from '../../utils/clipboard'
 import {
   Autocomplete, Box, Button, CircularProgress, Collapse, IconButton, Typography, Chip, Paper, LinearProgress, Stack,
@@ -6,10 +6,11 @@ import {
   TablePagination, TextField, InputAdornment,
   useTheme,
 } from '@mui/material'
-import { BugReport, ErrorOutline, ExpandMore, ExpandLess, HelpOutline, TuneRounded, ContentCopy, Search } from '@mui/icons-material'
+import { BugReport, Download, ErrorOutline, ExpandMore, ExpandLess, HelpOutline, TuneRounded, ContentCopy, Search } from '@mui/icons-material'
 import Tooltip from '@mui/material/Tooltip'
 import { useTranslation } from 'react-i18next'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
+import { formatBytes } from '../../utils/format'
 import { LineLink } from './LineLink'
 import { truncatedTooltipProps } from './tooltipStyles'
 import type { CriticalIssueSummary, BurstCategorySummary, BurstMeta, CriticalIssue } from '../../services/logAnalyzerService'
@@ -87,6 +88,18 @@ export function CriticalIssuesTab({ analysisId, onJumpToLine }: { analysisId: st
     if (severity === 'HIGH') return t('logAnalyzer.criticalIssues.severityHigh')
     return t('logAnalyzer.criticalIssues.severityMedium')
   }
+
+  const handleDownloadLine = useCallback(async (lineNumber: number) => {
+    try {
+      const blob = await logService.downloadLineContent(analysisId, lineNumber)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `log-line-${lineNumber}.txt`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch { /* download failed */ }
+  }, [analysisId])
 
   const filtered = useMemo(() => {
     if (!filterCategory) return allSummaries
@@ -570,6 +583,14 @@ export function CriticalIssuesTab({ analysisId, onJumpToLine }: { analysisId: st
                               </Typography>
                               <Typography variant="body2" fontFamily="'JetBrains Mono', monospace" fontSize="0.75rem"
                                 sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                                {issue.messageTruncated && (
+                                  <Tooltip title={`${t('logAnalyzer.rawLog.lineTruncated')} (${formatBytes(issue.messageSize)})`} arrow>
+                                    <Box component="span" onClick={(e) => { e.stopPropagation(); handleDownloadLine(issue.lineNumber) }}
+                                      sx={{ width: 18, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#FF6D00', verticalAlign: 'middle' }}>
+                                      <Download sx={{ fontSize: 12 }} />
+                                    </Box>
+                                  </Tooltip>
+                                )}
                                 {issue.message}
                               </Typography>
                             </Box>

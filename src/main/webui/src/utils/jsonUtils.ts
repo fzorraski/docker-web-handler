@@ -1,5 +1,8 @@
+const MAX_PARSE_SIZE = 200_000
+
 export function maskSensitiveFields(json: string, fields: string[], enabled: boolean): string {
   if (!enabled || fields.length === 0) return json
+  if (json.length > MAX_PARSE_SIZE) return json
   try {
     const obj = JSON.parse(json)
     const lowerFields = new Set(fields.map(f => f.toLowerCase()))
@@ -21,6 +24,7 @@ export function maskSensitiveFields(json: string, fields: string[], enabled: boo
 }
 
 export function tryFormatJson(text: string): { formatted: string; isJson: boolean } {
+  if (text.length > MAX_PARSE_SIZE) return { formatted: text, isJson: false }
   try {
     const obj = JSON.parse(text)
     return { formatted: JSON.stringify(obj, null, 2), isJson: true }

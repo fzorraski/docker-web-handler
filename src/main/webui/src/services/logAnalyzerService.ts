@@ -25,6 +25,8 @@ export interface CustomFieldMatch {
   sourceFile: string
   fullMessage: string
   groups: Record<string, string>
+  fullMessageTruncated: boolean
+  fullMessageSize: number
 }
 
 export interface CustomFieldSummary {
@@ -93,6 +95,10 @@ export interface ApiCallPair {
   responseLineNumber: number
   sourceFile: string
   slow: boolean
+  requestPayloadTruncated: boolean
+  responsePayloadTruncated: boolean
+  requestPayloadSize: number
+  responsePayloadSize: number
 }
 
 export interface EndpointStats {
@@ -113,6 +119,8 @@ export interface LogLine {
   thread: string | null
   message: string | null
   sourceFile: string
+  messageTruncated: boolean
+  messageSize: number
 }
 
 export interface OrphanRequest {
@@ -122,6 +130,8 @@ export interface OrphanRequest {
   payload: string | null
   lineNumber: number
   sourceFile: string
+  payloadTruncated: boolean
+  payloadSize: number
 }
 
 export interface JobExecution {
@@ -143,7 +153,7 @@ export interface RepeatedFailure {
   occurrences: number
   firstSeen: string
   lastSeen: string
-  details: { timestamp: string; lineNumber: number; message: string; sourceFile: string }[]
+  details: { timestamp: string; lineNumber: number; message: string; sourceFile: string; messageTruncated: boolean; messageSize: number }[]
 }
 
 export interface NpeOccurrence {
@@ -156,6 +166,8 @@ export interface NpeOccurrence {
   logLineNumber: number
   logSourceFile: string
   stackTrace: string[]
+  messageTruncated: boolean
+  messageSize: number
 }
 
 export interface NpeLocationSummary {
@@ -181,6 +193,8 @@ export interface ExceptionOccurrence {
   logLineNumber: number
   logSourceFile: string
   stackTrace: string[]
+  messageTruncated: boolean
+  messageSize: number
 }
 
 export interface ExceptionLocationSummary {
@@ -204,6 +218,8 @@ export interface CriticalIssue {
   timestamp: string | null
   message: string
   sourceFile: string
+  messageTruncated: boolean
+  messageSize: number
 }
 
 export interface CriticalBurst {
@@ -421,12 +437,14 @@ export async function deleteAnalysis(id: string): Promise<void> {
 
 export async function getApiCalls(
   id: string,
-  params: { endpoint?: string; thread?: string; minDuration?: number; search?: string; exclude?: string; timeFrom?: string; timeTo?: string; sort?: string; sortDir?: string; page?: number; size?: number; signal?: AbortSignal } = {},
+  params: { endpoint?: string; thread?: string; minDuration?: number; maxDuration?: number; slowOnly?: boolean; search?: string; exclude?: string; timeFrom?: string; timeTo?: string; sort?: string; sortDir?: string; page?: number; size?: number; signal?: AbortSignal } = {},
 ): Promise<PaginatedResponse<ApiCallPair>> {
   const q = new URLSearchParams()
   if (params.endpoint) q.set('endpoint', params.endpoint)
   if (params.thread) q.set('thread', params.thread)
   if (params.minDuration != null) q.set('minDuration', String(params.minDuration))
+  if (params.maxDuration != null) q.set('maxDuration', String(params.maxDuration))
+  if (params.slowOnly) q.set('slowOnly', 'true')
   if (params.search) q.set('search', params.search)
   if (params.exclude) q.set('exclude', params.exclude)
   if (params.timeFrom) q.set('timeFrom', params.timeFrom)
@@ -456,6 +474,20 @@ export async function getLines(
   if (params.page != null) q.set('page', String(params.page))
   if (params.size != null) q.set('size', String(params.size))
   const res = await fetchWithAuth(`${API}/${id}/lines?${q}`, { signal: params.signal })
+  return handleResponse(res)
+}
+
+export async function resolveLinePage(
+  id: string,
+  params: { line: number; thread?: string; level?: string; search?: string; exclude?: string; size?: number; signal?: AbortSignal },
+): Promise<{ page: number; found: boolean }> {
+  const q = new URLSearchParams({ line: String(params.line) })
+  if (params.thread) q.set('thread', params.thread)
+  if (params.level) q.set('level', params.level)
+  if (params.search) q.set('search', params.search)
+  if (params.exclude) q.set('exclude', params.exclude)
+  if (params.size != null) q.set('size', String(params.size))
+  const res = await fetchWithAuth(`${API}/${id}/lines/resolve-page?${q}`, { signal: params.signal })
   return handleResponse(res)
 }
 
@@ -718,4 +750,24 @@ export async function getSystemHealth(
   const qs = q.toString()
   const res = await fetchWithAuth(`${API}/${id}/system-health${qs ? '?' + qs : ''}`)
   return handleResponse(res)
+}
+
+export async function downloadApiCallPayload(
+  id: string, line: number, type: 'request' | 'response',
+): Promise<Blob> {
+  const res = await fetchWithAuth(`${API}/${id}/api-calls/payload?line=${line}&type=${type}`)
+  if (!res.ok) throw new Error('Download failed')
+  return res.blob()
+}
+
+export async function downloadOrphanPayload(id: string, line: number): Promise<Blob> {
+  const res = await fetchWithAuth(`${API}/${id}/orphan-requests/payload?line=${line}`)
+  if (!res.ok) throw new Error('Download failed')
+  return res.blob()
+}
+
+export async function downloadLineContent(id: string, line: number): Promise<Blob> {
+  const res = await fetchWithAuth(`${API}/${id}/lines/content?line=${line}`)
+  if (!res.ok) throw new Error('Download failed')
+  return res.blob()
 }

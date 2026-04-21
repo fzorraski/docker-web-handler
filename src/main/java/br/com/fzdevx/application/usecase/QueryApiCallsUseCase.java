@@ -23,7 +23,8 @@ public class QueryApiCallsUseCase {
 
     public PaginatedResult<ApiCallPair> execute(List<ApiCallPair> apiCalls,
                                                 String endpoint, String thread,
-                                                Long minDuration, String search,
+                                                Long minDuration, Long maxDuration,
+                                                boolean slowOnly, String search,
                                                 String exclude,
                                                 LocalDateTime timeFrom, LocalDateTime timeTo,
                                                 String sort, String sortDir,
@@ -45,9 +46,11 @@ public class QueryApiCallsUseCase {
         List<String> excludeCompact = excludePatterns.stream().map(QueryApiCallsUseCase::compactJson).toList();
 
         var filtered = apiCalls.stream()
-                .filter(c -> endpoint == null || endpoint.isBlank() || c.endpoint().equals(endpoint))
+                .filter(c -> endpoint == null || endpoint.isBlank() || containsIgnoreCase(c.endpoint(), endpoint))
                 .filter(c -> thread == null || thread.isBlank() || c.thread().equals(thread))
                 .filter(c -> minDuration == null || c.durationMs() >= minDuration)
+                .filter(c -> maxDuration == null || c.durationMs() <= maxDuration)
+                .filter(c -> !slowOnly || c.slow())
                 .filter(c -> timeFrom == null || c.requestTimestamp() == null || !c.requestTimestamp().isBefore(timeFrom))
                 .filter(c -> timeTo == null || c.requestTimestamp() == null || !c.requestTimestamp().isAfter(timeTo))
                 .filter(c -> searchPatterns.isEmpty() || matchesAll(c, searchPatterns, searchCompact))
