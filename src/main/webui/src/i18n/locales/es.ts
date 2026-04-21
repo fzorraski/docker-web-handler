@@ -362,6 +362,11 @@ const es: typeof en = {
     snapshotDeleted: 'Snapshot eliminado exitosamente.',
     snapshotsDeleted: '{{count}} snapshot(s) eliminado(s) exitosamente.',
     deleteFailed: 'Error al eliminar.',
+    deleteErrors: {
+      DATABASE_PROTECTED: 'La base de datos esta protegida y no se puede eliminar.',
+      DATABASE_IN_USE: 'La base de datos esta en uso por {{count}} contenedor(es) y no se puede eliminar.',
+      ACTIVE_CONNECTIONS: 'La base de datos tiene conexiones activas. Eliminarla terminara todas las conexiones.',
+    },
     editMetadataTitle: 'Confirmar Edicion',
     editMetadataPasswordMessage: 'Ingrese la contrasena de operaciones para guardar los cambios de metadatos.',
     neverUsed: 'Nunca utilizado',

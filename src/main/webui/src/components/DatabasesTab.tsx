@@ -532,7 +532,10 @@ export default function DatabasesTab() {
           setPendingDelete(null)
           setForceDeleteConfirm({ db: pendingDelete.db, password, activeConnections: result.activeConnections ?? 0 })
         } else {
-          notify(result.error || t('database.deleteFailed'), 'error')
+          const msg = result.errorCode
+            ? t(`database.deleteErrors.${result.errorCode}` as never, { count: result.count ?? 0, defaultValue: result.error })
+            : result.error || t('database.deleteFailed')
+          notify(msg, 'error')
         }
       } else {
         const result = await deleteManagedDatabasesBulk(currentRepo, pendingDelete.names, password)
@@ -561,7 +564,10 @@ export default function DatabasesTab() {
         notify(t('database.databaseDeleted'), 'success')
         loadDatabases()
       } else {
-        notify(result.error || t('database.deleteFailed'), 'error')
+        const msg = result.errorCode
+          ? t(`database.deleteErrors.${result.errorCode}` as never, { count: result.count ?? 0, defaultValue: result.error })
+          : result.error || t('database.deleteFailed')
+        notify(msg, 'error')
       }
     } catch (e) {
       notify(t('common.unexpectedError'), 'error')

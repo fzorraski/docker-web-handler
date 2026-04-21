@@ -471,7 +471,7 @@ public class ManagedDatabaseController {
         Optional<ManagedDatabase> md = managedDatabaseRepository.find(repository, databaseName);
         if (md.isPresent() && md.get().isProtectedFlag()) {
             return Response.status(Response.Status.CONFLICT)
-                    .entity(Map.of("error", "Database is protected and cannot be deleted.")).build();
+                    .entity(Map.of("errorCode", "DATABASE_PROTECTED")).build();
         }
 
         // Check if any containers are using this database
@@ -480,7 +480,8 @@ public class ManagedDatabaseController {
             List<String> containerIds = usedBy.stream().map(ContainerExpiration::getShortId).toList();
             return Response.status(Response.Status.CONFLICT)
                     .entity(Map.of(
-                            "error", "Database is in use by " + usedBy.size() + " container(s) and cannot be deleted.",
+                            "errorCode", "DATABASE_IN_USE",
+                            "count", usedBy.size(),
                             "inUseByContainers", containerIds
                     )).build();
         }
@@ -492,7 +493,7 @@ public class ManagedDatabaseController {
                 if (active > 0) {
                     return Response.status(Response.Status.CONFLICT)
                             .entity(Map.of(
-                                    "error", "Database has " + active + " active connection(s). Deleting it will terminate all connections.",
+                                    "errorCode", "ACTIVE_CONNECTIONS",
                                     "activeConnections", active,
                                     "requiresForce", true
                             )).build();

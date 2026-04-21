@@ -83,7 +83,7 @@ export async function deleteManagedDatabase(
   name: string,
   password: string,
   force?: boolean,
-): Promise<{ success: boolean; error?: string; requiresForce?: boolean; activeConnections?: number }> {
+): Promise<{ success: boolean; error?: string; errorCode?: string; count?: number; requiresForce?: boolean; activeConnections?: number }> {
   let url = API + encodeURIComponent(repository) + '/' + encodeURIComponent(name)
   if (force) url += '?force=true'
   const res = await fetchWithAuth(url, {
@@ -92,7 +92,7 @@ export async function deleteManagedDatabase(
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText, requiresForce: data.requiresForce, activeConnections: data.activeConnections }
+    return { success: false, error: data.error || res.statusText, errorCode: data.errorCode, count: data.count, requiresForce: data.requiresForce, activeConnections: data.activeConnections }
   }
   return { success: true }
 }

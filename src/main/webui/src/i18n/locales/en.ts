@@ -360,6 +360,11 @@ const en = {
     snapshotDeleted: 'Snapshot deleted successfully.',
     snapshotsDeleted: '{{count}} snapshot(s) deleted successfully.',
     deleteFailed: 'Delete failed.',
+    deleteErrors: {
+      DATABASE_PROTECTED: 'Database is protected and cannot be deleted.',
+      DATABASE_IN_USE: 'Database is in use by {{count}} container(s) and cannot be deleted.',
+      ACTIVE_CONNECTIONS: 'Database has active connections. Deleting it will terminate all connections.',
+    },
     editMetadataTitle: 'Confirm Edit',
     editMetadataPasswordMessage: 'Enter the operations password to save the metadata changes.',
     neverUsed: 'Never used',

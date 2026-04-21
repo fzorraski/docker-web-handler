@@ -362,6 +362,11 @@ const ptBR: typeof en = {
     snapshotDeleted: 'Snapshot excluido com sucesso.',
     snapshotsDeleted: '{{count}} snapshot(s) excluido(s) com sucesso.',
     deleteFailed: 'Falha ao excluir.',
+    deleteErrors: {
+      DATABASE_PROTECTED: 'O banco de dados e protegido e nao pode ser excluido.',
+      DATABASE_IN_USE: 'O banco de dados esta em uso por {{count}} container(s) e nao pode ser excluido.',
+      ACTIVE_CONNECTIONS: 'O banco de dados possui conexoes ativas. Exclui-lo encerrara todas as conexoes.',
+    },
     editMetadataTitle: 'Confirmar Edicao',
     editMetadataPasswordMessage: 'Informe a senha de operacoes para salvar as alteracoes de metadados.',
     neverUsed: 'Nunca utilizado',
