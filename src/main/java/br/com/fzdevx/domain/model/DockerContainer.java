@@ -36,6 +36,8 @@ public class DockerContainer {
 
     private String ipAddress;
 
+    private boolean upgradeEnabled;
+
     public String getContainerId() {
         return containerId;
     }
@@ -162,6 +164,14 @@ public class DockerContainer {
 
     public void setIpAddress(String ipAddress) {
         this.ipAddress = ipAddress;
+    }
+
+    public boolean isUpgradeEnabled() {
+        return upgradeEnabled;
+    }
+
+    public void setUpgradeEnabled(boolean upgradeEnabled) {
+        this.upgradeEnabled = upgradeEnabled;
     }
 
     @Override

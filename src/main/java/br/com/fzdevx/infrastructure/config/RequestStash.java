@@ -7,6 +7,7 @@ import br.com.fzdevx.application.dto.PruneImagesRequest;
 import br.com.fzdevx.application.dto.RestoreDumpRequest;
 import br.com.fzdevx.application.dto.RunContainerRequest;
 import br.com.fzdevx.application.dto.RunMigrationRequest;
+import br.com.fzdevx.application.dto.UpgradeContainerRequest;
 import io.quarkus.logging.Log;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -32,6 +33,7 @@ public class RequestStash {
     private final ConcurrentHashMap<String, StashedEntry<CreateSnapshotRequest>> snapshotStash = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, StashedEntry<PruneImagesRequest>> pruneStash = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, StashedEntry<RunMigrationRequest>> migrationStash = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, StashedEntry<UpgradeContainerRequest>> upgradeStash = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, StashedEntry<AnalyzeLogFileRequest>> logAnalysisStash = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, StashedEntry<ComposeRequest>> composeStash = new ConcurrentHashMap<>();
 
@@ -63,6 +65,7 @@ public class RequestStash {
                 + evictMap(snapshotStash, cutoff)
                 + evictMap(pruneStash, cutoff)
                 + evictMap(migrationStash, cutoff)
+                + evictMap(upgradeStash, cutoff)
                 + evictMap(terminalStash, cutoff)
                 + evictLogAnalysisStash(cutoff)
                 + evictMap(composeStash, cutoff);
@@ -131,6 +134,14 @@ public class RequestStash {
 
     public RunMigrationRequest retrieveMigration(String ticket) {
         return take(migrationStash, ticket);
+    }
+
+    public String stashUpgrade(UpgradeContainerRequest request) {
+        return put(upgradeStash, request);
+    }
+
+    public UpgradeContainerRequest retrieveUpgrade(String ticket) {
+        return take(upgradeStash, ticket);
     }
 
     // Terminal tickets store the containerId that was authorized

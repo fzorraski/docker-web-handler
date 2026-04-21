@@ -1,24 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { DatabaseDump, DatabaseSnapshot } from '../types'
-import { buildTargetDbName, buildSnapshotTargetDbName } from '../utils/format'
-
-// Replicating the compareTagsDesc function from NewContainerModal
-function compareTagsDesc(a: string, b: string): number {
-  const partsA = a.split(/[.\-]/)
-  const partsB = b.split(/[.\-]/)
-  const len = Math.max(partsA.length, partsB.length)
-  for (let i = 0; i < len; i++) {
-    const na = Number(partsA[i] ?? '')
-    const nb = Number(partsB[i] ?? '')
-    if (!isNaN(na) && !isNaN(nb)) {
-      if (nb !== na) return nb - na
-    } else {
-      const cmp = (partsA[i] ?? '').localeCompare(partsB[i] ?? '')
-      if (cmp !== 0) return cmp
-    }
-  }
-  return 0
-}
+import { buildTargetDbName, buildSnapshotTargetDbName, compareTagsDesc } from '../utils/format'
 
 // Container name validation regex from the modal
 const CONTAINER_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/

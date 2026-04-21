@@ -39,7 +39,7 @@ import {
 } from '../services/containerService'
 import { isDumpEnabled, listDumps, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
 import type { DatabaseConflict, DatabaseDump, DatabaseSnapshot } from '../types'
-import { buildTargetDbName, buildSnapshotTargetDbName, formatBytes, formatScriptSize, formatMigrationSummary } from '../utils/format'
+import { buildTargetDbName, buildSnapshotTargetDbName, formatBytes, formatScriptSize, formatMigrationSummary, compareTagsDesc } from '../utils/format'
 import { prepareRunContainer, streamRunContainer, cancelRunContainer } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
 import { useMigrationPreview } from '../hooks/useMigrationPreview'
@@ -58,23 +58,6 @@ interface Props {
 interface EnvVar {
   key: string
   value: string
-}
-
-function compareTagsDesc(a: string, b: string): number {
-  const partsA = a.split(/[.\-]/)
-  const partsB = b.split(/[.\-]/)
-  const len = Math.max(partsA.length, partsB.length)
-  for (let i = 0; i < len; i++) {
-    const na = Number(partsA[i] ?? '')
-    const nb = Number(partsB[i] ?? '')
-    if (!isNaN(na) && !isNaN(nb)) {
-      if (nb !== na) return nb - na
-    } else {
-      const cmp = (partsA[i] ?? '').localeCompare(partsB[i] ?? '')
-      if (cmp !== 0) return cmp
-    }
-  }
-  return 0
 }
 
 const sectionSx = {

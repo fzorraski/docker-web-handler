@@ -17,10 +17,14 @@ export function useContainerDialogs() {
   const [statsContainerId, setStatsContainerId] = useState<string | null>(null)
   const [statsContainerName, setStatsContainerName] = useState('')
 
-  // Migration
+  // Migration / Upgrade
   const [migrationRepo, setMigrationRepo] = useState('')
   const [migrationDb, setMigrationDb] = useState('')
   const [migrationOpen, setMigrationOpen] = useState(false)
+  const [migrationContainerId, setMigrationContainerId] = useState('')
+  const [migrationContainerName, setMigrationContainerName] = useState('')
+  const [migrationContainerImage, setMigrationContainerImage] = useState('')
+  const [migrationUpgradeEnabled, setMigrationUpgradeEnabled] = useState(false)
 
   // Schedule
   const [scheduleContainerId, setScheduleContainerId] = useState('')
@@ -70,6 +74,10 @@ export function useContainerDialogs() {
   const openMigration = useCallback((c: DockerContainer) => {
     setMigrationRepo(c.repository ?? '')
     setMigrationDb(c.databaseName ?? '')
+    setMigrationContainerId(c.containerId)
+    setMigrationContainerName(c.names)
+    setMigrationContainerImage(c.image)
+    setMigrationUpgradeEnabled(c.upgradeEnabled ?? false)
     setMigrationOpen(true)
   }, [])
 
@@ -105,7 +113,7 @@ export function useContainerDialogs() {
     stats: { containerId: statsContainerId, containerName: statsContainerName },
     openStats, closeStats,
 
-    migration: { open: migrationOpen, repo: migrationRepo, db: migrationDb },
+    migration: { open: migrationOpen, repo: migrationRepo, db: migrationDb, containerId: migrationContainerId, containerName: migrationContainerName, image: migrationContainerImage, upgradeEnabled: migrationUpgradeEnabled },
     openMigration, closeMigration,
 
     schedule: { open: scheduleOpen, containerId: scheduleContainerId, containerName: scheduleContainerName, expiresAt: scheduleExpiresAt, initialTab: scheduleInitialTab },

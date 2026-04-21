@@ -121,4 +121,60 @@ class PortFinderTest {
         // Clean up reservations
         portFinder.releasePorts(new ArrayList<>(allPorts));
     }
+
+    // ---- findAvailablePortsPreferring ----
+
+    @Test
+    void findAvailablePortsPreferring_usesPreferredWhenFree() {
+        List<Integer> result = portFinder.findAvailablePortsPreferring(List.of(50000, 50001), 2);
+        assertEquals(List.of(50000, 50001), result);
+        portFinder.releasePorts(result);
+    }
+
+    @Test
+    void findAvailablePortsPreferring_fallsBackWhenPreferredReserved() {
+        // Reserve the preferred ports first
+        List<Integer> reserved = portFinder.findAvailablePorts(2);
+        assertTrue(reserved.contains(50000));
+        assertTrue(reserved.contains(50001));
+
+        // Now ask for preferred ports — they should be skipped
+        List<Integer> result = portFinder.findAvailablePortsPreferring(List.of(50000, 50001), 2);
+        assertEquals(2, result.size());
+        assertFalse(result.contains(50000));
+        assertFalse(result.contains(50001));
+
+        portFinder.releasePorts(reserved);
+        portFinder.releasePorts(result);
+    }
+
+    @Test
+    void findAvailablePortsPreferring_mixesPreferredAndScanned() {
+        // Reserve one of the preferred ports
+        List<Integer> reserved = portFinder.findAvailablePorts(1);
+        int reservedPort = reserved.get(0); // 50000
+
+        // Ask for 2 ports preferring 50000 and 50001
+        List<Integer> result = portFinder.findAvailablePortsPreferring(List.of(50000, 50001), 2);
+        assertEquals(2, result.size());
+        // 50000 is reserved, so 50001 should be used + one scanned
+        assertTrue(result.contains(50001));
+        assertFalse(result.contains(reservedPort));
+
+        portFinder.releasePorts(reserved);
+        portFinder.releasePorts(result);
+    }
+
+    @Test
+    void findAvailablePortsPreferring_emptyPreferred_scansNormally() {
+        List<Integer> result = portFinder.findAvailablePortsPreferring(Collections.emptyList(), 2);
+        assertEquals(2, result.size());
+        portFinder.releasePorts(result);
+    }
+
+    @Test
+    void findAvailablePortsPreferring_zeroCount_returnsEmpty() {
+        List<Integer> result = portFinder.findAvailablePortsPreferring(List.of(50000), 0);
+        assertTrue(result.isEmpty());
+    }
 }

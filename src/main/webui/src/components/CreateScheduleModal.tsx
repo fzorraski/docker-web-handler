@@ -8,6 +8,7 @@ import { Warning } from '@mui/icons-material'
 import { MobileDateTimePicker } from '@mui/x-date-pickers/MobileDateTimePicker'
 import dayjs, { type Dayjs } from 'dayjs'
 import { Add, Close, PlayArrow, Stop, Delete, Schedule } from '@mui/icons-material'
+import { compareTagsDesc } from '../utils/format'
 import { useTranslation } from 'react-i18next'
 import { useNotification } from './NotificationProvider'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
@@ -25,23 +26,6 @@ interface Props {
   onCreated: () => void
   containers?: DockerContainer[]
   passwordRequired?: boolean
-}
-
-function compareTagsDesc(a: string, b: string): number {
-  const partsA = a.split(/[.\-]/)
-  const partsB = b.split(/[.\-]/)
-  const len = Math.max(partsA.length, partsB.length)
-  for (let i = 0; i < len; i++) {
-    const na = Number(partsA[i] ?? '')
-    const nb = Number(partsB[i] ?? '')
-    if (!isNaN(na) && !isNaN(nb)) {
-      if (nb !== na) return nb - na
-    } else {
-      const cmp = (partsA[i] ?? '').localeCompare(partsB[i] ?? '')
-      if (cmp !== 0) return cmp
-    }
-  }
-  return 0
 }
 
 export default function CreateScheduleModal({ open, onClose, onCreated, containers = [], passwordRequired = true }: Props) {

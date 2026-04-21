@@ -35,6 +35,8 @@ const RUN_WITH_RESTORE_AND_MIGRATION_STEPS = ['Validating', 'Pulling', 'Creating
 const RUN_WITH_RESTORE_SCRIPTS_AND_MIGRATION_STEPS = ['Validating', 'Pulling', 'Creating', 'Preparing', 'Creating Database', 'Restoring', 'Running Scripts', 'Running Migration', 'Starting']
 const RUN_WITH_MIGRATION_STEPS = ['Validating', 'Pulling', 'Creating', 'Running Migration', 'Starting']
 const MIGRATION_STEPS = ['Validating', 'Running Migration']
+const UPGRADE_STEPS = ['Validating', 'Inspecting', 'Pulling', 'Stopping', 'Removing', 'Creating', 'Starting']
+const UPGRADE_WITH_MIGRATION_STEPS = ['Validating', 'Inspecting', 'Pulling', 'Stopping', 'Removing', 'Creating', 'Starting', 'Running Migration']
 const SNAPSHOT_STEPS = ['Validating', 'Pulling Image', 'Creating Snapshot', 'Saving']
 const LOG_ANALYSIS_STEPS = ['Parsing', 'API Calls', 'Jobs', 'Failures', 'Custom Fields', 'Critical Issues', 'NPE Analysis', 'Exception Analysis']
 const LOG_ANALYSIS_PARALLEL_STEPS = ['API Calls', 'Jobs', 'Failures', 'Custom Fields', 'Critical Issues', 'NPE Analysis', 'Exception Analysis']
@@ -48,7 +50,7 @@ interface Props {
   steps?: string[]
 }
 
-export { RUN_STEPS, REMOVE_STEPS, REMOVE_IMAGE_STEPS, PRUNE_IMAGES_STEPS, RESTORE_STEPS, RUN_WITH_RESTORE_STEPS, RESTORE_WITH_SCRIPTS_STEPS, RUN_WITH_RESTORE_AND_SCRIPTS_STEPS, RESTORE_WITH_MIGRATION_STEPS, RESTORE_WITH_SCRIPTS_AND_MIGRATION_STEPS, RUN_WITH_RESTORE_AND_MIGRATION_STEPS, RUN_WITH_RESTORE_SCRIPTS_AND_MIGRATION_STEPS, RUN_WITH_MIGRATION_STEPS, MIGRATION_STEPS, SNAPSHOT_STEPS, LOG_ANALYSIS_STEPS, LOG_COMPOSE_STEPS }
+export { RUN_STEPS, REMOVE_STEPS, REMOVE_IMAGE_STEPS, PRUNE_IMAGES_STEPS, RESTORE_STEPS, RUN_WITH_RESTORE_STEPS, RESTORE_WITH_SCRIPTS_STEPS, RUN_WITH_RESTORE_AND_SCRIPTS_STEPS, RESTORE_WITH_MIGRATION_STEPS, RESTORE_WITH_SCRIPTS_AND_MIGRATION_STEPS, RUN_WITH_RESTORE_AND_MIGRATION_STEPS, RUN_WITH_RESTORE_SCRIPTS_AND_MIGRATION_STEPS, RUN_WITH_MIGRATION_STEPS, MIGRATION_STEPS, UPGRADE_STEPS, UPGRADE_WITH_MIGRATION_STEPS, SNAPSHOT_STEPS, LOG_ANALYSIS_STEPS, LOG_COMPOSE_STEPS }
 
 function buildStepStates(events: ContainerEvent[], steps: string[]): StepState[] {
   const states: StepState[] = steps.map(() => 'pending')

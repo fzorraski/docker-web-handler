@@ -141,6 +141,20 @@ public class ContainerSchedulingService {
         }
     }
 
+    public void transferSchedules(String oldContainerId, String newContainerId) {
+        List<ContainerSchedule> schedules = scheduleRepository.findByContainerId(oldContainerId);
+        for (ContainerSchedule schedule : schedules) {
+            cancel(schedule.getId());
+            schedule.setContainerId(newContainerId);
+            scheduleRepository.save(schedule);
+            if (schedule.isEnabled()) {
+                scheduleNext(schedule);
+            }
+            Log.infof("Transferred schedule '%s' from container %s to %s.",
+                    schedule.getName(), oldContainerId, newContainerId);
+        }
+    }
+
     /**
      * Execute a schedule immediately (manual trigger).
      */

@@ -12,6 +12,7 @@ export interface DockerContainer {
   deleteDatabaseOnExpiration?: boolean
   repository?: string
   ipAddress?: string
+  upgradeEnabled?: boolean
 }
 
 export interface DockerImage {
@@ -208,6 +209,16 @@ export interface ServerHealth {
   maxConnections: number
   totalConnections: number
   totalDiskSize: number
+}
+
+export interface QueryResult {
+  columns: string[]
+  rows: (string | number | boolean | null)[][]
+  page: number
+  pageSize: number
+  totalRows: number
+  executionTimeMs: number
+  queryType: string
 }
 
 export interface ManagedDatabaseInfo {

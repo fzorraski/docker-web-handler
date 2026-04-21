@@ -17,7 +17,7 @@ import {
 dayjs.extend(customParseFormat)
 import { isDumpEnabled, getActiveRestores, type ActiveRestore } from '../services/dumpService'
 import NewContainerModal from '../components/NewContainerModal'
-import RunMigrationModal from '../components/RunMigrationModal'
+import UpgradeContainerModal from '../components/UpgradeContainerModal'
 import QuickScheduleDialog from '../components/QuickScheduleDialog'
 import CreateSnapshotModal from '../components/CreateSnapshotModal'
 import ContainerLogsDialog from '../components/ContainerLogsDialog'
@@ -74,7 +74,7 @@ import {
   TablePagination,
   LinearProgress,
 } from '@mui/material'
-import { Search, AddCircleOutline, Stop, PlayArrow, Delete, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord, Code, Memory, Timer } from '@mui/icons-material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord, Code, Memory, Timer, SystemUpdateAlt } from '@mui/icons-material'
 import { isSchedulingEnabled, listSchedules } from '../services/scheduleService'
 import { subscribeContainerUpdates } from '../services/sseService'
 import type { ContainerSchedule } from '../types'
@@ -952,16 +952,16 @@ export default function ContainersPage() {
               </Tooltip>
             ),
 
-            migrationFeatureEnabled && actionMenu.target.repository && actionMenu.target.databaseName && (
+            (actionMenu.target.upgradeEnabled || (migrationFeatureEnabled && actionMenu.target.databaseName)) && actionMenu.target.repository && (
               <MenuItem
-                key="migration"
+                key="upgrade"
                 onClick={() => {
                   dialogs.openMigration(actionMenu.target!)
                   actionMenu.close()
                 }}
               >
-                <ListItemIcon><SwapHoriz fontSize="small" /></ListItemIcon>
-                <ListItemText>{t('containers.runMigration')}</ListItemText>
+                <ListItemIcon><SystemUpdateAlt fontSize="small" /></ListItemIcon>
+                <ListItemText>{t('containers.upgradeContainer')}</ListItemText>
               </MenuItem>
             ),
 
@@ -1088,10 +1088,15 @@ export default function ContainersPage() {
         terminalPassword={terminal.terminalPassword}
       />
 
-      <RunMigrationModal
+      <UpgradeContainerModal
         open={dialogs.migration.open}
+        containerId={dialogs.migration.containerId}
+        containerName={dialogs.migration.containerName}
+        currentTag={dialogs.migration.image?.split(':')[1] ?? ''}
         repository={dialogs.migration.repo}
-        databaseName={dialogs.migration.db}
+        databaseName={dialogs.migration.db || undefined}
+        upgradeEnabled={dialogs.migration.upgradeEnabled}
+        migrationFeatureEnabled={migrationFeatureEnabled}
         onClose={dialogs.closeMigration}
         onCompleted={() => {
           loadContainers()

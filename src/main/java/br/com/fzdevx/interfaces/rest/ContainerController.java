@@ -113,6 +113,12 @@ public class ContainerController {
                         expirationService.isDeleteDatabaseOnExpiration(dockerContainer.getContainerId()));
             }
 
+            if (dockerContainer.getRepository() != null) {
+                dockerContainer.setUpgradeEnabled(
+                        config.getOptionalValue("repository.upgrade-enabled." + dockerContainer.getRepository(), Boolean.class)
+                                .orElse(false));
+            }
+
             containers.add(dockerContainer);
         }
 

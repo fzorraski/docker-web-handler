@@ -2,6 +2,27 @@ import dayjs from 'dayjs'
 import i18n from '../i18n'
 import type { DatabaseDump, DatabaseSnapshot } from '../types'
 
+/**
+ * Compares two version/tag strings in descending order (higher versions first).
+ * Splits by '.' or '-', compares segments numerically when possible, lexically otherwise.
+ */
+export function compareTagsDesc(a: string, b: string): number {
+  const partsA = a.split(/[.\-]/)
+  const partsB = b.split(/[.\-]/)
+  const len = Math.max(partsA.length, partsB.length)
+  for (let i = 0; i < len; i++) {
+    const na = Number(partsA[i] ?? '')
+    const nb = Number(partsB[i] ?? '')
+    if (!isNaN(na) && !isNaN(nb)) {
+      if (nb !== na) return nb - na
+    } else {
+      const cmp = (partsA[i] ?? '').localeCompare(partsB[i] ?? '')
+      if (cmp !== 0) return cmp
+    }
+  }
+  return 0
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'

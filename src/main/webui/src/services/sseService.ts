@@ -128,6 +128,44 @@ export async function cancelRunMigration(ticket: string): Promise<boolean> {
   return data.cancelled
 }
 
+export async function prepareUpgradeContainer(body: {
+  containerId: string
+  newTag?: string | null
+  password: string
+  migrationMode?: string | null
+  migrationSql?: string | null
+  migrationSourceVersion?: string | null
+  migrationTargetVersion?: string | null
+}): Promise<string> {
+  const res = await fetchWithAuth('/api/containers/sse/upgrade/prepare', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || res.statusText)
+  }
+  const data = await res.json()
+  return data.ticket
+}
+
+export function streamUpgradeContainer(
+  ticket: string,
+  onEvent: (event: ContainerEvent) => void,
+  onDone: (event: ContainerEvent) => void,
+  onError: (message: string) => void,
+): () => void {
+  return streamSse(`/api/containers/sse/upgrade/${ticket}`, onEvent, onDone, onError)
+}
+
+export async function cancelUpgradeContainer(ticket: string): Promise<boolean> {
+  const res = await fetchWithAuth(`/api/containers/sse/upgrade/cancel/${ticket}`, { method: 'POST' })
+  if (!res.ok) return false
+  const data = await res.json()
+  return data.cancelled
+}
+
 export async function preparePruneImages(body: {
   password: string
   minDays: number

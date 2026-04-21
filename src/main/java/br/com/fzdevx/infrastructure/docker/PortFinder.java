@@ -104,6 +104,56 @@ public class PortFinder {
     }
 
     /**
+     * Finds available host ports, trying the preferred ports first.
+     * Preferred ports that are free and not reserved are used directly.
+     * If any preferred port is unavailable, a new port is found via scan.
+     *
+     * @param preferred list of host ports to try first (e.g., from old container)
+     * @param count     total number of ports needed
+     * @return ordered list of available host ports
+     */
+    public synchronized List<Integer> findAvailablePortsPreferring(List<Integer> preferred, int count) {
+        if (count <= 0) {
+            return Collections.emptyList();
+        }
+
+        Set<Integer> dockerPorts = collectDockerHostPorts();
+        List<Integer> result = new ArrayList<>(count);
+        Set<Integer> used = new HashSet<>();
+
+        // Try preferred ports first
+        for (int port : preferred) {
+            if (result.size() >= count) break;
+            if (!dockerPorts.contains(port) && !reservedPorts.contains(port) && isPortFree(port)) {
+                result.add(port);
+                used.add(port);
+            }
+        }
+
+        // Fill remaining with scanned ports
+        if (result.size() < count) {
+            int candidate = hostPortStart;
+            while (result.size() < count && candidate <= MAX_PORT) {
+                if (!dockerPorts.contains(candidate)
+                        && !reservedPorts.contains(candidate)
+                        && !used.contains(candidate)
+                        && isPortFree(candidate)) {
+                    result.add(candidate);
+                }
+                candidate++;
+            }
+        }
+
+        if (result.size() < count) {
+            throw new RuntimeException(
+                    "Not enough available host ports. Needed " + count + ", found " + result.size() + ".");
+        }
+
+        reservedPorts.addAll(result);
+        return result;
+    }
+
+    /**
      * Releases previously reserved ports so they can be re-used by future
      * calls to {@link #findAvailablePorts(int)}.
      */

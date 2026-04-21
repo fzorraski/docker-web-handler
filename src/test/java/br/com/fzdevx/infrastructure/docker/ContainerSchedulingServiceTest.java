@@ -170,4 +170,27 @@ class ContainerSchedulingServiceTest {
         assertEquals("FAILED", schedule.getLastExecutionStatus());
         assertTrue(schedule.getLastExecutionMessage().contains("Docker daemon error"));
     }
+
+    // ---- transferSchedules ----
+
+    @Test
+    void transferSchedules_updatesContainerIdAndSaves() {
+        ContainerSchedule schedule = createStartSchedule("oldId12345");
+        schedule.setEnabled(false);
+        when(scheduleRepository.findByContainerId("oldId12345")).thenReturn(List.of(schedule));
+
+        service.transferSchedules("oldId12345", "newId12345");
+
+        assertEquals("newId12345", schedule.getContainerId());
+        verify(scheduleRepository).save(schedule);
+    }
+
+    @Test
+    void transferSchedules_noSchedules_doesNothing() {
+        when(scheduleRepository.findByContainerId("abc123def4")).thenReturn(List.of());
+
+        service.transferSchedules("abc123def4", "newId12345");
+
+        verify(scheduleRepository, never()).save(any());
+    }
 }
