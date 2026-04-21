@@ -564,6 +564,98 @@ class ManagedDatabaseControllerTest {
         assertEquals(404, controller.getDatabaseTableStats(REPO, DB_NAME).getStatus());
     }
 
+    // ---- executeQuery ----
+
+    @Test
+    void executeQuery_featureDisabled_returns404() {
+        setField("queryEnabled", false);
+        assertEquals(404, controller.executeQuery(REPO, DB_NAME, null, Map.of("sql", "SELECT 1")).getStatus());
+    }
+
+    @Test
+    void executeQuery_managedDisabled_returns404() {
+        setField("managedEnabled", false);
+        setField("queryEnabled", true);
+        assertEquals(404, controller.executeQuery(REPO, DB_NAME, null, Map.of("sql", "SELECT 1")).getStatus());
+    }
+
+    @Test
+    void executeQuery_emptySql_returns400() {
+        setField("queryEnabled", true);
+        assertEquals(400, controller.executeQuery(REPO, DB_NAME, null, Map.of("sql", "")).getStatus());
+    }
+
+    @Test
+    void executeQuery_multiStatement_returns400() {
+        setField("queryEnabled", true);
+        assertEquals(400, controller.executeQuery(REPO, DB_NAME, null, Map.of("sql", "SELECT 1; DROP TABLE x")).getStatus());
+    }
+
+    @Test
+    void executeQuery_ddlBlocked_returns403() {
+        setField("queryEnabled", true);
+        when(databaseService.detectQueryType("DROP TABLE users")).thenReturn(DatabaseService.QueryType.DDL);
+        assertEquals(403, controller.executeQuery(REPO, DB_NAME, null, Map.of("sql", "DROP TABLE users")).getStatus());
+    }
+
+    @Test
+    void executeQuery_writeDisabled_returns403() {
+        setField("queryEnabled", true);
+        setField("queryWriteEnabled", false);
+        when(databaseService.detectQueryType("DELETE FROM users")).thenReturn(DatabaseService.QueryType.WRITE);
+        assertEquals(403, controller.executeQuery(REPO, DB_NAME, null, Map.of("sql", "DELETE FROM users")).getStatus());
+    }
+
+    @Test
+    void executeQuery_writeNoPassword_returns403() {
+        setField("queryEnabled", true);
+        setField("queryWriteEnabled", true);
+        when(databaseService.detectQueryType("DELETE FROM users")).thenReturn(DatabaseService.QueryType.WRITE);
+        when(passwordValidationService.validateOperationsPassword(null)).thenReturn(false);
+        assertEquals(403, controller.executeQuery(REPO, DB_NAME, null, Map.of("sql", "DELETE FROM users")).getStatus());
+    }
+
+    @Test
+    void executeQuery_selectSuccess_returns200() {
+        setField("queryEnabled", true);
+        when(databaseService.detectQueryType("SELECT 1")).thenReturn(DatabaseService.QueryType.SELECT);
+        when(databaseService.executeQuery(eq(REPO), eq(DB_NAME), eq("SELECT 1"), eq(0), anyInt(), anyInt()))
+                .thenReturn(new DatabaseService.QueryResult(List.of("col"), List.of(List.of((Object) 1)), 0, 100, 1, 5, "SELECT"));
+
+        Response response = controller.executeQuery(REPO, DB_NAME, null, Map.of("sql", "SELECT 1"));
+        assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    void executeQuery_writeWithPassword_returns200() {
+        setField("queryEnabled", true);
+        setField("queryWriteEnabled", true);
+        when(databaseService.detectQueryType("DELETE FROM old")).thenReturn(DatabaseService.QueryType.WRITE);
+        when(passwordValidationService.validateOperationsPassword(PASSWORD)).thenReturn(true);
+        when(databaseService.executeQuery(eq(REPO), eq(DB_NAME), eq("DELETE FROM old"), eq(0), anyInt(), anyInt()))
+                .thenReturn(new DatabaseService.QueryResult(List.of("affected_rows"), List.of(List.of((Object) 5)), 0, 1, 1, 10, "WRITE"));
+
+        Response response = controller.executeQuery(REPO, DB_NAME, PASSWORD, Map.of("sql", "DELETE FROM old"));
+        assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    void executeQuery_dbError_returns400() {
+        setField("queryEnabled", true);
+        when(databaseService.detectQueryType("SELECT bad")).thenReturn(DatabaseService.QueryType.SELECT);
+        when(databaseService.executeQuery(eq(REPO), eq(DB_NAME), eq("SELECT bad"), eq(0), anyInt(), anyInt()))
+                .thenThrow(new RuntimeException("ERROR: column \"bad\" does not exist"));
+
+        Response response = controller.executeQuery(REPO, DB_NAME, null, Map.of("sql", "SELECT bad"));
+        assertEquals(400, response.getStatus());
+    }
+
+    @Test
+    void executeQuery_invalidRepo_returns400() {
+        setField("queryEnabled", true);
+        assertEquals(400, controller.executeQuery("", DB_NAME, null, Map.of("sql", "SELECT 1")).getStatus());
+    }
+
     // ---- helpers ----
 
     private ManagedDatabaseInfo makeDb(String name) {

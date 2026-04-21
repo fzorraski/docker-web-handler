@@ -574,6 +574,172 @@ public class DatabaseService implements DatabasePort {
         }
     }
 
+    public enum QueryType { SELECT, WRITE, DDL }
+
+    public record QueryResult(
+            List<String> columns,
+            List<List<Object>> rows,
+            int page,
+            int pageSize,
+            long totalRows,
+            long executionTimeMs,
+            String queryType
+    ) {}
+
+    public QueryType detectQueryType(String sql) {
+        // Strip leading comments before detecting type
+        String cleaned = sql.strip().replaceAll("(?s)^(\\s*/\\*.*?\\*/\\s*|\\s*--[^\\n]*\\n\\s*)*", "");
+        String upper = cleaned.strip().toUpperCase();
+        if (upper.startsWith("SELECT") || upper.startsWith("EXPLAIN") || upper.startsWith("SHOW")) {
+            return QueryType.SELECT;
+        }
+        if (upper.startsWith("WITH")) {
+            // WITH can be CTE for SELECT or CTE for INSERT/UPDATE/DELETE
+            return (upper.contains("INSERT") || upper.contains("UPDATE") || upper.contains("DELETE"))
+                    ? QueryType.WRITE : QueryType.SELECT;
+        }
+        if (upper.startsWith("INSERT") || upper.startsWith("UPDATE") || upper.startsWith("DELETE")) {
+            return QueryType.WRITE;
+        }
+        return QueryType.DDL;
+    }
+
+    public String executeExplainJson(String repository, String databaseName, String sql,
+                                     boolean analyze, int timeoutSeconds) {
+        try (Connection conn = getTargetDbConnection(repository, databaseName)) {
+            String prefix = analyze ? "EXPLAIN (FORMAT JSON, ANALYZE) " : "EXPLAIN (FORMAT JSON) ";
+            try (Statement stmt = conn.createStatement()) {
+                stmt.setQueryTimeout(timeoutSeconds);
+                try (ResultSet rs = stmt.executeQuery(prefix + sql)) {
+                    if (rs.next()) return rs.getString(1);
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
+        return "[]";
+    }
+
+    public QueryResult executeQuery(String repository, String databaseName, String sql,
+                                    int page, int pageSize, int timeoutSeconds) {
+        long start = System.currentTimeMillis();
+        QueryType type = detectQueryType(sql);
+
+        try (Connection conn = getTargetDbConnection(repository, databaseName)) {
+            // EXPLAIN queries cannot be wrapped in subqueries — execute directly
+            boolean isExplain = sql.strip().toUpperCase().startsWith("EXPLAIN");
+            if (type == QueryType.SELECT && isExplain) {
+                try (Statement stmt = conn.createStatement()) {
+                    stmt.setQueryTimeout(timeoutSeconds);
+                    try (ResultSet rs = stmt.executeQuery(sql)) {
+                        return buildResultFromResultSet(rs, 0, 9999, -1, start);
+                    }
+                }
+            }
+
+            if (type == QueryType.SELECT) {
+                // Read query: wrap with LIMIT/OFFSET for pagination
+                // Single query with COUNT(*) OVER() to get total without executing twice
+                String pagedSql = "SELECT *, COUNT(*) OVER() AS _total_rows FROM (" + sql + ") AS _paged_q LIMIT " + pageSize + " OFFSET " + ((long) page * pageSize);
+
+                try (Statement stmt = conn.createStatement()) {
+                    stmt.setQueryTimeout(timeoutSeconds);
+                    stmt.setFetchSize(pageSize);
+                    try (ResultSet rs = stmt.executeQuery(pagedSql)) {
+                        return buildResultFromResultSetWithTotal(rs, page, pageSize, start);
+                    }
+                }
+            } else {
+                // Write query: execute directly, return affected rows
+                try (Statement stmt = conn.createStatement()) {
+                    stmt.setQueryTimeout(timeoutSeconds);
+                    int affected = stmt.executeUpdate(sql);
+                    long elapsed = System.currentTimeMillis() - start;
+                    return new QueryResult(
+                            List.of("affected_rows"),
+                            List.of(List.of((Object) affected)),
+                            0, 1, 1, elapsed, type.name()
+                    );
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
+    }
+
+    private QueryResult buildResultFromResultSetWithTotal(ResultSet rs, int page, int pageSize,
+                                                          long startTime) throws Exception {
+        var meta = rs.getMetaData();
+        int colCount = meta.getColumnCount();
+        // Last column is _total_rows, exclude from results
+        int userColCount = colCount > 0 && "_total_rows".equals(meta.getColumnLabel(colCount)) ? colCount - 1 : colCount;
+
+        List<String> columns = new ArrayList<>();
+        for (int i = 1; i <= userColCount; i++) {
+            columns.add(meta.getColumnLabel(i));
+        }
+
+        List<List<Object>> rows = new ArrayList<>();
+        long totalRows = -1;
+        while (rs.next()) {
+            if (totalRows < 0 && userColCount < colCount) {
+                totalRows = rs.getLong(colCount);
+            }
+            List<Object> row = new ArrayList<>();
+            for (int i = 1; i <= userColCount; i++) {
+                Object val = rs.getObject(i);
+                if (val instanceof byte[]) {
+                    val = "[binary " + ((byte[]) val).length + " bytes]";
+                } else if (val != null) {
+                    String str = String.valueOf(val);
+                    if (str.length() > 1000) {
+                        val = str.substring(0, 1000) + "... [truncated]";
+                    } else {
+                        val = str;
+                    }
+                }
+                row.add(val);
+            }
+            rows.add(row);
+        }
+
+        long elapsed = System.currentTimeMillis() - startTime;
+        return new QueryResult(columns, rows, page, pageSize, totalRows, elapsed, "SELECT");
+    }
+
+    private QueryResult buildResultFromResultSet(ResultSet rs, int page, int pageSize,
+                                                  long totalRows, long startTime) throws Exception {
+        var meta = rs.getMetaData();
+        int colCount = meta.getColumnCount();
+        List<String> columns = new ArrayList<>();
+        for (int i = 1; i <= colCount; i++) {
+            columns.add(meta.getColumnLabel(i));
+        }
+
+        List<List<Object>> rows = new ArrayList<>();
+        while (rs.next()) {
+            List<Object> row = new ArrayList<>();
+            for (int i = 1; i <= colCount; i++) {
+                Object val = rs.getObject(i);
+                if (val instanceof byte[]) {
+                    val = "[binary " + ((byte[]) val).length + " bytes]";
+                } else if (val != null) {
+                    String str = String.valueOf(val);
+                    if (str.length() > 1000) {
+                        val = str.substring(0, 1000) + "... [truncated]";
+                    } else {
+                        val = str;
+                    }
+                }
+                row.add(val);
+            }
+            rows.add(row);
+        }
+
+        long elapsed = System.currentTimeMillis() - startTime;
+        return new QueryResult(columns, rows, page, pageSize, totalRows, elapsed, "SELECT");
+    }
+
     private Connection getTargetDbConnection(String repository, String databaseName) {
         String host = config.getOptionalValue("repository.pg-host." + repository, String.class)
                 .orElseThrow(() -> new IllegalStateException("No PG host configured for repository: " + repository));

@@ -19,8 +19,10 @@ import CreateSnapshotModal from './CreateSnapshotModal'
 import DumpBrowserModal from './DumpBrowserModal'
 import RestoreDumpModal from './RestoreDumpModal'
 import RunMigrationModal from './RunMigrationModal'
+import QueryRunnerDialog from './QueryRunnerDialog'
 import { listDumps } from '../services/dumpService'
 import { isMigrationEnabled, getMigratedDatabases, type MigratedDatabase } from '../services/containerService'
+import { isQueryEnabled } from '../services/managedDatabaseService'
 import { validateOperationsPassword } from '../services/containerService'
 import { RateLimitError } from '../services/fetchWithAuth'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
@@ -96,6 +98,7 @@ import {
   CameraAlt,
   Restore,
   SwapHoriz,
+  Code,
 } from '@mui/icons-material'
 
 type PendingDelete =
@@ -145,6 +148,9 @@ export default function DatabasesTab() {
   const [browseDumps, setBrowseDumps] = useState<DatabaseDump[]>([])
   const [migrationEnabled, setMigrationEnabled] = useState(false)
   const [migrationTarget, setMigrationTarget] = useState<ManagedDatabaseInfo | null>(null)
+  const [queryFeatureEnabled, setQueryFeatureEnabled] = useState(false)
+  const [queryWriteEnabled, setQueryWriteEnabled] = useState(false)
+  const [queryTarget, setQueryTarget] = useState<ManagedDatabaseInfo | null>(null)
   const [migratedDatabases, setMigratedDatabases] = useState<MigratedDatabase[]>([])
   const [healthOpen, setHealthOpen] = useState(false)
   const [health, setHealth] = useState<ServerHealth | null>(null)
@@ -211,6 +217,7 @@ export default function DatabasesTab() {
     loadDatabases()
     isMigrationEnabled().then(setMigrationEnabled).catch(() => setMigrationEnabled(false))
     getMigratedDatabases().then(setMigratedDatabases).catch(() => setMigratedDatabases([]))
+    isQueryEnabled().then(r => { setQueryFeatureEnabled(r.enabled); setQueryWriteEnabled(r.writeEnabled) }).catch(() => {})
   }, [currentRepo, loadDatabases])
 
   // Auto-refresh every 60s
@@ -764,7 +771,8 @@ export default function DatabasesTab() {
           {t('database.dbHealth.button')}
         </Button>
         <Button
-          variant="outlined"
+          variant="contained"
+          color="warning"
           size="small"
           startIcon={<CleaningServices />}
           onClick={() => cleanup.open(currentRepo)}
@@ -1065,6 +1073,15 @@ export default function DatabasesTab() {
             >
               <ListItemIcon><SwapHoriz fontSize="small" /></ListItemIcon>
               <ListItemText>{t('database.runMigration')}</ListItemText>
+            </MenuItem>,
+          ] : []),
+          ...(queryFeatureEnabled ? [
+            <MenuItem
+              key="query"
+              onClick={() => { setQueryTarget(menu.target!); menu.close() }}
+            >
+              <ListItemIcon><Code fontSize="small" color="secondary" /></ListItemIcon>
+              <ListItemText>{t('database.query.runQuery')}</ListItemText>
             </MenuItem>,
           ] : []),
           <Divider key="divider1" />,
@@ -1989,6 +2006,15 @@ export default function DatabasesTab() {
           onCompleted={() => { setMigrationTarget(null); loadDatabases() }}
         />
       )}
+
+      {/* Query Runner */}
+      <QueryRunnerDialog
+        open={queryTarget !== null}
+        database={queryTarget}
+        repository={currentRepo}
+        writeEnabled={queryWriteEnabled}
+        onClose={() => setQueryTarget(null)}
+      />
 
       {/* Enable pg_stat_statements confirmation */}
       <PasswordConfirmDialog

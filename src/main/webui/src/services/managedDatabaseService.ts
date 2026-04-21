@@ -1,4 +1,4 @@
-import type { ManagedDatabaseInfo, ServerHealth, DatabaseHealthInfo, DatabaseActivity, DatabaseTableStats } from '../types'
+import type { ManagedDatabaseInfo, ServerHealth, DatabaseHealthInfo, DatabaseActivity, DatabaseTableStats, QueryResult } from '../types'
 import fetchWithAuth from './fetchWithAuth'
 
 const API = '/api/database/managed/'
@@ -181,4 +181,58 @@ export async function cleanupIdleDatabases(
   const data = await res.json().catch(() => ({}))
   if (!res.ok) return { success: false, error: data.error || res.statusText }
   return { success: true, deleted: data.deleted }
+}
+
+export async function explainQuery(
+  repository: string,
+  databaseName: string,
+  sql: string,
+  analyze: boolean,
+): Promise<{ success: boolean; plan?: string; tableStats?: DatabaseTableStats; error?: string }> {
+  const res = await fetchWithAuth(
+    API + encodeURIComponent(repository) + '/' + encodeURIComponent(databaseName) + '/explain',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql, analyze }),
+    },
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.error || res.statusText }
+  }
+  const data = await res.json()
+  return { success: true, plan: data.plan, tableStats: data.tableStats }
+}
+
+export async function isQueryEnabled(): Promise<{ enabled: boolean; writeEnabled: boolean }> {
+  const res = await fetchWithAuth(API + 'query-enabled')
+  if (!res.ok) return { enabled: false, writeEnabled: false }
+  return res.json()
+}
+
+export async function executeQuery(
+  repository: string,
+  databaseName: string,
+  sql: string,
+  page: number,
+  pageSize: number,
+  password?: string,
+): Promise<{ success: boolean; result?: QueryResult; error?: string }> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (password) headers['X-Dump-Password'] = password
+  const res = await fetchWithAuth(
+    API + encodeURIComponent(repository) + '/' + encodeURIComponent(databaseName) + '/query',
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ sql, page, pageSize }),
+    },
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.error || res.statusText }
+  }
+  const data = await res.json()
+  return { success: true, result: data }
 }

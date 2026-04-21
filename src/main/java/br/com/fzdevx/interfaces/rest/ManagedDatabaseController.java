@@ -33,6 +33,22 @@ public class ManagedDatabaseController {
     boolean managedEnabled;
 
     @Inject
+    @ConfigProperty(name = "database.query.enabled", defaultValue = "false")
+    boolean queryEnabled;
+
+    @Inject
+    @ConfigProperty(name = "database.query.write-enabled", defaultValue = "false")
+    boolean queryWriteEnabled;
+
+    @Inject
+    @ConfigProperty(name = "database.query.timeout-seconds", defaultValue = "30")
+    int queryTimeoutSeconds;
+
+    @Inject
+    @ConfigProperty(name = "database.query.max-page-size", defaultValue = "500")
+    int queryMaxPageSize;
+
+    @Inject
     ListManagedDatabasesUseCase listManagedDatabasesUseCase;
 
     @Inject
@@ -205,6 +221,138 @@ public class ManagedDatabaseController {
             case NOT_AVAILABLE -> Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "pg_stat_statements module is not available. Add it to shared_preload_libraries in postgresql.conf and restart the server.")).build();
         };
+    }
+
+    @GET
+    @Path("/query-enabled")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Map<String, Object> isQueryEnabled() {
+        return Map.of("enabled", queryEnabled, "writeEnabled", queryWriteEnabled);
+    }
+
+    @POST
+    @Path("/{repository}/{databaseName}/explain")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response explainQuery(@PathParam("repository") String repository,
+                                 @PathParam("databaseName") String databaseName,
+                                 Map<String, Object> body) {
+        if (!managedEnabled || !queryEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
+        if (nameError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", nameError.get())).build();
+        }
+
+        String sql = body.get("sql") != null ? body.get("sql").toString().strip() : "";
+        sql = sql.replaceAll(";\\s*$", "");
+        if (sql.isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "SQL query is required.")).build();
+        }
+
+        boolean analyze = body.get("analyze") instanceof Boolean b && b;
+
+        try {
+            String jsonPlan = databaseService.executeExplainJson(repository, databaseName, sql, analyze, queryTimeoutSeconds);
+            // Include table stats to avoid a second connection
+            Object tableStats = null;
+            try {
+                tableStats = databaseService.getDatabaseTableStats(repository, databaseName);
+            } catch (Exception ignored) {}
+            Map<String, Object> result = new java.util.HashMap<>();
+            result.put("plan", jsonPlan);
+            if (tableStats != null) result.put("tableStats", tableStats);
+            return Response.ok(result).build();
+        } catch (Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage() : "Explain failed.";
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", msg)).build();
+        }
+    }
+
+    @POST
+    @Path("/{repository}/{databaseName}/query")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response executeQuery(@PathParam("repository") String repository,
+                                 @PathParam("databaseName") String databaseName,
+                                 @HeaderParam("X-Dump-Password") String password,
+                                 Map<String, Object> body) {
+        if (!managedEnabled || !queryEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
+        if (nameError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", nameError.get())).build();
+        }
+
+        String sql = body.get("sql") != null ? body.get("sql").toString().strip() : "";
+        if (sql.isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "SQL query is required.")).build();
+        }
+        if (sql.length() > 102400) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "SQL query exceeds maximum size of 100KB.")).build();
+        }
+        // Strip trailing semicolon, then check for remaining ones (multi-statement)
+        sql = sql.replaceAll(";\\s*$", "");
+        if (sql.contains(";")) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Multiple statements are not allowed.")).build();
+        }
+
+        DatabaseService.QueryType queryType = databaseService.detectQueryType(sql);
+
+        if (queryType == DatabaseService.QueryType.DDL) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "DDL statements (CREATE, ALTER, DROP, TRUNCATE, GRANT, REVOKE) are not allowed.")).build();
+        }
+
+        if (queryType == DatabaseService.QueryType.WRITE) {
+            if (!queryWriteEnabled) {
+                return Response.status(Response.Status.FORBIDDEN)
+                        .entity(Map.of("error", "Write queries are disabled. Enable database.query.write-enabled to allow INSERT/UPDATE/DELETE.")).build();
+            }
+            if (!passwordValidationService.validateOperationsPassword(password)) {
+                return Response.status(Response.Status.FORBIDDEN)
+                        .entity(Map.of("error", "Operations password is required for write queries.")).build();
+            }
+        }
+
+        int page = 0;
+        int pageSize = 100;
+        try {
+            if (body.get("page") instanceof Number n) page = Math.max(0, n.intValue());
+            if (body.get("pageSize") instanceof Number n) pageSize = Math.min(Math.max(1, n.intValue()), queryMaxPageSize);
+        } catch (Exception ignored) {}
+
+        try {
+            var result = databaseService.executeQuery(repository, databaseName, sql, page, pageSize, queryTimeoutSeconds);
+            return Response.ok(result).build();
+        } catch (Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage() : "Query execution failed.";
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", msg)).build();
+        }
     }
 
     @GET
