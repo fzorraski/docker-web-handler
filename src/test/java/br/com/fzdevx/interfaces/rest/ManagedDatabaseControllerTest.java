@@ -190,7 +190,7 @@ class ManagedDatabaseControllerTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> body = (Map<String, Object>) response.getEntity();
-        assertTrue(body.get("error").toString().contains("in use"));
+        assertEquals("DATABASE_IN_USE", body.get("errorCode"));
     }
 
     @Test
