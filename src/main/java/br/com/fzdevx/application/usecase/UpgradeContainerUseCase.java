@@ -114,8 +114,8 @@ public class UpgradeContainerUseCase {
                 return;
             }
 
-            // Extract old host ports for reuse
-            List<Integer> oldHostPorts = extractHostPorts(inspect);
+            // Extract old port bindings (containerPort → hostPort) for reuse
+            Map<Integer, Integer> oldPortBindings = extractPortBindings(inspect);
 
             // Read expiration metadata
             String shortId = request.getContainerId();
@@ -194,9 +194,16 @@ public class UpgradeContainerUseCase {
 
             CreateContainerResponse newContainer;
             try {
-                // Port allocation: prefer old ports
+                // Port allocation: prefer old host ports, ordered to match container ports config
                 if (!containerPorts.isEmpty()) {
-                    allocatedPorts = portFinder.findAvailablePortsPreferring(oldHostPorts, containerPorts.size());
+                    List<Integer> preferredHostPorts = new ArrayList<>();
+                    for (int cp : containerPorts) {
+                        Integer hp = oldPortBindings.get(cp);
+                        if (hp != null) {
+                            preferredHostPorts.add(hp);
+                        }
+                    }
+                    allocatedPorts = portFinder.findAvailablePortsPreferring(preferredHostPorts, containerPorts.size());
                 }
 
                 CreateContainerCmd createCmd = dockerClient.createContainerCmd(imageRef);
@@ -356,26 +363,27 @@ public class UpgradeContainerUseCase {
         return hostConfig;
     }
 
-    private List<Integer> extractHostPorts(InspectContainerResponse inspect) {
-        List<Integer> ports = new ArrayList<>();
+    private Map<Integer, Integer> extractPortBindings(InspectContainerResponse inspect) {
+        Map<Integer, Integer> portMap = new LinkedHashMap<>();
         try {
             Ports bindings = inspect.getHostConfig().getPortBindings();
             if (bindings != null && bindings.getBindings() != null) {
                 for (Map.Entry<ExposedPort, Ports.Binding[]> entry : bindings.getBindings().entrySet()) {
+                    int containerPort = entry.getKey().getPort();
                     if (entry.getValue() != null) {
                         for (Ports.Binding binding : entry.getValue()) {
                             String hostPort = binding.getHostPortSpec();
                             if (hostPort != null && !hostPort.isBlank()) {
-                                ports.add(Integer.parseInt(hostPort));
+                                portMap.put(containerPort, Integer.parseInt(hostPort));
                             }
                         }
                     }
                 }
             }
         } catch (Exception e) {
-            Log.warnf("Failed to extract host ports from container: %s", e.getMessage());
+            Log.warnf("Failed to extract port bindings from container: %s", e.getMessage());
         }
-        return ports;
+        return portMap;
     }
 
     private String extractCurrentTag(InspectContainerResponse inspect) {

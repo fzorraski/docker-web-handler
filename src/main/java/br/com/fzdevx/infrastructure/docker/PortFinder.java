@@ -121,10 +121,11 @@ public class PortFinder {
         List<Integer> result = new ArrayList<>(count);
         Set<Integer> used = new HashSet<>();
 
-        // Try preferred ports first
+        // Try preferred ports first — these come from a just-removed container,
+        // so skip OS-level socket check (may report false negatives for recently freed ports)
         for (int port : preferred) {
             if (result.size() >= count) break;
-            if (!dockerPorts.contains(port) && !reservedPorts.contains(port) && isPortFree(port)) {
+            if (!dockerPorts.contains(port) && !reservedPorts.contains(port)) {
                 result.add(port);
                 used.add(port);
             }

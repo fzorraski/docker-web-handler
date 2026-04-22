@@ -3,6 +3,7 @@ package br.com.fzdevx.application.usecase;
 import br.com.fzdevx.application.dto.UpgradeContainerRequest;
 import br.com.fzdevx.application.port.DatabasePort;
 import br.com.fzdevx.application.port.DockerContainerPort;
+import br.com.fzdevx.application.port.ExpirationRepository;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.model.ContainerExpiration;
 import br.com.fzdevx.domain.shared.Constants;
@@ -16,6 +17,7 @@ import br.com.fzdevx.interfaces.rest.util.ContainerListBroadcaster;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.*;
 import com.github.dockerjava.api.model.ContainerConfig;
+import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.api.model.Ports;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +45,7 @@ class UpgradeContainerUseCaseTest {
     @Mock DockerContainerPort dockerContainerPort;
     @Mock RegistryService registryService;
     @Mock ContainerExpirationService expirationService;
+    @Mock ExpirationRepository expirationRepository;
     @Mock ContainerSchedulingService schedulingService;
     @Mock PortFinder portFinder;
     @Mock MigrationService migrationService;
@@ -159,7 +162,7 @@ class UpgradeContainerUseCaseTest {
         exp.setFullContainerId("abc123def4full");
         exp.setRepository("myrepo");
         exp.setDatabaseName("testdb");
-        when(expirationService.findAll()).thenReturn(List.of(exp));
+        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(exp));
         when(databaseService.hasDatabaseConfig("myrepo")).thenReturn(true);
         when(databaseService.getContainerImage("myrepo")).thenReturn("postgres:16");
         when(databaseService.getConnectionInfo("myrepo")).thenReturn(
@@ -227,7 +230,7 @@ class UpgradeContainerUseCaseTest {
         exp.setFullContainerId("abc123def4full");
         exp.setRepository("myrepo");
         exp.setDatabaseName("testdb");
-        when(expirationService.findAll()).thenReturn(List.of(exp));
+        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(exp));
         when(databaseService.hasDatabaseConfig("myrepo")).thenReturn(true);
         when(databaseService.getContainerImage("myrepo")).thenReturn("postgres:16");
         when(databaseService.getConnectionInfo("myrepo")).thenReturn(new DatabasePort.PgConnectionInfo("localhost", 5432, "postgres", "pass"));
@@ -256,7 +259,7 @@ class UpgradeContainerUseCaseTest {
 
         ContainerExpiration exp = new ContainerExpiration("abc123def4", "abc123def4full",
                 Instant.now().plusSeconds(3600), "myrepo", "testdb", false);
-        when(expirationService.findAll()).thenReturn(List.of(exp));
+        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(exp));
         when(databaseService.hasDatabaseConfig("myrepo")).thenReturn(true);
         when(databaseService.getContainerImage("myrepo")).thenReturn("postgres:16");
         when(databaseService.getConnectionInfo("myrepo")).thenReturn(new DatabasePort.PgConnectionInfo("localhost", 5432, "postgres", "pass"));
@@ -287,7 +290,7 @@ class UpgradeContainerUseCaseTest {
         Instant expiresAt = Instant.now().plusSeconds(7200);
         ContainerExpiration exp = new ContainerExpiration("abc123def4", "abc123def4full",
                 expiresAt, "myrepo", "testdb", true);
-        when(expirationService.findAll()).thenReturn(List.of(exp));
+        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(exp));
 
         useCase.execute(tagChangeRequest(), eventSink, null);
 
@@ -320,12 +323,49 @@ class UpgradeContainerUseCaseTest {
         when(registryService.buildFullImageRef("myrepo", "20.88.3")).thenReturn("myrepo:20.88.3");
         when(portFinder.getContainerPorts("myrepo")).thenReturn(List.of(8080, 8443));
         when(portFinder.findAvailablePortsPreferring(anyList(), eq(2))).thenReturn(List.of(9090, 9443));
-        when(expirationService.findAll()).thenReturn(Collections.emptyList());
 
         useCase.execute(tagChangeRequest(), eventSink, null);
 
         verify(portFinder).findAvailablePortsPreferring(anyList(), eq(2));
         verify(portFinder).releasePorts(List.of(9090, 9443));
+    }
+
+    @Test
+    void execute_withPorts_preservesContainerPortToHostPortMapping() {
+        // Set up old container with bindings: 8080→9090, 9990→9443
+        InspectContainerResponse inspect = mock(InspectContainerResponse.class);
+        InspectContainerCmd inspectCmd = mock(InspectContainerCmd.class);
+        when(dockerClient.inspectContainerCmd("abc123def4")).thenReturn(inspectCmd);
+        when(inspectCmd.exec()).thenReturn(inspect);
+        when(inspect.getName()).thenReturn("/mycontainer");
+        when(inspect.getId()).thenReturn("abc123def4fullid1234567890");
+
+        ContainerConfig config = mock(ContainerConfig.class);
+        when(inspect.getConfig()).thenReturn(config);
+        when(config.getEnv()).thenReturn(new String[]{"DB=test"});
+        when(config.getImage()).thenReturn("myrepo:20.88.2");
+        Map<String, String> labels = new HashMap<>();
+        labels.put(Constants.REPOSITORY_LABEL, "myrepo");
+        when(config.getLabels()).thenReturn(labels);
+
+        Ports oldPorts = new Ports();
+        oldPorts.bind(ExposedPort.tcp(8080), Ports.Binding.bindPort(9090));
+        oldPorts.bind(ExposedPort.tcp(9990), Ports.Binding.bindPort(9443));
+
+        HostConfig hostConfig = mock(HostConfig.class);
+        when(inspect.getHostConfig()).thenReturn(hostConfig);
+        when(hostConfig.getMemory()).thenReturn(512L * 1024 * 1024);
+        when(hostConfig.getPortBindings()).thenReturn(oldPorts);
+
+        stubDockerOps();
+        when(registryService.buildFullImageRef("myrepo", "20.88.3")).thenReturn("myrepo:20.88.3");
+        when(portFinder.getContainerPorts("myrepo")).thenReturn(List.of(8080, 9990));
+        when(portFinder.findAvailablePortsPreferring(anyList(), eq(2))).thenReturn(List.of(9090, 9443));
+
+        useCase.execute(tagChangeRequest(), eventSink, null);
+
+        // Preferred list must be [9090, 9443] — matching the order of container ports [8080, 9990]
+        verify(portFinder).findAvailablePortsPreferring(eq(List.of(9090, 9443)), eq(2));
     }
 
     // ---- Pull failure ----
@@ -351,7 +391,6 @@ class UpgradeContainerUseCaseTest {
         stubInspect();
         when(registryService.buildFullImageRef("myrepo", "20.88.3")).thenReturn("myrepo:20.88.3");
         when(portFinder.getContainerPorts("myrepo")).thenReturn(Collections.emptyList());
-        when(expirationService.findAll()).thenReturn(Collections.emptyList());
 
         StopContainerCmd stopCmd = mock(StopContainerCmd.class);
         when(dockerClient.stopContainerCmd(anyString())).thenReturn(stopCmd);
