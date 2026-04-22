@@ -244,20 +244,7 @@ public class UpgradeContainerUseCase {
             String newFullId = newContainer.getId();
             String newShortId = newFullId.substring(0, 10);
 
-            // 7. Start new container
-            eventSink.accept(ContainerEvent.info("Starting", "Starting new container..."));
-            try {
-                dockerClient.startContainerCmd(newFullId).exec();
-            } catch (Exception e) {
-                // Try to clean up the created-but-not-started container
-                try { dockerClient.removeContainerCmd(newFullId).exec(); } catch (Exception ignored) {}
-                eventSink.accept(ContainerEvent.error("Starting",
-                        "Failed to start new container: " + e.getMessage()
-                                + ". Old container '" + containerName + "' was removed."));
-                return;
-            }
-
-            // 8. Run migration (optional — non-fatal after container is already running)
+            // 7. Run migration (before starting so the container boots with the correct schema)
             boolean migrationFailed = false;
             if (request.hasMigration()) {
                 eventSink.accept(ContainerEvent.info("Running Migration", "Running database migration..."));
@@ -269,6 +256,19 @@ public class UpgradeContainerUseCase {
                     Log.warnf("Migration failed during upgrade of container %s: %s",
                             containerName, e.getMessage());
                 }
+            }
+
+            // 8. Start new container
+            eventSink.accept(ContainerEvent.info("Starting", "Starting new container..."));
+            try {
+                dockerClient.startContainerCmd(newFullId).exec();
+            } catch (Exception e) {
+                // Try to clean up the created-but-not-started container
+                try { dockerClient.removeContainerCmd(newFullId).exec(); } catch (Exception ignored) {}
+                eventSink.accept(ContainerEvent.error("Starting",
+                        "Failed to start new container: " + e.getMessage()
+                                + ". Old container '" + containerName + "' was removed."));
+                return;
             }
 
             // 9. Transfer metadata

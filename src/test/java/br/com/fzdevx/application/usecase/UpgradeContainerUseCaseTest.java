@@ -278,6 +278,35 @@ class UpgradeContainerUseCaseTest {
         verify(migrationService).orchestrateMigration(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
+    @Test
+    void execute_tagChangeWithMigration_migratesBeforeStart() {
+        stubInspect();
+        stubDockerOps();
+        when(registryService.buildFullImageRef("myrepo", "20.88.3")).thenReturn("myrepo:20.88.3");
+        when(portFinder.getContainerPorts("myrepo")).thenReturn(Collections.emptyList());
+
+        ContainerExpiration exp = new ContainerExpiration("abc123def4", "abc123def4full",
+                Instant.now().plusSeconds(3600), "myrepo", "testdb", false);
+        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(exp));
+        when(databaseService.hasDatabaseConfig("myrepo")).thenReturn(true);
+        when(databaseService.getContainerImage("myrepo")).thenReturn("postgres:16");
+        when(databaseService.getConnectionInfo("myrepo")).thenReturn(new DatabasePort.PgConnectionInfo("localhost", 5432, "postgres", "pass"));
+        when(migrationService.orchestrateMigration(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(true);
+
+        UpgradeContainerRequest req = tagChangeRequest();
+        req.setMigrationMode("API");
+        req.setMigrationSourceVersion("20.88.2");
+        req.setMigrationTargetVersion("20.88.3");
+
+        useCase.execute(req, eventSink, "ticket-order");
+
+        // Migration must run before container start
+        var inOrder = inOrder(migrationService, dockerClient);
+        inOrder.verify(migrationService).orchestrateMigration(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        inOrder.verify(dockerClient).startContainerCmd(anyString());
+    }
+
     // ---- Expiration transfer ----
 
     @Test
