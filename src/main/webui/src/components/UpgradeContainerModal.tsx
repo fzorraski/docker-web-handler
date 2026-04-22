@@ -61,6 +61,13 @@ export default function UpgradeContainerModal({
   const [cancelling, setCancelling] = useState(false)
   const migrationPreview = useMigrationPreview()
 
+  // Keep migration target version in sync with selected tag
+  useEffect(() => {
+    if (migrationConfig && newTag) {
+      setMigrationConfig((prev) => prev ? { ...prev, targetVersion: newTag } : prev)
+    }
+  }, [newTag])
+
   const hasTagChange = !!newTag && newTag !== currentTag
   const isMigrationOnly = !hasTagChange && migrationEnabled && !!migrationConfig
   const canExecute = (hasTagChange || (migrationEnabled && !!migrationConfig)) && !!password

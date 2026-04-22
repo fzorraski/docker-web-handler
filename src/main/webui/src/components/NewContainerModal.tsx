@@ -126,6 +126,13 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(dayjs().add(480, 'minute'))
   const sse = useSseOperation()
 
+  // Keep migration target version in sync with selected tag
+  useEffect(() => {
+    if (migrationConfig && selectedTag) {
+      setMigrationConfig((prev) => prev ? { ...prev, targetVersion: selectedTag } : prev)
+    }
+  }, [selectedTag])
+
   useEffect(() => {
     if (!open) return
     getAllowedRepositories()
