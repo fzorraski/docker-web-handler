@@ -1,4 +1,4 @@
-import type { ManagedDatabaseInfo, ServerHealth, DatabaseHealthInfo, DatabaseActivity, DatabaseTableStats, QueryResult } from '../types'
+import type { ManagedDatabaseInfo, ServerHealth, DatabaseHealthInfo, DatabaseActivity, DatabaseTableStats, QueryResult, TopQuery } from '../types'
 import fetchWithAuth from './fetchWithAuth'
 
 const API = '/api/database/managed/'
@@ -25,6 +25,24 @@ export async function getDatabaseTableStats(repository: string, name: string): P
   const res = await fetchWithAuth(API + 'tables/' + encodeURIComponent(repository) + '/' + encodeURIComponent(name))
   if (!res.ok) return null
   return res.json()
+}
+
+export async function getTopQueriesForTable(
+  repository: string,
+  databaseName: string,
+  tableName: string,
+  signal?: AbortSignal,
+): Promise<TopQuery[]> {
+  try {
+    const res = await fetchWithAuth(
+      API + 'queries/' + encodeURIComponent(repository) + '/' + encodeURIComponent(databaseName) + '/' + encodeURIComponent(tableName),
+      signal ? { signal } : undefined,
+    )
+    if (!res.ok) return []
+    return res.json()
+  } catch {
+    return []
+  }
 }
 
 export async function getDatabaseDetails(repository: string, name: string): Promise<{
@@ -188,6 +206,7 @@ export async function explainQuery(
   databaseName: string,
   sql: string,
   analyze: boolean,
+  signal?: AbortSignal,
 ): Promise<{ success: boolean; plan?: string; tableStats?: DatabaseTableStats; error?: string }> {
   const res = await fetchWithAuth(
     API + encodeURIComponent(repository) + '/' + encodeURIComponent(databaseName) + '/explain',
@@ -195,6 +214,7 @@ export async function explainQuery(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sql, analyze }),
+      signal,
     },
   )
   if (!res.ok) {
@@ -218,15 +238,20 @@ export async function executeQuery(
   page: number,
   pageSize: number,
   password?: string,
+  signal?: AbortSignal,
+  totalRows?: number,
 ): Promise<{ success: boolean; result?: QueryResult; error?: string }> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (password) headers['X-Dump-Password'] = password
+  const payload: Record<string, unknown> = { sql, page, pageSize }
+  if (totalRows != null && totalRows >= 0) payload.totalRows = totalRows
   const res = await fetchWithAuth(
     API + encodeURIComponent(repository) + '/' + encodeURIComponent(databaseName) + '/query',
     {
       method: 'POST',
       headers,
-      body: JSON.stringify({ sql, page, pageSize }),
+      body: JSON.stringify(payload),
+      signal,
     },
   )
   if (!res.ok) {

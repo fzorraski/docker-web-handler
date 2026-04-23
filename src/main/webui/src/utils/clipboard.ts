@@ -18,11 +18,14 @@ export async function copyToClipboard(text: string): Promise<void> {
   textarea.style.position = 'fixed'
   textarea.style.left = '-9999px'
   textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
+  // Append inside the active dialog/modal to stay within its focus trap
+  const container = document.activeElement?.closest('[role="presentation"]') ?? document.body
+  container.appendChild(textarea)
+  textarea.focus()
   textarea.select()
   try {
     document.execCommand('copy')
   } finally {
-    document.body.removeChild(textarea)
+    container.removeChild(textarea)
   }
 }

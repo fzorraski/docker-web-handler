@@ -183,10 +183,21 @@ export interface IndexInfo {
   isUnique: boolean
 }
 
+export interface IndexImpact {
+  tableName: string
+  unusedIndexes: number
+  wastedBytes: number
+  totalWrites: number
+  seqScans: number
+  idxScans: number
+}
+
 export interface DatabaseTableStats {
   tables: TableStats[]
   unusedIndexes: IndexInfo[]
   usedIndexes: IndexInfo[]
+  indexImpact: IndexImpact[]
+  statsResetAt: string | null
 }
 
 export interface DatabaseHealthInfo {

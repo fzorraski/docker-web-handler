@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, memo } from 'react'
 import type { ManagedDatabaseInfo, QueryResult } from '../types'
 import { executeQuery, explainQuery } from '../services/managedDatabaseService'
 import type { DatabaseTableStats } from '../types'
@@ -46,7 +46,6 @@ import {
   Lock,
   Speed,
   Warning,
-  CheckCircle,
   ErrorOutline,
   AccountTree,
 } from '@mui/icons-material'
@@ -61,6 +60,15 @@ interface Props {
 
 const HISTORY_KEY = 'queryRunner_history_'
 const MAX_HISTORY = 10
+
+const ROW_NUM_HEADER_SX = { fontWeight: 700, fontSize: '0.75rem', py: 0.5, bgcolor: 'background.paper', minWidth: 40 } as const
+const COL_HEADER_SX = { fontWeight: 700, fontSize: '0.75rem', py: 0.5, bgcolor: 'background.paper', whiteSpace: 'nowrap' } as const
+const ROW_NUM_CELL_SX = { color: 'text.secondary', fontSize: '0.7rem', py: 0.5 } as const
+const DATA_CELL_SX = {
+  fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5,
+  maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+} as const
+const NULL_CELL_SX = { ...DATA_CELL_SX, fontStyle: 'italic', color: 'text.disabled' } as const
 
 function getHistory(dbKey: string): string[] {
   try {
@@ -79,6 +87,8 @@ export default function QueryRunnerDialog({ open, database, repository, writeEna
   const { notify } = useNotification()
   const { t } = useTranslation()
   const [sql, setSql] = useState('')
+  const sqlRef = useRef(sql)
+  useEffect(() => { sqlRef.current = sql }, [sql])
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<QueryResult | null>(null)
@@ -92,6 +102,8 @@ export default function QueryRunnerDialog({ open, database, repository, writeEna
   const [tableStats, setTableStats] = useState<DatabaseTableStats | null>(null)
   const [historyAnchor, setHistoryAnchor] = useState<HTMLElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const cachedTotalRef = useRef<number | undefined>(undefined)
 
   const dbName = database?.name ?? ''
   const dbKey = repository + '/' + dbName
@@ -115,48 +127,72 @@ export default function QueryRunnerDialog({ open, database, repository, writeEna
   const needsPassword = isWriteQuery(sql) && writeEnabled
 
   const handleExecute = useCallback(async (p?: number) => {
-    if (!sql.trim() || !database) return
+    const currentSql = sqlRef.current
+    if (!currentSql.trim() || !database) return
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     const currentPage = p ?? 0
     setLoading(true)
     setError('')
     if (p !== undefined) setPage(p)
     else setPage(0)
 
-    const res = await executeQuery(repository, dbName, sql, currentPage, pageSize, needsPassword ? password : undefined)
+    // Pass cached totalRows on page changes so the backend skips COUNT(*) OVER()
+    const cachedTotal = p !== undefined ? cachedTotalRef.current : undefined
+    if (p === undefined) cachedTotalRef.current = undefined
 
-    setLoading(false)
-    if (res.success && res.result) {
-      setResult(res.result)
-      saveHistory(dbKey, sql.trim())
-    } else {
-      setError(res.error || t('common.unexpectedError'))
-      setResult(null)
+    const pw = (isWriteQuery(currentSql) && writeEnabled) ? password : undefined
+    try {
+      const res = await executeQuery(repository, dbName, currentSql, currentPage, pageSize, pw, controller.signal, cachedTotal)
+      setLoading(false)
+      if (res.success && res.result) {
+        setResult(res.result)
+        cachedTotalRef.current = res.result.totalRows
+        saveHistory(dbKey, currentSql.trim())
+      } else {
+        setError(res.error || t('common.unexpectedError'))
+        setResult(null)
+      }
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return
+      setLoading(false)
+      setError(e instanceof Error ? e.message : t('common.unexpectedError'))
     }
-  }, [sql, database, repository, dbName, pageSize, password, needsPassword, dbKey, t])
+  }, [database, repository, dbName, pageSize, password, writeEnabled, isWriteQuery, dbKey, t])
 
   const handleExplain = useCallback(async (analyze: boolean) => {
-    if (!sql.trim() || !database) return
+    const currentSql = sqlRef.current
+    if (!currentSql.trim() || !database) return
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     setLoading(true)
     setError('')
     setPlanData(null)
 
-    const res = await explainQuery(repository, dbName, sql.trim(), analyze)
-
-    setLoading(false)
-    setTableStats(res.tableStats ?? null)
-    if (res.success && res.plan) {
-      try {
-        const parsed = JSON.parse(res.plan)
-        setPlanData(parsed)
-        setActiveTab(1)
-        saveHistory(dbKey, sql.trim())
-      } catch {
-        setError('Failed to parse explain output.')
+    try {
+      const res = await explainQuery(repository, dbName, currentSql.trim(), analyze, controller.signal)
+      setLoading(false)
+      setTableStats(res.tableStats ?? null)
+      if (res.success && res.plan) {
+        try {
+          const parsed = JSON.parse(res.plan)
+          setPlanData(parsed)
+          setActiveTab(1)
+          saveHistory(dbKey, currentSql.trim())
+        } catch {
+          setError('Failed to parse explain output.')
+        }
+      } else {
+        setError(res.error || t('common.unexpectedError'))
       }
-    } else {
-      setError(res.error || t('common.unexpectedError'))
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return
+      setLoading(false)
+      setError(e instanceof Error ? e.message : t('common.unexpectedError'))
     }
-  }, [sql, database, repository, dbName, dbKey, t])
+  }, [database, repository, dbName, dbKey, t])
 
   const handlePageChange = useCallback((_e: unknown, newPage: number) => {
     handleExecute(newPage)
@@ -178,11 +214,11 @@ export default function QueryRunnerDialog({ open, database, repository, writeEna
       if (ta) {
         const start = ta.selectionStart
         const end = ta.selectionEnd
-        setSql(sql.substring(0, start) + '  ' + sql.substring(end))
+        setSql(prev => prev.substring(0, start) + '  ' + prev.substring(end))
         setTimeout(() => { ta.selectionStart = ta.selectionEnd = start + 2 }, 0)
       }
     }
-  }, [handleExecute, sql])
+  }, [handleExecute])
 
   const copyAsCsv = useCallback(() => {
     if (!result) return
@@ -206,6 +242,9 @@ export default function QueryRunnerDialog({ open, database, repository, writeEna
   }, [result, dbName])
 
   const handleClose = () => {
+    abortRef.current?.abort()
+    abortRef.current = null
+    setLoading(false)
     onClose()
     // Don't clear SQL — user might reopen
   }
@@ -326,7 +365,7 @@ export default function QueryRunnerDialog({ open, database, repository, writeEna
             {error}
           </Alert>
         )}
-        {result && !error && (
+        {activeTab === 0 && result && !error && (
           <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}>
             <Chip
               label={result.queryType === 'SELECT'
@@ -364,38 +403,7 @@ export default function QueryRunnerDialog({ open, database, repository, writeEna
             </Box>
           )}
           {result && result.queryType === 'SELECT' && result.rows.length > 0 && (
-            <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
-              <Table size="small" stickyHeader>
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem', py: 0.5, bgcolor: 'background.paper', minWidth: 40 }}>#</TableCell>
-                    {result.columns.map((col) => (
-                      <TableCell key={col} sx={{ fontWeight: 700, fontSize: '0.75rem', py: 0.5, bgcolor: 'background.paper', whiteSpace: 'nowrap' }}>
-                        {col}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {result.rows.map((row, i) => (
-                    <TableRow key={i} hover>
-                      <TableCell sx={{ color: 'text.secondary', fontSize: '0.7rem', py: 0.5 }}>
-                        {result.page * result.pageSize + i + 1}
-                      </TableCell>
-                      {row.map((val, j) => (
-                        <TableCell key={j} sx={{
-                          fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5,
-                          maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          ...(val === null && { fontStyle: 'italic', color: 'text.disabled' }),
-                        }}>
-                          {val === null ? 'NULL' : String(val)}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+            <ResultsTable result={result} />
           )}
           {result && result.queryType === 'SELECT' && result.rows.length === 0 && (
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'text.secondary' }}>
@@ -405,7 +413,7 @@ export default function QueryRunnerDialog({ open, database, repository, writeEna
         </Box>
 
         {/* Pagination */}
-        {result && result.queryType === 'SELECT' && result.totalRows !== 0 && (
+        {activeTab === 0 && result && result.queryType === 'SELECT' && result.totalRows !== 0 && (
           <TablePagination
             component="div"
             count={result.totalRows >= 0 ? result.totalRows : -1}
@@ -416,6 +424,10 @@ export default function QueryRunnerDialog({ open, database, repository, writeEna
             rowsPerPageOptions={[50, 100, 250, 500]}
             labelRowsPerPage={t('common.rowsPerPage')}
             sx={{ borderTop: 1, borderColor: 'divider' }}
+            slotProps={{
+              actions: { previousButton: { disabled: loading }, nextButton: { disabled: loading } },
+              select: { disabled: loading },
+            }}
           />
         )}
 
@@ -429,6 +441,39 @@ export default function QueryRunnerDialog({ open, database, repository, writeEna
     </Dialog>
   )
 }
+
+// ---- Memoized Results Table ----
+
+const ResultsTable = memo(function ResultsTable({ result }: { result: QueryResult }) {
+  return (
+    <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
+      <Table size="small" stickyHeader>
+        <TableHead>
+          <TableRow>
+            <TableCell sx={ROW_NUM_HEADER_SX}>#</TableCell>
+            {result.columns.map((col) => (
+              <TableCell key={col} sx={COL_HEADER_SX}>{col}</TableCell>
+            ))}
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {result.rows.map((row, i) => (
+            <TableRow key={i} hover>
+              <TableCell sx={ROW_NUM_CELL_SX}>
+                {result.page * result.pageSize + i + 1}
+              </TableCell>
+              {row.map((val, j) => (
+                <TableCell key={j} sx={val === null ? NULL_CELL_SX : DATA_CELL_SX}>
+                  {val === null ? 'NULL' : String(val)}
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  )
+})
 
 // ---- Plan Tree Visualization ----
 

@@ -429,6 +429,42 @@ public class DatabaseService implements DatabasePort {
         return new DatabaseActivity(sessions, users, topQueries, blockedProcesses, pgssAvailable);
     }
 
+    public List<TopQuery> getTopQueriesForTable(String repository, String databaseName,
+                                                 String tableName, int timeoutSeconds) {
+        List<TopQuery> queries = new ArrayList<>();
+        try (Connection conn = getTargetDbConnection(repository, databaseName)) {
+            try (PreparedStatement check = conn.prepareStatement(
+                    "SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements'");
+                 ResultSet rs = check.executeQuery()) {
+                if (!rs.next()) return queries;
+            }
+
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "SELECT query, calls, total_exec_time AS total_time_ms, "
+                            + "mean_exec_time AS mean_time_ms, rows "
+                            + "FROM pg_stat_statements "
+                            + "WHERE query ILIKE '%' || ? || '%' "
+                            + "ORDER BY total_exec_time DESC LIMIT 5")) {
+                stmt.setQueryTimeout(timeoutSeconds);
+                stmt.setString(1, tableName);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        queries.add(new TopQuery(
+                                normalizeQuery(rs.getString("query")),
+                                rs.getLong("calls"),
+                                rs.getDouble("total_time_ms"),
+                                rs.getDouble("mean_time_ms"),
+                                rs.getLong("rows")
+                        ));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.debugf("Could not fetch queries for table '%s': %s", tableName, e.getMessage());
+        }
+        return queries;
+    }
+
     public record TableStats(
             String tableName,
             String schemaName,
@@ -448,18 +484,30 @@ public class DatabaseService implements DatabasePort {
     public record IndexInfo(String indexName, String tableName, String schemaName,
                             long sizeBytes, long idxScan, boolean isPrimary, boolean isUnique) {}
 
+    public record IndexImpact(String tableName, int unusedIndexes, long wastedBytes, long totalWrites, long seqScans, long idxScans) {}
+
     public record DatabaseTableStats(
             List<TableStats> tables,
             List<IndexInfo> unusedIndexes,
-            List<IndexInfo> usedIndexes
+            List<IndexInfo> usedIndexes,
+            List<IndexImpact> indexImpact,
+            String statsResetAt
     ) {}
 
     public DatabaseTableStats getDatabaseTableStats(String repository, String databaseName) {
         List<TableStats> tables = new ArrayList<>();
         List<IndexInfo> unusedIndexes = new ArrayList<>();
         List<IndexInfo> usedIndexes = new ArrayList<>();
+        List<IndexImpact> indexImpact = new ArrayList<>();
+        String statsResetAt = null;
 
         try (Connection conn = getTargetDbConnection(repository, databaseName)) {
+            // Stats reset timestamp — all pg_stat counters are relative to this point
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "SELECT stats_reset::text FROM pg_stat_database WHERE datname = current_database()");
+                 ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) statsResetAt = rs.getString(1);
+            }
             // Top tables by total size with stats
             try (PreparedStatement stmt = conn.prepareStatement(
                     "SELECT schemaname, relname, "
@@ -470,7 +518,7 @@ public class DatabaseService implements DatabasePort {
                             + "last_vacuum::text, last_autovacuum::text, last_analyze::text, last_autoanalyze::text "
                             + "FROM pg_stat_user_tables "
                             + "ORDER BY total_size DESC "
-                            + "LIMIT 20");
+                            + "LIMIT 200");
                  ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
                     tables.add(new TableStats(
@@ -500,7 +548,7 @@ public class DatabaseService implements DatabasePort {
                             + "JOIN pg_index i ON s.indexrelid = i.indexrelid "
                             + "WHERE s.idx_scan = 0 AND NOT i.indisprimary AND NOT i.indisunique "
                             + "ORDER BY size_bytes DESC "
-                            + "LIMIT 30");
+                            + "LIMIT 200");
                  ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
                     unusedIndexes.add(new IndexInfo(
@@ -524,7 +572,7 @@ public class DatabaseService implements DatabasePort {
                             + "JOIN pg_index i ON s.indexrelid = i.indexrelid "
                             + "WHERE s.idx_scan > 0 "
                             + "ORDER BY s.idx_scan DESC "
-                            + "LIMIT 30");
+                            + "LIMIT 200");
                  ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
                     usedIndexes.add(new IndexInfo(
@@ -538,11 +586,42 @@ public class DatabaseService implements DatabasePort {
                     ));
                 }
             }
+            // Index impact analysis: unused index overhead grouped by table
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "SELECT s.relname AS table_name, "
+                            + "count(*) AS unused_indexes, "
+                            + "sum(pg_relation_size(s.indexrelid)) AS wasted_bytes, "
+                            + "(SELECT n_tup_ins + n_tup_upd + n_tup_del "
+                            + "   FROM pg_stat_user_tables t "
+                            + "   WHERE t.relname = s.relname) AS total_writes, "
+                            + "(SELECT seq_scan "
+                            + "   FROM pg_stat_user_tables t "
+                            + "   WHERE t.relname = s.relname) AS seq_scans, "
+                            + "(SELECT idx_scan "
+                            + "   FROM pg_stat_user_tables t "
+                            + "   WHERE t.relname = s.relname) AS idx_scans "
+                            + "FROM pg_stat_user_indexes s "
+                            + "JOIN pg_index i ON s.indexrelid = i.indexrelid "
+                            + "WHERE s.idx_scan = 0 AND NOT i.indisprimary AND NOT i.indisunique "
+                            + "GROUP BY s.relname "
+                            + "ORDER BY wasted_bytes DESC");
+                 ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    indexImpact.add(new IndexImpact(
+                            rs.getString("table_name"),
+                            rs.getInt("unused_indexes"),
+                            rs.getLong("wasted_bytes"),
+                            rs.getLong("total_writes"),
+                            rs.getLong("seq_scans"),
+                            rs.getLong("idx_scans")
+                    ));
+                }
+            }
         } catch (Exception e) {
             Log.errorf("Failed to get table stats for '%s': %s", databaseName, e.getMessage());
         }
 
-        return new DatabaseTableStats(tables, unusedIndexes, usedIndexes);
+        return new DatabaseTableStats(tables, unusedIndexes, usedIndexes, indexImpact, statsResetAt);
     }
 
     public enum PgssResult { ENABLED, ALREADY_INSTALLED, NOT_AVAILABLE }
@@ -621,7 +700,8 @@ public class DatabaseService implements DatabasePort {
     }
 
     public QueryResult executeQuery(String repository, String databaseName, String sql,
-                                    int page, int pageSize, int timeoutSeconds) {
+                                    int page, int pageSize, int timeoutSeconds,
+                                    long cachedTotalRows) {
         long start = System.currentTimeMillis();
         QueryType type = detectQueryType(sql);
 
@@ -638,15 +718,23 @@ public class DatabaseService implements DatabasePort {
             }
 
             if (type == QueryType.SELECT) {
-                // Read query: wrap with LIMIT/OFFSET for pagination
-                // Single query with COUNT(*) OVER() to get total without executing twice
-                String pagedSql = "SELECT *, COUNT(*) OVER() AS _total_rows FROM (" + sql + ") AS _paged_q LIMIT " + pageSize + " OFFSET " + ((long) page * pageSize);
+                boolean useCached = cachedTotalRows >= 0;
+                String pagedSql;
+                if (useCached) {
+                    // Total already known from a previous page — skip COUNT(*) OVER()
+                    pagedSql = "SELECT * FROM (" + sql + ") AS _paged_q LIMIT " + pageSize + " OFFSET " + ((long) page * pageSize);
+                } else {
+                    // First page: compute total row count via window function
+                    pagedSql = "SELECT *, COUNT(*) OVER() AS _total_rows FROM (" + sql + ") AS _paged_q LIMIT " + pageSize + " OFFSET " + ((long) page * pageSize);
+                }
 
                 try (Statement stmt = conn.createStatement()) {
                     stmt.setQueryTimeout(timeoutSeconds);
                     stmt.setFetchSize(pageSize);
                     try (ResultSet rs = stmt.executeQuery(pagedSql)) {
-                        return buildResultFromResultSetWithTotal(rs, page, pageSize, start);
+                        return useCached
+                                ? buildResultFromResultSet(rs, page, pageSize, cachedTotalRows, start)
+                                : buildResultFromResultSetWithTotal(rs, page, pageSize, start);
                     }
                 }
             } else {

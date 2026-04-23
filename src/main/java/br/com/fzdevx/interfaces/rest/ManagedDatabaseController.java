@@ -49,6 +49,10 @@ public class ManagedDatabaseController {
     int queryMaxPageSize;
 
     @Inject
+    @ConfigProperty(name = "database.query.cache-total-rows", defaultValue = "true")
+    boolean queryCacheTotalRows;
+
+    @Inject
     ListManagedDatabasesUseCase listManagedDatabasesUseCase;
 
     @Inject
@@ -109,6 +113,33 @@ public class ManagedDatabaseController {
 
         var activity = databaseService.getDatabaseActivity(repository, databaseName);
         return Response.ok(activity).build();
+    }
+
+    @GET
+    @Path("/queries/{repository}/{databaseName}/{tableName}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getTopQueriesForTable(@PathParam("repository") String repository,
+                                          @PathParam("databaseName") String databaseName,
+                                          @PathParam("tableName") String tableName) {
+        if (!managedEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+        Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
+        if (nameError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", nameError.get())).build();
+        }
+        if (tableName == null || tableName.isBlank() || tableName.length() > 63) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Invalid table name.")).build();
+        }
+        var queries = databaseService.getTopQueriesForTable(repository, databaseName, tableName, queryTimeoutSeconds);
+        return Response.ok(queries).build();
     }
 
     @GET
@@ -340,13 +371,17 @@ public class ManagedDatabaseController {
 
         int page = 0;
         int pageSize = 100;
+        long cachedTotalRows = -1;
         try {
             if (body.get("page") instanceof Number n) page = Math.max(0, n.intValue());
             if (body.get("pageSize") instanceof Number n) pageSize = Math.min(Math.max(1, n.intValue()), queryMaxPageSize);
+            if (queryCacheTotalRows && body.get("totalRows") instanceof Number n && n.longValue() >= 0) {
+                cachedTotalRows = n.longValue();
+            }
         } catch (Exception ignored) {}
 
         try {
-            var result = databaseService.executeQuery(repository, databaseName, sql, page, pageSize, queryTimeoutSeconds);
+            var result = databaseService.executeQuery(repository, databaseName, sql, page, pageSize, queryTimeoutSeconds, cachedTotalRows);
             return Response.ok(result).build();
         } catch (Exception e) {
             String msg = e.getMessage() != null ? e.getMessage() : "Query execution failed.";

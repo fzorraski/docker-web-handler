@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import type { ManagedDatabaseInfo, ServerHealth, DatabaseHealthInfo, DatabaseActivity, DatabaseTableStats, DatabaseDump, DatabaseSnapshot } from '../types'
+import type { ManagedDatabaseInfo, ServerHealth, DatabaseHealthInfo, DatabaseActivity, DatabaseTableStats, DatabaseDump, DatabaseSnapshot, TopQuery } from '../types'
 import {
   getManagedDatabaseRepositories,
   listManagedDatabases,
@@ -11,6 +11,7 @@ import {
   getDatabaseActivity,
   updateDatabaseDescription,
   enablePgStatStatements,
+  getTopQueriesForTable,
 } from '../services/managedDatabaseService'
 import { useNotification } from './NotificationProvider'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
@@ -171,6 +172,14 @@ export default function DatabasesTab() {
   const [dialogSort, setDialogSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: '', dir: 'asc' })
   const [expandedQuery, setExpandedQuery] = useState<number | null>(null)
   const [expandedSqlFull, setExpandedSqlFull] = useState<Set<number>>(new Set())
+  const [tablesVisible, setTablesVisible] = useState(20)
+  const [usedIdxVisible, setUsedIdxVisible] = useState(30)
+  const [unusedIdxVisible, setUnusedIdxVisible] = useState(30)
+  const [expandedImpact, setExpandedImpact] = useState<string | null>(null)
+  const [impactQueries, setImpactQueries] = useState<Map<string, TopQuery[]>>(new Map())
+  const [impactQueriesLoading, setImpactQueriesLoading] = useState<string | null>(null)
+  const [expandedImpactQuery, setExpandedImpactQuery] = useState<number | null>(null)
+  const impactAbortRef = useRef<AbortController | null>(null)
   const [serverHealthFullScreen, setServerHealthFullScreen] = useState(false)
 
   const menu = useActionMenu<ManagedDatabaseInfo>()
@@ -1456,13 +1465,25 @@ export default function DatabasesTab() {
                               {s.waitEventType && <Chip label={s.waitEventType} size="small" color="warning" variant="outlined" sx={{ fontSize: '0.65rem', height: 18 }} />}
                             </Stack>
                             {s.query && (
-                              <Typography variant="body2" sx={{
-                                fontFamily: "'JetBrains Mono', monospace", fontSize: '0.7rem',
-                                bgcolor: 'action.hover', borderRadius: 1, p: 0.75,
-                                whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 60, overflow: 'auto',
-                              }}>
-                                {s.query}
-                              </Typography>
+                              <Stack direction="row" alignItems="flex-start" spacing={0.5}>
+                                <Typography variant="body2" sx={{
+                                  fontFamily: "'JetBrains Mono', monospace", fontSize: '0.7rem',
+                                  bgcolor: 'action.hover', borderRadius: 1, p: 0.75,
+                                  whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 60, overflow: 'auto',
+                                  flex: 1,
+                                }}>
+                                  {s.query}
+                                </Typography>
+                                <Tooltip title={t('database.dbHealth.qCopy')}>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => copyToClipboard(s.query).then(() => notify(t('database.dbHealth.qCopied'), 'success'))}
+                                    sx={{ mt: 0.25 }}
+                                  >
+                                    <ContentCopy sx={{ fontSize: 14 }} />
+                                  </IconButton>
+                                </Tooltip>
+                              </Stack>
                             )}
                           </Box>
                         ))}
@@ -1527,14 +1548,21 @@ export default function DatabasesTab() {
               {dbHealthTab === 2 && (
                 <Stack spacing={2.5}>
                   {dbActivity && dbActivity.pgStatStatementsAvailable && dbActivity.topQueries.length > 0 && (() => {
-                    const maxTotalTime = Math.max(...dbActivity.topQueries.map(q => q.totalTimeMs), 1)
+                    const sumTotalTime = dbActivity.topQueries.reduce((sum, q) => sum + q.totalTimeMs, 0) || 1
                     return (
                       <TableContainer sx={{ maxHeight: dbHealthFullScreen ? undefined : 500 }}>
                         <Table size="small" stickyHeader>
                           <TableHead>
                             <TableRow>
                               <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5, width: 40 }} />
-                              <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5, minWidth: 100 }}>{dialogSortLabel('totalTimeMs', t('database.dbHealth.qLoad'))}</TableCell>
+                              <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5, minWidth: 100 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                  {dialogSortLabel('totalTimeMs', t('database.dbHealth.qLoad'))}
+                                  <Tooltip title={t('database.dbHealth.qLoadTooltip')}>
+                                    <InfoOutlined sx={{ fontSize: 14, color: 'text.secondary', cursor: 'help' }} />
+                                  </Tooltip>
+                                </Box>
+                              </TableCell>
                               <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('queryText', t('database.dbHealth.qStatement'))}</TableCell>
                               <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('calls', t('database.dbHealth.qCalls'))}</TableCell>
                               <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('qTotalTime', t('database.dbHealth.qTotalTime'))}</TableCell>
@@ -1547,7 +1575,7 @@ export default function DatabasesTab() {
                               k === 'calls' ? q.calls : k === 'totalTimeMs' || k === 'qTotalTime' ? q.totalTimeMs
                               : k === 'meanTimeMs' ? q.meanTimeMs : k === 'rows' ? q.rows : q.queryText
                             ).map((q, i) => {
-                              const loadPct = (q.totalTimeMs / maxTotalTime) * 100
+                              const loadPct = (q.totalTimeMs / sumTotalTime) * 100
                               const isExpanded = expandedQuery === i
                               return (
                                 <React.Fragment key={i}>
@@ -1578,7 +1606,7 @@ export default function DatabasesTab() {
                                             width: 60, height: 8, borderRadius: 4, bgcolor: 'grey.200',
                                             '& .MuiLinearProgress-bar': {
                                               borderRadius: 4,
-                                              bgcolor: loadPct > 80 ? 'error.main' : loadPct > 40 ? 'warning.main' : 'success.main',
+                                              bgcolor: loadPct > 30 ? 'error.main' : loadPct > 10 ? 'warning.main' : 'success.main',
                                             },
                                           }}
                                         />
@@ -1701,6 +1729,11 @@ export default function DatabasesTab() {
                         <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5, textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.06em' }}>
                           {t('database.dbHealth.topTables')} ({dbTableStats.tables.length})
                         </Typography>
+                        {dbTableStats.statsResetAt && (
+                          <Alert severity="info" variant="outlined" sx={{ mb: 1.5, py: 0, fontSize: '0.75rem' }}>
+                            {t('database.dbHealth.statsResetAt', { date: dbTableStats.statsResetAt.substring(0, 16) })}
+                          </Alert>
+                        )}
                         <TableContainer sx={{ maxHeight: dbHealthFullScreen ? undefined : 450 }}>
                           <Table size="small" stickyHeader>
                             <TableHead>
@@ -1711,22 +1744,38 @@ export default function DatabasesTab() {
                                 <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('indexSizeBytes', t('database.dbHealth.tblIndexSize'))}</TableCell>
                                 <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('liveTuples', t('database.dbHealth.tblLiveRows'))}</TableCell>
                                 <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('deadTuples', t('database.dbHealth.tblDeadRows'))}</TableCell>
-                                <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('idxRatio', t('database.dbHealth.tblIdxRatio'))}</TableCell>
-                                <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('lastVacuum', t('database.dbHealth.tblLastVacuum'))}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                                    {dialogSortLabel('idxRatio', t('database.dbHealth.tblIdxRatio'))}
+                                    <Tooltip title={t('database.dbHealth.tblIdxRatioTooltip')}>
+                                      <InfoOutlined sx={{ fontSize: 14, color: 'text.secondary', cursor: 'help' }} />
+                                    </Tooltip>
+                                  </Box>
+                                </TableCell>
+                                <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    {dialogSortLabel('lastVacuum', t('database.dbHealth.tblLastVacuum'))}
+                                    <Tooltip title={t('database.dbHealth.tblLastVacuumTooltip')}>
+                                      <InfoOutlined sx={{ fontSize: 14, color: 'text.secondary', cursor: 'help' }} />
+                                    </Tooltip>
+                                  </Box>
+                                </TableCell>
                               </TableRow>
                             </TableHead>
                             <TableBody>
-                              {sortedList(dbTableStats.tables, (tbl, k) => {
-                                if (k === 'tableName') return tbl.tableName
-                                if (k === 'totalSizeBytes') return tbl.totalSizeBytes
-                                if (k === 'tableSizeBytes') return tbl.tableSizeBytes
-                                if (k === 'indexSizeBytes') return tbl.indexSizeBytes
-                                if (k === 'liveTuples') return tbl.liveTuples
-                                if (k === 'deadTuples') return tbl.deadTuples
-                                if (k === 'idxRatio') { const t = tbl.seqScan + tbl.idxScan; return t > 0 ? tbl.idxScan / t : -1 }
-                                if (k === 'lastVacuum') return tbl.lastAutoVacuum || tbl.lastVacuum || ''
-                                return 0
-                              }).map((tbl) => {
+                              {(() => {
+                                const sorted = sortedList(dbTableStats.tables, (tbl, k) => {
+                                  if (k === 'tableName') return tbl.tableName
+                                  if (k === 'totalSizeBytes') return tbl.totalSizeBytes
+                                  if (k === 'tableSizeBytes') return tbl.tableSizeBytes
+                                  if (k === 'indexSizeBytes') return tbl.indexSizeBytes
+                                  if (k === 'liveTuples') return tbl.liveTuples
+                                  if (k === 'deadTuples') return tbl.deadTuples
+                                  if (k === 'idxRatio') { const t = tbl.seqScan + tbl.idxScan; return t > 0 ? tbl.idxScan / t : -1 }
+                                  if (k === 'lastVacuum') return tbl.lastAutoVacuum || tbl.lastVacuum || ''
+                                  return 0
+                                })
+                                return sorted.slice(0, tablesVisible).map((tbl) => {
                                 const totalScans = tbl.seqScan + tbl.idxScan
                                 const idxRatio = totalScans > 0 ? (tbl.idxScan / totalScans) * 100 : -1
                                 const sizePct = (tbl.totalSizeBytes / maxTableSize) * 100
@@ -1787,10 +1836,17 @@ export default function DatabasesTab() {
                                     </TableCell>
                                   </TableRow>
                                 )
-                              })}
+                              })})()}
                             </TableBody>
                           </Table>
                         </TableContainer>
+                        {dbTableStats.tables.length > 20 && (
+                          <Box sx={{ textAlign: 'center', mt: 1 }}>
+                            <Button size="small" onClick={() => setTablesVisible(prev => prev >= dbTableStats!.tables.length ? 20 : prev + 20)}>
+                              {tablesVisible >= dbTableStats.tables.length ? t('database.dbHealth.showLess') : t('database.dbHealth.showMore')} ({Math.max(0, dbTableStats.tables.length - tablesVisible)})
+                            </Button>
+                          </Box>
+                        )}
                       </Paper>
                     )
                   })()}
@@ -1804,6 +1860,313 @@ export default function DatabasesTab() {
               {/* ===== Indexes tab ===== */}
               {dbHealthTab === 4 && (
                 <Stack spacing={2.5}>
+                  {/* Summary bar */}
+                  {dbTableStats && (dbTableStats.usedIndexes.length > 0 || dbTableStats.unusedIndexes.length > 0) && (() => {
+                    const totalUsed = dbTableStats.usedIndexes.length
+                    const totalUnused = dbTableStats.unusedIndexes.length
+                    const totalAll = totalUsed + totalUnused
+                    const usedSize = dbTableStats.usedIndexes.reduce((s, idx) => s + idx.sizeBytes, 0)
+                    const unusedSize = dbTableStats.unusedIndexes.reduce((s, idx) => s + idx.sizeBytes, 0)
+                    const healthPct = totalAll > 0 ? (totalUsed / totalAll) * 100 : 100
+                    const healthColor = healthPct >= 90 ? 'success.main' : healthPct >= 70 ? 'warning.main' : 'error.main'
+                    return (
+                      <Paper variant="outlined" sx={{ p: 2 }}>
+                        <Stack direction="row" alignItems="center" justifyContent="space-evenly">
+                          {/* Total */}
+                          <Box sx={{ textAlign: 'center' }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('database.dbHealth.idxSummaryTotal')}</Typography>
+                            <Typography sx={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: '1.1rem', lineHeight: 1.2 }}>{totalAll}</Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>{formatBytes(usedSize + unusedSize)}</Typography>
+                          </Box>
+                          {/* Used */}
+                          <Box sx={{ textAlign: 'center' }}>
+                            <Typography variant="caption" color="success.main" sx={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>{t('database.dbHealth.idxSummaryUsed')}</Typography>
+                            <Typography color="success.main" sx={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: '1.1rem', lineHeight: 1.2 }}>{totalUsed}</Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>{formatBytes(usedSize)}</Typography>
+                          </Box>
+                          {/* Donut */}
+                          <Box sx={{ position: 'relative', width: 68, height: 68, flexShrink: 0 }}>
+                            <svg viewBox="0 0 36 36" width="68" height="68">
+                              <circle cx="18" cy="18" r="14" fill="none" stroke="currentColor" strokeWidth="3.5" opacity={0.1} />
+                              <circle cx="18" cy="18" r="14" fill="none"
+                                stroke={healthPct >= 90 ? '#2e7d32' : healthPct >= 70 ? '#ed6c02' : '#d32f2f'}
+                                strokeWidth="3.5" strokeDasharray={`${healthPct * 0.88} 88`}
+                                strokeLinecap="round" transform="rotate(-90 18 18)" />
+                            </svg>
+                            <Box sx={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                              <Typography sx={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: '0.8rem', lineHeight: 1, color: healthColor }}>{healthPct.toFixed(0)}%</Typography>
+                            </Box>
+                          </Box>
+                          {/* Unused */}
+                          <Box sx={{ textAlign: 'center' }}>
+                            <Typography variant="caption" sx={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600, color: totalUnused > 0 ? 'warning.main' : 'text.secondary' }}>{t('database.dbHealth.idxSummaryUnused')}</Typography>
+                            <Typography sx={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: '1.1rem', lineHeight: 1.2, color: totalUnused > 0 ? 'warning.main' : 'text.primary' }}>{totalUnused}</Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>{formatBytes(unusedSize)}</Typography>
+                          </Box>
+                          {/* Wasted */}
+                          <Box sx={{ textAlign: 'center' }}>
+                            <Typography variant="caption" color="error.main" sx={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>{t('database.dbHealth.idxImpactWasted')}</Typography>
+                            <Typography color="error.main" sx={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, fontSize: '1.1rem', lineHeight: 1.2 }}>{formatBytes(unusedSize)}</Typography>
+                          </Box>
+                        </Stack>
+                      </Paper>
+                    )
+                  })()}
+
+                  {dbTableStats?.statsResetAt && (
+                    <Alert severity="info" variant="outlined" sx={{ py: 0, fontSize: '0.75rem' }}>
+                      {t('database.dbHealth.statsResetAt', { date: dbTableStats.statsResetAt.substring(0, 16) })}
+                    </Alert>
+                  )}
+
+                  {/* Write Overhead (impact) — most actionable, shown first */}
+                  {dbTableStats && dbTableStats.indexImpact && dbTableStats.indexImpact.length > 0 && (() => {
+                    const totalWasted = dbTableStats.indexImpact.reduce((s, r) => s + r.wastedBytes, 0)
+                    return (
+                      <Paper variant="outlined" sx={{ p: 2 }}>
+                        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+                          <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.06em' }}>
+                            {t('database.dbHealth.idxImpact')} ({dbTableStats.indexImpact.length})
+                          </Typography>
+                          <Chip label={formatBytes(totalWasted)} size="small" color="error" variant="outlined" sx={{ fontSize: '0.7rem', height: 20 }} />
+                          <Tooltip title={t('database.dbHealth.idxImpactTooltip')}>
+                            <InfoOutlined sx={{ fontSize: 14, color: 'text.secondary', cursor: 'help' }} />
+                          </Tooltip>
+                        </Stack>
+                        <TableContainer>
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('tableName', t('database.dbHealth.idxImpactTable'))}</TableCell>
+                                <TableCell align="center" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('unusedIndexes', t('database.dbHealth.idxImpactCount'))}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                                    {dialogSortLabel('wastedBytes', t('database.dbHealth.idxImpactWasted'))}
+                                    <Tooltip title={t('database.dbHealth.idxImpactWastedTooltip')}><InfoOutlined sx={{ fontSize: 14, color: 'text.secondary', cursor: 'help' }} /></Tooltip>
+                                  </Box>
+                                </TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                                    {dialogSortLabel('seqScans', t('database.dbHealth.idxImpactSeqScans'))}
+                                    <Tooltip title={t('database.dbHealth.idxImpactSeqScansTooltip')}><InfoOutlined sx={{ fontSize: 14, color: 'text.secondary', cursor: 'help' }} /></Tooltip>
+                                  </Box>
+                                </TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                                    {dialogSortLabel('idxScans', t('database.dbHealth.idxImpactIdxScans'))}
+                                    <Tooltip title={t('database.dbHealth.idxImpactIdxScansTooltip')}><InfoOutlined sx={{ fontSize: 14, color: 'text.secondary', cursor: 'help' }} /></Tooltip>
+                                  </Box>
+                                </TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                                    {dialogSortLabel('totalWrites', t('database.dbHealth.idxImpactWrites'))}
+                                    <Tooltip title={t('database.dbHealth.idxImpactWritesTooltip')}><InfoOutlined sx={{ fontSize: 14, color: 'text.secondary', cursor: 'help' }} /></Tooltip>
+                                  </Box>
+                                </TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                                    {dialogSortLabel('overhead', t('database.dbHealth.idxImpactOverhead'))}
+                                    <Tooltip title={t('database.dbHealth.idxImpactOverheadTooltip')}><InfoOutlined sx={{ fontSize: 14, color: 'text.secondary', cursor: 'help' }} /></Tooltip>
+                                  </Box>
+                                </TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {sortedList(dbTableStats.indexImpact, (row, k) =>
+                                k === 'tableName' ? row.tableName : k === 'unusedIndexes' ? row.unusedIndexes
+                                : k === 'wastedBytes' ? row.wastedBytes : k === 'seqScans' ? row.seqScans
+                                : k === 'idxScans' ? row.idxScans : k === 'totalWrites' ? row.totalWrites
+                                : k === 'overhead' ? row.unusedIndexes * 2.5 : row.wastedBytes
+                              ).map((row) => {
+                                const overheadPct = row.unusedIndexes * 2.5
+                                const isExpanded = expandedImpact === row.tableName
+                                const cachedQueries = impactQueries.get(row.tableName)
+                                const isLoadingThis = impactQueriesLoading === row.tableName
+                                return (
+                                  <React.Fragment key={row.tableName}>
+                                    <TableRow
+                                      hover
+                                      sx={{ cursor: 'pointer', '& > *': { borderBottom: isExpanded ? 'none' : undefined } }}
+                                      selected={isExpanded}
+                                      onClick={() => {
+                                        if (isExpanded) {
+                                          impactAbortRef.current?.abort()
+                                          setExpandedImpact(null)
+                                        } else {
+                                          setExpandedImpact(row.tableName)
+                                          setExpandedImpactQuery(null)
+                                          if (!cachedQueries && dbHealthTarget) {
+                                            impactAbortRef.current?.abort()
+                                            const controller = new AbortController()
+                                            impactAbortRef.current = controller
+                                            setImpactQueriesLoading(row.tableName)
+                                            getTopQueriesForTable(currentRepo, dbHealthTarget.name, row.tableName, controller.signal)
+                                              .then((queries) => {
+                                                setImpactQueries(prev => new Map(prev).set(row.tableName, queries))
+                                                setImpactQueriesLoading(null)
+                                              })
+                                              .catch(() => setImpactQueriesLoading(null))
+                                          }
+                                        }
+                                      }}
+                                    >
+                                      <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5 }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                          <IconButton size="small" sx={{ p: 0 }}>
+                                            {isExpanded ? <KeyboardArrowUp sx={{ fontSize: 18 }} /> : <KeyboardArrowDown sx={{ fontSize: 18 }} />}
+                                          </IconButton>
+                                          {row.tableName}
+                                        </Box>
+                                      </TableCell>
+                                      <TableCell align="center" sx={{ py: 0.5 }}>
+                                        <Chip label={row.unusedIndexes} size="small" color={row.unusedIndexes >= 5 ? 'error' : row.unusedIndexes >= 3 ? 'warning' : 'default'} sx={{ fontSize: '0.7rem', height: 20, minWidth: 28 }} />
+                                      </TableCell>
+                                      <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5, fontWeight: 600 }}>
+                                        {formatBytes(row.wastedBytes)}
+                                      </TableCell>
+                                      <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5, color: row.seqScans > row.idxScans ? 'warning.main' : 'text.primary' }}>
+                                        {row.seqScans.toLocaleString()}
+                                      </TableCell>
+                                      <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5 }}>
+                                        {row.idxScans.toLocaleString()}
+                                      </TableCell>
+                                      <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5 }}>
+                                        {row.totalWrites.toLocaleString()}
+                                      </TableCell>
+                                      <TableCell align="right" sx={{ py: 0.5 }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.75 }}>
+                                          <LinearProgress variant="determinate" value={Math.min(overheadPct, 100)} sx={{ width: 50, height: 6, borderRadius: 3, bgcolor: 'grey.200', '& .MuiLinearProgress-bar': { borderRadius: 3, bgcolor: overheadPct > 15 ? 'error.main' : overheadPct > 7 ? 'warning.main' : 'success.main' } }} />
+                                          <Typography variant="caption" sx={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, fontSize: '0.7rem', minWidth: 32, color: overheadPct > 15 ? 'error.main' : overheadPct > 7 ? 'warning.main' : 'text.secondary' }}>
+                                            ~{overheadPct.toFixed(0)}%
+                                          </Typography>
+                                        </Box>
+                                      </TableCell>
+                                    </TableRow>
+                                    <TableRow>
+                                      <TableCell colSpan={7} sx={{ py: 0, px: 0 }}>
+                                        <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                                          <Box sx={{ p: 2, bgcolor: 'action.hover' }}>
+                                            {!dbActivity?.pgStatStatementsAvailable ? (
+                                              <Typography variant="caption" color="text.secondary">{t('database.dbHealth.idxImpactPgssRequired')}</Typography>
+                                            ) : isLoadingThis ? (
+                                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                <CircularProgress size={16} />
+                                                <Typography variant="caption" color="text.secondary">Loading...</Typography>
+                                              </Box>
+                                            ) : cachedQueries && cachedQueries.length > 0 ? (
+                                              <>
+                                                <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'block', mb: 1, textTransform: 'uppercase', fontSize: '0.6rem', letterSpacing: '0.05em' }}>
+                                                  {t('database.dbHealth.idxImpactTopQueries')}
+                                                </Typography>
+                                                <Table size="small">
+                                                  <TableHead>
+                                                    <TableRow>
+                                                      <TableCell sx={{ fontWeight: 600, fontSize: '0.65rem', py: 0.25 }}>SQL</TableCell>
+                                                      <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.65rem', py: 0.25 }}>{t('database.dbHealth.qCalls')}</TableCell>
+                                                      <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.65rem', py: 0.25 }}>{t('database.dbHealth.qTotalTime')}</TableCell>
+                                                      <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.65rem', py: 0.25 }}>{t('database.dbHealth.qMeanTime')}</TableCell>
+                                                      <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.65rem', py: 0.25 }}>{t('database.dbHealth.qRows')}</TableCell>
+                                                    </TableRow>
+                                                  </TableHead>
+                                                  <TableBody>
+                                                    {cachedQueries.map((q, qi) => {
+                                                      const isQueryExpanded = expandedImpactQuery === qi
+                                                      return (
+                                                        <React.Fragment key={qi}>
+                                                          <TableRow hover sx={{ cursor: 'pointer', '& > *': { borderBottom: isQueryExpanded ? 'none' : undefined } }} onClick={(e) => { e.stopPropagation(); setExpandedImpactQuery(isQueryExpanded ? null : qi) }}>
+                                                            <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.7rem', py: 0.25, maxWidth: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                                <IconButton size="small" sx={{ p: 0 }}>{isQueryExpanded ? <KeyboardArrowUp sx={{ fontSize: 14 }} /> : <KeyboardArrowDown sx={{ fontSize: 14 }} />}</IconButton>
+                                                                {q.queryText}
+                                                              </Box>
+                                                            </TableCell>
+                                                            <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.7rem', py: 0.25 }}>{q.calls.toLocaleString()}</TableCell>
+                                                            <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.7rem', py: 0.25 }}>{q.totalTimeMs >= 1000 ? (q.totalTimeMs / 1000).toFixed(1) + 's' : q.totalTimeMs.toFixed(1) + 'ms'}</TableCell>
+                                                            <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.7rem', py: 0.25 }}>{q.meanTimeMs.toFixed(2)}ms</TableCell>
+                                                            <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.7rem', py: 0.25 }}>{q.rows.toLocaleString()}</TableCell>
+                                                          </TableRow>
+                                                          <TableRow>
+                                                            <TableCell colSpan={5} sx={{ py: 0, px: 0 }}>
+                                                              <Collapse in={isQueryExpanded} timeout="auto" unmountOnExit>
+                                                                <Box sx={{ p: 1.5, bgcolor: 'background.default', display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                                                                  <Typography sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.7rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all', flex: 1 }}>{q.queryText}</Typography>
+                                                                  <Tooltip title={t('database.dbHealth.qCopied')}>
+                                                                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); copyToClipboard(q.queryText).then(() => notify(t('database.dbHealth.qCopied'), 'success')) }}><ContentCopy sx={{ fontSize: 14 }} /></IconButton>
+                                                                  </Tooltip>
+                                                                </Box>
+                                                              </Collapse>
+                                                            </TableCell>
+                                                          </TableRow>
+                                                        </React.Fragment>
+                                                      )
+                                                    })}
+                                                  </TableBody>
+                                                </Table>
+                                              </>
+                                            ) : (
+                                              <Typography variant="caption" color="text.secondary">{t('database.dbHealth.idxImpactNoQueries')}</Typography>
+                                            )}
+                                          </Box>
+                                        </Collapse>
+                                      </TableCell>
+                                    </TableRow>
+                                  </React.Fragment>
+                                )
+                              })}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Paper>
+                    )
+                  })()}
+
+                  {/* Unused indexes */}
+                  {dbTableStats && dbTableStats.unusedIndexes.length > 0 && (() => {
+                    const allSorted = sortedList(dbTableStats.unusedIndexes, (idx, k) =>
+                      k === 'indexName' ? idx.indexName : k === 'tableName' ? idx.tableName : k === 'sizeBytes' ? idx.sizeBytes : 0
+                    )
+                    const totalWasted = allSorted.reduce((s, idx) => s + idx.sizeBytes, 0)
+                    const visible = allSorted.slice(0, unusedIdxVisible)
+                    const hasMore = allSorted.length > 30
+                    return (
+                      <Paper variant="outlined" sx={{ p: 2 }}>
+                        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+                          <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.06em' }}>
+                            {t('database.dbHealth.unusedIndexes')} ({allSorted.length})
+                          </Typography>
+                          <Chip label={formatBytes(totalWasted)} size="small" color="warning" variant="outlined" sx={{ fontSize: '0.7rem', height: 20 }} />
+                        </Stack>
+                        <TableContainer sx={{ maxHeight: dbHealthFullScreen ? undefined : 350 }}>
+                          <Table size="small" stickyHeader>
+                            <TableHead>
+                              <TableRow>
+                                <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('indexName', t('database.dbHealth.idxName'))}</TableCell>
+                                <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('tableName', t('database.dbHealth.tblName'))}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('sizeBytes', t('database.dbColumns.size'))}</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {visible.map((idx) => (
+                                <TableRow key={`${idx.schemaName}.${idx.indexName}`} hover>
+                                  <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5 }}>{idx.indexName}</TableCell>
+                                  <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5, color: 'text.secondary' }}>{idx.tableName}</TableCell>
+                                  <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5 }}>{formatBytes(idx.sizeBytes)}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                        {allSorted.length > 30 && (
+                          <Box sx={{ textAlign: 'center', mt: 1 }}>
+                            <Button size="small" onClick={() => setUnusedIdxVisible(prev => prev >= allSorted.length ? 30 : prev + 30)}>
+                              {unusedIdxVisible >= allSorted.length ? t('database.dbHealth.showLess') : t('database.dbHealth.showMore')} ({Math.max(0, allSorted.length - unusedIdxVisible)})
+                            </Button>
+                          </Box>
+                        )}
+                      </Paper>
+                    )
+                  })()}
+
                   {/* Used indexes */}
                   {dbTableStats && dbTableStats.usedIndexes.length > 0 && (() => {
                     const maxScans = Math.max(...dbTableStats.usedIndexes.map(idx => idx.idxScan), 1)
@@ -1822,17 +2185,33 @@ export default function DatabasesTab() {
                               <TableRow>
                                 <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('indexName', t('database.dbHealth.idxName'))}</TableCell>
                                 <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('tableName', t('database.dbHealth.tblName'))}</TableCell>
-                                <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('idxType', t('database.dbHealth.idxType'))}</TableCell>
-                                <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5, minWidth: 120 }}>{dialogSortLabel('idxScan', t('database.dbHealth.idxScans'))}</TableCell>
+                                <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    {dialogSortLabel('idxType', t('database.dbHealth.idxType'))}
+                                    <Tooltip title={t('database.dbHealth.idxTypeTooltip')}>
+                                      <InfoOutlined sx={{ fontSize: 14, color: 'text.secondary', cursor: 'help' }} />
+                                    </Tooltip>
+                                  </Box>
+                                </TableCell>
+                                <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5, minWidth: 120 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    {dialogSortLabel('idxScan', t('database.dbHealth.idxScans'))}
+                                    <Tooltip title={t('database.dbHealth.idxScansTooltip')}>
+                                      <InfoOutlined sx={{ fontSize: 14, color: 'text.secondary', cursor: 'help' }} />
+                                    </Tooltip>
+                                  </Box>
+                                </TableCell>
                                 <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('sizeBytes', t('database.dbColumns.size'))}</TableCell>
                               </TableRow>
                             </TableHead>
                             <TableBody>
-                              {sortedList(dbTableStats.usedIndexes, (idx, k) =>
-                                k === 'indexName' ? idx.indexName : k === 'tableName' ? idx.tableName
-                                : k === 'idxType' ? (idx.isPrimary ? 'a' : idx.isUnique ? 'b' : 'c')
-                                : k === 'idxScan' ? idx.idxScan : k === 'sizeBytes' ? idx.sizeBytes : 0
-                              ).map((idx) => (
+                              {(() => {
+                                const sorted = sortedList(dbTableStats.usedIndexes, (idx, k) =>
+                                  k === 'indexName' ? idx.indexName : k === 'tableName' ? idx.tableName
+                                  : k === 'idxType' ? (idx.isPrimary ? 'a' : idx.isUnique ? 'b' : 'c')
+                                  : k === 'idxScan' ? idx.idxScan : k === 'sizeBytes' ? idx.sizeBytes : 0
+                                )
+                                return sorted.slice(0, usedIdxVisible).map((idx) => (
                                 <TableRow key={`${idx.schemaName}.${idx.indexName}`} hover>
                                   <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5 }}>
                                     {idx.indexName}
@@ -1864,53 +2243,17 @@ export default function DatabasesTab() {
                                     {formatBytes(idx.sizeBytes)}
                                   </TableCell>
                                 </TableRow>
-                              ))}
+                              ))})()}
                             </TableBody>
                           </Table>
                         </TableContainer>
-                      </Paper>
-                    )
-                  })()}
-
-                  {/* Unused indexes */}
-                  {dbTableStats && dbTableStats.unusedIndexes.length > 0 && (() => {
-                    const totalWasted = dbTableStats.unusedIndexes.reduce((s, idx) => s + idx.sizeBytes, 0)
-                    return (
-                      <Paper variant="outlined" sx={{ p: 2 }}>
-                        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-                          <Typography variant="subtitle2" color="text.secondary" sx={{ textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.06em' }}>
-                            {t('database.dbHealth.unusedIndexes')} ({dbTableStats.unusedIndexes.length})
-                          </Typography>
-                          <Chip label={formatBytes(totalWasted)} size="small" color="warning" variant="outlined" sx={{ fontSize: '0.7rem', height: 20 }} />
-                        </Stack>
-                        <TableContainer sx={{ maxHeight: dbHealthFullScreen ? undefined : 350 }}>
-                          <Table size="small" stickyHeader>
-                            <TableHead>
-                              <TableRow>
-                                <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('indexName', t('database.dbHealth.idxName'))}</TableCell>
-                                <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('tableName', t('database.dbHealth.tblName'))}</TableCell>
-                                <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{dialogSortLabel('sizeBytes', t('database.dbColumns.size'))}</TableCell>
-                              </TableRow>
-                            </TableHead>
-                            <TableBody>
-                              {sortedList(dbTableStats.unusedIndexes, (idx, k) =>
-                                k === 'indexName' ? idx.indexName : k === 'tableName' ? idx.tableName : k === 'sizeBytes' ? idx.sizeBytes : 0
-                              ).map((idx) => (
-                                <TableRow key={`${idx.schemaName}.${idx.indexName}`} hover>
-                                  <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5 }}>
-                                    {idx.indexName}
-                                  </TableCell>
-                                  <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5, color: 'text.secondary' }}>
-                                    {idx.tableName}
-                                  </TableCell>
-                                  <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5 }}>
-                                    {formatBytes(idx.sizeBytes)}
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </TableContainer>
+                        {dbTableStats.usedIndexes.length > 30 && (
+                          <Box sx={{ textAlign: 'center', mt: 1 }}>
+                            <Button size="small" onClick={() => setUsedIdxVisible(prev => prev >= dbTableStats!.usedIndexes.length ? 30 : prev + 30)}>
+                              {usedIdxVisible >= dbTableStats.usedIndexes.length ? t('database.dbHealth.showLess') : t('database.dbHealth.showMore')} ({Math.max(0, dbTableStats.usedIndexes.length - usedIdxVisible)})
+                            </Button>
+                          </Box>
+                        )}
                       </Paper>
                     )
                   })()}
