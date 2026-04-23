@@ -30,6 +30,7 @@ import jakarta.inject.Inject;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.nio.file.Files;
@@ -314,10 +315,11 @@ public class RestoreDumpUseCase {
                 eventSink.accept(ContainerEvent.error("Creating Database", "Restore cancelled by user."));
                 return false;
             }
+            boolean databaseExisted = databaseService.databaseExists(request.getRepository(), request.getTargetDatabase());
             if (request.isCreateDatabase()) {
                 eventSink.accept(ContainerEvent.info("Creating Database",
                         "Creating database '" + request.getTargetDatabase() + "'..."));
-                if (databaseService.databaseExists(request.getRepository(), request.getTargetDatabase())) {
+                if (databaseExisted) {
                     eventSink.accept(ContainerEvent.info("Creating Database",
                             "Database already exists, skipping creation."));
                 } else {
@@ -333,6 +335,10 @@ public class RestoreDumpUseCase {
                 eventSink.accept(ContainerEvent.error("Restoring", "Restore cancelled by user."));
                 return false;
             }
+            if (databaseExisted) {
+                eventSink.accept(ContainerEvent.info("Restoring",
+                        "Database already exists. Existing data will be overwritten."));
+            }
             eventSink.accept(ContainerEvent.info("Restoring",
                     "Restoring dump '" + dump.getOriginalFilename() + "' into '" + request.getTargetDatabase() + "'..."));
 
@@ -342,9 +348,10 @@ public class RestoreDumpUseCase {
             RestoreResult result;
             if (!"none".equalsIgnoreCase(pgImage)) {
                 result = executeDockerRestore(dump, tempFile, pgInfo, request.getTargetDatabase(),
-                        pgImage, eventSink, ctx);
+                        pgImage, eventSink, ctx, databaseExisted);
             } else {
-                result = executeLocalRestore(dump, tempFile, pgInfo, request.getTargetDatabase(), eventSink, ctx);
+                result = executeLocalRestore(dump, tempFile, pgInfo, request.getTargetDatabase(),
+                        eventSink, ctx, databaseExisted);
             }
 
             if (ctx.cancelled.get()) {
@@ -457,7 +464,8 @@ public class RestoreDumpUseCase {
                                      DatabasePort.PgConnectionInfo pgInfo,
                                      String targetDatabase, String image,
                                      Consumer<ContainerEvent> eventSink,
-                                     RestoreContext ctx) throws Exception {
+                                     RestoreContext ctx,
+                                     boolean databaseExisted) throws Exception {
         // Pull image if needed
         eventSink.accept(ContainerEvent.info("Restoring", "Pulling image '" + image + "'..."));
         dockerClient.pullImageCmd(image)
@@ -504,6 +512,28 @@ public class RestoreDumpUseCase {
                     .withRemotePath("/restore/")
                     .exec();
 
+            // Clean existing data when restoring SQL format to an existing database
+            if (databaseExisted && dump.getFormat() == DatabaseDump.Format.SQL) {
+                if (ctx.cancelled.get()) return new RestoreResult(-1, 0);
+                eventSink.accept(ContainerEvent.info("Restoring", "Clearing existing schema..."));
+                ExecCreateCmdResponse cleanExec = dockerClient.execCreateCmd(containerId)
+                        .withCmd("psql", "-h", pgInfo.host(), "-p", String.valueOf(pgInfo.port()),
+                                "-U", pgInfo.user(), "-d", targetDatabase,
+                                "-c", "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO PUBLIC;")
+                        .withEnv(List.of("PGPASSWORD=" + pgInfo.password()))
+                        .exec();
+                dockerClient.execStartCmd(cleanExec.getId())
+                        .exec(new ExecStartResultCallback()).awaitCompletion();
+                InspectExecResponse cleanInspect = dockerClient.inspectExecCmd(cleanExec.getId()).exec();
+                Long cleanExit = cleanInspect.getExitCodeLong();
+                if (cleanExit != null && cleanExit != 0) {
+                    eventSink.accept(ContainerEvent.error("Restoring",
+                            "Failed to clear existing schema (exit code " + cleanExit + ")."));
+                    return new RestoreResult(cleanExit.intValue(), 0);
+                }
+                eventSink.accept(ContainerEvent.info("Restoring", "Existing schema cleared."));
+            }
+
             // Build restore command with file path (no stdin piping)
             List<String> cmd = new ArrayList<>();
             if (dump.getFormat() == DatabaseDump.Format.SQL) {
@@ -520,6 +550,7 @@ public class RestoreDumpUseCase {
                         "-U", pgInfo.user(),
                         "-d", targetDatabase,
                         "--no-owner", "--no-privileges",
+                        "--clean", "--if-exists",
                         containerPath));
             }
 
@@ -569,7 +600,32 @@ public class RestoreDumpUseCase {
                                     DatabasePort.PgConnectionInfo pgInfo,
                                     String targetDatabase,
                                     Consumer<ContainerEvent> eventSink,
-                                    RestoreContext ctx) throws Exception {
+                                    RestoreContext ctx,
+                                    boolean databaseExisted) throws Exception {
+        // Clean existing data when restoring SQL format to an existing database
+        if (databaseExisted && dump.getFormat() == DatabaseDump.Format.SQL) {
+            if (ctx.cancelled.get()) return new RestoreResult(-1, 0);
+            eventSink.accept(ContainerEvent.info("Restoring", "Clearing existing schema..."));
+            ProcessBuilder cleanPb = new ProcessBuilder(
+                    "psql",
+                    "-h", pgInfo.host(),
+                    "-p", String.valueOf(pgInfo.port()),
+                    "-U", pgInfo.user(),
+                    "-d", targetDatabase,
+                    "-c", "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO PUBLIC;");
+            cleanPb.environment().put("PGPASSWORD", pgInfo.password());
+            cleanPb.redirectErrorStream(true);
+            Process cleanProcess = cleanPb.start();
+            cleanProcess.getInputStream().transferTo(OutputStream.nullOutputStream());
+            int cleanExit = cleanProcess.waitFor();
+            if (cleanExit != 0) {
+                eventSink.accept(ContainerEvent.error("Restoring",
+                        "Failed to clear existing schema (exit code " + cleanExit + ")."));
+                return new RestoreResult(cleanExit, 0);
+            }
+            eventSink.accept(ContainerEvent.info("Restoring", "Existing schema cleared."));
+        }
+
         ProcessBuilder pb;
         if (dump.getFormat() == DatabaseDump.Format.SQL) {
             pb = new ProcessBuilder(
@@ -588,6 +644,8 @@ public class RestoreDumpUseCase {
                     "-d", targetDatabase,
                     "--no-owner",
                     "--no-privileges",
+                    "--clean",
+                    "--if-exists",
                     dumpFile.toAbsolutePath().toString());
         }
 
