@@ -69,6 +69,7 @@ export interface AnalysisSummary {
   endpointCount: number
   apiCallCount: number
   orphanRequestCount: number
+  orphanJobCount: number
   errorCount: number
   levelCounts: Record<string, number>
   jobExecutionCount: number
@@ -132,6 +133,15 @@ export interface OrphanRequest {
   sourceFile: string
   payloadTruncated: boolean
   payloadSize: number
+}
+
+export interface OrphanJob {
+  jobName: string
+  triggerName: string | null
+  thread: string
+  timestamp: string | null
+  lineNumber: number
+  sourceFile: string
 }
 
 export interface JobExecution {
@@ -520,12 +530,14 @@ export async function getJobFilters(id: string): Promise<{ jobNames: string[]; t
 
 export async function getJobs(
   id: string,
-  params: { jobName?: string; thread?: string; sort?: string; page?: number; size?: number; signal?: AbortSignal } = {},
+  params: { jobName?: string; thread?: string; status?: string; sort?: string; sortDir?: string; page?: number; size?: number; signal?: AbortSignal } = {},
 ): Promise<PaginatedResponse<JobExecution>> {
   const q = new URLSearchParams()
   if (params.jobName) q.set('jobName', params.jobName)
   if (params.thread) q.set('thread', params.thread)
+  if (params.status) q.set('status', params.status)
   if (params.sort) q.set('sort', params.sort)
+  if (params.sortDir) q.set('sortDir', params.sortDir)
   if (params.page != null) q.set('page', String(params.page))
   if (params.size != null) q.set('size', String(params.size))
   const res = await fetchWithAuth(`${API}/${id}/jobs?${q}`, { signal: params.signal })
@@ -553,6 +565,19 @@ export async function getOrphanRequests(
   if (params.page != null) q.set('page', String(params.page))
   if (params.size != null) q.set('size', String(params.size))
   const res = await fetchWithAuth(`${API}/${id}/orphan-requests?${q}`, { signal: params.signal })
+  return handleResponse(res)
+}
+
+export async function getOrphanJobs(
+  id: string,
+  params: { jobName?: string; thread?: string; page?: number; size?: number; signal?: AbortSignal } = {},
+): Promise<PaginatedResponse<OrphanJob>> {
+  const q = new URLSearchParams()
+  if (params.jobName) q.set('jobName', params.jobName)
+  if (params.thread) q.set('thread', params.thread)
+  if (params.page != null) q.set('page', String(params.page))
+  if (params.size != null) q.set('size', String(params.size))
+  const res = await fetchWithAuth(`${API}/${id}/orphan-jobs?${q}`, { signal: params.signal })
   return handleResponse(res)
 }
 

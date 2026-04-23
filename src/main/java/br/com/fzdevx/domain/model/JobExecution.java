@@ -13,4 +13,8 @@ public record JobExecution(
         int startLineNumber,
         int endLineNumber,
         String sourceFile
-) {}
+) {
+    public boolean isFailed() {
+        return result != null && !"null".equals(result);
+    }
+}

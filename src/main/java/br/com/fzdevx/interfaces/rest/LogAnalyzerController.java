@@ -71,6 +71,9 @@ public class LogAnalyzerController {
     QueryOrphanRequestsUseCase queryOrphanRequestsUseCase;
 
     @Inject
+    QueryOrphanJobsUseCase queryOrphanJobsUseCase;
+
+    @Inject
     QueryCriticalIssuesUseCase queryCriticalIssuesUseCase;
 
     @Inject
@@ -510,14 +513,16 @@ public class LogAnalyzerController {
     public Response getJobs(@PathParam("id") String id,
                             @QueryParam("jobName") String jobName,
                             @QueryParam("thread") String thread,
+                            @QueryParam("status") String status,
                             @QueryParam("sort") @DefaultValue("time") String sort,
+                            @QueryParam("sortDir") @DefaultValue("asc") String sortDir,
                             @QueryParam("page") @DefaultValue("0") int page,
                             @QueryParam("size") @DefaultValue("50") int size) {
         if (!enabled) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
-        var result = queryJobExecutionsUseCase.query(analysis.getJobExecutions(), jobName, thread, sort, page, size);
+        var result = queryJobExecutionsUseCase.query(analysis.getJobExecutions(), jobName, thread, status, sort, sortDir, page, size);
         return Response.ok(result.toMap()).build();
     }
 
@@ -561,6 +566,22 @@ public class LogAnalyzerController {
         var result = queryOrphanRequestsUseCase.execute(analysis.getOrphanRequests(), endpoint, thread, page, size);
         var truncated = result.map(o -> PayloadTruncationMapper.toResponse(o, payloadTruncateThreshold));
         return Response.ok(truncated.toMap()).build();
+    }
+
+    @GET
+    @Path("/{id}/orphan-jobs")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getOrphanJobs(@PathParam("id") String id,
+                                  @QueryParam("jobName") String jobName,
+                                  @QueryParam("thread") String thread,
+                                  @QueryParam("page") @DefaultValue("0") int page,
+                                  @QueryParam("size") @DefaultValue("50") int size) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+
+        var result = queryOrphanJobsUseCase.execute(analysis.getOrphanJobs(), jobName, thread, page, size);
+        return Response.ok(result.toMap()).build();
     }
 
     @GET

@@ -7,6 +7,7 @@ import br.com.fzdevx.domain.shared.EndpointStatsCalculator;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -112,7 +113,7 @@ public class LogFileParser implements LogAnalysisPort {
         final List<LogLine> linesForAnalysis = allLines;
 
         CompletableFuture<PairingResult> apiCallsFuture = null;
-        CompletableFuture<List<JobExecution>> jobsFuture = null;
+        CompletableFuture<JobPairingResult> jobsFuture = null;
         CompletableFuture<List<RepeatedFailure>> failuresFuture = null;
 
         if (apiCallPattern != null) {
@@ -130,7 +131,8 @@ public class LogFileParser implements LogAnalysisPort {
             jobsFuture = CompletableFuture.supplyAsync(() -> {
                 progressSink.accept(ContainerEvent.info("Jobs", "Pairing job executions..."));
                 var result = pairJobExecutions(linesForAnalysis, jobStartPattern, jobEndPattern, cancelled);
-                progressSink.accept(ContainerEvent.info("Jobs", "Found " + result.size() + " job executions"));
+                progressSink.accept(ContainerEvent.info("Jobs", "Found " + result.executions.size() + " job executions" +
+                        (result.orphans.isEmpty() ? "" : " (" + result.orphans.size() + " orphan jobs)")));
                 return result;
             }, analysisExecutor);
         } else {
@@ -151,6 +153,7 @@ public class LogFileParser implements LogAnalysisPort {
         List<ApiCallPair> apiCalls = List.of();
         List<OrphanRequest> orphanRequests = List.of();
         List<JobExecution> jobExecutions = List.of();
+        List<OrphanJob> orphanJobs = List.of();
         List<RepeatedFailure> repeatedFailures = List.of();
 
         try {
@@ -160,7 +163,9 @@ public class LogFileParser implements LogAnalysisPort {
                 orphanRequests = pairingResult.orphans;
             }
             if (jobsFuture != null) {
-                jobExecutions = jobsFuture.join();
+                var jobResult = jobsFuture.join();
+                jobExecutions = jobResult.executions;
+                orphanJobs = jobResult.orphans;
             }
             if (failuresFuture != null) {
                 repeatedFailures = failuresFuture.join();
@@ -214,7 +219,7 @@ public class LogFileParser implements LogAnalysisPort {
                 sourceFiles, totalLineCount, start, end,
                 new ArrayList<>(threadSet), new ArrayList<>(endpointSet),
                 apiCalls, endpointStats, levelCounts, errors,
-                jobExecutions, repeatedFailures, allLines, orphanRequests
+                jobExecutions, repeatedFailures, allLines, orphanRequests, orphanJobs
         );
     }
 
@@ -282,6 +287,8 @@ public class LogFileParser implements LogAnalysisPort {
 
     private record PairingResult(List<ApiCallPair> pairs, List<OrphanRequest> orphans) {}
 
+    private record JobPairingResult(List<JobExecution> executions, List<OrphanJob> orphans) {}
+
     private PairingResult pairApiCalls(List<LogLine> lines, Pattern apiCallPattern,
                                               int slowThresholdMs, List<Map.Entry<Pattern, String>> redactionPatterns,
                                               AtomicBoolean cancelled) {
@@ -331,7 +338,7 @@ public class LogFileParser implements LogAnalysisPort {
                     String key = thread + "|" + endpoint;
                     Deque<PendingRequest> queue = pendingByThreadEndpoint.get(key);
                     if (queue != null && !queue.isEmpty()) {
-                        matched = findClosestRequest(queue, line.timestamp());
+                        matched = findClosestByTimestamp(queue, line.timestamp(), PendingRequest::timestamp);
                     }
                 }
 
@@ -369,21 +376,23 @@ public class LogFileParser implements LogAnalysisPort {
     }
 
     /**
-     * Find the pending request whose timestamp is closest to the response timestamp.
+     * Find the pending entry whose timestamp is closest to the target timestamp.
      * Removes and returns the best match from the queue.
      * Falls back to FIFO (oldest) if timestamps are null.
      */
-    private PendingRequest findClosestRequest(Deque<PendingRequest> queue, LocalDateTime responseTimestamp) {
-        if (queue.size() == 1 || responseTimestamp == null) {
+    private <T> T findClosestByTimestamp(Deque<T> queue, LocalDateTime targetTimestamp,
+                                         Function<T, LocalDateTime> timestampAccessor) {
+        if (queue.size() == 1 || targetTimestamp == null) {
             return queue.poll();
         }
 
-        PendingRequest best = null;
+        T best = null;
         long bestDistance = Long.MAX_VALUE;
 
-        for (PendingRequest pending : queue) {
-            if (pending.timestamp == null) continue;
-            long distance = Math.abs(Duration.between(pending.timestamp, responseTimestamp).toMillis());
+        for (T pending : queue) {
+            LocalDateTime ts = timestampAccessor.apply(pending);
+            if (ts == null) continue;
+            long distance = Math.abs(Duration.between(ts, targetTimestamp).toMillis());
             if (distance < bestDistance) {
                 bestDistance = distance;
                 best = pending;
@@ -397,7 +406,7 @@ public class LogFileParser implements LogAnalysisPort {
         return queue.poll();
     }
 
-    private List<JobExecution> pairJobExecutions(List<LogLine> lines, Pattern startPattern, Pattern endPattern,
+    private JobPairingResult pairJobExecutions(List<LogLine> lines, Pattern startPattern, Pattern endPattern,
                                                     AtomicBoolean cancelled) {
         // Key: thread + "|" + jobName
         Map<String, Deque<PendingJob>> pending = new HashMap<>();
@@ -427,7 +436,7 @@ public class LogFileParser implements LogAnalysisPort {
                 String key = line.thread() + "|" + jobName;
                 Deque<PendingJob> queue = pending.get(key);
                 if (queue != null && !queue.isEmpty()) {
-                    PendingJob job = queue.poll();
+                    PendingJob job = findClosestByTimestamp(queue, line.timestamp(), PendingJob::timestamp);
                     long durationMs = (job.timestamp != null && line.timestamp() != null)
                             ? Duration.between(job.timestamp, line.timestamp()).toMillis() : 0;
                     executions.add(new JobExecution(
@@ -438,7 +447,17 @@ public class LogFileParser implements LogAnalysisPort {
                 }
             }
         }
-        return executions;
+
+        List<OrphanJob> orphans = new ArrayList<>();
+        for (Deque<PendingJob> queue : pending.values()) {
+            for (PendingJob p : queue) {
+                orphans.add(new OrphanJob(p.jobName, p.trigger, p.thread,
+                        p.timestamp, p.lineNumber, p.sourceFile));
+            }
+        }
+        orphans.sort(Comparator.comparingInt(OrphanJob::lineNumber));
+
+        return new JobPairingResult(executions, orphans);
     }
 
     private List<RepeatedFailure> detectRepeatedFailures(List<LogLine> lines, Pattern failurePattern,

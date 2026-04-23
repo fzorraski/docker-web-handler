@@ -27,7 +27,7 @@ public record LogPreset(
             "yyyy-MM-dd HH:mm:ss,SSS",
             "^(?<endpoint>\\w+(?:WS|Resource)/\\w+)(?:\\s+(?<correlationId>\\d+))?\\s+(?<direction>Request|Response)\\s+=\\s+(?<payload>.*)$",
             "^Job \\[(?<jobName>.+?)\\] vai ser disparado pelo trigger \\[(?<trigger>.+?)\\]",
-            "^Job \\[(?<jobName>.+?)\\] executou em .+ and reports: (?<result>.+)$",
+            "^Job \\[(?<jobName>.+?)\\] (?:executou em .+ and reports|execucao falhou com o erro): (?<result>.+)$",
             "ORDEM (?<entityId>ORDER \\d+) FALHA AO INICIAR (?<reason>\\w+):",
             List.of("token", "senha", "password", "secret", "authorization"),
             List.of(),

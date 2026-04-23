@@ -643,6 +643,81 @@ class LogFileParserTest {
         assertEquals("ok", result.getJobExecutions().get(1).result());
     }
 
+    // ---- Job failure matching ----
+
+    @Test
+    void jobFailureLineMatchedAsEnd() throws IOException {
+        Path file = writeLog(
+                "2026-03-30 00:00:00,000 INFO  [q] (W-1) Job [MyJob.Jobs] vai ser disparado pelo trigger [T1.DEFAULT]",
+                "2026-03-30 00:00:02,000 WARN  [q] (W-1) Job [MyJob.Jobs] execucao falhou com o erro: org.quartz.SchedulerException: Job threw an unhandled exception."
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+        assertEquals(1, result.getJobExecutions().size());
+        JobExecution job = result.getJobExecutions().getFirst();
+        assertEquals("MyJob.Jobs", job.jobName());
+        assertEquals(2000, job.durationMs());
+        assertTrue(job.result().contains("SchedulerException"));
+        assertTrue(result.getOrphanJobs().isEmpty());
+    }
+
+    @Test
+    void jobFailureDoesNotCascadeMispair() throws IOException {
+        Path file = writeLog(
+                "2026-03-30 00:00:00,000 INFO  [q] (W-1) Job [MyJob.Jobs] vai ser disparado pelo trigger [T1.DEFAULT]",
+                "2026-03-30 00:00:02,000 WARN  [q] (W-1) Job [MyJob.Jobs] execucao falhou com o erro: RollbackException",
+                "2026-03-30 00:10:00,000 INFO  [q] (W-1) Job [MyJob.Jobs] vai ser disparado pelo trigger [T1.DEFAULT]",
+                "2026-03-30 00:10:03,000 INFO  [q] (W-1) Job [MyJob.Jobs] executou em  30/03/2026 00:10:03 and reports: null"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+        assertEquals(2, result.getJobExecutions().size());
+        assertEquals(2000, result.getJobExecutions().get(0).durationMs());
+        assertEquals(3000, result.getJobExecutions().get(1).durationMs());
+    }
+
+    // ---- Job closest-timestamp matching ----
+
+    @Test
+    void jobPairingUsesClosestTimestamp() throws IOException {
+        // Simulate: start A, start B, end B (closest to B), end A (closest to A)
+        // Without closest-timestamp, FIFO would mispair A->endB and B->endA
+        Path file = writeLog(
+                "2026-03-30 01:00:00,000 INFO  [q] (W-1) Job [MyJob.Jobs] vai ser disparado pelo trigger [T1.DEFAULT]",
+                "2026-03-30 01:05:00,000 INFO  [q] (W-1) Job [MyJob.Jobs] vai ser disparado pelo trigger [T1.DEFAULT]",
+                "2026-03-30 01:05:02,000 INFO  [q] (W-1) Job [MyJob.Jobs] executou em  30/03/2026 01:05:02 and reports: ok",
+                "2026-03-30 01:00:03,000 INFO  [q] (W-1) Job [MyJob.Jobs] executou em  30/03/2026 01:00:03 and reports: null"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+        assertEquals(2, result.getJobExecutions().size());
+        // Closest-timestamp should pair start@01:05 with end@01:05:02 (2s) and start@01:00 with end@01:00:03 (3s)
+        assertEquals(2000, result.getJobExecutions().get(0).durationMs());
+        assertEquals(3000, result.getJobExecutions().get(1).durationMs());
+    }
+
+    // ---- Orphan job tracking ----
+
+    @Test
+    void orphanJobsCollectedForUnmatchedStarts() throws IOException {
+        Path file = writeLog(
+                "2026-03-30 00:00:00,000 INFO  [q] (W-1) Job [MyJob.Jobs] vai ser disparado pelo trigger [T1.DEFAULT]",
+                "2026-03-30 00:00:05,000 INFO  [q] (W-1) Job [MyJob.Jobs] executou em  30/03/2026 00:00:05 and reports: null",
+                "2026-03-30 00:01:00,000 INFO  [q] (W-2) Job [OrphanJob.Jobs] vai ser disparado pelo trigger [T2.DEFAULT]"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+        assertEquals(1, result.getJobExecutions().size());
+        assertEquals(1, result.getOrphanJobs().size());
+        assertEquals("OrphanJob.Jobs", result.getOrphanJobs().getFirst().jobName());
+        assertEquals("T2.DEFAULT", result.getOrphanJobs().getFirst().triggerName());
+        assertEquals("W-2", result.getOrphanJobs().getFirst().thread());
+    }
+
     // ---- Edge: single failure not reported as repeated ----
 
     @Test

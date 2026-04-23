@@ -65,6 +65,7 @@ public final class AnalysisSummaryMapper {
         map.put("errorCount", a.getErrors().size());
         map.put("levelCounts", a.getLevelCounts());
         map.put("jobExecutionCount", a.getJobExecutions().size());
+        map.put("orphanJobCount", a.getOrphanJobs().size());
         map.put("repeatedFailureCount", a.getRepeatedFailures().size());
         map.put("customFields", customFieldsSummary);
         map.put("criticalIssueCount", criticalIssueCount);

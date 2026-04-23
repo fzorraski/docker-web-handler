@@ -231,7 +231,7 @@ class LogAnalyzerControllerTest {
                 4, now, now.plusSeconds(30),
                 List.of("http-thread-1", "http-thread-2"), List.of(),
                 List.of(), List.of(), Map.of("INFO", 4), List.of(),
-                List.of(), List.of(), List.of(), orphans
+                List.of(), List.of(), List.of(), orphans, List.of()
         );
     }
 
@@ -386,7 +386,7 @@ class LogAnalyzerControllerTest {
     void getJobs_disabled_returnsForbidden() {
         setField("enabled", false);
 
-        Response response = controller.getJobs(ANALYSIS_ID, null, null, "time", 0, 50);
+        Response response = controller.getJobs(ANALYSIS_ID, null, null, null, "time", "asc", 0, 50);
 
         assertEquals(403, response.getStatus());
     }
@@ -489,7 +489,7 @@ class LogAnalyzerControllerTest {
     void getJobs_notFound_returns404() {
         when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
 
-        Response response = controller.getJobs("nonexistent", null, null, "time", 0, 50);
+        Response response = controller.getJobs("nonexistent", null, null, null, "time", "asc", 0, 50);
 
         assertEquals(404, response.getStatus());
     }
@@ -747,7 +747,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getJobs(analysis.getId(), null, null, "time", 0, 50);
+        Response response = controller.getJobs(analysis.getId(), null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -764,7 +764,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildMultiJobAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getJobs(analysis.getId(), "BackupJob", null, "time", 0, 50);
+        Response response = controller.getJobs(analysis.getId(), "BackupJob", null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -780,7 +780,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildMultiJobAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getJobs(analysis.getId(), null, "scheduler-2", "time", 0, 50);
+        Response response = controller.getJobs(analysis.getId(), null, "scheduler-2", null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -795,7 +795,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildMultiJobAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getJobs(analysis.getId(), null, null, "duration", 0, 50);
+        Response response = controller.getJobs(analysis.getId(), null, null, null, "duration", "desc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -811,7 +811,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildMultiJobAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getJobs(analysis.getId(), null, null, "name", 0, 50);
+        Response response = controller.getJobs(analysis.getId(), null, null, null, "name", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -829,7 +829,7 @@ class LogAnalyzerControllerTest {
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
         // Filter by scheduler-1 (has CleanupJob and SyncJob), sort by duration
-        Response response = controller.getJobs(analysis.getId(), null, "scheduler-1", "duration", 0, 50);
+        Response response = controller.getJobs(analysis.getId(), null, "scheduler-1", null, "duration", "desc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();

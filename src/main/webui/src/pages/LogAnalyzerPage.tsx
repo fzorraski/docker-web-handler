@@ -27,6 +27,7 @@ import { RawLogTab } from '../components/log-analyzer/RawLogTab'
 import { JobsTab } from '../components/log-analyzer/JobsTab'
 import { FailuresTab } from '../components/log-analyzer/FailuresTab'
 import { OrphanRequestsTab } from '../components/log-analyzer/OrphanRequestsTab'
+import { OrphanJobsTab } from '../components/log-analyzer/OrphanJobsTab'
 import { CriticalIssuesTab } from '../components/log-analyzer/CriticalIssuesTab'
 import { NpeAnalysisTab } from '../components/log-analyzer/NpeAnalysisTab'
 import { ExceptionAnalysisTab } from '../components/log-analyzer/ExceptionAnalysisTab'
@@ -490,6 +491,7 @@ export default function LogAnalyzerPage() {
     if (selected.jobExecutionCount > 0) list.push({ key: 'jobs', label: t('logAnalyzer.tabs.jobs'), component: <JobsTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.repeatedFailureCount > 0) list.push({ key: 'failures', label: t('logAnalyzer.tabs.failures'), component: <FailuresTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.orphanRequestCount > 0) list.push({ key: 'orphanRequests', label: t('logAnalyzer.tabs.orphanRequests'), component: <OrphanRequestsTab analysisId={selected.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} onJumpToLine={handleJumpToLine} /> })
+    if (selected.orphanJobCount > 0) list.push({ key: 'orphanJobs', label: t('logAnalyzer.tabs.orphanJobs'), component: <OrphanJobsTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.customFields) {
       for (const cf of selected.customFields) {
         if (cf.matchCount > 0 && !cf.countOnly) {
@@ -852,6 +854,9 @@ export default function LogAnalyzerPage() {
             <SummaryCard icon={<ErrorOutline />} label={t('logAnalyzer.dashboard.errors')} value={selected.errorCount} color="error.main" onClick={() => goToTab('rawLog')} />
             {selected.orphanRequestCount > 0 && (
               <SummaryCard icon={<HelpOutline />} label={t('logAnalyzer.dashboard.orphanRequests')} value={selected.orphanRequestCount} color="warning.main" onClick={() => goToTab('orphanRequests')} />
+            )}
+            {selected.orphanJobCount > 0 && (
+              <SummaryCard icon={<HelpOutline />} label={t('logAnalyzer.dashboard.orphanJobs')} value={selected.orphanJobCount} color="warning.main" onClick={() => goToTab('orphanJobs')} />
             )}
             {selected.criticalIssueCount > 0 && (
               <SummaryCard icon={<WarningAmber />} label={t('logAnalyzer.dashboard.criticalIssues')} value={selected.criticalIssueCount} color="warning.main" onClick={() => goToTab('criticalIssues')} />

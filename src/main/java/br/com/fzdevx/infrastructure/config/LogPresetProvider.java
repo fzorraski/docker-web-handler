@@ -35,7 +35,7 @@ public class LogPresetProvider {
     String wildflyJobStartRegex;
 
     @Inject @ConfigProperty(name = "log.analyzer.preset.wildfly.job-end-regex",
-            defaultValue = "^Job \\[(?<jobName>.+?)\\] executou em .+ and reports: (?<result>.+)$")
+            defaultValue = "^Job \\[(?<jobName>.+?)\\] (?:executou em .+ and reports|execucao falhou com o erro): (?<result>.+)$")
     String wildflyJobEndRegex;
 
     @Inject @ConfigProperty(name = "log.analyzer.preset.wildfly.failure-regex",

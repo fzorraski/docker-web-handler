@@ -18,8 +18,8 @@ import java.util.Map;
 public class QueryJobExecutionsUseCase {
 
     public PaginatedResult<JobExecution> query(List<JobExecution> jobExecutions,
-                                               String jobName, String thread,
-                                               String sort, int page, int size) {
+                                               String jobName, String thread, String status,
+                                               String sort, String sortDir, int page, int size) {
         var jobs = jobExecutions.stream();
         if (jobName != null && !jobName.isBlank()) {
             jobs = jobs.filter(j -> jobName.equals(j.jobName()));
@@ -27,11 +27,19 @@ public class QueryJobExecutionsUseCase {
         if (thread != null && !thread.isBlank()) {
             jobs = jobs.filter(j -> thread.equals(j.thread()));
         }
-        List<JobExecution> result = switch (sort != null ? sort : "time") {
-            case "duration" -> jobs.sorted(Comparator.comparingLong(JobExecution::durationMs).reversed()).toList();
-            case "name" -> jobs.sorted(Comparator.comparing(JobExecution::jobName)).toList();
-            default -> jobs.sorted(Comparator.comparing(JobExecution::startTimestamp, Comparator.nullsLast(Comparator.naturalOrder()))).toList();
+        if ("failed".equalsIgnoreCase(status)) {
+            jobs = jobs.filter(JobExecution::isFailed);
+        } else if ("success".equalsIgnoreCase(status)) {
+            jobs = jobs.filter(j -> !j.isFailed());
+        }
+        boolean desc = "desc".equalsIgnoreCase(sortDir);
+        Comparator<JobExecution> comparator = switch (sort != null ? sort : "time") {
+            case "duration" -> Comparator.comparingLong(JobExecution::durationMs);
+            case "name" -> Comparator.comparing(JobExecution::jobName);
+            default -> Comparator.comparing(JobExecution::startTimestamp, Comparator.nullsLast(Comparator.naturalOrder()));
         };
+        if (desc) comparator = comparator.reversed();
+        List<JobExecution> result = jobs.sorted(comparator).toList();
         return PaginatedResult.of(result, page, size);
     }
 
