@@ -14,6 +14,9 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -239,7 +242,11 @@ public class LogFileParser implements LogAnalysisPort {
         long fileSize;
         try { fileSize = Files.size(file); } catch (IOException e) { fileSize = 0; }
 
-        try (BufferedReader reader = Files.newBufferedReader(file)) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                Files.newInputStream(file),
+                StandardCharsets.UTF_8.newDecoder()
+                        .onMalformedInput(CodingErrorAction.REPLACE)
+                        .onUnmappableCharacter(CodingErrorAction.REPLACE)))) {
             String line;
             int lineNumber = 0;
             int lastReported = 0;
