@@ -3,6 +3,7 @@ package br.com.fzdevx.interfaces.rest;
 import br.com.fzdevx.application.dto.ManagedDatabaseInfo;
 import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.application.usecase.CleanupIdleDatabasesUseCase;
+import br.com.fzdevx.application.usecase.GenerateDatabaseReportUseCase;
 import br.com.fzdevx.application.usecase.ListManagedDatabasesUseCase;
 import br.com.fzdevx.domain.model.ContainerExpiration;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
@@ -11,6 +12,7 @@ import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
 import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
+import br.com.fzdevx.interfaces.rest.util.ContentDispositionHelper;
 import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -54,6 +56,9 @@ public class ManagedDatabaseController {
 
     @Inject
     ListManagedDatabasesUseCase listManagedDatabasesUseCase;
+
+    @Inject
+    GenerateDatabaseReportUseCase generateDatabaseReportUseCase;
 
     @Inject
     CleanupIdleDatabasesUseCase cleanupIdleDatabasesUseCase;
@@ -213,6 +218,34 @@ public class ManagedDatabaseController {
         if (tableStats != null) result.put("tableStats", tableStats);
 
         return Response.ok(result).build();
+    }
+
+    @GET
+    @Path("/{repository}/{databaseName}/report")
+    @Produces("text/html")
+    public Response downloadDatabaseReport(@PathParam("repository") String repository,
+                                           @PathParam("databaseName") String databaseName) {
+        if (!managedEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
+        if (nameError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", nameError.get())).build();
+        }
+
+        String html = generateDatabaseReportUseCase.generateReport(repository, databaseName);
+        String filename = generateDatabaseReportUseCase.buildReportFilename(repository, databaseName);
+        return Response.ok(html, "text/html")
+                .header("Content-Disposition", ContentDispositionHelper.buildAttachmentHeader(filename))
+                .build();
     }
 
     @GET

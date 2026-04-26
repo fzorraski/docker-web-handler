@@ -558,6 +558,7 @@ const en = {
       idxImpactTopQueries: 'Top queries on this table (by total time)',
       idxImpactNoQueries: 'No queries found for this table in pg_stat_statements.',
       idxImpactPgssRequired: 'Enable pg_stat_statements to see queries per table.',
+      downloadReport: 'Download Report',
       refresh: 'Refresh',
       startMonitoring: 'Start Monitoring',
       pgssEnabled: 'pg_stat_statements extension enabled successfully. Query monitoring is now active.',

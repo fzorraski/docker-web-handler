@@ -13,6 +13,7 @@ import {
   enablePgStatStatements,
   getTopQueriesForTable,
   getTopTempFileQueries,
+  getDatabaseReportUrl,
 } from '../services/managedDatabaseService'
 import { useNotification } from './NotificationProvider'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
@@ -101,6 +102,7 @@ import {
   Restore,
   SwapHoriz,
   Code,
+  Download,
 } from '@mui/icons-material'
 
 type PendingDelete =
@@ -1278,6 +1280,15 @@ export default function DatabasesTab() {
               onClick={() => { if (dbHealthTarget) openDbHealth(dbHealthTarget) }}
             >
               <Refresh sx={{ fontSize: 18, animation: dbHealthLoading ? 'spin 1s linear infinite' : 'none', '@keyframes spin': { '100%': { transform: 'rotate(360deg)' } } }} />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={t('database.dbHealth.downloadReport')}>
+            <IconButton
+              size="small"
+              sx={{ color: 'white' }}
+              onClick={() => { if (dbHealthTarget) window.open(getDatabaseReportUrl(currentRepo, dbHealthTarget.name)) }}
+            >
+              <Download sx={{ fontSize: 18 }} />
             </IconButton>
           </Tooltip>
           <FullscreenToggleButton fullScreen={dbHealthFullScreen} onToggle={() => setDbHealthFullScreen(f => !f)} color="white" />

@@ -200,6 +200,10 @@ export async function toggleDatabaseProtected(
   return { success: true, protected: data.protected, disabledDeletionCount: data.disabledDeletionCount }
 }
 
+export function getDatabaseReportUrl(repository: string, databaseName: string): string {
+  return API + encodeURIComponent(repository) + '/' + encodeURIComponent(databaseName) + '/report'
+}
+
 export async function cleanupIdleDatabases(
   repository: string,
   password: string,

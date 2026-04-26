@@ -560,6 +560,7 @@ const es: typeof en = {
       idxImpactTopQueries: 'Principales queries en esta tabla (por tiempo total)',
       idxImpactNoQueries: 'No se encontraron queries para esta tabla en pg_stat_statements.',
       idxImpactPgssRequired: 'Habilite pg_stat_statements para ver queries por tabla.',
+      downloadReport: 'Descargar Informe',
       refresh: 'Actualizar',
       startMonitoring: 'Iniciar Monitoreo',
       pgssEnabled: 'Extension pg_stat_statements activada exitosamente. El monitoreo de queries esta activo.',
