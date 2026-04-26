@@ -283,7 +283,8 @@ public class DatabaseService implements DatabasePort {
 
     public record UserConnectionCount(String user, int connections, int active, int idle) {}
 
-    public record TopQuery(String queryText, long calls, double totalTimeMs, double meanTimeMs, long rows) {}
+    public record TopQuery(String queryText, long calls, double totalTimeMs, double meanTimeMs, long rows,
+                           long tempBlksRead, long tempBlksWritten) {}
 
     public record BlockedProcess(int blockedPid, String blockedUser, String blockedQuery,
                                   String blockedMode, String relName,
@@ -405,7 +406,9 @@ public class DatabaseService implements DatabasePort {
                 if (pgssAvailable) {
                     try (PreparedStatement stmt = dbConn.prepareStatement(
                             "SELECT query, calls, total_exec_time AS total_time_ms, "
-                                    + "mean_exec_time AS mean_time_ms, rows "
+                                    + "mean_exec_time AS mean_time_ms, rows, "
+                                    + "COALESCE(temp_blks_read, 0) AS temp_blks_read, "
+                                    + "COALESCE(temp_blks_written, 0) AS temp_blks_written "
                                     + "FROM pg_stat_statements "
                                     + "WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database()) "
                                     + "ORDER BY total_exec_time DESC LIMIT 10");
@@ -416,7 +419,9 @@ public class DatabaseService implements DatabasePort {
                                     rs.getLong("calls"),
                                     rs.getDouble("total_time_ms"),
                                     rs.getDouble("mean_time_ms"),
-                                    rs.getLong("rows")
+                                    rs.getLong("rows"),
+                                    rs.getLong("temp_blks_read"),
+                                    rs.getLong("temp_blks_written")
                             ));
                         }
                     }
@@ -441,7 +446,9 @@ public class DatabaseService implements DatabasePort {
 
             try (PreparedStatement stmt = conn.prepareStatement(
                     "SELECT query, calls, total_exec_time AS total_time_ms, "
-                            + "mean_exec_time AS mean_time_ms, rows "
+                            + "mean_exec_time AS mean_time_ms, rows, "
+                            + "COALESCE(temp_blks_read, 0) AS temp_blks_read, "
+                            + "COALESCE(temp_blks_written, 0) AS temp_blks_written "
                             + "FROM pg_stat_statements "
                             + "WHERE query ILIKE '%' || ? || '%' "
                             + "ORDER BY total_exec_time DESC LIMIT 5")) {
@@ -454,13 +461,54 @@ public class DatabaseService implements DatabasePort {
                                 rs.getLong("calls"),
                                 rs.getDouble("total_time_ms"),
                                 rs.getDouble("mean_time_ms"),
-                                rs.getLong("rows")
+                                rs.getLong("rows"),
+                                rs.getLong("temp_blks_read"),
+                                rs.getLong("temp_blks_written")
                         ));
                     }
                 }
             }
         } catch (Exception e) {
             Log.debugf("Could not fetch queries for table '%s': %s", tableName, e.getMessage());
+        }
+        return queries;
+    }
+
+    public List<TopQuery> getTopTempFileQueries(String repository, String databaseName, int timeoutSeconds) {
+        List<TopQuery> queries = new ArrayList<>();
+        try (Connection conn = getTargetDbConnection(repository, databaseName)) {
+            try (PreparedStatement check = conn.prepareStatement(
+                    "SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements'");
+                 ResultSet rs = check.executeQuery()) {
+                if (!rs.next()) return queries;
+            }
+
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "SELECT query, calls, total_exec_time AS total_time_ms, "
+                            + "mean_exec_time AS mean_time_ms, rows, "
+                            + "COALESCE(temp_blks_read, 0) AS temp_blks_read, "
+                            + "COALESCE(temp_blks_written, 0) AS temp_blks_written "
+                            + "FROM pg_stat_statements "
+                            + "WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database()) "
+                            + "AND temp_blks_written > 0 "
+                            + "ORDER BY temp_blks_written DESC LIMIT 20")) {
+                stmt.setQueryTimeout(timeoutSeconds);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        queries.add(new TopQuery(
+                                normalizeQuery(rs.getString("query")),
+                                rs.getLong("calls"),
+                                rs.getDouble("total_time_ms"),
+                                rs.getDouble("mean_time_ms"),
+                                rs.getLong("rows"),
+                                rs.getLong("temp_blks_read"),
+                                rs.getLong("temp_blks_written")
+                        ));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.debugf("Could not fetch top temp file queries for '%s': %s", databaseName, e.getMessage());
         }
         return queries;
     }

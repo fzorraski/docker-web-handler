@@ -45,6 +45,23 @@ export async function getTopQueriesForTable(
   }
 }
 
+export async function getTopTempFileQueries(
+  repository: string,
+  databaseName: string,
+  signal?: AbortSignal,
+): Promise<TopQuery[]> {
+  try {
+    const res = await fetchWithAuth(
+      API + 'temp-queries/' + encodeURIComponent(repository) + '/' + encodeURIComponent(databaseName),
+      signal ? { signal } : undefined,
+    )
+    if (!res.ok) return []
+    return res.json()
+  } catch {
+    return []
+  }
+}
+
 export async function getDatabaseDetails(repository: string, name: string): Promise<{
   health: DatabaseHealthInfo | null
   activity: DatabaseActivity | null

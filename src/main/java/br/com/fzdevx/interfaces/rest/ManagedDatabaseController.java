@@ -143,6 +143,28 @@ public class ManagedDatabaseController {
     }
 
     @GET
+    @Path("/temp-queries/{repository}/{databaseName}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getTopTempFileQueries(@PathParam("repository") String repository,
+                                          @PathParam("databaseName") String databaseName) {
+        if (!managedEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+        Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
+        if (nameError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", nameError.get())).build();
+        }
+        var queries = databaseService.getTopTempFileQueries(repository, databaseName, queryTimeoutSeconds);
+        return Response.ok(queries).build();
+    }
+
+    @GET
     @Path("/details/{repository}/{databaseName}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getDatabaseDetails(@PathParam("repository") String repository,

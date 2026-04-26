@@ -134,6 +134,8 @@ export interface TopQuery {
   totalTimeMs: number
   meanTimeMs: number
   rows: number
+  tempBlksRead: number
+  tempBlksWritten: number
 }
 
 export interface BlockedProcess {

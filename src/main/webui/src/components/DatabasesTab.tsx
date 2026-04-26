@@ -12,6 +12,7 @@ import {
   updateDatabaseDescription,
   enablePgStatStatements,
   getTopQueriesForTable,
+  getTopTempFileQueries,
 } from '../services/managedDatabaseService'
 import { useNotification } from './NotificationProvider'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
@@ -181,6 +182,12 @@ export default function DatabasesTab() {
   const [expandedImpactQuery, setExpandedImpactQuery] = useState<number | null>(null)
   const impactAbortRef = useRef<AbortController | null>(null)
   const [serverHealthFullScreen, setServerHealthFullScreen] = useState(false)
+  const [tempFileQueries, setTempFileQueries] = useState<TopQuery[]>([])
+  const [tempFileQueriesLoading, setTempFileQueriesLoading] = useState(false)
+  const [tempFileQueriesLoaded, setTempFileQueriesLoaded] = useState(false)
+  const [expandedTempQuery, setExpandedTempQuery] = useState<number | null>(null)
+  const [expandedTempSqlFull, setExpandedTempSqlFull] = useState<Set<number>>(new Set())
+  const [tempQueriesVisible, setTempQueriesVisible] = useState(10)
 
   const menu = useActionMenu<ManagedDatabaseInfo>()
 
@@ -358,6 +365,12 @@ export default function DatabasesTab() {
     setDbHealth(null)
     setDbActivity(null)
     setDbTableStats(null)
+    setTempFileQueries([])
+    setTempFileQueriesLoaded(false)
+    setTempFileQueriesLoading(false)
+    setExpandedTempQuery(null)
+    setExpandedTempSqlFull(new Set())
+    setTempQueriesVisible(10)
     getDatabaseDetails(currentRepo, db.name)
       .then((details) => {
         if (dbHealthRequestId.current !== requestId) return // stale response
@@ -373,6 +386,21 @@ export default function DatabasesTab() {
       })
       .finally(() => {
         if (dbHealthRequestId.current === requestId) setDbHealthLoading(false)
+      })
+  }
+
+  function loadTempFileQueries() {
+    if (!dbHealthTarget || tempFileQueriesLoading) return
+    const requestId = dbHealthRequestId.current
+    setTempFileQueriesLoading(true)
+    getTopTempFileQueries(currentRepo, dbHealthTarget.name)
+      .then((data) => {
+        if (dbHealthRequestId.current !== requestId) return
+        setTempFileQueries(data)
+        setTempFileQueriesLoaded(true)
+      })
+      .finally(() => {
+        if (dbHealthRequestId.current === requestId) setTempFileQueriesLoading(false)
       })
   }
 
@@ -1393,6 +1421,15 @@ export default function DatabasesTab() {
                             </Typography>
                           )}
                         </Typography>
+                        {dbHealth.tempFiles > 0 && dbActivity?.pgStatStatementsAvailable && (
+                          <Button
+                            size="small"
+                            sx={{ mt: 0.5, textTransform: 'none', fontSize: '0.65rem', p: 0, minWidth: 'auto' }}
+                            onClick={() => { setDbHealthTab(2); if (!tempFileQueriesLoaded) loadTempFileQueries() }}
+                          >
+                            {t('database.dbHealth.viewTempQueries')}
+                          </Button>
+                        )}
                       </Grid>
                       <Grid size={{ xs: 4 }}>
                         <Typography variant="caption" color="text.secondary">{t('database.dbHealth.txIdAge')}</Typography>
@@ -1699,6 +1736,159 @@ export default function DatabasesTab() {
 
                   {dbActivity && dbActivity.pgStatStatementsAvailable && dbActivity.topQueries.length === 0 && (
                     <Alert severity="info">{t('database.dbHealth.noQueries')}</Alert>
+                  )}
+
+                  {/* Temp file queries section (on-demand) */}
+                  {dbActivity && dbActivity.pgStatStatementsAvailable && (
+                    <Paper variant="outlined" sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5, textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.06em' }}>
+                        {t('database.dbHealth.topTempQueries')}
+                      </Typography>
+
+                      {!tempFileQueriesLoaded && !tempFileQueriesLoading && (
+                        <Button variant="outlined" size="small" onClick={loadTempFileQueries}>
+                          {t('database.dbHealth.loadTempQueries')}
+                        </Button>
+                      )}
+
+                      {tempFileQueriesLoading && (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                          <CircularProgress size={24} />
+                        </Box>
+                      )}
+
+                      {tempFileQueriesLoaded && tempFileQueries.length === 0 && (
+                        <Alert severity="info" sx={{ fontSize: '0.8rem' }}>{t('database.dbHealth.noTempQueries')}</Alert>
+                      )}
+
+                      {tempFileQueriesLoaded && tempFileQueries.length > 0 && (<>
+                        <TableContainer sx={{ maxHeight: dbHealthFullScreen ? undefined : 400 }}>
+                          <Table size="small" stickyHeader>
+                            <TableHead>
+                              <TableRow>
+                                <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5, width: 40 }} />
+                                <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{t('database.dbHealth.qStatement')}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{t('database.dbHealth.qCalls')}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{t('database.dbHealth.tempWritten')}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{t('database.dbHealth.tempRead')}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{t('database.dbHealth.qTotalTime')}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5 }}>{t('database.dbHealth.qMeanTime')}</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {tempFileQueries.slice(0, tempQueriesVisible).map((q, i) => {
+                                const isExpanded = expandedTempQuery === i
+                                return (
+                                  <React.Fragment key={i}>
+                                    <TableRow
+                                      hover
+                                      sx={{ cursor: 'pointer', '& > *': { borderBottom: isExpanded ? 'none' : undefined } }}
+                                      onClick={() => {
+                                        if (isExpanded) {
+                                          setExpandedTempQuery(null)
+                                          setExpandedTempSqlFull(prev => { const next = new Set(prev); next.delete(i); return next })
+                                        } else {
+                                          setExpandedTempQuery(i)
+                                        }
+                                      }}
+                                      selected={isExpanded}
+                                    >
+                                      <TableCell sx={{ py: 0.5 }}>
+                                        <IconButton size="small" sx={{ p: 0 }}>
+                                          {isExpanded ? <KeyboardArrowUp sx={{ fontSize: 18 }} /> : <KeyboardArrowDown sx={{ fontSize: 18 }} />}
+                                        </IconButton>
+                                      </TableCell>
+                                      <TableCell sx={{ py: 0.5, maxWidth: 300 }}>
+                                        <Typography variant="body2" noWrap sx={{
+                                          fontFamily: "'JetBrains Mono', monospace", fontSize: '0.7rem',
+                                          maxWidth: 300, display: 'block',
+                                        }}>
+                                          {q.queryText}
+                                        </Typography>
+                                      </TableCell>
+                                      <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5 }}>
+                                        {q.calls.toLocaleString()}
+                                      </TableCell>
+                                      <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5, color: 'error.main', fontWeight: 600 }}>
+                                        {formatBytes(q.tempBlksWritten * 8192)}
+                                      </TableCell>
+                                      <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5 }}>
+                                        {formatBytes(q.tempBlksRead * 8192)}
+                                      </TableCell>
+                                      <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5 }}>
+                                        {q.totalTimeMs > 1000 ? (q.totalTimeMs / 1000).toFixed(1) + 's' : q.totalTimeMs.toFixed(1) + 'ms'}
+                                      </TableCell>
+                                      <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem', py: 0.5 }}>
+                                        {q.meanTimeMs.toFixed(2)}ms
+                                      </TableCell>
+                                    </TableRow>
+                                    <TableRow>
+                                      <TableCell colSpan={7} sx={{ py: 0, px: 0 }}>
+                                        <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                                          <Box sx={{ p: 2, bgcolor: 'action.hover' }}>
+                                            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
+                                              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                                {t('database.dbHealth.qSqlText')}
+                                              </Typography>
+                                              <Tooltip title={t('database.dbHealth.qCopy')}>
+                                                <IconButton
+                                                  size="small"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    copyToClipboard(q.queryText).then(() => notify(t('database.dbHealth.qCopied'), 'success'))
+                                                  }}
+                                                >
+                                                  <ContentCopy sx={{ fontSize: 14 }} />
+                                                </IconButton>
+                                              </Tooltip>
+                                            </Stack>
+                                            <Typography variant="body2" sx={{
+                                              fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem',
+                                              whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                                              ...(!expandedTempSqlFull.has(i) && {
+                                                display: '-webkit-box',
+                                                WebkitLineClamp: 3,
+                                                WebkitBoxOrient: 'vertical',
+                                                overflow: 'hidden',
+                                              }),
+                                            }}>
+                                              {q.queryText}
+                                            </Typography>
+                                            {q.queryText.length > 200 && (
+                                              <Button
+                                                size="small"
+                                                sx={{ mt: 0.5, textTransform: 'none', fontSize: '0.7rem', p: 0, minWidth: 'auto' }}
+                                                onClick={(e) => {
+                                                  e.stopPropagation()
+                                                  setExpandedTempSqlFull(prev => {
+                                                    const next = new Set(prev)
+                                                    if (next.has(i)) next.delete(i); else next.add(i)
+                                                    return next
+                                                  })
+                                                }}
+                                              >
+                                                {expandedTempSqlFull.has(i) ? t('database.dbHealth.showLess') : t('database.dbHealth.showMore')}
+                                              </Button>
+                                            )}
+                                          </Box>
+                                        </Collapse>
+                                      </TableCell>
+                                    </TableRow>
+                                  </React.Fragment>
+                                )
+                              })}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                        {tempFileQueries.length > 10 && (
+                          <Box sx={{ textAlign: 'center', mt: 1 }}>
+                            <Button size="small" onClick={() => setTempQueriesVisible(prev => prev >= tempFileQueries.length ? 10 : prev + 10)}>
+                              {tempQueriesVisible >= tempFileQueries.length ? t('database.dbHealth.showLess') : t('database.dbHealth.showMore')} ({Math.max(0, tempFileQueries.length - tempQueriesVisible)})
+                            </Button>
+                          </Box>
+                        )}
+                      </>)}
+                    </Paper>
                   )}
 
                   {dbActivity && !dbActivity.pgStatStatementsAvailable && (
