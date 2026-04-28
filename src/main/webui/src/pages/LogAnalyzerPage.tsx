@@ -35,6 +35,7 @@ import { CustomFieldTab } from '../components/log-analyzer/CustomFieldTab'
 import { PerformanceInsightsTab } from '../components/log-analyzer/PerformanceInsightsTab'
 import { AnomalyDetectionTab } from '../components/log-analyzer/AnomalyDetectionTab'
 import { SystemHealthTab } from '../components/log-analyzer/SystemHealthTab'
+import { DuplicateRequestsTab } from '../components/log-analyzer/DuplicateRequestsTab'
 import type {
   AnalysisSummary, LogPreset, UploadOptions,
 } from '../services/logAnalyzerService'
@@ -485,6 +486,7 @@ export default function LogAnalyzerPage() {
       { key: 'systemHealth', label: t('logAnalyzer.tabs.systemHealth'), component: <SystemHealthTab analysisId={selected.id} /> },
       { key: 'rawLog', label: t('logAnalyzer.tabs.rawLog'), component: null },
     ]
+    if (selected.apiCallCount > 0) list.splice(list.length - 1, 0, { key: 'duplicateRequests', label: t('logAnalyzer.tabs.duplicateRequests'), component: <DuplicateRequestsTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.criticalIssueCount > 0) list.push({ key: 'criticalIssues', label: t('logAnalyzer.tabs.criticalIssues'), component: <CriticalIssuesTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.npeAnalysisCount > 0) list.push({ key: 'npeAnalysis', label: t('logAnalyzer.tabs.npeAnalysis'), component: <NpeAnalysisTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })
     if (selected.exceptionAnalysisCount > 0) list.push({ key: 'exceptionAnalysis', label: t('logAnalyzer.tabs.exceptionAnalysis'), component: <ExceptionAnalysisTab analysisId={selected.id} onJumpToLine={handleJumpToLine} /> })

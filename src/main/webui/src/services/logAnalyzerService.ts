@@ -345,6 +345,42 @@ export interface AnomalyDetectionResponse {
   correlations: CorrelatedAnomaly[]
 }
 
+// ---- Duplicate Request Detection ----
+
+export interface DuplicateCall {
+  correlationId: string | null
+  thread: string
+  requestTimestamp: string
+  durationMs: number
+  requestLineNumber: number
+  responseLineNumber: number
+  sourceFile: string
+  slow: boolean
+}
+
+export interface DuplicateGroup {
+  endpoint: string
+  payloadPreview: string
+  occurrenceCount: number
+  firstOccurrence: string
+  lastOccurrence: string
+  timeSpanMs: number
+  avgTimeBetweenMs: number
+  calls: DuplicateCall[]
+}
+
+export interface DuplicateDetectionResponse {
+  matchBy: string
+  timeWindowSeconds: number
+  minOccurrences: number
+  totalGroups: number
+  totalDuplicateCalls: number
+  mostDuplicatedEndpoint: string
+  mostDuplicatedCount: number
+  avgTimeBetweenDuplicatesMs: number
+  groups: DuplicateGroup[]
+}
+
 // ---- API calls ----
 
 export async function getStatus(): Promise<AnalyzerStatus> {
@@ -774,6 +810,19 @@ export async function getSystemHealth(
   if (params.metric) q.set('metric', params.metric)
   const qs = q.toString()
   const res = await fetchWithAuth(`${API}/${id}/system-health${qs ? '?' + qs : ''}`)
+  return handleResponse(res)
+}
+
+export async function getDuplicateRequests(
+  id: string,
+  params: { matchBy?: string; timeWindowSeconds?: number; minOccurrences?: number } = {},
+): Promise<DuplicateDetectionResponse> {
+  const q = new URLSearchParams()
+  if (params.matchBy) q.set('matchBy', params.matchBy)
+  if (params.timeWindowSeconds != null) q.set('timeWindowSeconds', String(params.timeWindowSeconds))
+  if (params.minOccurrences != null) q.set('minOccurrences', String(params.minOccurrences))
+  const qs = q.toString()
+  const res = await fetchWithAuth(`${API}/${id}/duplicate-requests${qs ? '?' + qs : ''}`)
   return handleResponse(res)
 }
 

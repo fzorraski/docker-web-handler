@@ -89,6 +89,9 @@ public class LogAnalyzerController {
     DetectAnomaliesUseCase detectAnomaliesUseCase;
 
     @Inject
+    DetectDuplicateRequestsUseCase detectDuplicateRequestsUseCase;
+
+    @Inject
     GetSystemHealthUseCase getSystemHealthUseCase;
 
     @Inject
@@ -883,6 +886,30 @@ public class LogAnalyzerController {
         bucketSize = Math.clamp(bucketSize, 60, 3600);
 
         return Response.ok(getSystemHealthUseCase.execute(analysis, bucketSize, metric)).build();
+    }
+
+    @GET
+    @Path("/{id}/duplicate-requests")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getDuplicateRequests(@PathParam("id") String id,
+                                          @QueryParam("matchBy") @DefaultValue("endpoint+payload") String matchBy,
+                                          @QueryParam("timeWindowSeconds") @DefaultValue("0") int timeWindowSeconds,
+                                          @QueryParam("minOccurrences") @DefaultValue("2") int minOccurrences) {
+        if (!enabled) return featureDisabled();
+        LogAnalysis analysis = analyzeLogFileUseCase.get(id);
+        if (analysis == null) return analysisNotFound();
+
+        if (!DetectDuplicateRequestsUseCase.VALID_MATCH_BY.contains(matchBy)) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Invalid matchBy: " + matchBy + ". Valid: endpoint+payload, endpoint-only"))
+                    .build();
+        }
+        timeWindowSeconds = Math.clamp(timeWindowSeconds, 0, 86400);
+        minOccurrences = Math.clamp(minOccurrences, 2, 100);
+
+        DuplicateDetectionResponse response = detectDuplicateRequestsUseCase.detect(
+                analysis.getApiCalls(), matchBy, timeWindowSeconds, minOccurrences);
+        return Response.ok(response).build();
     }
 
     @GET
