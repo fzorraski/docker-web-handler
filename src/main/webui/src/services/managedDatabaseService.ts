@@ -92,6 +92,25 @@ export async function enablePgStatStatements(
   return { success: true, alreadyInstalled: data.alreadyInstalled }
 }
 
+export async function resetQueryStats(
+  repository: string,
+  name: string,
+  password: string,
+): Promise<{ success: boolean; error?: string }> {
+  const res = await fetchWithAuth(
+    API + encodeURIComponent(repository) + '/' + encodeURIComponent(name) + '/reset-query-stats',
+    {
+      method: 'POST',
+      headers: { 'X-Dump-Password': password },
+    },
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.error || res.statusText }
+  }
+  return { success: true }
+}
+
 export async function getDatabaseHealth(repository: string, name: string): Promise<DatabaseHealthInfo | null> {
   const res = await fetchWithAuth(API + 'health/' + encodeURIComponent(repository) + '/' + encodeURIComponent(name))
   if (!res.ok) return null
@@ -246,9 +265,9 @@ export async function explainQuery(
   return { success: true, plan: data.plan, tableStats: data.tableStats }
 }
 
-export async function isQueryEnabled(): Promise<{ enabled: boolean; writeEnabled: boolean }> {
+export async function isQueryEnabled(): Promise<{ enabled: boolean; writeEnabled: boolean; queryStatsResetEnabled: boolean }> {
   const res = await fetchWithAuth(API + 'query-enabled')
-  if (!res.ok) return { enabled: false, writeEnabled: false }
+  if (!res.ok) return { enabled: false, writeEnabled: false, queryStatsResetEnabled: false }
   return res.json()
 }
 

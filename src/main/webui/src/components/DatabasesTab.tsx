@@ -11,6 +11,7 @@ import {
   getDatabaseActivity,
   updateDatabaseDescription,
   enablePgStatStatements,
+  resetQueryStats,
   getTopQueriesForTable,
   getTopTempFileQueries,
   getDatabaseReportUrl,
@@ -103,6 +104,7 @@ import {
   SwapHoriz,
   Code,
   Download,
+  RestartAlt,
 } from '@mui/icons-material'
 
 type PendingDelete =
@@ -154,6 +156,7 @@ export default function DatabasesTab() {
   const [migrationTarget, setMigrationTarget] = useState<ManagedDatabaseInfo | null>(null)
   const [queryFeatureEnabled, setQueryFeatureEnabled] = useState(false)
   const [queryWriteEnabled, setQueryWriteEnabled] = useState(false)
+  const [queryStatsResetEnabled, setQueryStatsResetEnabled] = useState(false)
   const [queryTarget, setQueryTarget] = useState<ManagedDatabaseInfo | null>(null)
   const [migratedDatabases, setMigratedDatabases] = useState<MigratedDatabase[]>([])
   const [healthOpen, setHealthOpen] = useState(false)
@@ -168,6 +171,7 @@ export default function DatabasesTab() {
   const [dbHealthFullScreen, setDbHealthFullScreen] = useState(false)
   const [dbHealthTab, setDbHealthTab] = useState(0)
   const [pgssConfirmOpen, setPgssConfirmOpen] = useState(false)
+  const [resetStatsConfirmOpen, setResetStatsConfirmOpen] = useState(false)
   const dbHealthRequestId = useRef(0)
   const [editingDesc, setEditingDesc] = useState<string | null>(null) // database name being edited
   const [editDescValue, setEditDescValue] = useState('')
@@ -235,7 +239,7 @@ export default function DatabasesTab() {
     loadDatabases()
     isMigrationEnabled().then(setMigrationEnabled).catch(() => setMigrationEnabled(false))
     getMigratedDatabases().then(setMigratedDatabases).catch(() => setMigratedDatabases([]))
-    isQueryEnabled().then(r => { setQueryFeatureEnabled(r.enabled); setQueryWriteEnabled(r.writeEnabled) }).catch(() => {})
+    isQueryEnabled().then(r => { setQueryFeatureEnabled(r.enabled); setQueryWriteEnabled(r.writeEnabled); setQueryStatsResetEnabled(r.queryStatsResetEnabled) }).catch(() => {})
   }, [currentRepo, loadDatabases])
 
   // Auto-refresh every 60s
@@ -515,6 +519,25 @@ export default function DatabasesTab() {
         }
         setPgssConfirmOpen(false)
         // Re-fetch activity to show top queries
+        getDatabaseActivity(currentRepo, dbHealthTarget.name)
+          .then(setDbActivity)
+          .catch(() => {})
+      } else {
+        notify(result.error || t('common.unexpectedError'), 'error')
+      }
+    } catch (e) {
+      if (e instanceof RateLimitError) throw e
+      notify(t('common.unexpectedError'), 'error')
+    }
+  }
+
+  async function handleResetQueryStats(password: string) {
+    if (!dbHealthTarget) return
+    try {
+      const result = await resetQueryStats(currentRepo, dbHealthTarget.name, password)
+      if (result.success) {
+        notify(t('database.dbHealth.queryStatsResetSuccess'), 'success')
+        setResetStatsConfirmOpen(false)
         getDatabaseActivity(currentRepo, dbHealthTarget.name)
           .then(setDbActivity)
           .catch(() => {})
@@ -1745,6 +1768,23 @@ export default function DatabasesTab() {
                     )
                   })()}
 
+                  {dbActivity && dbActivity.pgStatStatementsAvailable && queryStatsResetEnabled && (
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <Tooltip title={t('database.dbHealth.resetQueryStatsTooltip')}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="warning"
+                          startIcon={<RestartAlt />}
+                          onClick={() => setResetStatsConfirmOpen(true)}
+                          sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                        >
+                          {t('database.dbHealth.resetQueryStats')}
+                        </Button>
+                      </Tooltip>
+                    </Box>
+                  )}
+
                   {dbActivity && dbActivity.pgStatStatementsAvailable && dbActivity.topQueries.length === 0 && (
                     <Alert severity="info">{t('database.dbHealth.noQueries')}</Alert>
                   )}
@@ -2576,6 +2616,19 @@ export default function DatabasesTab() {
         confirmLabel={t('database.dbHealth.startMonitoring')}
         confirmColor="primary"
         icon={<Speed />}
+      />
+
+      {/* Reset query stats confirmation */}
+      <PasswordConfirmDialog
+        open={resetStatsConfirmOpen}
+        onClose={() => setResetStatsConfirmOpen(false)}
+        onConfirm={handleResetQueryStats}
+        title={t('database.dbHealth.resetQueryStats')}
+        message={t('database.dbHealth.resetQueryStatsConfirm', { name: dbHealthTarget?.name ?? '' })}
+        confirmLabel={t('database.dbHealth.resetQueryStats')}
+        loadingLabel={t('database.dbHealth.resettingQueryStats')}
+        confirmColor="warning"
+        icon={<RestartAlt />}
       />
 
       {/* Server Health dialog */}

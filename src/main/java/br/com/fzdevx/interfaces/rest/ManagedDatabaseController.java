@@ -55,6 +55,10 @@ public class ManagedDatabaseController {
     boolean queryCacheTotalRows;
 
     @Inject
+    @ConfigProperty(name = "database.query-stats.reset-enabled", defaultValue = "false")
+    boolean queryStatsResetEnabled;
+
+    @Inject
     ListManagedDatabasesUseCase listManagedDatabasesUseCase;
 
     @Inject
@@ -309,11 +313,49 @@ public class ManagedDatabaseController {
         };
     }
 
+    @POST
+    @Path("/{repository}/{databaseName}/reset-query-stats")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response resetQueryStats(@PathParam("repository") String repository,
+                                    @PathParam("databaseName") String databaseName,
+                                    @HeaderParam("X-Dump-Password") String password) {
+        if (!managedEnabled || !queryStatsResetEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
+        if (nameError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", nameError.get())).build();
+        }
+
+        if (!passwordValidationService.validateOperationsPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
+        }
+
+        try {
+            databaseService.resetQueryStats(repository, databaseName);
+            return Response.ok(Map.of("success", true)).build();
+        } catch (Exception e) {
+            Log.warnf("Failed to reset query stats for '%s': %s", databaseName, e.getMessage());
+            String msg = e.getMessage() != null ? e.getMessage() : "Failed to reset query stats.";
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(Map.of("error", msg)).build();
+        }
+    }
+
     @GET
     @Path("/query-enabled")
     @Produces(MediaType.APPLICATION_JSON)
     public Map<String, Object> isQueryEnabled() {
-        return Map.of("enabled", queryEnabled, "writeEnabled", queryWriteEnabled);
+        return Map.of("enabled", queryEnabled, "writeEnabled", queryWriteEnabled, "queryStatsResetEnabled", queryStatsResetEnabled);
     }
 
     @POST

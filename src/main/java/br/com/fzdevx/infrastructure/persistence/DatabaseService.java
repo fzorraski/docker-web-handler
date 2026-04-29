@@ -701,6 +701,16 @@ public class DatabaseService implements DatabasePort {
         }
     }
 
+    public void resetQueryStats(String repository, String databaseName) {
+        try (Connection conn = getTargetDbConnection(repository, databaseName);
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("SELECT pg_stat_statements_reset(0, (SELECT oid FROM pg_database WHERE datname = current_database()), 0)");
+            Log.infof("pg_stat_statements stats reset for database '%s' on repository '%s'.", databaseName, repository);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to reset query stats for '" + databaseName + "': " + e.getMessage(), e);
+        }
+    }
+
     public enum QueryType { SELECT, WRITE, DDL }
 
     public record QueryResult(
