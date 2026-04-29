@@ -12,6 +12,8 @@ import {
   updateDatabaseDescription,
   enablePgStatStatements,
   resetQueryStats,
+  resetTableStats,
+  resetSingleTableStats,
   getTopQueriesForTable,
   getTopTempFileQueries,
   getDatabaseReportUrl,
@@ -172,6 +174,8 @@ export default function DatabasesTab() {
   const [dbHealthTab, setDbHealthTab] = useState(0)
   const [pgssConfirmOpen, setPgssConfirmOpen] = useState(false)
   const [resetStatsConfirmOpen, setResetStatsConfirmOpen] = useState(false)
+  const [resetTableStatsConfirmOpen, setResetTableStatsConfirmOpen] = useState(false)
+  const [resetSingleTableTarget, setResetSingleTableTarget] = useState<{ schemaName: string; tableName: string } | null>(null)
   const dbHealthRequestId = useRef(0)
   const [editingDesc, setEditingDesc] = useState<string | null>(null) // database name being edited
   const [editDescValue, setEditDescValue] = useState('')
@@ -540,6 +544,47 @@ export default function DatabasesTab() {
         setResetStatsConfirmOpen(false)
         getDatabaseActivity(currentRepo, dbHealthTarget.name)
           .then(setDbActivity)
+          .catch(() => {})
+      } else {
+        notify(result.error || t('common.unexpectedError'), 'error')
+      }
+    } catch (e) {
+      if (e instanceof RateLimitError) throw e
+      notify(t('common.unexpectedError'), 'error')
+    }
+  }
+
+  async function handleResetTableStats(password: string) {
+    if (!dbHealthTarget) return
+    try {
+      const result = await resetTableStats(currentRepo, dbHealthTarget.name, password)
+      if (result.success) {
+        notify(t('database.dbHealth.tableStatsResetSuccess'), 'success')
+        setResetTableStatsConfirmOpen(false)
+        getDatabaseDetails(currentRepo, dbHealthTarget.name)
+          .then(r => { if (r) { setDbTableStats(r.tableStats) } })
+          .catch(() => {})
+      } else {
+        notify(result.error || t('common.unexpectedError'), 'error')
+      }
+    } catch (e) {
+      if (e instanceof RateLimitError) throw e
+      notify(t('common.unexpectedError'), 'error')
+    }
+  }
+
+  async function handleResetSingleTableStats(password: string) {
+    if (!dbHealthTarget || !resetSingleTableTarget) return
+    try {
+      const result = await resetSingleTableStats(
+        currentRepo, dbHealthTarget.name,
+        resetSingleTableTarget.schemaName, resetSingleTableTarget.tableName, password,
+      )
+      if (result.success) {
+        notify(t('database.dbHealth.singleTableStatsResetSuccess', { table: resetSingleTableTarget.tableName }), 'success')
+        setResetSingleTableTarget(null)
+        getDatabaseDetails(currentRepo, dbHealthTarget.name)
+          .then(r => { if (r) { setDbTableStats(r.tableStats) } })
           .catch(() => {})
       } else {
         notify(result.error || t('common.unexpectedError'), 'error')
@@ -2001,6 +2046,9 @@ export default function DatabasesTab() {
                                     </Tooltip>
                                   </Box>
                                 </TableCell>
+                                {queryStatsResetEnabled && (
+                                  <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5, width: 40 }} />
+                                )}
                               </TableRow>
                             </TableHead>
                             <TableBody>
@@ -2075,6 +2123,20 @@ export default function DatabasesTab() {
                                     <TableCell sx={{ fontSize: '0.7rem', py: 0.5, color: 'text.secondary', whiteSpace: 'nowrap' }}>
                                       {lastVac ? lastVac.substring(0, 16).replace('T', ' ') : '-'}
                                     </TableCell>
+                                    {queryStatsResetEnabled && (
+                                      <TableCell sx={{ py: 0.5, px: 0.5 }}>
+                                        <Tooltip title={t('database.dbHealth.resetSingleTableStats')}>
+                                          <IconButton
+                                            size="small"
+                                            color="warning"
+                                            onClick={() => setResetSingleTableTarget({ schemaName: tbl.schemaName, tableName: tbl.tableName })}
+                                            sx={{ p: 0.25 }}
+                                          >
+                                            <RestartAlt sx={{ fontSize: 16 }} />
+                                          </IconButton>
+                                        </Tooltip>
+                                      </TableCell>
+                                    )}
                                   </TableRow>
                                 )
                               })})()}
@@ -2091,6 +2153,23 @@ export default function DatabasesTab() {
                       </Paper>
                     )
                   })()}
+
+                  {dbTableStats && queryStatsResetEnabled && (
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <Tooltip title={t('database.dbHealth.resetTableStatsTooltip')}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="warning"
+                          startIcon={<RestartAlt />}
+                          onClick={() => setResetTableStatsConfirmOpen(true)}
+                          sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                        >
+                          {t('database.dbHealth.resetTableStats')}
+                        </Button>
+                      </Tooltip>
+                    </Box>
+                  )}
 
                   {dbTableStats && dbTableStats.tables.length === 0 && (
                     <Alert severity="info">{t('database.dbHealth.noTables')}</Alert>
@@ -2626,6 +2705,35 @@ export default function DatabasesTab() {
         title={t('database.dbHealth.resetQueryStats')}
         message={t('database.dbHealth.resetQueryStatsConfirm', { name: dbHealthTarget?.name ?? '' })}
         confirmLabel={t('database.dbHealth.resetQueryStats')}
+        loadingLabel={t('database.dbHealth.resettingQueryStats')}
+        confirmColor="warning"
+        icon={<RestartAlt />}
+      />
+
+      {/* Reset all table/index stats confirmation */}
+      <PasswordConfirmDialog
+        open={resetTableStatsConfirmOpen}
+        onClose={() => setResetTableStatsConfirmOpen(false)}
+        onConfirm={handleResetTableStats}
+        title={t('database.dbHealth.resetTableStats')}
+        message={t('database.dbHealth.resetTableStatsConfirm', { name: dbHealthTarget?.name ?? '' })}
+        confirmLabel={t('database.dbHealth.resetTableStats')}
+        loadingLabel={t('database.dbHealth.resettingQueryStats')}
+        confirmColor="warning"
+        icon={<RestartAlt />}
+      />
+
+      {/* Reset single table stats confirmation */}
+      <PasswordConfirmDialog
+        open={resetSingleTableTarget !== null}
+        onClose={() => setResetSingleTableTarget(null)}
+        onConfirm={handleResetSingleTableStats}
+        title={t('database.dbHealth.resetSingleTableStats')}
+        message={t('database.dbHealth.resetSingleTableStatsConfirm', {
+          table: resetSingleTableTarget ? `${resetSingleTableTarget.schemaName}.${resetSingleTableTarget.tableName}` : '',
+          name: dbHealthTarget?.name ?? '',
+        })}
+        confirmLabel={t('database.dbHealth.resetSingleTableStats')}
         loadingLabel={t('database.dbHealth.resettingQueryStats')}
         confirmColor="warning"
         icon={<RestartAlt />}

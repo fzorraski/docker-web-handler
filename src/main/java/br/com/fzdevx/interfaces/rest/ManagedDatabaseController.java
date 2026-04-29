@@ -351,6 +351,99 @@ public class ManagedDatabaseController {
         }
     }
 
+    @POST
+    @Path("/{repository}/{databaseName}/reset-table-stats")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response resetTableStats(@PathParam("repository") String repository,
+                                    @PathParam("databaseName") String databaseName,
+                                    @HeaderParam("X-Dump-Password") String password) {
+        if (!managedEnabled || !queryStatsResetEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
+        if (nameError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", nameError.get())).build();
+        }
+
+        if (!passwordValidationService.validateOperationsPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
+        }
+
+        try {
+            databaseService.resetTableStats(repository, databaseName);
+            return Response.ok(Map.of("success", true)).build();
+        } catch (Exception e) {
+            Log.warnf("Failed to reset table stats for '%s': %s", databaseName, e.getMessage());
+            String msg = e.getMessage() != null ? e.getMessage() : "Failed to reset table stats.";
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(Map.of("error", msg)).build();
+        }
+    }
+
+    @POST
+    @Path("/{repository}/{databaseName}/reset-table-stats/{schemaName}/{tableName}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response resetSingleTableStats(@PathParam("repository") String repository,
+                                          @PathParam("databaseName") String databaseName,
+                                          @PathParam("schemaName") String schemaName,
+                                          @PathParam("tableName") String tableName,
+                                          @HeaderParam("X-Dump-Password") String password) {
+        if (!managedEnabled || !queryStatsResetEnabled) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+
+        Optional<String> repoError = InputValidator.validateRepository(repository);
+        if (repoError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", repoError.get())).build();
+        }
+
+        Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
+        if (nameError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", nameError.get())).build();
+        }
+
+        Optional<String> schemaError = InputValidator.validateTableOrSchemaName(schemaName, "Schema name");
+        if (schemaError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", schemaError.get())).build();
+        }
+
+        Optional<String> tableError = InputValidator.validateTableOrSchemaName(tableName, "Table name");
+        if (tableError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", tableError.get())).build();
+        }
+
+        if (!passwordValidationService.validateOperationsPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid operations password.")).build();
+        }
+
+        try {
+            databaseService.resetSingleTableStats(repository, databaseName, schemaName, tableName);
+            return Response.ok(Map.of("success", true)).build();
+        } catch (IllegalArgumentException e) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", e.getMessage())).build();
+        } catch (Exception e) {
+            Log.warnf("Failed to reset stats for table '%s.%s' in '%s': %s", schemaName, tableName, databaseName, e.getMessage());
+            String msg = e.getMessage() != null ? e.getMessage() : "Failed to reset table stats.";
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(Map.of("error", msg)).build();
+        }
+    }
+
     @GET
     @Path("/query-enabled")
     @Produces(MediaType.APPLICATION_JSON)

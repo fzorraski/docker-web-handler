@@ -142,6 +142,17 @@ public final class InputValidator {
         return Optional.empty();
     }
 
+    public static Optional<String> validateTableOrSchemaName(String name, String label) {
+        if (name == null || name.isBlank()) {
+            return Optional.of(label + " is required.");
+        }
+        if (!DATABASE_NAME_PATTERN.matcher(name).matches()) {
+            return Optional.of("Invalid " + label.toLowerCase()
+                    + ". Must start with a letter or underscore, followed by up to 62 letters, digits, underscores, or hyphens.");
+        }
+        return Optional.empty();
+    }
+
     public static Optional<String> validateFilename(String filename) {
         if (filename == null || filename.isBlank()) {
             return Optional.of("Filename is required.");

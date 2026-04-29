@@ -111,6 +111,47 @@ export async function resetQueryStats(
   return { success: true }
 }
 
+export async function resetTableStats(
+  repository: string,
+  name: string,
+  password: string,
+): Promise<{ success: boolean; error?: string }> {
+  const res = await fetchWithAuth(
+    API + encodeURIComponent(repository) + '/' + encodeURIComponent(name) + '/reset-table-stats',
+    {
+      method: 'POST',
+      headers: { 'X-Dump-Password': password },
+    },
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.error || res.statusText }
+  }
+  return { success: true }
+}
+
+export async function resetSingleTableStats(
+  repository: string,
+  databaseName: string,
+  schemaName: string,
+  tableName: string,
+  password: string,
+): Promise<{ success: boolean; error?: string }> {
+  const res = await fetchWithAuth(
+    API + encodeURIComponent(repository) + '/' + encodeURIComponent(databaseName)
+      + '/reset-table-stats/' + encodeURIComponent(schemaName) + '/' + encodeURIComponent(tableName),
+    {
+      method: 'POST',
+      headers: { 'X-Dump-Password': password },
+    },
+  )
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.error || res.statusText }
+  }
+  return { success: true }
+}
+
 export async function getDatabaseHealth(repository: string, name: string): Promise<DatabaseHealthInfo | null> {
   const res = await fetchWithAuth(API + 'health/' + encodeURIComponent(repository) + '/' + encodeURIComponent(name))
   if (!res.ok) return null

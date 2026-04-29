@@ -711,6 +711,39 @@ public class DatabaseService implements DatabasePort {
         }
     }
 
+    public void resetTableStats(String repository, String databaseName) {
+        try (Connection conn = getTargetDbConnection(repository, databaseName);
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("SELECT pg_stat_reset()");
+            Log.infof("Table/index stats reset for database '%s' on repository '%s'.", databaseName, repository);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to reset table stats for '" + databaseName + "': " + e.getMessage(), e);
+        }
+    }
+
+    public void resetSingleTableStats(String repository, String databaseName, String schemaName, String tableName) {
+        try (Connection conn = getTargetDbConnection(repository, databaseName)) {
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "SELECT pg_stat_reset_single_table_counters(c.oid) "
+                            + "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                            + "WHERE n.nspname = ? AND c.relname = ?")) {
+                stmt.setString(1, schemaName);
+                stmt.setString(2, tableName);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (!rs.next()) {
+                        throw new IllegalArgumentException("Table not found: " + schemaName + "." + tableName);
+                    }
+                }
+            }
+            Log.infof("Stats reset for table '%s.%s' in database '%s' on repository '%s'.",
+                    schemaName, tableName, databaseName, repository);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to reset stats for table '" + schemaName + "." + tableName + "': " + e.getMessage(), e);
+        }
+    }
+
     public enum QueryType { SELECT, WRITE, DDL }
 
     public record QueryResult(
