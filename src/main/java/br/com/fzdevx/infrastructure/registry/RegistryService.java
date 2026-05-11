@@ -95,7 +95,8 @@ public class RegistryService implements RegistryPort {
     public String buildFullImageRef(String repository, String tag) {
         RegistryCredentials creds = resolveCredentials(repository, tag);
         if (!creds.isDockerHub()) {
-            return creds.host() + "/" + repository + ":" + tag;
+            String path = creds.resolvePathOrDefault(repository);
+            return creds.host() + "/" + path + ":" + tag;
         }
         String resolved = repository.contains("/") ? repository : resolveDockerHubPath(repository, creds);
         return resolved + ":" + tag;
@@ -118,17 +119,23 @@ public class RegistryService implements RegistryPort {
                     registryPassword.orElse("")));
         }
 
+        String rawPath = config.getOptionalValue("repository.registry-path." + repository, String.class)
+                .orElse(null);
+
         String[] urls = rawUrl != null ? rawUrl.split("\\|", -1) : new String[]{""};
         String[] usernames = rawUsername != null ? rawUsername.split("\\|", -1) : new String[]{""};
         String[] passwords = rawPassword != null ? rawPassword.split("\\|", -1) : new String[]{""};
+        String[] paths = rawPath != null ? rawPath.split("\\|", -1) : new String[]{""};
 
-        int count = Math.max(urls.length, Math.max(usernames.length, passwords.length));
+        int count = Math.max(urls.length, Math.max(usernames.length,
+                Math.max(passwords.length, paths.length)));
         List<RegistryCredentials> result = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             result.add(new RegistryCredentials(
                     i < urls.length ? urls[i].trim() : "",
                     i < usernames.length ? usernames[i].trim() : "",
-                    i < passwords.length ? passwords[i].trim() : ""));
+                    i < passwords.length ? passwords[i].trim() : "",
+                    i < paths.length ? paths[i].trim() : ""));
         }
         return result;
     }
@@ -207,7 +214,8 @@ public class RegistryService implements RegistryPort {
 
     private List<String> fetchV2RegistryTags(String repository, RegistryCredentials creds) throws Exception {
         String baseUrl = creds.url().replaceAll("/$", "");
-        String url = baseUrl + "/v2/" + repository + "/tags/list";
+        String path = creds.resolvePathOrDefault(repository);
+        String url = baseUrl + "/v2/" + path + "/tags/list";
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -222,12 +230,81 @@ public class RegistryService implements RegistryPort {
         HttpResponse<String> response = httpClient.send(requestBuilder.build(),
                 HttpResponse.BodyHandlers.ofString());
 
+        // Handle token-based auth (GitLab, GitHub GHCR, etc.)
+        if (response.statusCode() == 401 && creds.hasCredentials()) {
+            String bearerToken = obtainV2Token(response, creds);
+            if (bearerToken != null) {
+                HttpRequest tokenRequest = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .header("Authorization", "Bearer " + bearerToken)
+                        .GET()
+                        .build();
+                response = httpClient.send(tokenRequest, HttpResponse.BodyHandlers.ofString());
+            }
+        }
+
         if (response.statusCode() != 200) {
             throw new RuntimeException("Registry returned status " + response.statusCode()
                     + " for repository: " + repository);
         }
 
         return parseTagsResponse(response.body());
+    }
+
+    /**
+     * Parses the Www-Authenticate header from a 401 response and exchanges credentials for a Bearer token.
+     * Supports the format: Bearer realm="...",service="...",scope="..."
+     */
+    private String obtainV2Token(HttpResponse<String> challengeResponse, RegistryCredentials creds) throws Exception {
+        String wwwAuth = challengeResponse.headers()
+                .firstValue("Www-Authenticate")
+                .or(() -> challengeResponse.headers().firstValue("www-authenticate"))
+                .orElse(null);
+        if (wwwAuth == null || !wwwAuth.startsWith("Bearer ")) {
+            return null;
+        }
+
+        String realm = extractAuthParam(wwwAuth, "realm");
+        String service = extractAuthParam(wwwAuth, "service");
+        String scope = extractAuthParam(wwwAuth, "scope");
+        if (realm == null) {
+            return null;
+        }
+
+        StringBuilder tokenUrl = new StringBuilder(realm);
+        tokenUrl.append(realm.contains("?") ? "&" : "?");
+        if (service != null) tokenUrl.append("service=").append(service).append("&");
+        if (scope != null) tokenUrl.append("scope=").append(scope);
+
+        String basicAuth = Base64.getEncoder().encodeToString(
+                (creds.username() + ":" + creds.password()).getBytes());
+
+        HttpRequest tokenRequest = HttpRequest.newBuilder()
+                .uri(URI.create(tokenUrl.toString()))
+                .header("Authorization", "Basic " + basicAuth)
+                .GET()
+                .build();
+
+        HttpResponse<String> tokenResponse = httpClient.send(tokenRequest, HttpResponse.BodyHandlers.ofString());
+        if (tokenResponse.statusCode() != 200) {
+            return null;
+        }
+
+        try (JsonReader reader = Json.createReader(new StringReader(tokenResponse.body()))) {
+            JsonObject json = reader.readObject();
+            if (json.containsKey("token")) return json.getString("token");
+            if (json.containsKey("access_token")) return json.getString("access_token");
+        }
+        return null;
+    }
+
+    private String extractAuthParam(String header, String param) {
+        String prefix = param + "=\"";
+        int start = header.indexOf(prefix);
+        if (start < 0) return null;
+        start += prefix.length();
+        int end = header.indexOf('"', start);
+        return end > start ? header.substring(start, end) : null;
     }
 
     // ── Shared ──────────────────────────────────────────────────────────
