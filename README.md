@@ -5,13 +5,17 @@ A web application for managing Docker containers and images from the browser. Bu
 ## Features
 
 - **Container Management** -- Create, start, stop, remove containers from a whitelist of allowed repositories
+- **Container Upgrade** -- Change a container's image tag while preserving configuration, ports, expiration, and schedules
 - **Image Management** -- List, pull, and remove Docker images with registry tag browsing
-- **Interactive Terminal** -- Browser-based shell sessions into running containers via WebSocket + xterm.js
+- **Interactive Terminal** -- Browser-based shell sessions into running containers via WebSocket + xterm.js, with file upload support
 - **Database Operations** -- List PostgreSQL databases, upload/restore dumps, create snapshots, run post-restore scripts
+- **Database Insights** -- Health metrics, activity monitoring, table/index analysis, top queries, temp file tracking, SQL query runner, EXPLAIN, and downloadable HTML reports
 - **Database Migration** -- Manual or API-driven SQL migrations between versions
 - **Container Scheduling** -- Schedule start/stop/create actions with cron expressions and conflict detection
 - **Container Expiration** -- Auto-remove containers (and optionally drop databases) after a configurable TTL
-- **Log Analyzer** -- Upload or snapshot container logs for API call pairing, response time stats, job tracking, exception grouping, and custom field extraction
+- **Resource Monitoring** -- Real-time CPU, memory, network, and disk stats per container; server-wide memory and disk monitoring
+- **Memory Guard** -- Prevents container creation when host memory is below a configurable threshold
+- **Log Analyzer** -- Upload or snapshot container logs for API call pairing, response time stats, job tracking, anomaly detection, exception grouping, duplicate request detection, and custom field extraction. Presets for WildFly, Quarkus, Spring Boot, and Nginx.
 - **Webhook Notifications** -- POST notifications to Slack or any endpoint on container/restore events with HMAC-SHA256 signing
 - **CI/CD API** -- Programmatic environment creation for pipelines with API key authentication
 - **Authentication** -- Optional login-based session authentication for all API access
@@ -91,8 +95,12 @@ REPOSITORY_<SETTING>_<REPO_NAME>
 | `APP_AUTH_SESSION_TIMEOUT_MINUTES` | `480` | Session TTL |
 | `DATABASE_LISTING_ENABLED` | `false` | Show PostgreSQL databases in the UI |
 | `DATABASE_DUMP_ENABLED` | `false` | Enable dump upload/restore |
+| `DATABASE_MANAGED_ENABLED` | `false` | Enable managed databases tab with live metrics |
+| `DATABASE_QUERY_ENABLED` | `false` | Enable SQL query runner in database insights |
+| `DATABASE_QUERY_STATS_RESET_ENABLED` | `false` | Enable statistics reset buttons |
 | `CONTAINER_SCHEDULING_ENABLED` | `true` | Enable container scheduling |
 | `CONTAINER_TERMINAL_ENABLED` | `true` | Enable browser terminal |
+| `CONTAINER_MEMORY_GUARD_ENABLED` | `true` | Block creation when memory is low |
 | `WEBHOOK_ENABLED` | `false` | Enable webhook notifications |
 | `WEBHOOK_URL` | *(empty)* | Webhook endpoint URL |
 | `CI_API_ENABLED` | `false` | Enable CI/CD API |

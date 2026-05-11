@@ -93,6 +93,21 @@
 
 ---
 
+## Database — Insights & Monitoring
+
+- **Health overview** — cache hit ratio, active connections, waiting connections, long-running queries, dead tuples, and transaction ID age
+- **Activity monitoring** — active sessions, blocked processes with deadlock detection, top users by connection count
+- **Table statistics** — size breakdown (data vs indexes), sequential vs index scans, dead rows, vacuum timestamps
+- **Index analysis** — unused indexes with wasted space calculation, index impact per table (write overhead), index usage ratio
+- **Top queries** — from `pg_stat_statements` with execution time, row counts, and temp file I/O
+- **Temp file queries** — identify queries causing memory pressure by spilling to disk
+- **SQL query runner** — execute read-only queries with pagination, EXPLAIN/ANALYZE support, and optional write mode
+- **Statistics reset** — reset query stats (`pg_stat_statements`), table stats (`pg_stat_reset`), or individual table counters — all password-protected
+- **HTML reports** — generate downloadable self-contained HTML reports with all insights for sharing
+- **Database description** — add a description to any database for identification
+
+---
+
 ## Post-Restore Scripts
 
 - Execute SQL scripts automatically after any database restore
@@ -139,16 +154,17 @@
 
 ### Upload and Configuration
 - Drag and drop log files or analyze logs directly from a running container
-- Ready-made presets for WildFly, Quarkus, Spring Boot, or custom format
+- Ready-made presets for WildFly, Quarkus, Spring Boot, Nginx, or custom format
 - Define what is considered "slow" (in milliseconds)
 - Custom fields — define extraction patterns to search for specific information in logs
 - Merge multiple analyses into a unified view
 
 ### API Calls
-- Automatic request and response pairing
+- Automatic request and response pairing (paired mode for application logs, single-line mode for access logs like Nginx)
 - Filters by endpoint, thread, duration, and text search
 - Full payload visualization
 - Identification of orphan requests (without response — indicative of timeout or crash)
+- **Duplicate request detection** — identifies repeated identical requests indicating retries, stuck loops, or misconfigured clients
 
 ### Per-Endpoint Statistics
 - Call count, average, minimum, and maximum duration
