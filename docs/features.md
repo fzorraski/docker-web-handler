@@ -68,6 +68,9 @@
 - Remove images individually or in batch
 - Automatic cleanup by age — remove images not used in X days
 - View occupied space and how many images are in use
+- **Multi-registry support** — fetch tags from Docker Hub, GitLab, GitHub GHCR, or any OCI-compliant registry using pipe-separated credentials
+- **Nested registry paths** — support for registries with group/project paths (e.g., `registry.gitlab.com/group/project/image`)
+- **Automatic token auth** — handles OAuth2 token exchange for registries that require it (GitLab, GHCR, etc.)
 
 ---
 

@@ -45,8 +45,27 @@ Comma-separated whitelist of Docker image repositories that users can run. Only 
 | `repository.registry-url.<repo>` | Registry URL for this repo |
 | `repository.registry-username.<repo>` | Username for this repo |
 | `repository.registry-password.<repo>` | Password for this repo |
+| `repository.registry-path.<repo>` | Full registry path (for nested paths like GitLab groups) |
 
-Per-repository credentials support pipe-separated multi-registry configurations for repos hosted across multiple registries.
+Per-repository credentials support pipe-separated multi-registry configurations for repos hosted across multiple registries. An empty segment means Docker Hub.
+
+**Registry path:** Registries with nested group/project paths (e.g., GitLab) require `registry-path` to map the short repository name to the full path used in the registry API. Without it, the app would call `/v2/myapp/tags/list` instead of `/v2/group/project/myapp/tags/list`.
+
+**Token-based authentication:** The app automatically handles registries that require OAuth2 token exchange (GitLab, GitHub GHCR, etc.). If a registry returns a `401` with a `Www-Authenticate: Bearer` challenge, the app exchanges credentials for a Bearer token and retries.
+
+### Example — Docker Hub + GitLab
+
+```properties
+allowed.run.repositories=myapp
+
+# Two Docker Hub accounts + one GitLab registry
+repository.registry-url.myapp=||https://registry.gitlab.com
+repository.registry-path.myapp=||mygroup/myproject/myapp
+repository.registry-username.myapp=hubuser1|hubuser2|gitlab-ci-token
+repository.registry-password.myapp=hubpass1|hubpass2|glpat-xxxxxxxxxxxxxxxxxxxx
+```
+
+Tags from all three registries are merged into a single list in the UI. For GitLab, use `gitlab-ci-token` as the username with a Project Access Token, Deploy Token, or Personal Access Token as the password.
 
 ---
 

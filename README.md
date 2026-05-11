@@ -6,7 +6,7 @@ A web application for managing Docker containers and images from the browser. Bu
 
 - **Container Management** -- Create, start, stop, remove containers from a whitelist of allowed repositories
 - **Container Upgrade** -- Change a container's image tag while preserving configuration, ports, expiration, and schedules
-- **Image Management** -- List, pull, and remove Docker images with registry tag browsing
+- **Image Management** -- List, pull, and remove Docker images with multi-registry tag browsing (Docker Hub, GitLab, GHCR, and any OCI registry)
 - **Interactive Terminal** -- Browser-based shell sessions into running containers via WebSocket + xterm.js, with file upload support
 - **Database Operations** -- List PostgreSQL databases, upload/restore dumps, create snapshots, run post-restore scripts
 - **Database Insights** -- Health metrics, activity monitoring, table/index analysis, top queries, temp file tracking, SQL query runner, EXPLAIN, and downloadable HTML reports
