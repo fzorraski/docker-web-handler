@@ -383,4 +383,55 @@ class InputValidatorTest {
     void validateUploadFilename_maxLength_returnsEmpty() {
         assertTrue(InputValidator.validateUploadFilename("a".repeat(255)).isEmpty());
     }
+
+    // ---- validateLogFieldName ----
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"   "})
+    void validateLogFieldName_nullOrBlank_returnsEmpty(String name) {
+        assertTrue(InputValidator.validateLogFieldName(name).isEmpty());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"urt", "upstream_duration", "ups.time", "u-rt", "_private", "a", "A_field"})
+    void validateLogFieldName_validNames_returnsEmpty(String name) {
+        assertTrue(InputValidator.validateLogFieldName(name).isEmpty());
+    }
+
+    @Test
+    void validateLogFieldName_startsWithDigit_returnsError() {
+        assertTrue(InputValidator.validateLogFieldName("123field").isPresent());
+    }
+
+    @Test
+    void validateLogFieldName_startsWithHyphen_returnsError() {
+        assertTrue(InputValidator.validateLogFieldName("-field").isPresent());
+    }
+
+    @Test
+    void validateLogFieldName_startsWithDot_returnsError() {
+        assertTrue(InputValidator.validateLogFieldName(".field").isPresent());
+    }
+
+    @Test
+    void validateLogFieldName_tooLong_returnsError() {
+        assertTrue(InputValidator.validateLogFieldName("a".repeat(65)).isPresent());
+    }
+
+    @Test
+    void validateLogFieldName_maxLength_returnsEmpty() {
+        assertTrue(InputValidator.validateLogFieldName("a".repeat(64)).isEmpty());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"field!", "field@name", "field name", "field/path", "field\\back"})
+    void validateLogFieldName_invalidChars_returnsError(String name) {
+        assertTrue(InputValidator.validateLogFieldName(name).isPresent());
+    }
+
+    @Test
+    void validateLogFieldName_trimmedBeforeValidation() {
+        assertTrue(InputValidator.validateLogFieldName("  urt  ").isEmpty());
+    }
 }

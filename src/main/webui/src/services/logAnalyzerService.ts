@@ -46,6 +46,7 @@ export interface LogPreset {
   sensitiveFieldNames: string[]
   customFields: CustomField[]
   criticalIssueExclusions: string[]
+  upstreamDurationField: string | null
 }
 
 export interface AnalyzerStatus {
@@ -81,6 +82,7 @@ export interface AnalysisSummary {
   exceptionAnalysisCount: number
   exceptionTypeCount: number
   customFields: CustomFieldSummary[]
+  hasConnectionDelay: boolean
 }
 
 export interface ApiCallPair {
@@ -90,6 +92,9 @@ export interface ApiCallPair {
   requestTimestamp: string
   responseTimestamp: string
   durationMs: number
+  upstreamDurationMs: number
+  connectionDelayMs: number
+  slowConnection: boolean
   requestPayload: string
   responsePayload: string
   requestLineNumber: number
@@ -110,6 +115,9 @@ export interface EndpointStats {
   maxDurationMs: number
   p95DurationMs: number
   slowCount: number
+  avgConnectionDelayMs: number
+  p95ConnectionDelayMs: number
+  slowConnectionCount: number
 }
 
 export interface LogLine {
@@ -277,6 +285,7 @@ export interface TimeBucket {
   p95DurationMs: number
   maxDurationMs: number
   concurrentPeak: number
+  avgConnectionDelayMs: number
   endpoints: EndpointBucket[]
 }
 
@@ -417,6 +426,7 @@ export interface UploadOptions {
   failureRegex?: string
   sensitiveFieldNames?: string
   criticalIssueExclusions?: string
+  upstreamDurationField?: string
   slowThresholdMs?: number
   customFields?: string
   analysisOptions?: AnalysisOptions
@@ -483,7 +493,7 @@ export async function deleteAnalysis(id: string): Promise<void> {
 
 export async function getApiCalls(
   id: string,
-  params: { endpoint?: string; thread?: string; minDuration?: number; maxDuration?: number; slowOnly?: boolean; search?: string; exclude?: string; timeFrom?: string; timeTo?: string; sort?: string; sortDir?: string; page?: number; size?: number; signal?: AbortSignal } = {},
+  params: { endpoint?: string; thread?: string; minDuration?: number; maxDuration?: number; slowOnly?: boolean; slowConnectionOnly?: boolean; minConnectionDelay?: number; maxConnectionDelay?: number; search?: string; exclude?: string; timeFrom?: string; timeTo?: string; sort?: string; sortDir?: string; page?: number; size?: number; signal?: AbortSignal } = {},
 ): Promise<PaginatedResponse<ApiCallPair>> {
   const q = new URLSearchParams()
   if (params.endpoint) q.set('endpoint', params.endpoint)
@@ -491,6 +501,9 @@ export async function getApiCalls(
   if (params.minDuration != null) q.set('minDuration', String(params.minDuration))
   if (params.maxDuration != null) q.set('maxDuration', String(params.maxDuration))
   if (params.slowOnly) q.set('slowOnly', 'true')
+  if (params.slowConnectionOnly) q.set('slowConnectionOnly', 'true')
+  if (params.minConnectionDelay != null) q.set('minConnectionDelay', String(params.minConnectionDelay))
+  if (params.maxConnectionDelay != null) q.set('maxConnectionDelay', String(params.maxConnectionDelay))
   if (params.search) q.set('search', params.search)
   if (params.exclude) q.set('exclude', params.exclude)
   if (params.timeFrom) q.set('timeFrom', params.timeFrom)

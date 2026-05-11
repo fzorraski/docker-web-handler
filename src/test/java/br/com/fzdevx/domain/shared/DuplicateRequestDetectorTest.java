@@ -19,7 +19,7 @@ class DuplicateRequestDetectorTest {
                 endpoint, null, "thread-1",
                 requestTime,
                 requestTime.plusNanos(durationMs * 1_000_000),
-                durationMs,
+                durationMs, -1, false,
                 payload, null,
                 1, 2, "test.log", false
         );
@@ -31,7 +31,7 @@ class DuplicateRequestDetectorTest {
                 endpoint, null, thread,
                 requestTime,
                 requestTime.plusNanos(durationMs * 1_000_000),
-                durationMs,
+                durationMs, -1, false,
                 payload, null,
                 1, 2, "test.log", false
         );

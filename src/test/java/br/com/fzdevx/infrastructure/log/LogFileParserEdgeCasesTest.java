@@ -119,7 +119,8 @@ class LogFileParserEdgeCasesTest {
                 null, null, null,
                 List.of(),
                 List.of(),
-                List.of()
+                List.of(),
+                null
         );
 
         Path file = writeLog(
@@ -180,7 +181,7 @@ class LogFileParserEdgeCasesTest {
     void invalidLogLineRegexThrows() {
         LogPreset badPreset = new LogPreset(
                 "Bad", "[invalid(regex", "yyyy-MM-dd", null,
-                null, null, null, List.of(), List.of(), List.of()
+                null, null, null, List.of(), List.of(), List.of(), null
         );
 
         assertThrows(PatternSyntaxException.class, () ->
@@ -375,7 +376,8 @@ class LogFileParserEdgeCasesTest {
                 null, null, null,
                 null,
                 List.of(),
-                List.of()
+                List.of(),
+                null
         );
 
         Path file = writeLog(

@@ -89,11 +89,12 @@ const DURATION_SCALES = {
   ] },
 } as const
 
-export function ApiCallsTab({ analysisId, sensitiveFields, timeRangeStart, timeRangeEnd, onJumpToLine, onJumpToRange, onViewInsights, orphanRequestCount, onGoToOrphans, initialTimeFrom, initialTimeTo, onTimeRangeConsumed }: {
+export function ApiCallsTab({ analysisId, sensitiveFields, timeRangeStart, timeRangeEnd, onJumpToLine, onJumpToRange, onViewInsights, orphanRequestCount, onGoToOrphans, initialTimeFrom, initialTimeTo, onTimeRangeConsumed, hasConnectionDelay = false }: {
   analysisId: string; sensitiveFields: string[]; timeRangeStart?: string; timeRangeEnd?: string
   onJumpToLine?: (line: number) => void; onJumpToRange?: (from: number, to: number) => void; onViewInsights?: (endpoint: string, timestamp: string) => void
   orphanRequestCount?: number; onGoToOrphans?: () => void
   initialTimeFrom?: string | null; initialTimeTo?: string | null; onTimeRangeConsumed?: () => void
+  hasConnectionDelay?: boolean
 }) {
   const { t } = useTranslation()
   const theme = useTheme()
@@ -126,10 +127,11 @@ export function ApiCallsTab({ analysisId, sensitiveFields, timeRangeStart, timeR
   const debouncedExclude = useDebouncedValue(excludePatterns, 300)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [slowOnly, setSlowOnly] = useState(false)
+  const [slowConnectionOnly, setSlowConnectionOnly] = useState(false)
   const [durationScale, setDurationScale] = useState<'ms' | 's' | 'm'>('s')
   const [durationRange, setDurationRange] = useState<[number, number]>([0, 60000])
   const [durationEnabled, setDurationEnabled] = useState(false)
-  const advancedActive = slowOnly || durationEnabled
+  const advancedActive = slowOnly || slowConnectionOnly || durationEnabled
 
   const scaleConfig = DURATION_SCALES[durationScale]
 
@@ -186,13 +188,14 @@ export function ApiCallsTab({ analysisId, sensitiveFields, timeRangeStart, timeR
       minDuration: durationEnabled ? durationRange[0] : undefined,
       maxDuration: durationEnabled ? durationRange[1] : undefined,
       slowOnly: slowOnly || undefined,
+      slowConnectionOnly: slowConnectionOnly || undefined,
       search: debouncedContentSearch || undefined,
       exclude: debouncedExclude || undefined,
       timeFrom: debouncedTimeFrom || undefined,
       timeTo: debouncedTimeTo || undefined,
       sort, sortDir, page, size: rowsPerPage, signal,
     }),
-    [analysisId, debouncedEndpoint, filterThread, durationEnabled, durationRange, slowOnly, debouncedContentSearch, debouncedExclude, debouncedTimeFrom, debouncedTimeTo, sort, sortDir, page, rowsPerPage],
+    [analysisId, debouncedEndpoint, filterThread, durationEnabled, durationRange, slowOnly, slowConnectionOnly, debouncedContentSearch, debouncedExclude, debouncedTimeFrom, debouncedTimeTo, sort, sortDir, page, rowsPerPage],
   )
 
   return (
@@ -237,7 +240,7 @@ export function ApiCallsTab({ analysisId, sensitiveFields, timeRangeStart, timeR
           color={advancedActive ? 'secondary' : 'default'}
           variant={advancedActive ? 'filled' : 'outlined'}
           onClick={() => setAdvancedOpen(o => !o)}
-          onDelete={advancedActive ? () => { setSlowOnly(false); setDurationEnabled(false); setPage(0) } : undefined}
+          onDelete={advancedActive ? () => { setSlowOnly(false); setSlowConnectionOnly(false); setDurationEnabled(false); setPage(0) } : undefined}
           sx={{ cursor: 'pointer' }}
         />
         <FormControlLabel
@@ -332,6 +335,10 @@ export function ApiCallsTab({ analysisId, sensitiveFields, timeRangeStart, timeR
               control={<Switch checked={slowOnly} onChange={(_, v) => { setSlowOnly(v); setPage(0) }} size="small" color="error" />}
               label={<Typography variant="body2" color={slowOnly ? 'error.main' : 'text.secondary'}>{t('logAnalyzer.apiCalls.slowOnly')}</Typography>}
             />
+            <FormControlLabel
+              control={<Switch checked={slowConnectionOnly} onChange={(_, v) => { setSlowConnectionOnly(v); setPage(0) }} size="small" color="warning" />}
+              label={<Typography variant="body2" color={slowConnectionOnly ? 'warning.main' : 'text.secondary'}>{t('logAnalyzer.apiCalls.slowConnectionOnly')}</Typography>}
+            />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1, minWidth: 300 }}>
               <FormControlLabel
                 control={<Switch checked={durationEnabled} onChange={(_, v) => { setDurationEnabled(v); setPage(0) }} size="small" />}
@@ -401,6 +408,22 @@ export function ApiCallsTab({ analysisId, sensitiveFields, timeRangeStart, timeR
                   {t('logAnalyzer.apiCalls.duration')}
                 </TableSortLabel>
               </TableCell>
+              {hasConnectionDelay && (
+                <TableCell>
+                  <TableSortLabel active={sort === 'upstream'} direction={sort === 'upstream' ? sortDir : 'desc'}
+                    onClick={() => handleSort('upstream', 'desc')} sx={headerTheme.theadSortSx}>
+                    {t('logAnalyzer.apiCalls.backend')}
+                  </TableSortLabel>
+                </TableCell>
+              )}
+              {hasConnectionDelay && (
+                <TableCell>
+                  <TableSortLabel active={sort === 'connectionDelay'} direction={sort === 'connectionDelay' ? sortDir : 'desc'}
+                    onClick={() => handleSort('connectionDelay', 'desc')} sx={headerTheme.theadSortSx}>
+                    {t('logAnalyzer.apiCalls.clientDelay')}
+                  </TableSortLabel>
+                </TableCell>
+              )}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -436,10 +459,40 @@ export function ApiCallsTab({ analysisId, sensitiveFields, timeRangeStart, timeR
                         sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem' }}
                       />
                     </TableCell>
+                    {hasConnectionDelay && (
+                      <TableCell>
+                        {call.upstreamDurationMs >= 0 ? (
+                          <Chip
+                            size="small"
+                            label={formatDuration(call.upstreamDurationMs)}
+                            color="default"
+                            variant="outlined"
+                            sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem' }}
+                          />
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" fontSize="0.8rem">{'-'}</Typography>
+                        )}
+                      </TableCell>
+                    )}
+                    {hasConnectionDelay && (
+                      <TableCell>
+                        {call.connectionDelayMs >= 0 ? (
+                          <Chip
+                            size="small"
+                            label={formatDuration(call.connectionDelayMs)}
+                            color={call.slowConnection ? 'warning' : 'default'}
+                            variant={call.slowConnection ? 'filled' : 'outlined'}
+                            sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.75rem' }}
+                          />
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" fontSize="0.8rem">{'-'}</Typography>
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                   {expandedRow === globalIdx && (
                     <TableRow>
-                      <TableCell colSpan={6} sx={{ bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)', borderLeft: `3px solid ${color}` }}>
+                      <TableCell colSpan={hasConnectionDelay ? 8 : 6} sx={{ bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)', borderLeft: `3px solid ${color}` }}>
                         {onJumpToLine && (
                           <Box sx={{ mb: 1, display: 'flex', gap: 2, alignItems: 'center' }}>
                             <Typography variant="caption" component="span">

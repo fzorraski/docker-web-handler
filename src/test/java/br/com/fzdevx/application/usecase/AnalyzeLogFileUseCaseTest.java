@@ -83,8 +83,8 @@ class AnalyzeLogFileUseCaseTest {
                 List.of(new ApiCallPair("OrderWS/getOrders", null, "thread-1",
                         LocalDateTime.of(2026, 3, 30, 7, 31, 0),
                         LocalDateTime.of(2026, 3, 30, 7, 31, 0, 100_000_000),
-                        100, "req", "resp", 1, 2, "test.log", false)),
-                List.of(new EndpointStats("OrderWS/getOrders", 1, 100.0, 100, 100, 100, 0)),
+                        100, -1, false, "req", "resp", 1, 2, "test.log", false)),
+                List.of(new EndpointStats("OrderWS/getOrders", 1, 100.0, 100, 100, 100, 0, -1, -1, 0)),
                 Map.of("INFO", 95, "ERROR", 5),
                 List.of(),
                 List.of(),
@@ -300,7 +300,7 @@ class AnalyzeLogFileUseCaseTest {
         LogPreset presetWithFields = new LogPreset("WildFly",
                 LogPreset.WILDFLY.logLineRegex(), LogPreset.WILDFLY.timestampFormat(),
                 LogPreset.WILDFLY.apiCallRegex(), null, null, null, List.of(),
-                List.of(new LogPreset.CustomField("Test", ".*", false)), List.of());
+                List.of(new LogPreset.CustomField("Test", ".*", false)), List.of(), null);
 
         List<ContainerEvent> events = new ArrayList<>();
         useCase.analyzeWithProgress(

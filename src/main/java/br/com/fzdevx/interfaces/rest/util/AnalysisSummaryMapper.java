@@ -74,6 +74,7 @@ public final class AnalysisSummaryMapper {
         map.put("npeLocationCount", npeLocationCount);
         map.put("exceptionAnalysisCount", exceptionAnalysisCount);
         map.put("exceptionTypeCount", exceptionTypeCount);
+        map.put("hasConnectionDelay", a.getApiCalls().stream().anyMatch(c -> c.upstreamDurationMs() >= 0));
         return map;
     }
 
@@ -91,6 +92,7 @@ public final class AnalysisSummaryMapper {
                 .map(cf -> Map.of("name", cf.name(), "regex", cf.regex(), "countOnly", cf.countOnly()))
                 .toList());
         map.put("criticalIssueExclusions", p.criticalIssueExclusions());
+        map.put("upstreamDurationField", p.upstreamDurationField());
         return map;
     }
 }

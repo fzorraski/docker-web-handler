@@ -21,7 +21,7 @@ Upload `.log`, `.txt`, or `.out` files for offline analysis through a tabbed con
 - **Tabbed dialog:** Upload tab (file selection + preset + threshold), Analyses tab (enable/disable features), Advanced tab (regex overrides + custom fields)
 - **File selection:** Select or drag-and-drop a file; the dialog shows the selected file with size and an optional label field
 - **Label:** Optional name (max 50 chars) for the analysis — shown in the analysis card tooltip and reports
-- **Preset selection:** Choose a parsing preset (WildFly, Quarkus, Spring Boot, Custom)
+- **Preset selection:** Choose a parsing preset (WildFly, Quarkus, Spring Boot, Nginx, Custom)
 - **Analysis options:** Toggle individual analysis features (API calls, jobs, failures, critical issues, NPE, exceptions, custom fields) with cost indicators
 - **Custom regex:** Override any regex field per upload via the Advanced tab
 - **Large file support:** Up to 500 MB per file (configurable)
@@ -44,6 +44,7 @@ The analyzer detects API request/response pairs from log messages and computes r
 
 - **With correlation ID:** `CustomerOrderResource/update 73938 Request = ...` pairs with `CustomerOrderResource/update 73938 Response = ...` by matching `(thread, endpoint, correlationId)`
 - **Without correlation ID:** `OrderWS/getOrders Request = ...` pairs by thread using a FIFO queue — the first unmatched Request pairs with the next Response for that endpoint on the same thread
+- **Single-line mode:** For log formats where each line is a complete request (e.g., Nginx access logs), the parser detects that the API call regex has no `direction` group and creates one `ApiCallPair` per matching line. Duration is extracted from the line if an optional `duration` named group is present (in seconds, converted to milliseconds). This mode produces no orphan requests since every line is self-contained.
 - **Slow call detection:** Calls at or above the slow threshold (default 1000ms) are highlighted in red
 - **Content search:** Search across all request/response payloads to find specific values (order numbers, user names, etc.)
 - **Sortable headers:** Click column headers (Endpoint, Thread, Request Time, Duration) to sort with direction toggle
@@ -133,6 +134,16 @@ Tracks API requests that were logged but never received a matching response:
 - **Expandable rows:** Click to see the full request payload
 - **Cross-tab navigation:** Click the orphan chip on the API Calls tab to jump directly to this tab
 
+### Duplicate Request Detection
+
+Identifies repeated identical API requests that may indicate client-side retries, stuck loops, or misconfigured load balancers:
+
+- **Grouping:** Requests are grouped by endpoint and payload content — identical requests within a configurable time window are flagged as duplicates
+- **Dashboard card:** Shows duplicate group count with a warning color when duplicates are found
+- **Paginated table:** Each group shows the endpoint, payload preview, occurrence count, and time span
+- **Expandable rows:** Click to see all individual occurrences with timestamps and threads
+- **Filters:** Filter by endpoint or minimum occurrence count
+
 ### Custom Fields
 
 User-defined regex extractors for domain-specific log patterns. See [Custom Fields](#custom-fields-1) section below for full documentation.
@@ -220,6 +231,7 @@ Each preset defines regex patterns for parsing a specific log format. All patter
 | **WildFly** | `TIMESTAMP LEVEL [logger] (thread) message` | `2026-03-30 07:31:13,938 INFO [stdout] (default task-1) ...` |
 | **Quarkus** | Same as WildFly | `2026-03-30 07:31:13,938 INFO [io.quarkus] (main) ...` |
 | **Spring Boot** | `TIMESTAMP LEVEL PID --- [thread] logger : message` | `2026-03-30T07:31:13.938-03:00 INFO 12345 --- [main] c.e.App : ...` |
+| **Nginx** | Combined / cache_log access log format | `10.0.0.1 - [03/May/2026:10:15:30 +0000] "GET /api/users HTTP/1.1" 200 1234 ...` |
 | **Custom** | All fields blank — user fills everything | — |
 
 ### Required Named Groups
@@ -227,10 +239,13 @@ Each preset defines regex patterns for parsing a specific log format. All patter
 | Regex Field | Required Groups | Optional Groups |
 |-------------|----------------|-----------------|
 | Log line | `timestamp`, `level`, `logger`, `thread`, `message` | — |
-| API call | `endpoint`, `direction` (Request\|Response), `payload` | `correlationId` |
+| API call (paired) | `endpoint`, `direction` (Request\|Response), `payload` | `correlationId` |
+| API call (single-line) | `endpoint` | `duration` (in seconds) |
 | Job start | `jobName` | `trigger` |
 | Job end | `jobName` | `result` |
 | Failure | `entityId` | `reason` |
+
+**Note:** The parser auto-detects single-line mode when the API call regex has no `direction` group. In single-line mode, each matching log line produces one complete API call pair. The Nginx preset uses this mode.
 
 ### Customizing Presets
 
@@ -246,6 +261,27 @@ Or via environment variables:
 ```bash
 LOG_ANALYZER_PRESET_WILDFLY_API_CALL_REGEX="^(?<endpoint>\\w+/\\w+)..."
 ```
+
+### Nginx Preset Details
+
+The Nginx preset handles both **combined** and **cache_log** (labeled) access log formats:
+
+- **Combined:** `$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent"`
+- **Cache log:** `$remote_addr - [$time_local] "$request" $status $body_bytes_sent cache=$upstream_cache_status rt=$request_time ...`
+
+**Field mapping:**
+
+| Nginx Field | Mapped To | Description |
+|-------------|-----------|-------------|
+| `$remote_addr` | `thread` | Client IP address — enables per-client analysis |
+| `$time_local` | `timestamp` | Request timestamp |
+| `$request` (method + path) | `logger` / `endpoint` | HTTP method and path (query params stripped) |
+| `$status` | `level` | HTTP status code — treated as log level for filtering |
+| Full log line after timestamp | `message` | Complete message for search and custom fields |
+
+**Single-line API call pairing:** Since each Nginx log line contains the complete request with response status and duration, the parser uses single-line mode. If `rt=` (request time) is present, it is extracted as the duration in seconds and converted to milliseconds.
+
+**Pre-configured custom fields:** The Nginx preset includes security-focused custom fields for detecting suspicious paths, SQL injection attempts, XSS attempts, scanner/bot user agents, cache status, and upstream response times. These can be modified or removed per upload in the Advanced tab.
 
 ---
 
@@ -451,7 +487,7 @@ Content-Type: multipart/form-data
 Form fields:
   files          - Log file
   label          - Optional analysis label (max 50 chars)
-  preset         - Preset name (WILDFLY, QUARKUS, SPRING_BOOT, CUSTOM)
+  preset         - Preset name (WILDFLY, QUARKUS, SPRING_BOOT, NGINX, CUSTOM)
   slowThresholdMs - Slow call threshold in ms (optional)
   options        - JSON analysis options: {"apiCalls":true,"jobs":true,...}
   customFields   - JSON array of custom field definitions (optional)
@@ -494,6 +530,7 @@ GET /api/logs/analyzer/{id}/npe-analysis/{origin}/occurrences?page=0&size=20
 GET /api/logs/analyzer/{id}/exception-analysis?page=0&size=50
 GET /api/logs/analyzer/{id}/exception-analysis/{origin}/occurrences?page=0&size=20
 GET /api/logs/analyzer/{id}/custom-fields/{fieldName}?search=&thread=&sort=&sortDir=asc&page=0&size=100
+GET /api/logs/analyzer/{id}/duplicate-requests?endpoint=&minCount=&page=0&size=50
 ```
 
 ### Performance & Anomaly Analysis
@@ -557,4 +594,5 @@ DELETE /api/logs/analyzer/{id}          - Remove analysis
    - **Jobs** — job executions with duration and trigger/result (if preset has job patterns)
    - **Failures** — repeated failures grouped by entity with detail expansion (if preset has failure pattern)
    - **Orphan Requests** — API requests without matching responses (if orphans detected)
+   - **Duplicate Requests** — repeated identical API requests grouped by endpoint and payload (if duplicates detected)
    - **Custom field tabs** — one tab per custom field with matches > 0, featuring search, thread filter, and sortable columns (named after the field)

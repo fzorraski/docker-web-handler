@@ -47,6 +47,12 @@ public final class UploadFormParser {
         String customSensitiveFields = extractString(form, "sensitiveFieldNames");
         String customFieldsJson = extractString(form, "customFields");
         String customCriticalIssueExclusions = extractString(form, "criticalIssueExclusions");
+        String customUpstreamDurationField = extractString(form, "upstreamDurationField");
+        if (customUpstreamDurationField != null) {
+            customUpstreamDurationField = customUpstreamDurationField.trim();
+            InputValidator.validateLogFieldName(customUpstreamDurationField)
+                    .ifPresent(err -> { throw new IllegalArgumentException(err); });
+        }
 
         List<LogPreset.CustomField> uploadCustomFields = parseCustomFieldsJson(customFieldsJson);
         List<LogPreset.CustomField> mergedCustomFields = uploadCustomFields.isEmpty()
@@ -67,7 +73,8 @@ public final class UploadFormParser {
                 mergedCustomFields,
                 customCriticalIssueExclusions != null && !customCriticalIssueExclusions.isBlank()
                         ? Arrays.asList(customCriticalIssueExclusions.split(","))
-                        : basePreset.criticalIssueExclusions()
+                        : basePreset.criticalIssueExclusions(),
+                nonBlankOrDefault(customUpstreamDurationField, basePreset.upstreamDurationField())
         );
 
         if (preset.logLineRegex() == null || preset.logLineRegex().isBlank()) {

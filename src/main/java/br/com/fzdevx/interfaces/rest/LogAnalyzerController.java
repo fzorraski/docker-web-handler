@@ -7,6 +7,7 @@
 package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.application.dto.AnalyzeLogFileRequest;
+import br.com.fzdevx.application.dto.ApiCallQuery;
 import br.com.fzdevx.application.dto.PaginatedResult;
 import br.com.fzdevx.application.usecase.*;
 import br.com.fzdevx.domain.model.*;
@@ -295,6 +296,9 @@ public class LogAnalyzerController {
                                 @QueryParam("minDuration") Long minDuration,
                                 @QueryParam("maxDuration") Long maxDuration,
                                 @QueryParam("slowOnly") @DefaultValue("false") boolean slowOnly,
+                                @QueryParam("slowConnectionOnly") @DefaultValue("false") boolean slowConnectionOnly,
+                                @QueryParam("minConnectionDelay") Long minConnectionDelay,
+                                @QueryParam("maxConnectionDelay") Long maxConnectionDelay,
                                 @QueryParam("search") String search,
                                 @QueryParam("exclude") String exclude,
                                 @QueryParam("timeFrom") String timeFromStr,
@@ -311,7 +315,9 @@ public class LogAnalyzerController {
         LocalDateTime timeTo = parseDateTime(timeToStr);
 
         var result = queryApiCallsUseCase.execute(analysis.getApiCalls(),
-                endpoint, thread, minDuration, maxDuration, slowOnly, search, exclude, timeFrom, timeTo, sort, sortDir, page, size);
+                new ApiCallQuery(endpoint, thread, minDuration, maxDuration, slowOnly,
+                        slowConnectionOnly, minConnectionDelay, maxConnectionDelay,
+                        search, exclude, timeFrom, timeTo, sort, sortDir, page, size));
         var truncated = result.map(p -> PayloadTruncationMapper.toResponse(p, payloadTruncateThreshold));
         return Response.ok(truncated.toMap()).build();
     }

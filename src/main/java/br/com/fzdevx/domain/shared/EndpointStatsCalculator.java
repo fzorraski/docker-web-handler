@@ -27,7 +27,20 @@ public final class EndpointStatsCalculator {
             int p95Index = (int) Math.ceil(durations.length * 0.95) - 1;
             long p95 = durations.length > 0 ? durations[Math.max(0, p95Index)] : 0;
             int slowCount = (int) calls.stream().filter(c -> c.durationMs() >= slowThresholdMs).count();
-            return new EndpointStats(endpoint, calls.size(), avg, min, max, p95, slowCount);
+
+            long[] connDelays = calls.stream()
+                    .filter(c -> c.upstreamDurationMs() >= 0)
+                    .mapToLong(ApiCallPair::connectionDelayMs)
+                    .sorted().toArray();
+            double avgConnDelay = connDelays.length > 0
+                    ? java.util.Arrays.stream(connDelays).average().orElse(0)
+                    : -1;
+            int connP95Index = (int) Math.ceil(connDelays.length * 0.95) - 1;
+            long p95ConnDelay = connDelays.length > 0 ? connDelays[Math.max(0, connP95Index)] : -1;
+            int slowConnCount = (int) calls.stream().filter(ApiCallPair::slowConnection).count();
+
+            return new EndpointStats(endpoint, calls.size(), avg, min, max, p95, slowCount,
+                    avgConnDelay, p95ConnDelay, slowConnCount);
         })
         .sorted(Comparator.comparingInt(EndpointStats::callCount).reversed())
         .toList();

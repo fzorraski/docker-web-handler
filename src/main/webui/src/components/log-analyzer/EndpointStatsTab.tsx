@@ -28,7 +28,7 @@ function healthBorderColor(s: EndpointStats): string {
   return '#4caf50'
 }
 
-export function EndpointStatsTab({ analysisId, onViewInsights }: { analysisId: string; onViewInsights?: (endpoint: string) => void }) {
+export function EndpointStatsTab({ analysisId, onViewInsights, hasConnectionDelay = false }: { analysisId: string; onViewInsights?: (endpoint: string) => void; hasConnectionDelay?: boolean }) {
   const { t } = useTranslation()
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
@@ -70,10 +70,11 @@ export function EndpointStatsTab({ analysisId, onViewInsights }: { analysisId: s
   const summary = useMemo(() => {
     const totalCalls = stats.reduce((sum, s) => sum + s.callCount, 0)
     const totalSlow = stats.reduce((sum, s) => sum + s.slowCount, 0)
+    const totalSlowConnections = stats.reduce((sum, s) => sum + s.slowConnectionCount, 0)
     const weightedAvg = totalCalls > 0
       ? stats.reduce((sum, s) => sum + s.avgDurationMs * s.callCount, 0) / totalCalls
       : 0
-    return { totalCalls, totalSlow, weightedAvg }
+    return { totalCalls, totalSlow, totalSlowConnections, weightedAvg }
   }, [stats])
 
   const handleSort = (field: keyof EndpointStats) => {
@@ -103,6 +104,14 @@ export function EndpointStatsTab({ analysisId, onViewInsights }: { analysisId: s
             {summary.totalSlow.toLocaleString()}
           </Typography>
         </Paper>
+        {hasConnectionDelay && (
+          <Paper elevation={0} sx={{ px: 2, py: 1, border: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="caption" color="text.secondary">{t('logAnalyzer.stats.slowConnections')}</Typography>
+            <Typography variant="h6" fontWeight={700} color={summary.totalSlowConnections > 0 ? 'error.main' : 'text.primary'}>
+              {summary.totalSlowConnections.toLocaleString()}
+            </Typography>
+          </Paper>
+        )}
       </Stack>
 
       <Stack direction="row" spacing={2} mb={2} alignItems="center">
@@ -158,6 +167,20 @@ export function EndpointStatsTab({ analysisId, onViewInsights }: { analysisId: s
                   {t('logAnalyzer.stats.slow')}
                 </TableSortLabel>
               </TableCell>
+              {hasConnectionDelay && (
+                <TableCell>
+                  <TableSortLabel active={sortField === 'avgConnectionDelayMs'} direction={sortField === 'avgConnectionDelayMs' ? sortDir : 'asc'} onClick={() => handleSort('avgConnectionDelayMs')} sx={headerTheme.theadSortSx}>
+                    {t('logAnalyzer.stats.avgDelay')}
+                  </TableSortLabel>
+                </TableCell>
+              )}
+              {hasConnectionDelay && (
+                <TableCell>
+                  <TableSortLabel active={sortField === 'slowConnectionCount'} direction={sortField === 'slowConnectionCount' ? sortDir : 'asc'} onClick={() => handleSort('slowConnectionCount')} sx={headerTheme.theadSortSx}>
+                    {t('logAnalyzer.stats.slowConn')}
+                  </TableSortLabel>
+                </TableCell>
+              )}
               <TableCell width="18%">
                 <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
                   <Tooltip title={t('logAnalyzer.stats.barHelp')} arrow placement="left">
@@ -203,6 +226,22 @@ export function EndpointStatsTab({ analysisId, onViewInsights }: { analysisId: s
                     <Typography variant="body2" color="text.secondary">0</Typography>
                   )}
                 </TableCell>
+                {hasConnectionDelay && (
+                  <TableCell>
+                    <Typography variant="body2" color={durationColor(s.avgConnectionDelayMs)} fontWeight={500}>
+                      {s.avgConnectionDelayMs >= 0 ? formatDuration(Math.round(s.avgConnectionDelayMs)) : '—'}
+                    </Typography>
+                  </TableCell>
+                )}
+                {hasConnectionDelay && (
+                  <TableCell>
+                    {s.slowConnectionCount > 0 ? (
+                      <Chip size="small" label={`${s.slowConnectionCount} (${Math.round((s.slowConnectionCount / s.callCount) * 100)}%)`} color="error" />
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">0</Typography>
+                    )}
+                  </TableCell>
+                )}
                 <TableCell>
                   <Stack direction="row" spacing={0.5} alignItems="center">
                     <Tooltip title={`${t('logAnalyzer.stats.avg')}: ${formatDuration(Math.round(s.avgDurationMs))} | P95: ${formatDuration(s.p95DurationMs)}`} arrow placement="left">

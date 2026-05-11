@@ -116,6 +116,41 @@ public class LogPresetProvider {
     @Inject @ConfigProperty(name = "log.analyzer.preset.spring-boot.critical-issue-exclusions")
     Optional<String> springBootCriticalIssueExclusions;
 
+    // ---- Nginx ----
+    @Inject @ConfigProperty(name = "log.analyzer.preset.nginx.log-line-regex",
+            defaultValue = "^(?<thread>\\S+) - (?:[^\\[]\\S* )?\\[(?<timestamp>\\d{2}/\\w{3}/\\d{4}:\\d{2}:\\d{2}:\\d{2})[^\\]]*\\] (?<message>\"(?<logger>\\S+ [^?\\s]+)[^\"]*\" (?<level>\\d{3}) .+)$")
+    String nginxLogLineRegex;
+
+    @Inject @ConfigProperty(name = "log.analyzer.preset.nginx.timestamp-format",
+            defaultValue = "dd/MMM/yyyy:HH:mm:ss")
+    String nginxTimestampFormat;
+
+    @Inject @ConfigProperty(name = "log.analyzer.preset.nginx.api-call-regex",
+            defaultValue = "^\"(?<endpoint>\\S+ [^?\\s]+)[^\"]*\" \\d{3} \\d+(?:.*\\brt=(?<duration>[\\d.]+))?.*$")
+    String nginxApiCallRegex;
+
+    @Inject @ConfigProperty(name = "log.analyzer.preset.nginx.job-start-regex")
+    Optional<String> nginxJobStartRegex;
+
+    @Inject @ConfigProperty(name = "log.analyzer.preset.nginx.job-end-regex")
+    Optional<String> nginxJobEndRegex;
+
+    @Inject @ConfigProperty(name = "log.analyzer.preset.nginx.failure-regex")
+    Optional<String> nginxFailureRegex;
+
+    @Inject @ConfigProperty(name = "log.analyzer.preset.nginx.sensitive-field-names")
+    Optional<String> nginxSensitiveFields;
+
+    @Inject @ConfigProperty(name = "log.analyzer.preset.nginx.custom-fields")
+    Optional<String> nginxCustomFields;
+
+    @Inject @ConfigProperty(name = "log.analyzer.preset.nginx.critical-issue-exclusions")
+    Optional<String> nginxCriticalIssueExclusions;
+
+    @Inject @ConfigProperty(name = "log.analyzer.preset.nginx.upstream-duration-field",
+            defaultValue = "urt")
+    String nginxUpstreamDurationField;
+
     void onStart(@Observes StartupEvent ev) {
         buildPresets();
     }
@@ -126,23 +161,34 @@ public class LogPresetProvider {
                         wildflyApiCallRegex, wildflyJobStartRegex, wildflyJobEndRegex,
                         wildflyFailureRegex, splitFields(wildflySensitiveFields),
                         parseCustomFields(wildflyCustomFields.orElse("")),
-                        splitFields(wildflyCriticalIssueExclusions.orElse(""))),
+                        splitFields(wildflyCriticalIssueExclusions.orElse("")),
+                        null),
 
                 new LogPreset("Quarkus", quarkusLogLineRegex, quarkusTimestampFormat,
                         quarkusApiCallRegex, quarkusJobStartRegex.orElse(null),
                         quarkusJobEndRegex.orElse(null), quarkusFailureRegex.orElse(null),
                         splitFields(quarkusSensitiveFields),
                         parseCustomFields(quarkusCustomFields.orElse("")),
-                        splitFields(quarkusCriticalIssueExclusions.orElse(""))),
+                        splitFields(quarkusCriticalIssueExclusions.orElse("")),
+                        null),
 
                 new LogPreset("Spring Boot", springBootLogLineRegex, springBootTimestampFormat,
                         springBootApiCallRegex, springBootJobStartRegex.orElse(null),
                         springBootJobEndRegex.orElse(null), springBootFailureRegex.orElse(null),
                         splitFields(springBootSensitiveFields),
                         parseCustomFields(springBootCustomFields.orElse("")),
-                        splitFields(springBootCriticalIssueExclusions.orElse(""))),
+                        splitFields(springBootCriticalIssueExclusions.orElse("")),
+                        null),
 
-                new LogPreset("Custom", "", "", "", null, null, null, List.of(), List.of(), List.of())
+                new LogPreset("Nginx", nginxLogLineRegex, nginxTimestampFormat,
+                        nginxApiCallRegex, nginxJobStartRegex.orElse(null),
+                        nginxJobEndRegex.orElse(null), nginxFailureRegex.orElse(null),
+                        splitFields(nginxSensitiveFields.orElse("")),
+                        parseCustomFields(nginxCustomFields.orElse("")),
+                        splitFields(nginxCriticalIssueExclusions.orElse("")),
+                        nginxUpstreamDurationField),
+
+                new LogPreset("Custom", "", "", "", null, null, null, List.of(), List.of(), List.of(), null)
         );
     }
 

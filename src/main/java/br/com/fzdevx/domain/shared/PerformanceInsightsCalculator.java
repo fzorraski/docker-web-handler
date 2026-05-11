@@ -74,7 +74,7 @@ public final class PerformanceInsightsCalculator {
         for (int i = 0; i < bucketStarts.size(); i++) {
             List<ApiCallPair> calls = bucketCalls.get(i);
             if (calls.isEmpty()) {
-                timeBuckets.add(new TimeBucket(bucketStarts.get(i).format(fmt), 0, 0, 0, 0, 0, List.of()));
+                timeBuckets.add(new TimeBucket(bucketStarts.get(i).format(fmt), 0, 0, 0, 0, 0, -1, List.of()));
                 continue;
             }
 
@@ -88,12 +88,18 @@ public final class PerformanceInsightsCalculator {
             // Concurrency peak: sweep line
             int concurrentPeak = computeConcurrencyPeak(calls);
 
+            // Connection delay average for this bucket
+            double avgConnDelay = calls.stream()
+                    .filter(c -> c.upstreamDurationMs() >= 0)
+                    .mapToLong(ApiCallPair::connectionDelayMs)
+                    .average().orElse(-1);
+
             // All endpoints in this bucket, sorted by count desc
             List<EndpointBucket> topEndpoints = computeTopEndpointsInBucket(calls, Integer.MAX_VALUE);
 
             timeBuckets.add(new TimeBucket(
                     bucketStarts.get(i).format(fmt),
-                    count, avg, p95, max, concurrentPeak, topEndpoints
+                    count, avg, p95, max, concurrentPeak, avgConnDelay, topEndpoints
             ));
         }
 

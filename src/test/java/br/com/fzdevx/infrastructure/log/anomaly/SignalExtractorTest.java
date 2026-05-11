@@ -30,9 +30,9 @@ class SignalExtractorTest {
     @Test
     void extract_apiLatency_returnsSignalsFromApiCalls() {
         var apiCalls = List.of(
-                new ApiCallPair("/api/users", null, "http-1", now, now.plusSeconds(2), 2000,
+                new ApiCallPair("/api/users", null, "http-1", now, now.plusSeconds(2), 2000, -1, false,
                         null, null, 1, 5, "server.log", true),
-                new ApiCallPair("/api/orders", null, "http-2", now.plusSeconds(5), now.plusSeconds(5), 50,
+                new ApiCallPair("/api/orders", null, "http-2", now.plusSeconds(5), now.plusSeconds(5), 50, -1, false,
                         null, null, 10, 12, "server.log", false)
         );
 
@@ -49,7 +49,7 @@ class SignalExtractorTest {
     @Test
     void extract_apiLatency_skipsCallsWithNullTimestamp() {
         var apiCalls = List.of(
-                new ApiCallPair("/api/test", null, "http-1", null, null, 100,
+                new ApiCallPair("/api/test", null, "http-1", null, null, 100, -1, false,
                         null, null, 1, 2, "server.log", false)
         );
 
@@ -79,7 +79,7 @@ class SignalExtractorTest {
                         "server.log")
         );
         var apiCalls = List.of(
-                new ApiCallPair("/api/data", null, "http-1", now, now.plusSeconds(1), 1000,
+                new ApiCallPair("/api/data", null, "http-1", now, now.plusSeconds(1), 1000, -1, false,
                         null, null, 5, 8, "server.log", true)
         );
 
@@ -94,7 +94,7 @@ class SignalExtractorTest {
     @Test
     void extractAll_nullLines_stillReturnsApiLatency() {
         var apiCalls = List.of(
-                new ApiCallPair("/api/x", null, "t1", now, now.plusSeconds(1), 500,
+                new ApiCallPair("/api/x", null, "t1", now, now.plusSeconds(1), 500, -1, false,
                         null, null, 1, 2, "server.log", false)
         );
 
@@ -122,7 +122,7 @@ class SignalExtractorTest {
     @Test
     void detectAvailableTypes_includesApiLatencyWhenApiCallsPresent() {
         var apiCalls = List.of(
-                new ApiCallPair("/api/test", null, "t1", now, now.plusSeconds(1), 100,
+                new ApiCallPair("/api/test", null, "t1", now, now.plusSeconds(1), 100, -1, false,
                         null, null, 1, 2, "server.log", false)
         );
 
@@ -146,7 +146,7 @@ class SignalExtractorTest {
     @Test
     void detectAvailableTypes_nullLines_returnsOnlyApiLatency() {
         var apiCalls = List.of(
-                new ApiCallPair("/api/x", null, "t1", now, now.plusSeconds(1), 100,
+                new ApiCallPair("/api/x", null, "t1", now, now.plusSeconds(1), 100, -1, false,
                         null, null, 1, 2, "server.log", false)
         );
 

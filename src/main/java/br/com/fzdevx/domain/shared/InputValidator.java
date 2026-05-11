@@ -33,6 +33,9 @@ public final class InputValidator {
     private static final Pattern FILENAME_PATTERN =
             Pattern.compile("^[a-zA-Z0-9][a-zA-Z0-9._-]{0,254}$");
 
+    private static final Pattern LOG_FIELD_NAME_PATTERN =
+            Pattern.compile("^[a-zA-Z_][a-zA-Z0-9_.-]{0,63}$");
+
     private static final List<String> ALLOWED_DUMP_EXTENSIONS =
             List.of(".sql", ".dump", ".gz", ".tar.gz");
 
@@ -323,6 +326,17 @@ public final class InputValidator {
         }
         if (!FILENAME_PATTERN.matcher(filename).matches()) {
             return Optional.of("Script filename contains invalid characters.");
+        }
+        return Optional.empty();
+    }
+
+    public static Optional<String> validateLogFieldName(String fieldName) {
+        if (fieldName == null || fieldName.isBlank()) {
+            return Optional.empty();
+        }
+        String trimmed = fieldName.trim();
+        if (!LOG_FIELD_NAME_PATTERN.matcher(trimmed).matches()) {
+            return Optional.of("Field name must be alphanumeric with underscores/dots/hyphens (max 64 characters).");
         }
         return Optional.empty();
     }

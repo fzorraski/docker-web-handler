@@ -96,7 +96,13 @@ export function PerformanceInsightsTab({ analysisId, initialEndpoint, initialTim
       ...b,
       time: formatTime(b.timestamp, data.bucketWidth),
       _index: i,
+      avgConnectionDelayMs: b.avgConnectionDelayMs >= 0 ? b.avgConnectionDelayMs : undefined,
     }))
+  }, [data])
+
+  const hasConnectionDelay = useMemo(() => {
+    if (!data) return false
+    return data.timeBuckets.some(b => b.avgConnectionDelayMs >= 0)
   }, [data])
 
   const selectedBucket = data && selectedBucketIdx != null ? data.timeBuckets[selectedBucketIdx] : null
@@ -303,6 +309,7 @@ export function PerformanceInsightsTab({ analysisId, initialEndpoint, initialTim
             <Line type="monotone" dataKey="avgDurationMs" stroke="#FF6D00" strokeWidth={2} dot={false} name={t('logAnalyzer.insights.avgDuration')} />
             <Line type="monotone" dataKey="p95DurationMs" stroke="#00BCD4" strokeWidth={2} dot={false} name={t('logAnalyzer.insights.p95Duration')} />
             <Line type="monotone" dataKey="maxDurationMs" stroke="#FF5252" strokeWidth={1} dot={false} strokeDasharray="5 5" name={t('logAnalyzer.insights.maxDuration')} />
+            {hasConnectionDelay && <Line type="monotone" dataKey="avgConnectionDelayMs" stroke="#FFA726" strokeWidth={2} dot={false} connectNulls name={t('logAnalyzer.insights.avgConnectionDelay')} />}
             {selectedBucketLabel && <ReferenceLine x={selectedBucketLabel} stroke="#FF6D00" strokeDasharray="4 4" strokeWidth={2} />}
             <Brush dataKey="time" height={25} stroke="#00BCD4" fill={isDark ? '#1A1D27' : '#f5f5f5'} travellerWidth={10} />
           </LineChart>

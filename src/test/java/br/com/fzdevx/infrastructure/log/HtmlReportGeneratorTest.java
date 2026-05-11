@@ -16,12 +16,12 @@ class HtmlReportGeneratorTest {
     private LogAnalysis buildAnalysis() {
         var sourceFiles = List.of(new LogAnalysis.SourceFile("server.log", 1024));
         var apiCalls = List.of(
-                new ApiCallPair("UserWS/get", "c1", "thread-1", NOW, NOW.plusSeconds(1), 150, "{}", "{}", 1, 2, "server.log", false),
-                new ApiCallPair("OrderWS/create", "c2", "thread-2", NOW.plusSeconds(2), NOW.plusSeconds(5), 3000, "{}", "{}", 3, 4, "server.log", true)
+                new ApiCallPair("UserWS/get", "c1", "thread-1", NOW, NOW.plusSeconds(1), 150, -1, false, "{}", "{}", 1, 2, "server.log", false),
+                new ApiCallPair("OrderWS/create", "c2", "thread-2", NOW.plusSeconds(2), NOW.plusSeconds(5), 3000, -1, false, "{}", "{}", 3, 4, "server.log", true)
         );
         var stats = List.of(
-                new EndpointStats("UserWS/get", 50, 150.0, 50, 300, 250, 0),
-                new EndpointStats("OrderWS/create", 20, 3000.0, 1000, 5000, 4500, 5)
+                new EndpointStats("UserWS/get", 50, 150.0, 50, 300, 250, 0, -1, -1, 0),
+                new EndpointStats("OrderWS/create", 20, 3000.0, 1000, 5000, 4500, 5, -1, -1, 0)
         );
         var jobs = List.of(
                 new JobExecution("CleanupJob", "trigger", "sched-1", NOW, NOW.plusSeconds(10), 10000, "SUCCESS", 10, 20, "server.log")
@@ -121,13 +121,13 @@ class HtmlReportGeneratorTest {
     @Test
     void generateComparison_containsAllSections() {
         var statsA = List.of(
-                new EndpointStats("UserWS/get", 100, 200.0, 50, 500, 400, 5),
-                new EndpointStats("OrderWS/create", 50, 1000.0, 500, 2000, 1800, 10)
+                new EndpointStats("UserWS/get", 100, 200.0, 50, 500, 400, 5, -1, -1, 0),
+                new EndpointStats("OrderWS/create", 50, 1000.0, 500, 2000, 1800, 10, -1, -1, 0)
         );
         var statsB = List.of(
-                new EndpointStats("UserWS/get", 150, 100.0, 30, 300, 250, 2),
-                new EndpointStats("OrderWS/create", 60, 1500.0, 600, 3000, 2500, 15),
-                new EndpointStats("NewWS/endpoint", 20, 50.0, 10, 100, 80, 0)
+                new EndpointStats("UserWS/get", 150, 100.0, 30, 300, 250, 2, -1, -1, 0),
+                new EndpointStats("OrderWS/create", 60, 1500.0, 600, 3000, 2500, 15, -1, -1, 0),
+                new EndpointStats("NewWS/endpoint", 20, 50.0, 10, 100, 80, 0, -1, -1, 0)
         );
 
         String html = HtmlReportGenerator.generateComparison("Server A", "Server B", statsA, statsB);
@@ -169,7 +169,7 @@ class HtmlReportGeneratorTest {
 
     @Test
     void generateComparison_removedEndpoint_showsRemovedBadge() {
-        var statsA = List.of(new EndpointStats("OldWS/get", 100, 200.0, 50, 500, 400, 5));
+        var statsA = List.of(new EndpointStats("OldWS/get", 100, 200.0, 50, 500, 400, 5, -1, -1, 0));
         var statsB = List.<EndpointStats>of();
 
         String html = HtmlReportGenerator.generateComparison("A", "B", statsA, statsB);

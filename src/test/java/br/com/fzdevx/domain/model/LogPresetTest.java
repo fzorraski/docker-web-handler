@@ -11,9 +11,9 @@ class LogPresetTest {
     // ---- allPresets ----
 
     @Test
-    void allPresets_containsFourPresets() {
+    void allPresets_containsFivePresets() {
         List<LogPreset> presets = LogPreset.allPresets();
-        assertEquals(4, presets.size());
+        assertEquals(5, presets.size());
     }
 
     @Test
@@ -171,6 +171,105 @@ class LogPresetTest {
         assertEquals("73938", matcher.group("correlationId"));
         assertEquals("Request", matcher.group("direction"));
         assertEquals("Body: {\"id\":1}", matcher.group("payload"));
+    }
+
+    // ---- Nginx preset ----
+
+    @Test
+    void byName_findsNginx() {
+        LogPreset preset = LogPreset.byName("Nginx");
+        assertEquals("Nginx", preset.name());
+        assertNotNull(preset.logLineRegex());
+        assertFalse(preset.logLineRegex().isBlank());
+    }
+
+    @Test
+    void nginx_hasNoJobPatterns() {
+        assertFalse(LogPreset.NGINX.hasJobPatterns());
+    }
+
+    @Test
+    void nginx_hasNoFailurePattern() {
+        assertFalse(LogPreset.NGINX.hasFailurePattern());
+    }
+
+    @Test
+    void nginx_logLineRegexCompiles() {
+        assertDoesNotThrow(() -> java.util.regex.Pattern.compile(LogPreset.NGINX.logLineRegex()));
+    }
+
+    @Test
+    void nginx_apiCallRegexCompiles() {
+        assertDoesNotThrow(() -> java.util.regex.Pattern.compile(LogPreset.NGINX.apiCallRegex()));
+    }
+
+    @Test
+    void nginx_apiCallRegexHasNoDirectionGroup() {
+        var pattern = java.util.regex.Pattern.compile(LogPreset.NGINX.apiCallRegex());
+        assertFalse(pattern.namedGroups().containsKey("direction"));
+        assertTrue(pattern.namedGroups().containsKey("endpoint"));
+    }
+
+    @Test
+    void nginx_logLineRegex_matchesCombinedFormat() {
+        var pattern = java.util.regex.Pattern.compile(LogPreset.NGINX.logLineRegex());
+        var matcher = pattern.matcher("192.168.1.1 - frank [10/Oct/2000:13:55:36 -0700] \"GET /apache_pb.gif HTTP/1.1\" 200 2326 \"http://www.example.com\" \"Mozilla/4.08\"");
+        assertTrue(matcher.matches());
+        assertEquals("192.168.1.1", matcher.group("thread"));
+        assertEquals("10/Oct/2000:13:55:36", matcher.group("timestamp"));
+        assertEquals("GET /apache_pb.gif", matcher.group("logger"));
+        assertEquals("200", matcher.group("level"));
+        assertTrue(matcher.group("message").startsWith("\"GET"));
+    }
+
+    @Test
+    void nginx_logLineRegex_matchesCacheLogFormat() {
+        var pattern = java.util.regex.Pattern.compile(LogPreset.NGINX.logLineRegex());
+        var matcher = pattern.matcher("10.0.0.5 - [29/Apr/2026:14:22:33 -0300] \"POST /api/orders HTTP/1.1\" 201 567 cache=MISS rt=0.045 urt=0.032 resp_size=567");
+        assertTrue(matcher.matches());
+        assertEquals("10.0.0.5", matcher.group("thread"));
+        assertEquals("29/Apr/2026:14:22:33", matcher.group("timestamp"));
+        assertEquals("POST /api/orders", matcher.group("logger"));
+        assertEquals("201", matcher.group("level"));
+    }
+
+    @Test
+    void nginx_apiCallRegex_extractsEndpointAndDuration() {
+        var pattern = java.util.regex.Pattern.compile(LogPreset.NGINX.apiCallRegex());
+        var matcher = pattern.matcher("\"GET /api/users HTTP/1.1\" 200 1234 cache=HIT rt=0.045 urt=0.032 resp_size=1234");
+        assertTrue(matcher.matches());
+        assertEquals("GET /api/users", matcher.group("endpoint"));
+        assertEquals("0.045", matcher.group("duration"));
+    }
+
+    @Test
+    void nginx_apiCallRegex_stripsQueryParams() {
+        var pattern = java.util.regex.Pattern.compile(LogPreset.NGINX.apiCallRegex());
+        var matcher = pattern.matcher("\"GET /api/users?page=1&sort=name HTTP/1.1\" 200 500 cache=HIT rt=0.010 urt=0.005 resp_size=500");
+        assertTrue(matcher.matches());
+        assertEquals("GET /api/users", matcher.group("endpoint"));
+    }
+
+    @Test
+    void nginx_apiCallRegex_matchesWithoutDuration() {
+        var pattern = java.util.regex.Pattern.compile(LogPreset.NGINX.apiCallRegex());
+        var matcher = pattern.matcher("\"GET /index.html HTTP/1.1\" 200 5000 \"http://ref\" \"Mozilla/5.0\"");
+        assertTrue(matcher.matches());
+        assertEquals("GET /index.html", matcher.group("endpoint"));
+        assertNull(matcher.group("duration"));
+    }
+
+    @Test
+    void nginx_upstreamDurationField_isUrt() {
+        assertEquals("urt", LogPreset.NGINX.upstreamDurationField());
+    }
+
+    @Test
+    void nonNginxPresets_upstreamDurationFieldIsNull() {
+        assertNull(LogPreset.WILDFLY.upstreamDurationField());
+        assertNull(LogPreset.QUARKUS.upstreamDurationField());
+        assertNull(LogPreset.SPRING_BOOT.upstreamDurationField());
+        assertNull(LogPreset.CUSTOM.upstreamDurationField());
     }
 
     @Test

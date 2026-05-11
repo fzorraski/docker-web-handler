@@ -7,5 +7,8 @@ public record EndpointStats(
         long minDurationMs,
         long maxDurationMs,
         long p95DurationMs,
-        int slowCount
+        int slowCount,
+        double avgConnectionDelayMs,
+        long p95ConnectionDelayMs,
+        int slowConnectionCount
 ) {}

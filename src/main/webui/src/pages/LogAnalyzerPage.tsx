@@ -298,7 +298,7 @@ export default function LogAnalyzerPage() {
     setCustomFieldInputs(config.customFieldInputs)
 
     const currentPreset = presets.find(p => p.name.toUpperCase() === config.selectedPreset.toUpperCase())
-    const regexKeys = ['logLineRegex', 'apiCallRegex', 'timestampFormat', 'jobStartRegex', 'jobEndRegex', 'failureRegex', 'sensitiveFieldNames', 'criticalIssueExclusions'] as const
+    const regexKeys = ['logLineRegex', 'apiCallRegex', 'timestampFormat', 'jobStartRegex', 'jobEndRegex', 'failureRegex', 'sensitiveFieldNames', 'criticalIssueExclusions', 'upstreamDurationField'] as const
     const formFields: Record<string, string | undefined> = {
       label: config.label || undefined,
       preset: config.selectedPreset,
@@ -480,7 +480,7 @@ export default function LogAnalyzerPage() {
     if (!selected) return []
     const list = [
       { key: 'apiCalls', label: t('logAnalyzer.tabs.apiCalls'), component: null },
-      { key: 'stats', label: t('logAnalyzer.tabs.endpointStats'), component: <EndpointStatsTab analysisId={selected.id} onViewInsights={handleViewInsights} /> },
+      { key: 'stats', label: t('logAnalyzer.tabs.endpointStats'), component: <EndpointStatsTab analysisId={selected.id} onViewInsights={handleViewInsights} hasConnectionDelay={selected.hasConnectionDelay} /> },
       { key: 'insights', label: t('logAnalyzer.tabs.performanceInsights'), component: null },
       { key: 'anomalyDetection', label: t('logAnalyzer.tabs.anomalyDetection'), component: <AnomalyDetectionTab analysisId={selected.id} /> },
       { key: 'systemHealth', label: t('logAnalyzer.tabs.systemHealth'), component: <SystemHealthTab analysisId={selected.id} /> },
@@ -915,7 +915,7 @@ export default function LogAnalyzerPage() {
                   : tab.key === 'insights'
                     ? <PerformanceInsightsTab analysisId={selected!.id} initialEndpoint={insightsEndpoint} initialTimestamp={insightsTimestamp} onEndpointConsumed={handleInsightsConsumed} onGoToApiCalls={handleGoToApiCalls} active={idx === activeTab} />
                     : tab.key === 'apiCalls'
-                      ? <ApiCallsTab analysisId={selected!.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} timeRangeStart={selected!.timeRangeStart} timeRangeEnd={selected!.timeRangeEnd} onJumpToLine={handleJumpToLine} onJumpToRange={handleJumpToRange} onViewInsights={handleViewInsightsForCall} orphanRequestCount={selected!.orphanRequestCount} onGoToOrphans={() => goToTab('orphanRequests')} initialTimeFrom={apiCallsTimeFrom} initialTimeTo={apiCallsTimeTo} onTimeRangeConsumed={handleApiCallsTimeConsumed} />
+                      ? <ApiCallsTab analysisId={selected!.id} sensitiveFields={presetObj?.sensitiveFieldNames ?? []} timeRangeStart={selected!.timeRangeStart} timeRangeEnd={selected!.timeRangeEnd} onJumpToLine={handleJumpToLine} onJumpToRange={handleJumpToRange} onViewInsights={handleViewInsightsForCall} orphanRequestCount={selected!.orphanRequestCount} onGoToOrphans={() => goToTab('orphanRequests')} initialTimeFrom={apiCallsTimeFrom} initialTimeTo={apiCallsTimeTo} onTimeRangeConsumed={handleApiCallsTimeConsumed} hasConnectionDelay={selected!.hasConnectionDelay} />
                       : tab.component}
               </Box>
             ))}

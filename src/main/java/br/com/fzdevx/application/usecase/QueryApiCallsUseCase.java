@@ -6,11 +6,11 @@
  */
 package br.com.fzdevx.application.usecase;
 
+import br.com.fzdevx.application.dto.ApiCallQuery;
 import br.com.fzdevx.application.dto.PaginatedResult;
 import br.com.fzdevx.domain.model.ApiCallPair;
 import jakarta.enterprise.context.ApplicationScoped;
 
-import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
@@ -21,22 +21,15 @@ public class QueryApiCallsUseCase {
 
     private static final Pattern JSON_COLON_WS = Pattern.compile("\\s*:\\s*");
 
-    public PaginatedResult<ApiCallPair> execute(List<ApiCallPair> apiCalls,
-                                                String endpoint, String thread,
-                                                Long minDuration, Long maxDuration,
-                                                boolean slowOnly, String search,
-                                                String exclude,
-                                                LocalDateTime timeFrom, LocalDateTime timeTo,
-                                                String sort, String sortDir,
-                                                int page, int size) {
-        List<String> searchPatterns = (search != null && !search.isBlank())
-                ? Arrays.stream(search.split(","))
+    public PaginatedResult<ApiCallPair> execute(List<ApiCallPair> apiCalls, ApiCallQuery q) {
+        List<String> searchPatterns = (q.search() != null && !q.search().isBlank())
+                ? Arrays.stream(q.search().split(","))
                         .map(String::trim)
                         .filter(s -> !s.isEmpty())
                         .toList()
                 : List.of();
-        List<String> excludePatterns = (exclude != null && !exclude.isBlank())
-                ? Arrays.stream(exclude.split(","))
+        List<String> excludePatterns = (q.exclude() != null && !q.exclude().isBlank())
+                ? Arrays.stream(q.exclude().split(","))
                         .map(s -> s.trim().toLowerCase())
                         .filter(s -> !s.isEmpty())
                         .toList()
@@ -46,19 +39,24 @@ public class QueryApiCallsUseCase {
         List<String> excludeCompact = excludePatterns.stream().map(QueryApiCallsUseCase::compactJson).toList();
 
         var filtered = apiCalls.stream()
-                .filter(c -> endpoint == null || endpoint.isBlank() || containsIgnoreCase(c.endpoint(), endpoint))
-                .filter(c -> thread == null || thread.isBlank() || c.thread().equals(thread))
-                .filter(c -> minDuration == null || c.durationMs() >= minDuration)
-                .filter(c -> maxDuration == null || c.durationMs() <= maxDuration)
-                .filter(c -> !slowOnly || c.slow())
-                .filter(c -> timeFrom == null || c.requestTimestamp() == null || !c.requestTimestamp().isBefore(timeFrom))
-                .filter(c -> timeTo == null || c.requestTimestamp() == null || !c.requestTimestamp().isAfter(timeTo))
+                .filter(c -> q.endpoint() == null || q.endpoint().isBlank() || containsIgnoreCase(c.endpoint(), q.endpoint()))
+                .filter(c -> q.thread() == null || q.thread().isBlank() || c.thread().equals(q.thread()))
+                .filter(c -> q.minDuration() == null || c.durationMs() >= q.minDuration())
+                .filter(c -> q.maxDuration() == null || c.durationMs() <= q.maxDuration())
+                .filter(c -> !q.slowOnly() || c.slow())
+                .filter(c -> !q.slowConnectionOnly() || c.slowConnection())
+                .filter(c -> q.minConnectionDelay() == null || (c.connectionDelayMs() >= 0 && c.connectionDelayMs() >= q.minConnectionDelay()))
+                .filter(c -> q.maxConnectionDelay() == null || (c.connectionDelayMs() >= 0 && c.connectionDelayMs() <= q.maxConnectionDelay()))
+                .filter(c -> q.timeFrom() == null || c.requestTimestamp() == null || !c.requestTimestamp().isBefore(q.timeFrom()))
+                .filter(c -> q.timeTo() == null || c.requestTimestamp() == null || !c.requestTimestamp().isAfter(q.timeTo()))
                 .filter(c -> searchPatterns.isEmpty() || matchesAll(c, searchPatterns, searchCompact))
                 .filter(c -> excludePatterns.isEmpty() || matchesNone(c, excludePatterns, excludeCompact));
 
-        boolean desc = "desc".equalsIgnoreCase(sortDir);
-        Comparator<ApiCallPair> cmp = switch (sort != null ? sort : "time") {
+        boolean desc = "desc".equalsIgnoreCase(q.sortDir());
+        Comparator<ApiCallPair> cmp = switch (q.sort() != null ? q.sort() : "time") {
             case "duration" -> Comparator.comparingLong(ApiCallPair::durationMs);
+            case "upstream" -> Comparator.comparingLong(ApiCallPair::upstreamDurationMs);
+            case "connectionDelay" -> Comparator.comparingLong(ApiCallPair::connectionDelayMs);
             case "endpoint" -> Comparator.comparing(ApiCallPair::endpoint);
             case "thread" -> Comparator.comparing(ApiCallPair::thread, Comparator.nullsLast(Comparator.naturalOrder()));
             default -> Comparator.comparing(ApiCallPair::requestTimestamp,
@@ -66,7 +64,7 @@ public class QueryApiCallsUseCase {
         };
         var sorted = filtered.sorted(desc ? cmp.reversed() : cmp);
 
-        return PaginatedResult.of(sorted.toList(), page, size);
+        return PaginatedResult.of(sorted.toList(), q.page(), q.size());
     }
 
     private boolean matchesAll(ApiCallPair call, List<String> patterns, List<String> compact) {

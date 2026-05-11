@@ -155,14 +155,14 @@ class LogAnalyzerControllerTest {
 
         var apiCalls = List.of(
                 new ApiCallPair("UserResource/getUser", "101", "http-thread-1",
-                        now, now.plusSeconds(1), 150, "{}", "{\"id\":1}", 1, 2, "server.log", false),
+                        now, now.plusSeconds(1), 150, -1, false, "{}", "{\"id\":1}", 1, 2, "server.log", false),
                 new ApiCallPair("OrderResource/create", "102", "http-thread-2",
-                        now.plusSeconds(2), now.plusSeconds(5), 3000, "{\"item\":1}", "{\"id\":2}", 3, 4, "server.log", true)
+                        now.plusSeconds(2), now.plusSeconds(5), 3000, -1, false, "{\"item\":1}", "{\"id\":2}", 3, 4, "server.log", true)
         );
 
         var endpointStats = List.of(
-                new EndpointStats("UserResource/getUser", 1, 150.0, 150, 150, 150, 0),
-                new EndpointStats("OrderResource/create", 1, 3000.0, 3000, 3000, 3000, 1)
+                new EndpointStats("UserResource/getUser", 1, 150.0, 150, 150, 150, 0, -1, -1, 0),
+                new EndpointStats("OrderResource/create", 1, 3000.0, 3000, 3000, 3000, 1, -1, -1, 0)
         );
 
         var levelCounts = Map.of("INFO", 2, "WARN", 1, "ERROR", 1);
@@ -341,7 +341,7 @@ class LogAnalyzerControllerTest {
     void getApiCalls_disabled_returnsForbidden() {
         setField("enabled", false);
 
-        Response response = controller.getApiCalls(ANALYSIS_ID, null, null, null, null, false, null, null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(ANALYSIS_ID, null, null, null, null, false, false, null, null, null, null, null, null, "time", "asc", 0, 50);
 
         assertEquals(403, response.getStatus());
     }
@@ -444,7 +444,7 @@ class LogAnalyzerControllerTest {
     void getApiCalls_notFound_returns404() {
         when(analyzeLogFileUseCase.get("nonexistent")).thenReturn(null);
 
-        Response response = controller.getApiCalls("nonexistent", null, null, null, null, false, null, null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls("nonexistent", null, null, null, null, false, false, null, null, null, null, null, null, "time", "asc", 0, 50);
 
         assertEquals(404, response.getStatus());
     }
@@ -545,7 +545,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, null, null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, false, null, null, null, null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -564,7 +564,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, "item", null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, false, null, null, "item", null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -581,7 +581,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, "\"id\":1", null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, false, null, null, "\"id\":1", null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -597,7 +597,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, "102", null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, false, null, null, "102", null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -613,7 +613,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, "ITEM", null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, false, null, null, "ITEM", null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -626,7 +626,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, "nonexistent-value", null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, false, null, null, "nonexistent-value", null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -642,7 +642,7 @@ class LogAnalyzerControllerTest {
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
         // search "id" matches both calls, but endpoint filter narrows to one
-        Response response = controller.getApiCalls(analysis.getId(), "UserResource/getUser", null, null, null, false, "id", null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), "UserResource/getUser", null, null, null, false, false, null, null, "id", null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -658,7 +658,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, "   ", null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, false, null, null, "   ", null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -671,7 +671,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, null, null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, false, null, null, null, null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -2613,7 +2613,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, null, null, null, null, "duration", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, false, null, null, null, null, null, null, "duration", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -2628,7 +2628,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, null, null, null, null, "duration", "desc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, false, null, null, null, null, null, null, "duration", "desc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -2643,7 +2643,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, null, null, null, null, "endpoint", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, false, null, null, null, null, null, null, "endpoint", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -2658,7 +2658,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, 1000L, null, false, null, null, null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, 1000L, null, false, false, null, null, null, null, null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -2677,7 +2677,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, null, "UserResource", null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, false, null, null, null, "UserResource", null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -2692,7 +2692,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, null, "UserResource,OrderResource", null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, false, null, null, null, "UserResource,OrderResource", null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
@@ -2706,7 +2706,7 @@ class LogAnalyzerControllerTest {
         LogAnalysis analysis = buildSampleAnalysis();
         when(analyzeLogFileUseCase.get(analysis.getId())).thenReturn(analysis);
 
-        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, null, "item", null, null, "time", "asc", 0, 50);
+        Response response = controller.getApiCalls(analysis.getId(), null, null, null, null, false, false, null, null, null, "item", null, null, "time", "asc", 0, 50);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();

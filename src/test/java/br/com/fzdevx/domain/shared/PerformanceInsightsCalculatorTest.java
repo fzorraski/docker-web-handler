@@ -20,7 +20,7 @@ class PerformanceInsightsCalculatorTest {
                 endpoint, null, "thread-1",
                 requestTime,
                 requestTime.plusNanos(durationMs * 1_000_000),
-                durationMs,
+                durationMs, -1, false,
                 null, null,
                 1, 2, "test.log", false
         );
@@ -31,7 +31,7 @@ class PerformanceInsightsCalculatorTest {
                 endpoint, null, "thread-1",
                 requestTime,
                 requestTime.plusNanos(durationMs * 1_000_000),
-                durationMs,
+                durationMs, -1, false,
                 null, null,
                 1, 2, "test.log", slow
         );
@@ -158,9 +158,9 @@ class PerformanceInsightsCalculatorTest {
         // Three calls that overlap in time
         LocalDateTime t = BASE;
         var calls = List.of(
-                new ApiCallPair("/api/a", null, "t-1", t, t.plusSeconds(10), 10000, null, null, 1, 2, "test.log", false),
-                new ApiCallPair("/api/b", null, "t-2", t.plusSeconds(2), t.plusSeconds(8), 6000, null, null, 3, 4, "test.log", false),
-                new ApiCallPair("/api/c", null, "t-3", t.plusSeconds(4), t.plusSeconds(12), 8000, null, null, 5, 6, "test.log", false)
+                new ApiCallPair("/api/a", null, "t-1", t, t.plusSeconds(10), 10000, -1, false, null, null, 1, 2, "test.log", false),
+                new ApiCallPair("/api/b", null, "t-2", t.plusSeconds(2), t.plusSeconds(8), 6000, -1, false, null, null, 3, 4, "test.log", false),
+                new ApiCallPair("/api/c", null, "t-3", t.plusSeconds(4), t.plusSeconds(12), 8000, -1, false, null, null, 5, 6, "test.log", false)
         );
 
         PerformanceInsights result = PerformanceInsightsCalculator.compute(calls, BASE, BASE.plusMinutes(5));
@@ -315,7 +315,7 @@ class PerformanceInsightsCalculatorTest {
     @Test
     void callsWithNullRequestTimestampFiltered() {
         var calls = List.of(
-                new ApiCallPair("/api/null-ts", null, "t-1", null, null, 100, null, null, 1, 2, "test.log", false),
+                new ApiCallPair("/api/null-ts", null, "t-1", null, null, 100, -1, false, null, null, 1, 2, "test.log", false),
                 call("/api/valid", BASE, 200)
         );
 
@@ -346,7 +346,70 @@ class PerformanceInsightsCalculatorTest {
                     assertEquals(0, b.maxDurationMs());
                     assertEquals(0, b.p95DurationMs());
                     assertEquals(0, b.concurrentPeak());
+                    assertEquals(-1, b.avgConnectionDelayMs(), 0.01);
                     assertTrue(b.endpoints().isEmpty());
                 });
+    }
+
+    // ---- Connection delay in time buckets ----
+
+    private ApiCallPair callWithUpstream(String endpoint, LocalDateTime requestTime,
+                                         long durationMs, long upstreamMs) {
+        return new ApiCallPair(
+                endpoint, null, "thread-1",
+                requestTime,
+                requestTime.plusNanos(durationMs * 1_000_000),
+                durationMs, upstreamMs, false,
+                null, null,
+                1, 2, "test.log", false
+        );
+    }
+
+    @Test
+    void avgConnectionDelay_withUpstreamData() {
+        var calls = List.of(
+                callWithUpstream("/api/a", BASE, 200, 100),       // delay = 100
+                callWithUpstream("/api/b", BASE.plusSeconds(1), 300, 200) // delay = 100
+        );
+
+        PerformanceInsights result = PerformanceInsightsCalculator.compute(calls, BASE, BASE.plusMinutes(5));
+
+        TimeBucket bucket = result.timeBuckets().stream()
+                .filter(b -> b.requestCount() > 0)
+                .findFirst().orElseThrow();
+        assertEquals(100.0, bucket.avgConnectionDelayMs(), 0.01);
+    }
+
+    @Test
+    void avgConnectionDelay_noUpstreamData_returnsNegativeOne() {
+        var calls = List.of(
+                call("/api/a", BASE, 200),
+                call("/api/b", BASE.plusSeconds(1), 300)
+        );
+
+        PerformanceInsights result = PerformanceInsightsCalculator.compute(calls, BASE, BASE.plusMinutes(5));
+
+        TimeBucket bucket = result.timeBuckets().stream()
+                .filter(b -> b.requestCount() > 0)
+                .findFirst().orElseThrow();
+        assertEquals(-1, bucket.avgConnectionDelayMs(), 0.01);
+    }
+
+    @Test
+    void avgConnectionDelay_mixedUpstream_onlyCountsKnown() {
+        var calls = List.of(
+                callWithUpstream("/api/a", BASE, 200, 100),       // delay = 100
+                call("/api/b", BASE.plusSeconds(1), 300),          // no upstream
+                callWithUpstream("/api/c", BASE.plusSeconds(2), 400, 200) // delay = 200
+        );
+
+        PerformanceInsights result = PerformanceInsightsCalculator.compute(calls, BASE, BASE.plusMinutes(5));
+
+        TimeBucket bucket = result.timeBuckets().stream()
+                .filter(b -> b.requestCount() > 0)
+                .findFirst().orElseThrow();
+        // avg(100, 200) = 150, only the two calls with upstream
+        assertEquals(150.0, bucket.avgConnectionDelayMs(), 0.01);
+        assertEquals(3, bucket.requestCount()); // all three counted in request count
     }
 }

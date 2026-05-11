@@ -15,6 +15,7 @@ public record PerformanceInsights(
             long p95DurationMs,
             long maxDurationMs,
             int concurrentPeak,
+            double avgConnectionDelayMs,
             List<EndpointBucket> endpoints
     ) {}
 

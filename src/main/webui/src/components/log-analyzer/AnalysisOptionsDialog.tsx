@@ -68,6 +68,7 @@ export function applyPreset(preset: LogPreset): { customRegex: Partial<UploadOpt
       failureRegex: preset.failureRegex ?? undefined,
       sensitiveFieldNames: preset.sensitiveFieldNames?.join(','),
       criticalIssueExclusions: preset.criticalIssueExclusions?.join(','),
+      upstreamDurationField: preset.upstreamDurationField ?? undefined,
     },
     customFieldInputs: preset.customFields?.map(cf => ({ name: cf.name, regex: cf.regex, countOnly: cf.countOnly })) ?? [],
   }
@@ -385,6 +386,11 @@ export function AnalysisOptionsDialog({ open, onClose, onStart, files, onFilesCh
             <TextField size="small" fullWidth label={t('logAnalyzer.upload.criticalIssueExclusions')}
               value={customRegex.criticalIssueExclusions ?? ''} onChange={(e) => setCustomRegex(r => ({ ...r, criticalIssueExclusions: e.target.value }))}
               helperText={t('logAnalyzer.upload.criticalIssueExclusionsHelp')} />
+            {customRegex.upstreamDurationField !== undefined && (
+              <TextField size="small" fullWidth label={t('logAnalyzer.upload.upstreamDurationField')}
+                value={customRegex.upstreamDurationField ?? ''} onChange={(e) => setCustomRegex(r => ({ ...r, upstreamDurationField: e.target.value }))}
+                helperText={t('logAnalyzer.upload.upstreamDurationFieldHelp')} />
+            )}
 
             <Typography variant="subtitle2" sx={{ mt: 1 }}>{t('logAnalyzer.upload.customFields')}</Typography>
             {customFieldInputs.map((cf, idx) => (

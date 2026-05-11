@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.Locale;
 import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -38,6 +39,14 @@ public class LogFileParser implements LogAnalysisPort {
     @Inject
     @ConfigProperty(name = "log.analyzer.max-stored-lines", defaultValue = "500000")
     int maxStoredLines;
+
+    @Inject
+    @ConfigProperty(name = "log.analyzer.slow-connection-threshold-ms", defaultValue = "100")
+    int slowConnectionThresholdMs;
+
+    @Inject
+    @ConfigProperty(name = "log.analyzer.slow-connection-percent-threshold", defaultValue = "50")
+    int slowConnectionPercentThreshold;
 
     @Inject
     @jakarta.inject.Named("analysisExecutor")
@@ -69,7 +78,7 @@ public class LogFileParser implements LogAnalysisPort {
                 ? compileAndValidate(preset.jobEndRegex(), "jobEndRegex") : null;
         Pattern failurePattern = options.failures() && preset.hasFailurePattern()
                 ? compileAndValidate(preset.failureRegex(), "failureRegex") : null;
-        DateTimeFormatter timestampFormatter = DateTimeFormatter.ofPattern(preset.timestampFormat());
+        DateTimeFormatter timestampFormatter = DateTimeFormatter.ofPattern(preset.timestampFormat(), Locale.ENGLISH);
 
         // Estimate total lines from file sizes (avoid reading files twice)
         long totalBytes = 0;
@@ -122,7 +131,7 @@ public class LogFileParser implements LogAnalysisPort {
         if (apiCallPattern != null) {
             apiCallsFuture = CompletableFuture.supplyAsync(() -> {
                 progressSink.accept(ContainerEvent.info("API Calls", "Pairing API calls..."));
-                var result = pairApiCalls(linesForAnalysis, apiCallPattern, slowThresholdMs, redactionPatterns, cancelled);
+                var result = pairApiCalls(linesForAnalysis, apiCallPattern, slowThresholdMs, redactionPatterns, cancelled, preset);
                 progressSink.accept(ContainerEvent.info("API Calls", "Found " + result.pairs.size() + " API call pairs" +
                         (result.orphans.isEmpty() ? "" : " (" + result.orphans.size() + " orphan requests)")));
                 return result;
@@ -298,7 +307,12 @@ public class LogFileParser implements LogAnalysisPort {
 
     private PairingResult pairApiCalls(List<LogLine> lines, Pattern apiCallPattern,
                                               int slowThresholdMs, List<Map.Entry<Pattern, String>> redactionPatterns,
-                                              AtomicBoolean cancelled) {
+                                              AtomicBoolean cancelled, LogPreset preset) {
+        // Single-line mode: no direction group means each matching line is a complete API call (e.g., nginx access logs)
+        if (!apiCallPattern.namedGroups().containsKey("direction")) {
+            return pairApiCallsSingleLine(lines, apiCallPattern, slowThresholdMs, cancelled, preset);
+        }
+
         // Key: thread + "|" + endpoint + "|" + correlationId (or empty)
         Map<String, Deque<PendingRequest>> pendingByCorrelation = new HashMap<>();
         // Key: thread + "|" + endpoint (for calls without correlationId — FIFO queue)
@@ -354,6 +368,7 @@ public class LogFileParser implements LogAnalysisPort {
                     pairs.add(new ApiCallPair(
                             endpoint, matched.correlationId, thread,
                             matched.timestamp, line.timestamp(), durationMs,
+                            -1, false,
                             redactPayload(matched.payload, redactionPatterns),
                             redactPayload(payload, redactionPatterns),
                             matched.lineNumber, line.lineNumber(),
@@ -380,6 +395,85 @@ public class LogFileParser implements LogAnalysisPort {
         orphans.sort(Comparator.comparingInt(OrphanRequest::lineNumber));
 
         return new PairingResult(pairs, orphans);
+    }
+
+    /**
+     * Single-line API call extraction for access log formats (e.g., nginx).
+     * Each matching line produces one ApiCallPair directly — no request/response pairing needed.
+     * Extracts 'endpoint' (required) and 'duration' (optional, in seconds) named groups.
+     * When the preset has an upstreamDurationField configured, also extracts the upstream response
+     * time to compute connection delay (total time minus upstream time).
+     */
+    private PairingResult pairApiCallsSingleLine(List<LogLine> lines, Pattern apiCallPattern,
+                                                 int slowThresholdMs, AtomicBoolean cancelled,
+                                                 LogPreset preset) {
+        List<ApiCallPair> pairs = new ArrayList<>();
+        int lineIndex = 0;
+
+        Pattern upstreamPattern = null;
+        if (preset.upstreamDurationField() != null && !preset.upstreamDurationField().isBlank()) {
+            upstreamPattern = Pattern.compile("\\b" + Pattern.quote(preset.upstreamDurationField().trim()) + "=([\\d.]+)");
+            LOG.fine(() -> "Upstream duration field configured: '" + preset.upstreamDurationField() + "'");
+        }
+        int upstreamMatchCount = 0;
+
+        for (LogLine line : lines) {
+            if ((++lineIndex % 5000 == 0)) checkCancelled(cancelled);
+            if (line.message() == null) continue;
+            Matcher m = apiCallPattern.matcher(line.message());
+            if (!m.matches()) continue;
+
+            String endpoint = m.group("endpoint");
+            String durationStr = safeGroup(m, "duration");
+
+            long durationMs = 0;
+            if (durationStr != null && !durationStr.isEmpty()) {
+                try {
+                    durationMs = (long) (Double.parseDouble(durationStr) * 1000);
+                } catch (NumberFormatException e) {
+                    // Malformed duration value — default to 0
+                }
+            }
+
+            long upstreamMs = -1;
+            if (upstreamPattern != null) {
+                Matcher um = upstreamPattern.matcher(line.message());
+                if (um.find()) {
+                    try {
+                        upstreamMs = (long) (Double.parseDouble(um.group(1)) * 1000);
+                        upstreamMatchCount++;
+                    } catch (NumberFormatException e) {
+                        // Malformed upstream value — stays -1
+                    }
+                }
+            }
+
+            long connDelay = upstreamMs >= 0 ? Math.max(0, durationMs - upstreamMs) : -1;
+            boolean slowConn = connDelay >= 0 && (connDelay >= slowConnectionThresholdMs
+                    || (durationMs > 0 && (double) connDelay / durationMs * 100 >= slowConnectionPercentThreshold));
+
+            LocalDateTime responseTimestamp = line.timestamp();
+            LocalDateTime requestTimestamp = responseTimestamp != null && durationMs > 0
+                    ? responseTimestamp.minusNanos(durationMs * 1_000_000)
+                    : responseTimestamp;
+
+            pairs.add(new ApiCallPair(
+                    endpoint, null, line.thread(),
+                    requestTimestamp, responseTimestamp, durationMs,
+                    upstreamMs, slowConn,
+                    null, null,
+                    line.lineNumber(), line.lineNumber(),
+                    line.sourceFile(), durationMs >= slowThresholdMs
+            ));
+        }
+
+        if (upstreamPattern != null) {
+            int totalPairs = pairs.size();
+            int matchCount = upstreamMatchCount;
+            LOG.fine(() -> "Upstream duration: " + matchCount + "/" + totalPairs + " calls matched");
+        }
+
+        return new PairingResult(pairs, List.of());
     }
 
     /**

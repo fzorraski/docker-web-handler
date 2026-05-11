@@ -876,6 +876,361 @@ class LogFileParserTest {
         assertEquals(2, result.getAllLines().size());
     }
 
+    // ---- Nginx single-line mode ----
+
+    @Test
+    void parsesNginxCombinedFormat() throws IOException {
+        Path file = writeLog(
+                "192.168.1.1 - frank [29/Apr/2026:10:30:00 -0300] \"GET /api/users HTTP/1.1\" 200 1234 \"http://example.com\" \"Mozilla/5.0\""
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        assertEquals(1, result.getTotalLineCount());
+        LogLine line = result.getAllLines().getFirst();
+        assertEquals("192.168.1.1", line.thread());
+        assertEquals("200", line.level());
+        assertEquals("GET /api/users", line.logger());
+        assertNotNull(line.timestamp());
+        assertTrue(line.message().contains("GET /api/users"));
+        assertTrue(line.message().contains("200"));
+    }
+
+    @Test
+    void parsesNginxCacheLogFormat() throws IOException {
+        Path file = writeLog(
+                "10.0.0.5 - [29/Apr/2026:14:22:33 -0300] \"POST /api/orders HTTP/1.1\" 201 567 cache=MISS rt=0.045 urt=0.032 resp_size=567"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("cache.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        assertEquals(1, result.getTotalLineCount());
+        LogLine line = result.getAllLines().getFirst();
+        assertEquals("10.0.0.5", line.thread());
+        assertEquals("201", line.level());
+        assertEquals("POST /api/orders", line.logger());
+    }
+
+    @Test
+    void nginxSingleLineCreatesApiCallPairs() throws IOException {
+        Path file = writeLog(
+                "10.0.0.1 - [29/Apr/2026:10:00:00 -0300] \"GET /api/users HTTP/1.1\" 200 500 cache=HIT rt=0.025 urt=0.010 resp_size=500",
+                "10.0.0.2 - [29/Apr/2026:10:00:01 -0300] \"POST /api/orders HTTP/1.1\" 201 100 cache=MISS rt=1.500 urt=1.200 resp_size=100",
+                "10.0.0.1 - [29/Apr/2026:10:00:02 -0300] \"GET /api/users HTTP/1.1\" 200 500 cache=HIT rt=0.015 urt=0.005 resp_size=500"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        assertEquals(3, result.getApiCalls().size());
+
+        ApiCallPair first = result.getApiCalls().get(0);
+        assertEquals("GET /api/users", first.endpoint());
+        assertEquals(25, first.durationMs());
+        assertFalse(first.slow());
+        assertEquals("10.0.0.1", first.thread());
+
+        ApiCallPair second = result.getApiCalls().get(1);
+        assertEquals("POST /api/orders", second.endpoint());
+        assertEquals(1500, second.durationMs());
+        assertTrue(second.slow());
+    }
+
+    @Test
+    void nginxWithoutDurationDefaultsToZero() throws IOException {
+        Path file = writeLog(
+                "192.168.1.1 - user [29/Apr/2026:10:00:00 -0300] \"GET /index.html HTTP/1.1\" 200 5000 \"http://ref\" \"Mozilla/5.0\""
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        assertEquals(1, result.getApiCalls().size());
+        assertEquals(0, result.getApiCalls().getFirst().durationMs());
+        assertFalse(result.getApiCalls().getFirst().slow());
+    }
+
+    @Test
+    void nginxQueryParamsStrippedFromEndpoint() throws IOException {
+        Path file = writeLog(
+                "10.0.0.1 - [29/Apr/2026:10:00:00 -0300] \"GET /api/users?page=1&sort=name HTTP/1.1\" 200 500 cache=HIT rt=0.010 urt=0.005 resp_size=500",
+                "10.0.0.2 - [29/Apr/2026:10:00:01 -0300] \"GET /api/users?page=2 HTTP/1.1\" 200 500 cache=HIT rt=0.012 urt=0.006 resp_size=500"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        assertEquals(2, result.getApiCalls().size());
+        assertEquals("GET /api/users", result.getApiCalls().get(0).endpoint());
+        assertEquals("GET /api/users", result.getApiCalls().get(1).endpoint());
+
+        assertEquals(1, result.getEndpointStats().size());
+        assertEquals("GET /api/users", result.getEndpointStats().getFirst().endpoint());
+        assertEquals(2, result.getEndpointStats().getFirst().callCount());
+    }
+
+    @Test
+    void nginxEndpointStatsComputed() throws IOException {
+        Path file = writeLog(
+                "10.0.0.1 - [29/Apr/2026:10:00:00 -0300] \"GET /api/data HTTP/1.1\" 200 100 cache=HIT rt=0.100 urt=0.050 resp_size=100",
+                "10.0.0.2 - [29/Apr/2026:10:00:01 -0300] \"GET /api/data HTTP/1.1\" 200 100 cache=MISS rt=0.300 urt=0.250 resp_size=100",
+                "10.0.0.3 - [29/Apr/2026:10:00:02 -0300] \"GET /api/data HTTP/1.1\" 200 100 cache=MISS rt=2.000 urt=1.900 resp_size=100"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        assertEquals(1, result.getEndpointStats().size());
+        EndpointStats stats = result.getEndpointStats().getFirst();
+        assertEquals("GET /api/data", stats.endpoint());
+        assertEquals(3, stats.callCount());
+        assertEquals(100, stats.minDurationMs());
+        assertEquals(2000, stats.maxDurationMs());
+        assertEquals(1, stats.slowCount());
+    }
+
+    @Test
+    void nginxStatusCodeDistribution() throws IOException {
+        Path file = writeLog(
+                "10.0.0.1 - [29/Apr/2026:10:00:00 -0300] \"GET /ok HTTP/1.1\" 200 100 cache=HIT rt=0.010 urt=0.005 resp_size=100",
+                "10.0.0.2 - [29/Apr/2026:10:00:01 -0300] \"GET /ok HTTP/1.1\" 200 100 cache=HIT rt=0.010 urt=0.005 resp_size=100",
+                "10.0.0.3 - [29/Apr/2026:10:00:02 -0300] \"GET /missing HTTP/1.1\" 404 0 cache=- rt=0.001 urt=- resp_size=0",
+                "10.0.0.4 - [29/Apr/2026:10:00:03 -0300] \"GET /error HTTP/1.1\" 500 0 cache=- rt=0.001 urt=- resp_size=0"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        assertEquals(2, result.getLevelCounts().get("200"));
+        assertEquals(1, result.getLevelCounts().get("404"));
+        assertEquals(1, result.getLevelCounts().get("500"));
+    }
+
+    @Test
+    void nginxTopIpsViaThreads() throws IOException {
+        Path file = writeLog(
+                "10.0.0.1 - [29/Apr/2026:10:00:00 -0300] \"GET /a HTTP/1.1\" 200 100 cache=HIT rt=0.010 urt=0.005 resp_size=100",
+                "10.0.0.1 - [29/Apr/2026:10:00:01 -0300] \"GET /b HTTP/1.1\" 200 100 cache=HIT rt=0.010 urt=0.005 resp_size=100",
+                "10.0.0.2 - [29/Apr/2026:10:00:02 -0300] \"GET /a HTTP/1.1\" 200 100 cache=HIT rt=0.010 urt=0.005 resp_size=100"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        assertEquals(2, result.getThreads().size());
+        assertTrue(result.getThreads().contains("10.0.0.1"));
+        assertTrue(result.getThreads().contains("10.0.0.2"));
+    }
+
+    @Test
+    void nginxNoOrphansInSingleLineMode() throws IOException {
+        Path file = writeLog(
+                "10.0.0.1 - [29/Apr/2026:10:00:00 -0300] \"GET /api HTTP/1.1\" 200 100 cache=HIT rt=0.010 urt=0.005 resp_size=100"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        assertTrue(result.getOrphanRequests().isEmpty());
+    }
+
+    @Test
+    void nginxResponseTimestampOffsetByDuration() throws IOException {
+        Path file = writeLog(
+                "10.0.0.1 - [29/Apr/2026:10:00:00 -0300] \"GET /slow HTTP/1.1\" 200 100 cache=MISS rt=2.500 urt=2.400 resp_size=100"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        ApiCallPair pair = result.getApiCalls().getFirst();
+        assertEquals(2500, pair.durationMs());
+        assertNotEquals(pair.requestTimestamp(), pair.responseTimestamp());
+    }
+
+    @Test
+    void nginxTimestampPrecision_requestIsResponseMinusDuration() throws IOException {
+        // Nginx logs at response time; requestTimestamp = responseTimestamp - duration
+        Path file = writeLog(
+                "10.0.0.1 - [29/Apr/2026:10:00:05 -0300] \"GET /api/test HTTP/1.1\" 200 100 cache=MISS rt=3.000 urt=2.500 resp_size=100"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        ApiCallPair pair = result.getApiCalls().getFirst();
+        // Log timestamp (response time): 10:00:05
+        assertEquals(java.time.LocalDateTime.of(2026, 4, 29, 10, 0, 5), pair.responseTimestamp());
+        // Request time: 10:00:05 - 3000ms = 10:00:02
+        assertEquals(java.time.LocalDateTime.of(2026, 4, 29, 10, 0, 2), pair.requestTimestamp());
+    }
+
+    @Test
+    void nginxZeroDuration_requestEqualsResponse() throws IOException {
+        Path file = writeLog(
+                "10.0.0.1 - [29/Apr/2026:10:00:00 -0300] \"GET /health HTTP/1.1\" 200 2 \"\" \"kube-probe/1.25\""
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        ApiCallPair pair = result.getApiCalls().getFirst();
+        assertEquals(0, pair.durationMs());
+        assertEquals(pair.requestTimestamp(), pair.responseTimestamp());
+    }
+
+    // ---- Upstream duration extraction ----
+
+    @Test
+    void nginxUpstreamExtracted_connectionDelayComputed() throws IOException {
+        Path file = writeLog(
+                "10.0.0.1 - [29/Apr/2026:10:00:00 -0300] \"GET /api/data HTTP/1.1\" 200 100 cache=MISS rt=0.100 urt=0.060 resp_size=100"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        ApiCallPair pair = result.getApiCalls().getFirst();
+        assertEquals(100, pair.durationMs());
+        assertEquals(60, pair.upstreamDurationMs());
+        assertEquals(40, pair.connectionDelayMs());
+    }
+
+    @Test
+    void nginxNoUpstreamField_upstreamIsNegativeOne() throws IOException {
+        // Combined format without rt/urt fields
+        Path file = writeLog(
+                "192.168.1.1 - frank [29/Apr/2026:10:00:00 -0300] \"GET /page HTTP/1.1\" 200 5000 \"http://ref\" \"Mozilla/5.0\""
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        ApiCallPair pair = result.getApiCalls().getFirst();
+        assertEquals(-1, pair.upstreamDurationMs());
+        assertEquals(-1, pair.connectionDelayMs());
+    }
+
+    @Test
+    void nginxMalformedUpstream_upstreamIsNegativeOne() throws IOException {
+        Path file = writeLog(
+                "10.0.0.1 - [29/Apr/2026:10:00:00 -0300] \"GET /api HTTP/1.1\" 200 100 cache=- rt=0.010 urt=- resp_size=0"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        ApiCallPair pair = result.getApiCalls().getFirst();
+        assertEquals(-1, pair.upstreamDurationMs());
+    }
+
+    @Test
+    void nginxUpstreamZero_delayEqualsTotal() throws IOException {
+        Path file = writeLog(
+                "10.0.0.1 - [29/Apr/2026:10:00:00 -0300] \"GET /cached HTTP/1.1\" 200 100 cache=HIT rt=0.050 urt=0.000 resp_size=100"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        ApiCallPair pair = result.getApiCalls().getFirst();
+        assertEquals(0, pair.upstreamDurationMs());
+        assertEquals(50, pair.connectionDelayMs());
+    }
+
+    // ---- Slow connection detection ----
+
+    @Test
+    void nginxSlowConnection_absoluteThresholdExceeded() throws IOException {
+        setField("slowConnectionThresholdMs", 100);
+        setField("slowConnectionPercentThreshold", 50);
+
+        Path file = writeLog(
+                // rt=0.500, urt=0.300 → delay=200ms → exceeds 100ms absolute threshold
+                "10.0.0.1 - [29/Apr/2026:10:00:00 -0300] \"GET /api/slow HTTP/1.1\" 200 100 cache=MISS rt=0.500 urt=0.300 resp_size=100"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        assertTrue(result.getApiCalls().getFirst().slowConnection());
+    }
+
+    @Test
+    void nginxSlowConnection_percentageThresholdExceeded() throws IOException {
+        setField("slowConnectionThresholdMs", 100);
+        setField("slowConnectionPercentThreshold", 50);
+
+        Path file = writeLog(
+                // rt=0.080, urt=0.020 → delay=60ms, pct=75% → exceeds 50% threshold (but < 100ms absolute)
+                "10.0.0.1 - [29/Apr/2026:10:00:00 -0300] \"GET /api/pct HTTP/1.1\" 200 100 cache=MISS rt=0.080 urt=0.020 resp_size=100"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        assertTrue(result.getApiCalls().getFirst().slowConnection());
+    }
+
+    @Test
+    void nginxNotSlowConnection_belowBothThresholds() throws IOException {
+        setField("slowConnectionThresholdMs", 100);
+        setField("slowConnectionPercentThreshold", 50);
+
+        Path file = writeLog(
+                // rt=0.200, urt=0.180 → delay=20ms (10%) → below both thresholds
+                "10.0.0.1 - [29/Apr/2026:10:00:00 -0300] \"GET /api/ok HTTP/1.1\" 200 100 cache=MISS rt=0.200 urt=0.180 resp_size=100"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        assertFalse(result.getApiCalls().getFirst().slowConnection());
+    }
+
+    @Test
+    void nginxSlowConnection_zeroDuration_notSlow() throws IOException {
+        setField("slowConnectionThresholdMs", 100);
+        setField("slowConnectionPercentThreshold", 50);
+
+        // No rt field → duration=0, no upstream → delay=-1 → not slow
+        Path file = writeLog(
+                "192.168.1.1 - user [29/Apr/2026:10:00:00 -0300] \"GET /health HTTP/1.1\" 200 2 \"\" \"agent\""
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        assertFalse(result.getApiCalls().getFirst().slowConnection());
+    }
+
+    // ---- No upstream field in preset ----
+
+    @Test
+    void nginxPresetWithoutUpstreamField_noConnectionDelay() throws IOException {
+        LogPreset noUpstream = new LogPreset(
+                LogPreset.NGINX.name(), LogPreset.NGINX.logLineRegex(), LogPreset.NGINX.timestampFormat(),
+                LogPreset.NGINX.apiCallRegex(), null, null, null, List.of(), List.of(), List.of(),
+                null  // no upstreamDurationField
+        );
+
+        Path file = writeLog(
+                "10.0.0.1 - [29/Apr/2026:10:00:00 -0300] \"GET /api/data HTTP/1.1\" 200 100 cache=MISS rt=0.100 urt=0.060 resp_size=100"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), noUpstream, 1000, AnalysisOptions.all());
+
+        ApiCallPair pair = result.getApiCalls().getFirst();
+        assertEquals(100, pair.durationMs());
+        assertEquals(-1, pair.upstreamDurationMs()); // upstream not extracted
+    }
+
+    // ---- hasConnectionDelay flag ----
+
+    @Test
+    void nginxAnalysis_hasConnectionDelayTrue() throws IOException {
+        Path file = writeLog(
+                "10.0.0.1 - [29/Apr/2026:10:00:00 -0300] \"GET /api HTTP/1.1\" 200 100 cache=HIT rt=0.010 urt=0.005 resp_size=100"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("access.log"), LogPreset.NGINX, 1000, AnalysisOptions.all());
+
+        assertTrue(result.getApiCalls().stream().anyMatch(c -> c.upstreamDurationMs() >= 0));
+    }
+
+    @Test
+    void nonNginxAnalysis_hasConnectionDelayFalse() throws IOException {
+        Path file = writeLog(
+                "2026-03-30 07:31:13,938 INFO  [stdout] (default task-1) OrderWS/getOrders Request Body: {}"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("server.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+        assertTrue(result.getApiCalls().stream().noneMatch(c -> c.upstreamDurationMs() >= 0));
+    }
+
     // ---- Helpers ----
 
     private Path writeLog(String... lines) throws IOException {

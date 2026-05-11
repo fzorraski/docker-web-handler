@@ -12,7 +12,8 @@ public record LogPreset(
         String failureRegex,
         List<String> sensitiveFieldNames,
         List<CustomField> customFields,
-        List<String> criticalIssueExclusions
+        List<String> criticalIssueExclusions,
+        String upstreamDurationField
 ) {
 
     public record CustomField(
@@ -31,7 +32,8 @@ public record LogPreset(
             "ORDEM (?<entityId>ORDER \\d+) FALHA AO INICIAR (?<reason>\\w+):",
             List.of("token", "senha", "password", "secret", "authorization"),
             List.of(),
-            List.of()
+            List.of(),
+            null
     );
 
     public static final LogPreset QUARKUS = new LogPreset(
@@ -44,7 +46,8 @@ public record LogPreset(
             null,
             List.of("token", "password", "secret", "authorization"),
             List.of(),
-            List.of()
+            List.of(),
+            null
     );
 
     public static final LogPreset SPRING_BOOT = new LogPreset(
@@ -57,7 +60,22 @@ public record LogPreset(
             null,
             List.of("token", "password", "secret", "authorization"),
             List.of(),
-            List.of()
+            List.of(),
+            null
+    );
+
+    public static final LogPreset NGINX = new LogPreset(
+            "Nginx",
+            "^(?<thread>\\S+) - (?:[^\\[]\\S* )?\\[(?<timestamp>\\d{2}/\\w{3}/\\d{4}:\\d{2}:\\d{2}:\\d{2})[^\\]]*\\] (?<message>\"(?<logger>\\S+ [^?\\s]+)[^\"]*\" (?<level>\\d{3}) .+)$",
+            "dd/MMM/yyyy:HH:mm:ss",
+            "^\"(?<endpoint>\\S+ [^?\\s]+)[^\"]*\" \\d{3} \\d+(?:.*\\brt=(?<duration>[\\d.]+))?.*$",
+            null,
+            null,
+            null,
+            List.of(),
+            List.of(),
+            List.of(),
+            "urt"
     );
 
     public static final LogPreset CUSTOM = new LogPreset(
@@ -70,11 +88,12 @@ public record LogPreset(
             null,
             List.of(),
             List.of(),
-            List.of()
+            List.of(),
+            null
     );
 
     public static List<LogPreset> allPresets() {
-        return List.of(WILDFLY, QUARKUS, SPRING_BOOT, CUSTOM);
+        return List.of(WILDFLY, QUARKUS, SPRING_BOOT, NGINX, CUSTOM);
     }
 
     public static LogPreset byName(String name) {
