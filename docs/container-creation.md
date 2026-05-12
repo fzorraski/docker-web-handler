@@ -42,9 +42,20 @@ Validate → Pull Image → Create Container → Start Container → Schedule Ex
 
 ### Memory Limit
 
-- Available when `container.memory-limit.enabled=true`
-- Specified in MB
-- When `repository.java-opts-var.<repo>` is configured, the system automatically calculates and sets the Java heap size (75% of the memory limit)
+- Available when `container.memory-limit.enabled=true` (supports per-repo override: `repository.memory-limit.enabled.<repo>`)
+- Specified in MB, capped by `container.memory-limit.max-mb` (supports per-repo override: `repository.memory-limit.max-mb.<repo>`)
+- Sets a Docker container memory constraint
+
+**Auto-heap calculation:** When `repository.java-opts-var.<repo>` is configured (e.g., `JAVA_OPTS`), the system automatically calculates JVM heap flags based on the memory limit:
+
+| Flag | Ratio | Example (1536 MB limit) |
+|------|-------|------------------------|
+| `-Xmx` (max heap) | 75% of memory limit | 1152m |
+| `-Xms` (initial heap) | 25% of memory limit | 384m |
+
+The remaining 25% is reserved for metaspace, thread stacks, and native memory.
+
+**Merge behavior:** If the env var already has JVM flags (e.g., from `repository.hidden-env`), only `-Xmx` and `-Xms` are replaced — all other flags (`-XX:MetaspaceSize`, `-Djava.net.preferIPv4Stack`, etc.) are preserved. If no existing `-Xmx`/`-Xms` are present, the calculated values are prepended.
 
 ### Expiration
 

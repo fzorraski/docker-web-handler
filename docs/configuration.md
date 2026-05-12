@@ -71,13 +71,16 @@ Tags from all three registries are merged into a single list in the UI. For GitL
 
 ## Container Configuration
 
-| Property | Description | Default |
-|----------|-------------|---------|
-| `container.default-expiration-minutes` | Default expiration for new containers | 480 (8 hours) |
-| `container.memory-limit.enabled` | Show memory limit field in UI | false |
-| `repository.env-keys.<repo>` | Pre-configured environment variables (KEY=VALUE pairs) | — |
-| `repository.hidden-env.<repo>` | Hidden env vars (sent to container, not shown in UI) | — |
-| `repository.java-opts-var.<repo>` | Java opts env var name for auto-heap calculation | — |
+| Property | Description | Default | Per-repo override |
+|----------|-------------|---------|-------------------|
+| `container.default-expiration-minutes` | Default expiration for new containers | 480 (8 hours) | `repository.default-expiration-minutes.<repo>` |
+| `container.memory-limit.enabled` | Show memory limit field in UI | false | `repository.memory-limit.enabled.<repo>` |
+| `container.memory-limit.max-mb` | Maximum memory users can assign (MB) | 65536 | `repository.memory-limit.max-mb.<repo>` |
+| `repository.env-keys.<repo>` | Pre-configured environment variables (KEY=VALUE pairs) | — | — |
+| `repository.hidden-env.<repo>` | Hidden env vars (sent to container, not shown in UI) | — | — |
+| `repository.java-opts-var.<repo>` | Java opts env var name for auto-heap calculation (75% Xmx / 25% Xms). Merges with existing flags — only replaces `-Xmx` and `-Xms` | — | — |
+
+All per-repo overrides fall back to the global value when not configured.
 
 ### Example
 
@@ -94,12 +97,12 @@ repository.java-opts-var.myapp=JAVA_OPTS
 
 ## Port Mapping
 
-| Property | Description | Default |
-|----------|-------------|---------|
-| `container.port-mapping.enabled` | Enable automatic port mapping | false |
-| `container.port-mapping.host-port-start` | Starting host port number | 10000 |
-| `repository.container-ports.<repo>` | Comma-separated container ports to map | — |
-| `repository.port-paths.<repo>` | Port:path pairs for hyperlink URLs | — |
+| Property | Description | Default | Per-repo override |
+|----------|-------------|---------|-------------------|
+| `container.port-mapping.enabled` | Enable automatic port mapping | false | `repository.port-mapping.enabled.<repo>` |
+| `container.port-mapping.host-port-start` | Starting host port number | 10000 | `repository.port-mapping.host-port-start.<repo>` |
+| `repository.container-ports.<repo>` | Comma-separated container ports to map | — | — |
+| `repository.port-paths.<repo>` | Port:path pairs for hyperlink URLs | — | — |
 
 ### Example
 
@@ -276,13 +279,13 @@ See [Container Terminal](container-terminal.md) for full documentation.
 
 ## Container Log Rotation
 
-| Property | Description | Default |
-|----------|-------------|---------|
-| `container.log-rotation.enabled` | Apply log rotation to containers created by this tool | `true` |
-| `container.log-rotation.max-size` | Maximum size of each log file (Docker format: `10m`, `50m`, `100m`, `1g`) | `10m` |
-| `container.log-rotation.max-files` | Maximum number of log files kept per container | `3` |
+| Property | Description | Default | Per-repo override |
+|----------|-------------|---------|-------------------|
+| `container.log-rotation.enabled` | Apply log rotation to containers created by this tool | `true` | `repository.log-rotation.enabled.<repo>` |
+| `container.log-rotation.max-size` | Maximum size of each log file (Docker format: `10m`, `50m`, `100m`, `1g`) | `10m` | `repository.log-rotation.max-size.<repo>` |
+| `container.log-rotation.max-files` | Maximum number of log files kept per container | `3` | `repository.log-rotation.max-files.<repo>` |
 
-Uses Docker's `json-file` log driver with `max-size` and `max-file` limits.
+Uses Docker's `json-file` log driver with `max-size` and `max-file` limits. Per-repo overrides fall back to global values.
 
 ---
 
