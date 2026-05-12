@@ -463,6 +463,66 @@ class RunContainerUseCaseTest {
         assertTrue(hasEvent(EventType.SUCCESS));
     }
 
+    // ---- java-opts merge ----
+
+    @Test
+    void execute_javaOptsVar_mergesWithExistingHiddenEnv() {
+        stubHappyPath();
+        when(config.getOptionalValue("repository.hidden-env." + REPO, String.class))
+                .thenReturn(Optional.of("JAVA_OPTS=-server -Xms512m -Xmx1300m -XX:MetaspaceSize=512m -Djava.awt.headless=true"));
+        when(config.getOptionalValue("repository.java-opts-var." + REPO, String.class))
+                .thenReturn(Optional.of("JAVA_OPTS"));
+
+        RunContainerRequest req = validRequest();
+        req.setMemoryMb(1536L);
+
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<List<String>> envCaptor = org.mockito.ArgumentCaptor.forClass(List.class);
+        CreateContainerCmd createCmd = mock(CreateContainerCmd.class);
+        when(dockerClient.createContainerCmd(IMAGE_REF)).thenReturn(createCmd);
+        when(createCmd.exec()).thenReturn(mock(com.github.dockerjava.api.command.CreateContainerResponse.class));
+        when(createCmd.exec().getId()).thenReturn(CONTAINER_ID);
+        StartContainerCmd startCmd = mock(StartContainerCmd.class);
+        when(dockerClient.startContainerCmd(CONTAINER_ID)).thenReturn(startCmd);
+        RemoveContainerCmd removeCmd = mock(RemoveContainerCmd.class);
+        when(dockerClient.removeContainerCmd(CONTAINER_ID)).thenReturn(removeCmd);
+        when(removeCmd.withForce(true)).thenReturn(removeCmd);
+
+        useCase.execute(req, events::add);
+
+        verify(createCmd).withEnv(envCaptor.capture());
+        List<String> envList = envCaptor.getValue();
+        String javaOpts = envList.stream().filter(e -> e.startsWith("JAVA_OPTS=")).findFirst().orElse("");
+        assertTrue(javaOpts.contains("-Xmx1152m"), "Should have new Xmx: " + javaOpts);
+        assertTrue(javaOpts.contains("-Xms384m"), "Should have new Xms: " + javaOpts);
+        assertTrue(javaOpts.contains("-XX:MetaspaceSize=512m"), "Should preserve MetaspaceSize: " + javaOpts);
+        assertTrue(javaOpts.contains("-Djava.awt.headless=true"), "Should preserve system properties: " + javaOpts);
+        assertTrue(javaOpts.contains("-server"), "Should preserve -server: " + javaOpts);
+        assertFalse(javaOpts.contains("-Xmx1300m"), "Should NOT have old Xmx: " + javaOpts);
+        assertFalse(javaOpts.contains("-Xms512m"), "Should NOT have old Xms: " + javaOpts);
+    }
+
+    @Test
+    void execute_javaOptsVar_setsNewValue_whenNoExistingOpts() {
+        stubHappyPath();
+        when(config.getOptionalValue("repository.java-opts-var." + REPO, String.class))
+                .thenReturn(Optional.of("JAVA_OPTS"));
+
+        RunContainerRequest req = validRequest();
+        req.setMemoryMb(512L);
+
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<List<String>> envCaptor = org.mockito.ArgumentCaptor.forClass(List.class);
+
+        useCase.execute(req, events::add);
+
+        verify(dockerClient.createContainerCmd(IMAGE_REF)).withEnv(envCaptor.capture());
+        List<String> envList = envCaptor.getValue();
+        String javaOpts = envList.stream().filter(e -> e.startsWith("JAVA_OPTS=")).findFirst().orElse("");
+        assertTrue(javaOpts.contains("-Xmx384m"), "Should have Xmx: " + javaOpts);
+        assertTrue(javaOpts.contains("-Xms128m"), "Should have Xms: " + javaOpts);
+    }
+
     @Test
     void execute_nullContainerName_succeeds() {
         stubHappyPath();
