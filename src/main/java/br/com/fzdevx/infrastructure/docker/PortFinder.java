@@ -43,7 +43,10 @@ public class PortFinder {
      * Empty list if port mapping is disabled or not configured.
      */
     public List<Integer> getContainerPorts(String repository) {
-        if (!portMappingEnabled) {
+        boolean effectiveEnabled = config.getOptionalValue(
+                "repository.port-mapping.enabled." + repository, Boolean.class)
+                .orElse(portMappingEnabled);
+        if (!effectiveEnabled) {
             return Collections.emptyList();
         }
 
@@ -68,6 +71,15 @@ public class PortFinder {
     }
 
     /**
+     * Returns the effective host port start for the given repository.
+     */
+    public int getHostPortStart(String repository) {
+        return config.getOptionalValue(
+                "repository.port-mapping.host-port-start." + repository, Integer.class)
+                .orElse(hostPortStart);
+    }
+
+    /**
      * Finds the requested number of available host ports, starting from the
      * configured threshold. Checks both Docker-mapped ports and OS-level
      * socket availability.
@@ -76,13 +88,17 @@ public class PortFinder {
      * @return ordered list of available host ports
      */
     public synchronized List<Integer> findAvailablePorts(int count) {
+        return findAvailablePorts(count, hostPortStart);
+    }
+
+    public synchronized List<Integer> findAvailablePorts(int count, int startPort) {
         if (count <= 0) {
             return Collections.emptyList();
         }
 
         Set<Integer> dockerPorts = collectDockerHostPorts();
         List<Integer> available = new ArrayList<>(count);
-        int candidate = hostPortStart;
+        int candidate = startPort;
 
         while (available.size() < count && candidate <= MAX_PORT) {
             if (!dockerPorts.contains(candidate)
@@ -95,7 +111,7 @@ public class PortFinder {
 
         if (available.size() < count) {
             throw new RuntimeException(
-                    "Not enough available host ports starting from " + hostPortStart
+                    "Not enough available host ports starting from " + startPort
                             + ". Needed " + count + ", found " + available.size() + ".");
         }
 
@@ -113,6 +129,10 @@ public class PortFinder {
      * @return ordered list of available host ports
      */
     public synchronized List<Integer> findAvailablePortsPreferring(List<Integer> preferred, int count) {
+        return findAvailablePortsPreferring(preferred, count, hostPortStart);
+    }
+
+    public synchronized List<Integer> findAvailablePortsPreferring(List<Integer> preferred, int count, int startPort) {
         if (count <= 0) {
             return Collections.emptyList();
         }
@@ -133,7 +153,7 @@ public class PortFinder {
 
         // Fill remaining with scanned ports
         if (result.size() < count) {
-            int candidate = hostPortStart;
+            int candidate = startPort;
             while (result.size() < count && candidate <= MAX_PORT) {
                 if (!dockerPorts.contains(candidate)
                         && !reservedPorts.contains(candidate)
@@ -158,7 +178,7 @@ public class PortFinder {
      * Releases previously reserved ports so they can be re-used by future
      * calls to {@link #findAvailablePorts(int)}.
      */
-    public void releasePorts(List<Integer> ports) {
+    public synchronized void releasePorts(List<Integer> ports) {
         if (ports != null) {
             reservedPorts.removeAll(ports);
         }

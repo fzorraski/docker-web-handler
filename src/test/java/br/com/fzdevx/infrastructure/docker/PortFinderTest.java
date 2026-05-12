@@ -2,6 +2,7 @@ package br.com.fzdevx.infrastructure.docker;
 
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.ListContainersCmd;
+import org.eclipse.microprofile.config.Config;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -34,12 +36,16 @@ class PortFinderTest {
     @Mock
     ListContainersCmd listContainersCmd;
 
+    @Mock
+    Config config;
+
     private PortFinder portFinder;
 
     @BeforeEach
     void setUp() throws Exception {
         portFinder = new PortFinder();
         setField(portFinder, "dockerClient", dockerClient);
+        setField(portFinder, "config", config);
         setField(portFinder, "portMappingEnabled", true);
         setField(portFinder, "hostPortStart", 50000);
 
@@ -176,5 +182,65 @@ class PortFinderTest {
     void findAvailablePortsPreferring_zeroCount_returnsEmpty() {
         List<Integer> result = portFinder.findAvailablePortsPreferring(List.of(50000), 0);
         assertTrue(result.isEmpty());
+    }
+
+    // ---- per-repo port-mapping.enabled ----
+
+    @Test
+    void getContainerPorts_perRepoEnabled_overridesGlobalDisabled() throws Exception {
+        setField(portFinder, "portMappingEnabled", false);
+        when(config.getOptionalValue("repository.port-mapping.enabled.myapp", Boolean.class))
+                .thenReturn(Optional.of(true));
+        when(config.getOptionalValue("repository.container-ports.myapp", String.class))
+                .thenReturn(Optional.of("8080"));
+
+        List<Integer> ports = portFinder.getContainerPorts("myapp");
+        assertEquals(List.of(8080), ports);
+    }
+
+    @Test
+    void getContainerPorts_perRepoDisabled_overridesGlobalEnabled() {
+        when(config.getOptionalValue("repository.port-mapping.enabled.myapp", Boolean.class))
+                .thenReturn(Optional.of(false));
+
+        List<Integer> ports = portFinder.getContainerPorts("myapp");
+        assertTrue(ports.isEmpty());
+    }
+
+    @Test
+    void getContainerPorts_noPerRepo_fallsBackToGlobal() {
+        when(config.getOptionalValue("repository.port-mapping.enabled.myapp", Boolean.class))
+                .thenReturn(Optional.empty());
+        when(config.getOptionalValue("repository.container-ports.myapp", String.class))
+                .thenReturn(Optional.of("8080"));
+
+        List<Integer> ports = portFinder.getContainerPorts("myapp");
+        assertEquals(List.of(8080), ports);
+    }
+
+    // ---- per-repo host-port-start ----
+
+    @Test
+    void getHostPortStart_perRepo_returnsPerRepoValue() {
+        when(config.getOptionalValue("repository.port-mapping.host-port-start.myapp", Integer.class))
+                .thenReturn(Optional.of(9000));
+
+        assertEquals(9000, portFinder.getHostPortStart("myapp"));
+    }
+
+    @Test
+    void getHostPortStart_noPerRepo_returnsGlobal() {
+        when(config.getOptionalValue("repository.port-mapping.host-port-start.myapp", Integer.class))
+                .thenReturn(Optional.empty());
+
+        assertEquals(50000, portFinder.getHostPortStart("myapp"));
+    }
+
+    @Test
+    void findAvailablePorts_withCustomStartPort_startsFromGivenPort() {
+        List<Integer> ports = portFinder.findAvailablePorts(2, 60000);
+        assertEquals(2, ports.size());
+        assertTrue(ports.get(0) >= 60000);
+        portFinder.releasePorts(ports);
     }
 }

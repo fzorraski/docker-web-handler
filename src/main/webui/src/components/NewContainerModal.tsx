@@ -31,6 +31,7 @@ import {
   getDatabaseConflicts,
   getFeatures,
   getRepositoryDatabases,
+  getRepositoryConfig,
   getRepositoryEnvKeys,
   getRepositoryTags,
   isMigrationApiAvailable,
@@ -82,6 +83,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const [envVars, setEnvVars] = useState<EnvVar[]>([])
   const [memoryMb, setMemoryMb] = useState<string>('')
   const [memoryEnabled, setMemoryEnabled] = useState(false)
+  const [memoryMaxMb, setMemoryMaxMb] = useState<number>(65536)
   const [dbEnabled, setDbEnabled] = useState(false)
   const [databases, setDatabases] = useState<string[]>([])
   const [selectedDb, setSelectedDb] = useState<string | null>(null)
@@ -146,6 +148,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         setDefaultExpMinutes(f.defaultExpirationMinutes)
         setExpiresAt(dayjs().add(f.defaultExpirationMinutes, 'minute'))
         setMemoryEnabled(f.memoryLimit)
+        setMemoryMaxMb(f.memoryLimitMaxMb)
         setDbDeletionEnabled(f.deletionOnExpiration)
         setDumpFeatureEnabled(f.dump)
         setMigrationFeatureEnabled(f.migration)
@@ -198,6 +201,14 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     getRepositoryEnvKeys(selectedRepo)
       .then((keys) => setEnvVars(keys.map((k) => ({ key: k.key, value: k.value }))))
       .catch(() => setEnvVars([]))
+    getRepositoryConfig(selectedRepo)
+      .then((cfg) => {
+        setMemoryEnabled(cfg.memoryLimitEnabled)
+        setMemoryMaxMb(cfg.memoryLimitMaxMb)
+        setDefaultExpMinutes(cfg.defaultExpirationMinutes)
+        setExpiresAt(dayjs().add(cfg.defaultExpirationMinutes, 'minute'))
+      })
+      .catch(() => {})
     repositoryHasDatabases(selectedRepo)
       .then((has) => {
         setDbEnabled(has)
@@ -582,7 +593,12 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                     onChange={(e) => setMemoryMb(e.target.value.replace(/\D/g, ''))}
                     size="small"
                     type="text"
-                    helperText={t('newContainer.memoryHelperText')}
+                    error={!!memoryMb && parseInt(memoryMb, 10) > memoryMaxMb}
+                    helperText={memoryMb && parseInt(memoryMb, 10) > memoryMaxMb
+                      ? t('newContainer.memoryExceeded', { max: memoryMaxMb })
+                      : memoryMaxMb < 65536
+                        ? t('newContainer.memoryHelperTextMax', { max: memoryMaxMb })
+                        : t('newContainer.memoryHelperText')}
                     slotProps={{
                       input: {
                         startAdornment: <Memory fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />,

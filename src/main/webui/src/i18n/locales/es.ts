@@ -630,6 +630,8 @@ const es: typeof en = {
     memoryLimit: 'Limite de Memoria (MB)',
     memoryPlaceholder: 'ej. 512 (opcional)',
     memoryHelperText: 'Dejar vacio para sin limite',
+    memoryHelperTextMax: 'Maximo: {{max}} MB',
+    memoryExceeded: 'No puede exceder {{max}} MB',
     existingDatabase: 'Base de Datos Existente',
     restoreFromDump: 'Restaurar desde Dump',
     database: 'Base de Datos',

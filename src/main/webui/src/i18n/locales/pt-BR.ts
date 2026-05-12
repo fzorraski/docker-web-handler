@@ -630,6 +630,8 @@ const ptBR: typeof en = {
     memoryLimit: 'Limite de Memoria (MB)',
     memoryPlaceholder: 'ex. 512 (opcional)',
     memoryHelperText: 'Deixe vazio para sem limite',
+    memoryHelperTextMax: 'Maximo: {{max}} MB',
+    memoryExceeded: 'Nao pode exceder {{max}} MB',
     existingDatabase: 'Banco de Dados Existente',
     restoreFromDump: 'Restaurar de Dump',
     database: 'Banco de Dados',

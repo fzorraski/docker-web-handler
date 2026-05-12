@@ -53,6 +53,9 @@ class ContainerConfigControllerTest {
     void setUp() {
         setField("defaultExpirationMinutes", 480);
         setField("memoryLimitEnabled", false);
+        setField("memoryLimitMaxMb", 65536L);
+        setField("logRotationMaxSize", "10m");
+        setField("logRotationMaxFiles", "3");
         setField("uiLocale", Optional.of("en"));
         setField("terminalEnabled", false);
     }
@@ -240,6 +243,7 @@ class ContainerConfigControllerTest {
         Map<String, Object> features = controller.getFeatures();
 
         assertEquals(false, features.get("memoryLimit"));
+        assertEquals(65536L, features.get("memoryLimitMaxMb"));
         assertEquals(true, features.get("deletionOnExpiration"));
         assertEquals(true, features.get("databaseListing"));
         assertEquals(true, features.get("dump"));
@@ -250,6 +254,73 @@ class ContainerConfigControllerTest {
         assertEquals(true, features.get("uploadPasswordRequired"));
         assertEquals(true, features.get("operationsPasswordRequired"));
         assertEquals(false, features.get("terminalPasswordRequired"));
+    }
+
+    // ---- getMemoryLimitMaxMb ----
+
+    @Test
+    void getMemoryLimitMaxMb_noRepo_returnsGlobal() {
+        assertEquals(65536L, controller.getMemoryLimitMaxMb(null));
+    }
+
+    @Test
+    void getMemoryLimitMaxMb_noPerRepoConfig_returnsGlobal() {
+        when(config.getOptionalValue("repository.memory-limit.max-mb.myapp", Long.class))
+                .thenReturn(Optional.empty());
+        assertEquals(65536L, controller.getMemoryLimitMaxMb("myapp"));
+    }
+
+    @Test
+    void getMemoryLimitMaxMb_perRepoConfig_returnsPerRepo() {
+        when(config.getOptionalValue("repository.memory-limit.max-mb.myapp", Long.class))
+                .thenReturn(Optional.of(1536L));
+        assertEquals(1536L, controller.getMemoryLimitMaxMb("myapp"));
+    }
+
+    // ---- getRepositoryConfig ----
+
+    @Test
+    void getRepositoryConfig_noRepo_returnsGlobalDefaults() {
+        Map<String, Object> result = controller.getRepositoryConfig(null);
+        assertEquals(false, result.get("memoryLimitEnabled"));
+        assertEquals(65536L, result.get("memoryLimitMaxMb"));
+        assertEquals(480, result.get("defaultExpirationMinutes"));
+    }
+
+    @Test
+    void getRepositoryConfig_noOverrides_returnsGlobalDefaults() {
+        when(config.getOptionalValue("repository.memory-limit.enabled.myapp", Boolean.class)).thenReturn(Optional.empty());
+        when(config.getOptionalValue("repository.memory-limit.max-mb.myapp", Long.class)).thenReturn(Optional.empty());
+        when(config.getOptionalValue("repository.default-expiration-minutes.myapp", Integer.class)).thenReturn(Optional.empty());
+
+        Map<String, Object> result = controller.getRepositoryConfig("myapp");
+        assertEquals(false, result.get("memoryLimitEnabled"));
+        assertEquals(65536L, result.get("memoryLimitMaxMb"));
+        assertEquals(480, result.get("defaultExpirationMinutes"));
+    }
+
+    @Test
+    void getRepositoryConfig_fullOverrides_returnsPerRepoValues() {
+        when(config.getOptionalValue("repository.memory-limit.enabled.myapp", Boolean.class)).thenReturn(Optional.of(true));
+        when(config.getOptionalValue("repository.memory-limit.max-mb.myapp", Long.class)).thenReturn(Optional.of(1536L));
+        when(config.getOptionalValue("repository.default-expiration-minutes.myapp", Integer.class)).thenReturn(Optional.of(240));
+
+        Map<String, Object> result = controller.getRepositoryConfig("myapp");
+        assertEquals(true, result.get("memoryLimitEnabled"));
+        assertEquals(1536L, result.get("memoryLimitMaxMb"));
+        assertEquals(240, result.get("defaultExpirationMinutes"));
+    }
+
+    @Test
+    void getRepositoryConfig_partialOverrides_mixesPerRepoAndGlobal() {
+        when(config.getOptionalValue("repository.memory-limit.enabled.myapp", Boolean.class)).thenReturn(Optional.of(true));
+        when(config.getOptionalValue("repository.memory-limit.max-mb.myapp", Long.class)).thenReturn(Optional.empty());
+        when(config.getOptionalValue("repository.default-expiration-minutes.myapp", Integer.class)).thenReturn(Optional.of(120));
+
+        Map<String, Object> result = controller.getRepositoryConfig("myapp");
+        assertEquals(true, result.get("memoryLimitEnabled"));
+        assertEquals(65536L, result.get("memoryLimitMaxMb"));
+        assertEquals(120, result.get("defaultExpirationMinutes"));
     }
 
     // ---- authorizeTerminal ----

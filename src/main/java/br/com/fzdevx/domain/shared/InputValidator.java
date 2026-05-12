@@ -102,14 +102,20 @@ public final class InputValidator {
     }
 
     public static Optional<String> validateMemoryMb(Long memoryMb) {
+        return validateMemoryMb(memoryMb, 65536L);
+    }
+
+    public static Optional<String> validateMemoryMb(Long memoryMb, Long maxMemoryMb) {
         if (memoryMb == null) {
             return Optional.empty();
         }
         if (memoryMb < 4) {
             return Optional.of("Memory must be at least 4 MB.");
         }
-        if (memoryMb > 65536) {
-            return Optional.of("Memory must not exceed 65536 MB (64 GB).");
+        // Invalid maxMemoryMb (null or < 4 MB) falls back to 64 GB default
+        long effectiveMax = maxMemoryMb != null && maxMemoryMb >= 4 ? maxMemoryMb : 65536L;
+        if (memoryMb > effectiveMax) {
+            return Optional.of("Memory must not exceed " + effectiveMax + " MB.");
         }
         return Optional.empty();
     }

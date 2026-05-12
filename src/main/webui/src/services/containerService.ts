@@ -79,6 +79,22 @@ export async function getRepositoryEnvKeys(repository: string): Promise<{ key: s
   return handleResponse(res)
 }
 
+export async function getMemoryLimitMaxMb(repository: string): Promise<number> {
+  const res = await fetchWithAuth(API + 'memory-limit-max-mb?repository=' + encodeURIComponent(repository))
+  return handleResponse(res)
+}
+
+export interface RepositoryConfig {
+  memoryLimitEnabled: boolean
+  memoryLimitMaxMb: number
+  defaultExpirationMinutes: number
+}
+
+export async function getRepositoryConfig(repository: string): Promise<RepositoryConfig> {
+  const res = await fetchWithAuth(API + 'repository-config?repository=' + encodeURIComponent(repository))
+  return handleResponse(res)
+}
+
 export async function getDefaultExpirationMinutes(): Promise<number> {
   const res = await fetchWithAuth(API + 'default-expiration-minutes')
   return handleResponse(res)
@@ -121,6 +137,7 @@ export async function isWebhookEnabled(): Promise<boolean> {
 
 export interface FeatureFlags {
   memoryLimit: boolean
+  memoryLimitMaxMb: number
   memoryGuard: boolean
   deletionOnExpiration: boolean
   databaseListing: boolean

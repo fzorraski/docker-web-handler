@@ -180,6 +180,41 @@ class InputValidatorTest {
         assertTrue(InputValidator.validateMemoryMb(65536L).isEmpty());
     }
 
+    // ---- validateMemoryMb with custom max ----
+
+    @Test
+    void validateMemoryMb_customMax_withinLimit_returnsEmpty() {
+        assertTrue(InputValidator.validateMemoryMb(1024L, 1536L).isEmpty());
+    }
+
+    @Test
+    void validateMemoryMb_customMax_atLimit_returnsEmpty() {
+        assertTrue(InputValidator.validateMemoryMb(1536L, 1536L).isEmpty());
+    }
+
+    @Test
+    void validateMemoryMb_customMax_exceedsLimit_returnsError() {
+        Optional<String> error = InputValidator.validateMemoryMb(2000L, 1536L);
+        assertTrue(error.isPresent());
+        assertTrue(error.get().contains("1536"));
+    }
+
+    @Test
+    void validateMemoryMb_customMax_null_fallsBackToDefault() {
+        assertTrue(InputValidator.validateMemoryMb(60000L, null).isEmpty());
+        assertTrue(InputValidator.validateMemoryMb(100_000L, null).isPresent());
+    }
+
+    @Test
+    void validateMemoryMb_customMax_tooLow_fallsBackToDefault() {
+        assertTrue(InputValidator.validateMemoryMb(60000L, 2L).isEmpty());
+    }
+
+    @Test
+    void validateMemoryMb_customMax_stillValidatesMinimum() {
+        assertTrue(InputValidator.validateMemoryMb(3L, 1536L).isPresent());
+    }
+
     // ---- validateDatabaseName ----
 
     @ParameterizedTest

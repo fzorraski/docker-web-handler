@@ -67,6 +67,7 @@ class RunContainerUseCaseTest {
     @Mock DumpStorageService dumpStorageService;
     @Mock ResourceCounterService resourceCounterService;
     @Mock MemoryGuardService memoryGuardService;
+    @Mock br.com.fzdevx.infrastructure.docker.LogRotationResolver logRotationResolver;
 
     @InjectMocks
     RunContainerUseCase useCase;
@@ -74,8 +75,11 @@ class RunContainerUseCaseTest {
     private List<ContainerEvent> events;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         events = new ArrayList<>();
+        java.lang.reflect.Field maxMbField = RunContainerUseCase.class.getDeclaredField("memoryLimitMaxMb");
+        maxMbField.setAccessible(true);
+        maxMbField.setLong(useCase, 65536L);
     }
 
     // ---- helpers ----
@@ -247,6 +251,48 @@ class RunContainerUseCaseTest {
         useCase.execute(req, events::add);
 
         assertLastEventError("Validating", "must not exceed");
+    }
+
+    @Test
+    void execute_memoryExceedsCustomMax_sendsError() throws Exception {
+        java.lang.reflect.Field maxMbField = RunContainerUseCase.class.getDeclaredField("memoryLimitMaxMb");
+        maxMbField.setAccessible(true);
+        maxMbField.setLong(useCase, 1536L);
+
+        RunContainerRequest req = validRequest();
+        req.setMemoryMb(2000L);
+
+        useCase.execute(req, events::add);
+
+        assertLastEventError("Validating", "1536");
+    }
+
+    @Test
+    void execute_memoryExceedsPerRepoMax_sendsError() {
+        when(config.getOptionalValue("repository.memory-limit.max-mb." + REPO, Long.class))
+                .thenReturn(java.util.Optional.of(1024L));
+
+        RunContainerRequest req = validRequest();
+        req.setMemoryMb(1500L);
+
+        useCase.execute(req, events::add);
+
+        assertLastEventError("Validating", "1024");
+    }
+
+    @Test
+    void execute_memoryWithinPerRepoMax_passes() {
+        stubHappyPath();
+        when(config.getOptionalValue("repository.memory-limit.max-mb." + REPO, Long.class))
+                .thenReturn(java.util.Optional.of(2048L));
+
+        RunContainerRequest req = validRequest();
+        req.setMemoryMb(1500L);
+
+        useCase.execute(req, events::add);
+
+        assertTrue(events.stream().noneMatch(e -> e.getType() == ContainerEvent.EventType.ERROR
+                && e.getMessage().contains("exceed")));
     }
 
     // ---- validation: database name ----
@@ -540,7 +586,8 @@ class RunContainerUseCaseTest {
     private void stubHappyPathWithPorts() {
         stubHappyPath();
         when(portFinder.getContainerPorts(REPO)).thenReturn(List.of(8080));
-        when(portFinder.findAvailablePorts(1)).thenReturn(List.of(10000));
+        when(portFinder.getHostPortStart(REPO)).thenReturn(10000);
+        when(portFinder.findAvailablePorts(1, 10000)).thenReturn(List.of(10000));
     }
 
     @Test

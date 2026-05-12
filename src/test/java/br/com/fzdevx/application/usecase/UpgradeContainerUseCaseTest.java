@@ -52,6 +52,7 @@ class UpgradeContainerUseCaseTest {
     @Mock DatabaseService databaseService;
     @Mock ContainerListBroadcaster broadcaster;
     @Mock org.eclipse.microprofile.config.Config appConfig;
+    @Mock br.com.fzdevx.infrastructure.docker.LogRotationResolver logRotationResolver;
 
     @InjectMocks
     UpgradeContainerUseCase useCase;
@@ -351,11 +352,12 @@ class UpgradeContainerUseCaseTest {
         stubDockerOps();
         when(registryService.buildFullImageRef("myrepo", "20.88.3")).thenReturn("myrepo:20.88.3");
         when(portFinder.getContainerPorts("myrepo")).thenReturn(List.of(8080, 8443));
-        when(portFinder.findAvailablePortsPreferring(anyList(), eq(2))).thenReturn(List.of(9090, 9443));
+        when(portFinder.getHostPortStart("myrepo")).thenReturn(10000);
+        when(portFinder.findAvailablePortsPreferring(anyList(), eq(2), eq(10000))).thenReturn(List.of(9090, 9443));
 
         useCase.execute(tagChangeRequest(), eventSink, null);
 
-        verify(portFinder).findAvailablePortsPreferring(anyList(), eq(2));
+        verify(portFinder).findAvailablePortsPreferring(anyList(), eq(2), eq(10000));
         verify(portFinder).releasePorts(List.of(9090, 9443));
     }
 
@@ -389,12 +391,13 @@ class UpgradeContainerUseCaseTest {
         stubDockerOps();
         when(registryService.buildFullImageRef("myrepo", "20.88.3")).thenReturn("myrepo:20.88.3");
         when(portFinder.getContainerPorts("myrepo")).thenReturn(List.of(8080, 9990));
-        when(portFinder.findAvailablePortsPreferring(anyList(), eq(2))).thenReturn(List.of(9090, 9443));
+        when(portFinder.getHostPortStart("myrepo")).thenReturn(10000);
+        when(portFinder.findAvailablePortsPreferring(anyList(), eq(2), eq(10000))).thenReturn(List.of(9090, 9443));
 
         useCase.execute(tagChangeRequest(), eventSink, null);
 
         // Preferred list must be [9090, 9443] — matching the order of container ports [8080, 9990]
-        verify(portFinder).findAvailablePortsPreferring(eq(List.of(9090, 9443)), eq(2));
+        verify(portFinder).findAvailablePortsPreferring(eq(List.of(9090, 9443)), eq(2), eq(10000));
     }
 
     // ---- Pull failure ----

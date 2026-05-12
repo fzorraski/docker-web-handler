@@ -6,6 +6,7 @@ import br.com.fzdevx.application.dto.RestoreDumpRequest;
 import br.com.fzdevx.domain.model.RunContainerConfig;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.LogRotationResolver;
 import br.com.fzdevx.infrastructure.docker.MemoryGuardService;
 import br.com.fzdevx.infrastructure.docker.MigrationService;
 import br.com.fzdevx.application.port.ManagedDatabaseRepository;
@@ -22,7 +23,6 @@ import com.github.dockerjava.api.command.CreateContainerCmd;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.HostConfig;
-import com.github.dockerjava.api.model.LogConfig;
 import com.github.dockerjava.api.model.Ports;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -98,14 +98,11 @@ public class RunContainerUseCase {
     @Inject
     ListManagedDatabasesUseCase listManagedDatabasesUseCase;
 
-    @ConfigProperty(name = "container.log-rotation.enabled", defaultValue = "true")
-    boolean logRotationEnabled;
+    @ConfigProperty(name = "container.memory-limit.max-mb", defaultValue = "65536")
+    long memoryLimitMaxMb;
 
-    @ConfigProperty(name = "container.log-rotation.max-size", defaultValue = "10m")
-    String logRotationMaxSize;
-
-    @ConfigProperty(name = "container.log-rotation.max-files", defaultValue = "3")
-    String logRotationMaxFiles;
+    @Inject
+    LogRotationResolver logRotationResolver;
 
     static class RunContext {
         final AtomicBoolean cancelled = new AtomicBoolean(false);
@@ -168,7 +165,10 @@ public class RunContainerUseCase {
                 return;
             }
 
-            Optional<String> memError = InputValidator.validateMemoryMb(request.getMemoryMb());
+            long effectiveMaxMb = config.getOptionalValue(
+                    "repository.memory-limit.max-mb." + request.getRepository(), Long.class)
+                    .orElse(memoryLimitMaxMb);
+            Optional<String> memError = InputValidator.validateMemoryMb(request.getMemoryMb(), effectiveMaxMb);
             if (memError.isPresent()) {
                 eventSink.accept(ContainerEvent.error("Validating", memError.get()));
                 return;
@@ -449,25 +449,23 @@ public class RunContainerUseCase {
                                        RunContext runCtx, List<Integer> containerPorts) {
         boolean hasMemory = request.getMemoryMb() != null;
         boolean hasPorts = !containerPorts.isEmpty();
+        String repository = request.getRepository();
+        boolean hasLogRotation = logRotationResolver.isEnabled(repository);
 
-        if (!hasMemory && !hasPorts && !logRotationEnabled) {
+        if (!hasMemory && !hasPorts && !hasLogRotation) {
             return null;
         }
 
         HostConfig hostConfig = HostConfig.newHostConfig();
-
-        if (logRotationEnabled) {
-            hostConfig.withLogConfig(new LogConfig(
-                    LogConfig.LoggingType.JSON_FILE,
-                    Map.of("max-size", logRotationMaxSize, "max-file", logRotationMaxFiles)));
-        }
+        logRotationResolver.apply(hostConfig, repository);
 
         if (hasMemory) {
             hostConfig.withMemory(request.getMemoryMb() * 1024 * 1024);
         }
 
         if (hasPorts) {
-            List<Integer> hostPorts = portFinder.findAvailablePorts(containerPorts.size());
+            int startPort = portFinder.getHostPortStart(repository);
+            List<Integer> hostPorts = portFinder.findAvailablePorts(containerPorts.size(), startPort);
             runCtx.allocatedPorts = List.copyOf(hostPorts);
             Ports portBindings = new Ports();
             for (int i = 0; i < containerPorts.size(); i++) {
@@ -515,7 +513,14 @@ public class RunContainerUseCase {
             if (javaOptsVar != null) {
                 long xmx = (long) (memoryMb * XMX_MEMORY_RATIO);
                 long xms = (long) (memoryMb * XMS_MEMORY_RATIO);
-                envMap.put(javaOptsVar, "-Xmx" + xmx + "m -Xms" + xms + "m");
+                String existing = envMap.get(javaOptsVar);
+                if (existing != null && !existing.isBlank()) {
+                    existing = existing.replaceAll("-Xmx\\S+", "").replaceAll("-Xms\\S+", "")
+                            .replaceAll("\\s+", " ").trim();
+                    envMap.put(javaOptsVar, "-Xmx" + xmx + "m -Xms" + xms + "m " + existing);
+                } else {
+                    envMap.put(javaOptsVar, "-Xmx" + xmx + "m -Xms" + xms + "m");
+                }
             }
         }
 

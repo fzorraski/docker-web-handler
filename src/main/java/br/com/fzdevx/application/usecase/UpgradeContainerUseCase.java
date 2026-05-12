@@ -10,6 +10,7 @@ import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.application.port.ExpirationRepository;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.infrastructure.docker.ContainerSchedulingService;
+import br.com.fzdevx.infrastructure.docker.LogRotationResolver;
 import br.com.fzdevx.infrastructure.docker.MigrationService;
 import br.com.fzdevx.infrastructure.docker.PortFinder;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
@@ -21,7 +22,6 @@ import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.InspectContainerResponse;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.HostConfig;
-import com.github.dockerjava.api.model.LogConfig;
 import com.github.dockerjava.api.model.Ports;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -48,15 +48,7 @@ public class UpgradeContainerUseCase {
     @Inject DatabaseService databaseService;
     @Inject ContainerListBroadcaster broadcaster;
     @Inject org.eclipse.microprofile.config.Config appConfig;
-
-    @ConfigProperty(name = "container.log-rotation.enabled", defaultValue = "true")
-    boolean logRotationEnabled;
-
-    @ConfigProperty(name = "container.log-rotation.max-size", defaultValue = "10m")
-    String logRotationMaxSize;
-
-    @ConfigProperty(name = "container.log-rotation.max-files", defaultValue = "3")
-    String logRotationMaxFiles;
+    @Inject LogRotationResolver logRotationResolver;
 
     private final ConcurrentHashMap<String, AtomicBoolean> activeRuns = new ConcurrentHashMap<>();
 
@@ -203,7 +195,8 @@ public class UpgradeContainerUseCase {
                             preferredHostPorts.add(hp);
                         }
                     }
-                    allocatedPorts = portFinder.findAvailablePortsPreferring(preferredHostPorts, containerPorts.size());
+                    int startPort = portFinder.getHostPortStart(repository);
+                    allocatedPorts = portFinder.findAvailablePortsPreferring(preferredHostPorts, containerPorts.size(), startPort);
                 }
 
                 CreateContainerCmd createCmd = dockerClient.createContainerCmd(imageRef);
@@ -217,7 +210,7 @@ public class UpgradeContainerUseCase {
                     createCmd.withLabels(labels);
                 }
 
-                HostConfig hostConfig = buildHostConfig(memoryBytes, containerPorts, allocatedPorts);
+                HostConfig hostConfig = buildHostConfig(memoryBytes, containerPorts, allocatedPorts, repository);
                 if (hostConfig != null) {
                     createCmd.withHostConfig(hostConfig);
                 }
@@ -330,21 +323,18 @@ public class UpgradeContainerUseCase {
                 repository, databaseName, pgImage, pgInfo, eventSink, cancelled);
     }
 
-    private HostConfig buildHostConfig(Long memoryBytes, List<Integer> containerPorts, List<Integer> hostPorts) {
+    private HostConfig buildHostConfig(Long memoryBytes, List<Integer> containerPorts,
+                                       List<Integer> hostPorts, String repository) {
         boolean hasMemory = memoryBytes != null && memoryBytes > 0;
         boolean hasPorts = !containerPorts.isEmpty() && hostPorts != null;
+        boolean hasLogRotation = logRotationResolver.isEnabled(repository);
 
-        if (!hasMemory && !hasPorts && !logRotationEnabled) {
+        if (!hasMemory && !hasPorts && !hasLogRotation) {
             return null;
         }
 
         HostConfig hostConfig = HostConfig.newHostConfig();
-
-        if (logRotationEnabled) {
-            hostConfig.withLogConfig(new LogConfig(
-                    LogConfig.LoggingType.JSON_FILE,
-                    Map.of("max-size", logRotationMaxSize, "max-file", logRotationMaxFiles)));
-        }
+        logRotationResolver.apply(hostConfig, repository);
 
         if (hasMemory) {
             hostConfig.withMemory(memoryBytes);

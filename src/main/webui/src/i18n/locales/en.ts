@@ -628,6 +628,8 @@ const en = {
     memoryLimit: 'Memory Limit (MB)',
     memoryPlaceholder: 'e.g. 512 (optional)',
     memoryHelperText: 'Leave empty for no limit',
+    memoryHelperTextMax: 'Maximum: {{max}} MB',
+    memoryExceeded: 'Must not exceed {{max}} MB',
     existingDatabase: 'Existing Database',
     restoreFromDump: 'Restore from Dump',
     database: 'Database',

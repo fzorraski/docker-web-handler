@@ -64,6 +64,10 @@ public class ContainerConfigController {
     boolean memoryLimitEnabled;
 
     @Inject
+    @ConfigProperty(name = "container.memory-limit.max-mb", defaultValue = "65536")
+    long memoryLimitMaxMb;
+
+    @Inject
     @ConfigProperty(name = "ui.locale")
     Optional<String> uiLocale;
 
@@ -82,6 +86,14 @@ public class ContainerConfigController {
     @Inject
     @ConfigProperty(name = "container.terminal.upload.default-path", defaultValue = "/tmp")
     String terminalUploadDefaultPath;
+
+    @Inject
+    @ConfigProperty(name = "container.log-rotation.max-size", defaultValue = "10m")
+    String logRotationMaxSize;
+
+    @Inject
+    @ConfigProperty(name = "container.log-rotation.max-files", defaultValue = "3")
+    String logRotationMaxFiles;
 
     @Inject
     Config config;
@@ -173,6 +185,47 @@ public class ContainerConfigController {
     }
 
     @GET
+    @Path("/memory-limit-max-mb")
+    @Produces(MediaType.APPLICATION_JSON)
+    public long getMemoryLimitMaxMb(@QueryParam("repository") String repository) {
+        if (repository != null && !repository.isBlank()
+                && InputValidator.validateRepository(repository).isEmpty()) {
+            Optional<Long> perRepo = config.getOptionalValue(
+                    "repository.memory-limit.max-mb." + repository, Long.class);
+            if (perRepo.isPresent()) {
+                return perRepo.get();
+            }
+        }
+        return memoryLimitMaxMb;
+    }
+
+    @GET
+    @Path("/repository-config")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Map<String, Object> getRepositoryConfig(@QueryParam("repository") String repository) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        boolean hasRepo = repository != null && !repository.isBlank()
+                && InputValidator.validateRepository(repository).isEmpty();
+
+        result.put("memoryLimitEnabled", hasRepo
+                ? config.getOptionalValue("repository.memory-limit.enabled." + repository, Boolean.class)
+                        .orElse(memoryLimitEnabled)
+                : memoryLimitEnabled);
+
+        result.put("memoryLimitMaxMb", hasRepo
+                ? config.getOptionalValue("repository.memory-limit.max-mb." + repository, Long.class)
+                        .orElse(memoryLimitMaxMb)
+                : memoryLimitMaxMb);
+
+        result.put("defaultExpirationMinutes", hasRepo
+                ? config.getOptionalValue("repository.default-expiration-minutes." + repository, Integer.class)
+                        .orElse(defaultExpirationMinutes)
+                : defaultExpirationMinutes);
+
+        return result;
+    }
+
+    @GET
     @Path("/locale")
     @Produces(MediaType.TEXT_PLAIN)
     public String getLocale() {
@@ -227,6 +280,7 @@ public class ContainerConfigController {
     public Map<String, Object> getFeatures() {
         Map<String, Object> features = new LinkedHashMap<>();
         features.put("memoryLimit", memoryLimitEnabled);
+        features.put("memoryLimitMaxMb", memoryLimitMaxMb);
         features.put("deletionOnExpiration", databaseService.isDeletionOnExpirationEnabled());
         features.put("databaseListing", databaseService.isListingEnabled());
         features.put("dump", dumpStorageService.isEnabled());
