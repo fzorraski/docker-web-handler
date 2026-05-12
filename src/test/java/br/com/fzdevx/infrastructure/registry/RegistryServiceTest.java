@@ -70,12 +70,25 @@ class RegistryServiceTest {
     }
 
     @Test
-    void buildFullImageRef_dockerHub_ignoresRegistryPath() {
+    void buildFullImageRef_dockerHub_usesRegistryPath_whenConfigured() {
         mockPerRepoConfig("myapp",
                 "",
                 "hubuser",
                 "hubpass",
-                "some/ignored/path");
+                "sparkinfra/mywms_spk_qa");
+
+        String ref = service.buildFullImageRef("myapp", "latest");
+
+        assertEquals("sparkinfra/mywms_spk_qa:latest", ref);
+    }
+
+    @Test
+    void buildFullImageRef_dockerHub_fallsBackToUsername_whenNoRegistryPath() {
+        mockPerRepoConfig("myapp",
+                "",
+                "hubuser",
+                "hubpass",
+                null);
 
         String ref = service.buildFullImageRef("myapp", "latest");
 
@@ -425,6 +438,137 @@ class RegistryServiceTest {
 
         RuntimeException ex = assertThrows(RuntimeException.class, () -> service.fetchTags("myapp"));
         assertTrue(ex.getMessage().contains("401"));
+    }
+
+    @Test
+    void fetchTags_v2TokenAuth_rejectsRealmFromDifferentHost() throws Exception {
+        httpServer = HttpServer.create(new InetSocketAddress(0), 0);
+        int port = httpServer.getAddress().getPort();
+        String baseUrl = "http://localhost:" + port;
+
+        // 401 with realm pointing to a different host (SSRF attempt)
+        httpServer.createContext("/v2/myapp/tags/list", exchange -> {
+            exchange.getResponseHeaders().add("Www-Authenticate",
+                    "Bearer realm=\"http://attacker.com/token\",service=\"reg\"");
+            exchange.sendResponseHeaders(401, -1);
+            exchange.close();
+        });
+
+        httpServer.start();
+
+        mockPerRepoConfig("myapp", baseUrl, "user", "pass", null);
+        replaceHttpClient();
+
+        RuntimeException ex = assertThrows(RuntimeException.class, () -> service.fetchTags("myapp"));
+        assertTrue(ex.getMessage().contains("401"));
+    }
+
+    // ── parseTagsResponse (tags null / missing / empty) ───────────────────
+
+    @Test
+    void fetchTags_v2_returnsEmpty_whenTagsIsJsonNull() throws Exception {
+        httpServer = HttpServer.create(new InetSocketAddress(0), 0);
+        int port = httpServer.getAddress().getPort();
+        String baseUrl = "http://localhost:" + port;
+
+        httpServer.createContext("/v2/myapp/tags/list", exchange -> {
+            byte[] body = "{\"name\":\"myapp\",\"tags\":null}".getBytes();
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+
+        httpServer.start();
+
+        mockPerRepoConfig("myapp", baseUrl, "user", "pass", null);
+        replaceHttpClient();
+
+        List<String> tags = service.fetchTags("myapp");
+
+        assertTrue(tags.isEmpty());
+    }
+
+    @Test
+    void fetchTags_v2_returnsEmpty_whenTagsKeyMissing() throws Exception {
+        httpServer = HttpServer.create(new InetSocketAddress(0), 0);
+        int port = httpServer.getAddress().getPort();
+        String baseUrl = "http://localhost:" + port;
+
+        httpServer.createContext("/v2/myapp/tags/list", exchange -> {
+            byte[] body = "{\"name\":\"myapp\"}".getBytes();
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+
+        httpServer.start();
+
+        mockPerRepoConfig("myapp", baseUrl, "user", "pass", null);
+        replaceHttpClient();
+
+        List<String> tags = service.fetchTags("myapp");
+
+        assertTrue(tags.isEmpty());
+    }
+
+    @Test
+    void fetchTags_v2_returnsEmpty_whenTagsIsEmptyArray() throws Exception {
+        httpServer = HttpServer.create(new InetSocketAddress(0), 0);
+        int port = httpServer.getAddress().getPort();
+        String baseUrl = "http://localhost:" + port;
+
+        httpServer.createContext("/v2/myapp/tags/list", exchange -> {
+            byte[] body = "{\"name\":\"myapp\",\"tags\":[]}".getBytes();
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+
+        httpServer.start();
+
+        mockPerRepoConfig("myapp", baseUrl, "user", "pass", null);
+        replaceHttpClient();
+
+        List<String> tags = service.fetchTags("myapp");
+
+        assertTrue(tags.isEmpty());
+    }
+
+    @Test
+    void fetchTags_v2TokenAuth_returnsEmpty_whenTagsIsJsonNull_afterTokenExchange() throws Exception {
+        httpServer = HttpServer.create(new InetSocketAddress(0), 0);
+        int port = httpServer.getAddress().getPort();
+        String baseUrl = "http://localhost:" + port;
+
+        httpServer.createContext("/v2/group/app/tags/list", exchange -> {
+            String authHeader = exchange.getRequestHeaders().getFirst("Authorization");
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                byte[] body = "{\"name\":\"group/app\",\"tags\":null}".getBytes();
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+            } else {
+                exchange.getResponseHeaders().add("Www-Authenticate",
+                        "Bearer realm=\"" + baseUrl + "/token\",service=\"reg\",scope=\"repository:group/app:pull\"");
+                exchange.sendResponseHeaders(401, -1);
+            }
+            exchange.close();
+        });
+
+        httpServer.createContext("/token", exchange -> {
+            byte[] body = "{\"token\":\"test-token\"}".getBytes();
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+
+        httpServer.start();
+
+        mockPerRepoConfig("myapp", baseUrl, "user", "pass", "group/app");
+        replaceHttpClient();
+
+        List<String> tags = service.fetchTags("myapp");
+
+        assertTrue(tags.isEmpty());
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────

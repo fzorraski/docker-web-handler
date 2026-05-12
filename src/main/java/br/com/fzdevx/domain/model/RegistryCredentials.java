@@ -20,9 +20,13 @@ public record RegistryCredentials(String url, String username, String password, 
         return url.replaceAll("^https?://", "").replaceAll("/$", "");
     }
 
+    public boolean hasRegistryPath() {
+        return registryPath != null && !registryPath.isBlank();
+    }
+
     /** Returns the registry path if configured, otherwise falls back to the given repository name. */
     public String resolvePathOrDefault(String repository) {
-        return registryPath != null && !registryPath.isBlank() ? registryPath : repository;
+        return hasRegistryPath() ? registryPath : repository;
     }
 
     @Override

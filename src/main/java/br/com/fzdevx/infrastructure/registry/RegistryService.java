@@ -15,6 +15,7 @@ import com.github.dockerjava.api.model.AuthConfig;
 
 import java.io.StringReader;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -98,8 +99,10 @@ public class RegistryService implements RegistryPort {
             String path = creds.resolvePathOrDefault(repository);
             return creds.host() + "/" + path + ":" + tag;
         }
-        String resolved = repository.contains("/") ? repository : resolveDockerHubPath(repository, creds);
-        return resolved + ":" + tag;
+        String path = creds.hasRegistryPath()
+                ? creds.registryPath()
+                : (repository.contains("/") ? repository : resolveDockerHubPath(repository, creds));
+        return path + ":" + tag;
     }
 
     // ── Config parsing ──────────────────────────────────────────────────
@@ -145,7 +148,11 @@ public class RegistryService implements RegistryPort {
         if (cached != null) {
             return cached;
         }
-        return getCredentialsList(repository).getFirst();
+        List<RegistryCredentials> list = getCredentialsList(repository);
+        if (list.isEmpty()) {
+            return new RegistryCredentials("", "", "");
+        }
+        return list.getFirst();
     }
 
     private String cacheKey(String repository, String tag) {
@@ -162,7 +169,9 @@ public class RegistryService implements RegistryPort {
     }
 
     private List<String> fetchDockerHubTags(String repository, RegistryCredentials creds) throws Exception {
-        String path = resolveDockerHubPath(repository, creds);
+        String path = creds.hasRegistryPath()
+                ? creds.registryPath()
+                : resolveDockerHubPath(repository, creds);
         String token = obtainDockerHubToken(path, creds);
 
         String url = "https://registry-1.docker.io/v2/" + path + "/tags/list";
@@ -177,7 +186,7 @@ public class RegistryService implements RegistryPort {
 
         if (response.statusCode() != 200) {
             throw new RuntimeException("Docker Hub returned status " + response.statusCode()
-                    + " for repository: " + repository);
+                    + " for repository: " + repository + " (path: " + path + ")");
         }
 
         return parseTagsResponse(response.body());
@@ -232,7 +241,7 @@ public class RegistryService implements RegistryPort {
 
         // Handle token-based auth (GitLab, GitHub GHCR, etc.)
         if (response.statusCode() == 401 && creds.hasCredentials()) {
-            String bearerToken = obtainV2Token(response, creds);
+            String bearerToken = obtainV2Token(response, creds, baseUrl);
             if (bearerToken != null) {
                 HttpRequest tokenRequest = HttpRequest.newBuilder()
                         .uri(URI.create(url))
@@ -255,7 +264,7 @@ public class RegistryService implements RegistryPort {
      * Parses the Www-Authenticate header from a 401 response and exchanges credentials for a Bearer token.
      * Supports the format: Bearer realm="...",service="...",scope="..."
      */
-    private String obtainV2Token(HttpResponse<String> challengeResponse, RegistryCredentials creds) throws Exception {
+    private String obtainV2Token(HttpResponse<String> challengeResponse, RegistryCredentials creds, String registryBaseUrl) throws Exception {
         String wwwAuth = challengeResponse.headers()
                 .firstValue("Www-Authenticate")
                 .or(() -> challengeResponse.headers().firstValue("www-authenticate"))
@@ -267,14 +276,26 @@ public class RegistryService implements RegistryPort {
         String realm = extractAuthParam(wwwAuth, "realm");
         String service = extractAuthParam(wwwAuth, "service");
         String scope = extractAuthParam(wwwAuth, "scope");
-        if (realm == null) {
+        if (realm == null || (!realm.startsWith("https://") && !realm.startsWith("http://"))) {
+            return null;
+        }
+
+        // Validate that the token endpoint belongs to the same registry domain
+        // to prevent SSRF via a malicious Www-Authenticate header.
+        // Allows subdomain relationships in both directions (e.g., registry.gitlab.com → gitlab.com).
+        String registryHost = URI.create(registryBaseUrl).getHost();
+        String realmHost = URI.create(realm).getHost();
+        if (registryHost == null || realmHost == null
+                || (!realmHost.equals(registryHost)
+                    && !realmHost.endsWith("." + registryHost)
+                    && !registryHost.endsWith("." + realmHost))) {
             return null;
         }
 
         StringBuilder tokenUrl = new StringBuilder(realm);
         tokenUrl.append(realm.contains("?") ? "&" : "?");
-        if (service != null) tokenUrl.append("service=").append(service).append("&");
-        if (scope != null) tokenUrl.append("scope=").append(scope);
+        if (service != null) tokenUrl.append("service=").append(URLEncoder.encode(service, java.nio.charset.StandardCharsets.UTF_8)).append("&");
+        if (scope != null) tokenUrl.append("scope=").append(URLEncoder.encode(scope, java.nio.charset.StandardCharsets.UTF_8));
 
         String basicAuth = Base64.getEncoder().encodeToString(
                 (creds.username() + ":" + creds.password()).getBytes());
@@ -313,10 +334,12 @@ public class RegistryService implements RegistryPort {
         List<String> tags = new ArrayList<>();
         try (JsonReader reader = Json.createReader(new StringReader(body))) {
             JsonObject json = reader.readObject();
-            JsonArray tagsArray = json.getJsonArray("tags");
-            if (tagsArray != null) {
+            if (json.containsKey("tags") && !json.isNull("tags")) {
+                JsonArray tagsArray = json.getJsonArray("tags");
                 for (int i = 0; i < tagsArray.size(); i++) {
-                    tags.add(tagsArray.getString(i));
+                    if (!tagsArray.isNull(i)) {
+                        tags.add(tagsArray.getString(i));
+                    }
                 }
             }
         }
