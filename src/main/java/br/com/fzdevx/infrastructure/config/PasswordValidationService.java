@@ -8,8 +8,12 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Optional;
+
+import io.quarkus.logging.Log;
 
 
 @ApplicationScoped
@@ -80,13 +84,18 @@ public class PasswordValidationService {
 
     /**
      * Constant-time password comparison. Returns false if configured is empty/blank.
-     * Shared utility for any password check that doesn't use the required/tier pattern.
+     * Hashes both values with SHA-256 before comparing to prevent password length leakage.
      */
     public static boolean constantTimeEquals(Optional<String> configured, String input) {
         if (configured.isEmpty() || configured.get().isBlank()) return false;
-        return MessageDigest.isEqual(
-                configured.get().getBytes(),
-                (input != null ? input : "").getBytes());
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] configuredHash = digest.digest(configured.get().getBytes(StandardCharsets.UTF_8));
+            byte[] inputHash = digest.digest((input != null ? input : "").getBytes(StandardCharsets.UTF_8));
+            return MessageDigest.isEqual(configuredHash, inputHash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 not available", e);
+        }
     }
 
     private boolean validate(String rateLimitCategory, Optional<String> configured, boolean required, String input) {
@@ -95,7 +104,7 @@ public class PasswordValidationService {
     }
 
     private boolean compareWithRateLimit(String category, Optional<String> configured, String input) {
-        String rateLimitKey = resolveRateLimitKey(category, input);
+        String rateLimitKey = resolveRateLimitKey(category);
         if (rateLimitKey != null) {
             Optional<Long> blocked = rateLimitPort.checkRateLimit(rateLimitKey);
             if (blocked.isPresent()) {
@@ -113,8 +122,7 @@ public class PasswordValidationService {
         return valid;
     }
 
-    private String resolveRateLimitKey(String category, String input) {
-        if (input == null || input.isBlank()) return null;
+    private String resolveRateLimitKey(String category) {
         String clientIp = getClientIp();
         if (clientIp == null) return null;
         return category + ":" + clientIp;
@@ -125,6 +133,7 @@ public class PasswordValidationService {
             HttpServerRequest request = requestProvider.get();
             return AuthController.extractClientIp(request, trustForwardedHeaders);
         } catch (Exception e) {
+            Log.warn("Could not determine client IP for rate limiting — rate limiting is disabled for this request");
             return null;
         }
     }

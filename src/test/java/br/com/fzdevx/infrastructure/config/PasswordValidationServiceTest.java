@@ -390,21 +390,23 @@ class PasswordValidationServiceTest {
     }
 
     @Test
-    void validateOperations_nullPassword_skipsRateLimit() throws Exception {
+    void validateOperations_nullPassword_stillRateLimited() throws Exception {
         var rateLimitPort = mock(RateLimitPort.class);
+        when(rateLimitPort.checkRateLimit(anyString())).thenReturn(Optional.empty());
         var service = opsServiceWithRateLimit("secret", rateLimitPort, mockRequestProvider("10.0.0.1"));
 
         assertFalse(service.validateOperationsPassword(null));
-        verifyNoInteractions(rateLimitPort);
+        verify(rateLimitPort).recordFailure("ops-pw:10.0.0.1");
     }
 
     @Test
-    void validateOperations_blankPassword_skipsRateLimit() throws Exception {
+    void validateOperations_blankPassword_stillRateLimited() throws Exception {
         var rateLimitPort = mock(RateLimitPort.class);
+        when(rateLimitPort.checkRateLimit(anyString())).thenReturn(Optional.empty());
         var service = opsServiceWithRateLimit("secret", rateLimitPort, mockRequestProvider("10.0.0.1"));
 
         assertFalse(service.validateOperationsPassword("  "));
-        verifyNoInteractions(rateLimitPort);
+        verify(rateLimitPort).recordFailure("ops-pw:10.0.0.1");
     }
 
     @SuppressWarnings("unchecked")
