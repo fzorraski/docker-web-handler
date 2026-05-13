@@ -66,19 +66,17 @@ public class PasswordValidationService {
     }
 
     public boolean validateSchedulingPassword(String password) {
-        if (!schedulingPasswordRequired) return true;
-        if (!hasPassword(schedulingPassword)) return false;
-        return compareWithRateLimit("schedule-pw", schedulingPassword, password);
+        return validate("schedule-pw", schedulingPassword, schedulingPasswordRequired, password);
     }
 
     public boolean validateTerminalPassword(String password) {
         return validate("terminal-pw", terminalPassword, terminalPasswordRequired, password);
     }
 
-    public boolean isUploadPasswordRequired() { return uploadPasswordRequired && hasPassword(uploadPassword); }
-    public boolean isOperationsPasswordRequired() { return operationsPasswordRequired && hasPassword(operationsPassword); }
-    public boolean isSchedulingPasswordRequired() { return schedulingPasswordRequired && hasPassword(schedulingPassword); }
-    public boolean isTerminalPasswordRequired() { return terminalPasswordRequired && hasPassword(terminalPassword); }
+    public boolean isUploadPasswordRequired() { return uploadPasswordRequired || hasPassword(uploadPassword); }
+    public boolean isOperationsPasswordRequired() { return operationsPasswordRequired || hasPassword(operationsPassword); }
+    public boolean isSchedulingPasswordRequired() { return schedulingPasswordRequired || hasPassword(schedulingPassword); }
+    public boolean isTerminalPasswordRequired() { return terminalPasswordRequired || hasPassword(terminalPassword); }
 
     /**
      * Constant-time password comparison. Returns false if configured is empty/blank.
@@ -92,8 +90,7 @@ public class PasswordValidationService {
     }
 
     private boolean validate(String rateLimitCategory, Optional<String> configured, boolean required, String input) {
-        if (!required) return true;
-        if (!hasPassword(configured)) return true;
+        if (!hasPassword(configured)) return !required;
         return compareWithRateLimit(rateLimitCategory, configured, input);
     }
 

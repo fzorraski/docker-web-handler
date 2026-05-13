@@ -65,33 +65,40 @@ class PasswordValidationServiceTest {
         assertFalse(opsService("secret", true).validateOperationsPassword(""));
     }
 
-    // ---- operations password: required=false ----
+    // ---- operations password: required=false, password configured ----
 
     @Test
-    void validateOperations_notRequired_returnsTrue_withNull() throws Exception {
-        assertTrue(opsService("secret", false).validateOperationsPassword(null));
+    void validateOperations_notRequiredButConfigured_correctPassword_returnsTrue() throws Exception {
+        assertTrue(opsService("secret", false).validateOperationsPassword("secret"));
     }
 
     @Test
-    void validateOperations_notRequired_returnsTrue_withWrongPassword() throws Exception {
-        assertTrue(opsService("secret", false).validateOperationsPassword("wrong"));
+    void validateOperations_notRequiredButConfigured_wrongPassword_returnsFalse() throws Exception {
+        assertFalse(opsService("secret", false).validateOperationsPassword("wrong"));
     }
 
     @Test
-    void validateOperations_notRequired_returnsTrue_withEmptyPassword() throws Exception {
-        assertTrue(opsService("secret", false).validateOperationsPassword(""));
+    void validateOperations_notRequiredButConfigured_nullPassword_returnsFalse() throws Exception {
+        assertFalse(opsService("secret", false).validateOperationsPassword(null));
+    }
+
+    // ---- operations password: required=false, no password configured ----
+
+    @Test
+    void validateOperations_notRequiredAndNotConfigured_returnsTrue() throws Exception {
+        assertTrue(opsService(null, false).validateOperationsPassword("anything"));
     }
 
     // ---- operations password: required but no password configured ----
 
     @Test
-    void validateOperations_requiredButNoPasswordConfigured_returnsTrue() throws Exception {
-        assertTrue(opsService(null, true).validateOperationsPassword("anything"));
+    void validateOperations_requiredButNoPasswordConfigured_returnsFalse() throws Exception {
+        assertFalse(opsService(null, true).validateOperationsPassword("anything"));
     }
 
     @Test
-    void validateOperations_requiredButBlankPasswordConfigured_returnsTrue() throws Exception {
-        assertTrue(opsService("  ", true).validateOperationsPassword("anything"));
+    void validateOperations_requiredButBlankPasswordConfigured_returnsFalse() throws Exception {
+        assertFalse(opsService("  ", true).validateOperationsPassword("anything"));
     }
 
     // ---- isOperationsPasswordRequired ----
@@ -102,16 +109,99 @@ class PasswordValidationServiceTest {
     }
 
     @Test
-    void isOperationsPasswordRequired_requiredButNotConfigured_returnsFalse() throws Exception {
-        assertFalse(opsService(null, true).isOperationsPasswordRequired());
+    void isOperationsPasswordRequired_requiredButNotConfigured_returnsTrue() throws Exception {
+        assertTrue(opsService(null, true).isOperationsPasswordRequired());
     }
 
     @Test
-    void isOperationsPasswordRequired_notRequired_returnsFalse() throws Exception {
-        assertFalse(opsService("secret", false).isOperationsPasswordRequired());
+    void isOperationsPasswordRequired_notRequiredButConfigured_returnsTrue() throws Exception {
+        assertTrue(opsService("secret", false).isOperationsPasswordRequired());
     }
 
-    // ---- upload password (same validate logic) ----
+    @Test
+    void isOperationsPasswordRequired_notRequiredAndNotConfigured_returnsFalse() throws Exception {
+        assertFalse(opsService(null, false).isOperationsPasswordRequired());
+    }
+
+    // ---- isUploadPasswordRequired ----
+
+    @Test
+    void isUploadPasswordRequired_requiredAndConfigured_returnsTrue() throws Exception {
+        var service = createService(null, false, "upload", true, null, false, null, false);
+        assertTrue(service.isUploadPasswordRequired());
+    }
+
+    @Test
+    void isUploadPasswordRequired_requiredButNotConfigured_returnsTrue() throws Exception {
+        var service = createService(null, false, null, true, null, false, null, false);
+        assertTrue(service.isUploadPasswordRequired());
+    }
+
+    @Test
+    void isUploadPasswordRequired_notRequiredButConfigured_returnsTrue() throws Exception {
+        var service = createService(null, false, "upload", false, null, false, null, false);
+        assertTrue(service.isUploadPasswordRequired());
+    }
+
+    @Test
+    void isUploadPasswordRequired_notRequiredAndNotConfigured_returnsFalse() throws Exception {
+        var service = createService(null, false, null, false, null, false, null, false);
+        assertFalse(service.isUploadPasswordRequired());
+    }
+
+    // ---- isSchedulingPasswordRequired ----
+
+    @Test
+    void isSchedulingPasswordRequired_requiredAndConfigured_returnsTrue() throws Exception {
+        var service = createService(null, false, null, false, "sched", true, null, false);
+        assertTrue(service.isSchedulingPasswordRequired());
+    }
+
+    @Test
+    void isSchedulingPasswordRequired_requiredButNotConfigured_returnsTrue() throws Exception {
+        var service = createService(null, false, null, false, null, true, null, false);
+        assertTrue(service.isSchedulingPasswordRequired());
+    }
+
+    @Test
+    void isSchedulingPasswordRequired_notRequiredButConfigured_returnsTrue() throws Exception {
+        var service = createService(null, false, null, false, "sched", false, null, false);
+        assertTrue(service.isSchedulingPasswordRequired());
+    }
+
+    @Test
+    void isSchedulingPasswordRequired_notRequiredAndNotConfigured_returnsFalse() throws Exception {
+        var service = createService(null, false, null, false, null, false, null, false);
+        assertFalse(service.isSchedulingPasswordRequired());
+    }
+
+    // ---- isTerminalPasswordRequired ----
+
+    @Test
+    void isTerminalPasswordRequired_requiredAndConfigured_returnsTrue() throws Exception {
+        var service = createService(null, false, null, false, null, false, "term", true);
+        assertTrue(service.isTerminalPasswordRequired());
+    }
+
+    @Test
+    void isTerminalPasswordRequired_requiredButNotConfigured_returnsTrue() throws Exception {
+        var service = createService(null, false, null, false, null, false, null, true);
+        assertTrue(service.isTerminalPasswordRequired());
+    }
+
+    @Test
+    void isTerminalPasswordRequired_notRequiredButConfigured_returnsTrue() throws Exception {
+        var service = createService(null, false, null, false, null, false, "term", false);
+        assertTrue(service.isTerminalPasswordRequired());
+    }
+
+    @Test
+    void isTerminalPasswordRequired_notRequiredAndNotConfigured_returnsFalse() throws Exception {
+        var service = createService(null, false, null, false, null, false, null, false);
+        assertFalse(service.isTerminalPasswordRequired());
+    }
+
+    // ---- upload password ----
 
     @Test
     void validateUpload_requiredWithCorrectPassword_returnsTrue() throws Exception {
@@ -120,12 +210,36 @@ class PasswordValidationServiceTest {
     }
 
     @Test
-    void validateUpload_notRequired_returnsTrue() throws Exception {
+    void validateUpload_requiredWithWrongPassword_returnsFalse() throws Exception {
+        var service = createService(null, false, "upload123", true, null, false, null, false);
+        assertFalse(service.validateUploadPassword("wrong"));
+    }
+
+    @Test
+    void validateUpload_requiredButNotConfigured_returnsFalse() throws Exception {
+        var service = createService(null, false, null, true, null, false, null, false);
+        assertFalse(service.validateUploadPassword("anything"));
+    }
+
+    @Test
+    void validateUpload_notRequiredButConfigured_correctPassword_returnsTrue() throws Exception {
         var service = createService(null, false, "upload123", false, null, false, null, false);
+        assertTrue(service.validateUploadPassword("upload123"));
+    }
+
+    @Test
+    void validateUpload_notRequiredButConfigured_wrongPassword_returnsFalse() throws Exception {
+        var service = createService(null, false, "upload123", false, null, false, null, false);
+        assertFalse(service.validateUploadPassword("wrong"));
+    }
+
+    @Test
+    void validateUpload_notRequiredAndNotConfigured_returnsTrue() throws Exception {
+        var service = createService(null, false, null, false, null, false, null, false);
         assertTrue(service.validateUploadPassword(null));
     }
 
-    // ---- scheduling password (custom logic) ----
+    // ---- scheduling password ----
 
     @Test
     void validateScheduling_requiredWithCorrectPassword_returnsTrue() throws Exception {
@@ -140,15 +254,27 @@ class PasswordValidationServiceTest {
     }
 
     @Test
-    void validateScheduling_notRequired_returnsTrue() throws Exception {
-        var service = createService(null, false, null, false, "sched", false, null, false);
-        assertTrue(service.validateSchedulingPassword(null));
-    }
-
-    @Test
     void validateScheduling_requiredButNotConfigured_returnsFalse() throws Exception {
         var service = createService(null, false, null, false, null, true, null, false);
         assertFalse(service.validateSchedulingPassword("anything"));
+    }
+
+    @Test
+    void validateScheduling_notRequiredButConfigured_correctPassword_returnsTrue() throws Exception {
+        var service = createService(null, false, null, false, "sched", false, null, false);
+        assertTrue(service.validateSchedulingPassword("sched"));
+    }
+
+    @Test
+    void validateScheduling_notRequiredButConfigured_wrongPassword_returnsFalse() throws Exception {
+        var service = createService(null, false, null, false, "sched", false, null, false);
+        assertFalse(service.validateSchedulingPassword("wrong"));
+    }
+
+    @Test
+    void validateScheduling_notRequiredAndNotConfigured_returnsTrue() throws Exception {
+        var service = createService(null, false, null, false, null, false, null, false);
+        assertTrue(service.validateSchedulingPassword("anything"));
     }
 
     // ---- terminal password ----
@@ -160,9 +286,33 @@ class PasswordValidationServiceTest {
     }
 
     @Test
-    void validateTerminal_notRequired_returnsTrue() throws Exception {
+    void validateTerminal_requiredWithWrongPassword_returnsFalse() throws Exception {
+        var service = createService(null, false, null, false, null, false, "term", true);
+        assertFalse(service.validateTerminalPassword("wrong"));
+    }
+
+    @Test
+    void validateTerminal_requiredButNotConfigured_returnsFalse() throws Exception {
+        var service = createService(null, false, null, false, null, false, null, true);
+        assertFalse(service.validateTerminalPassword("anything"));
+    }
+
+    @Test
+    void validateTerminal_notRequiredButConfigured_correctPassword_returnsTrue() throws Exception {
         var service = createService(null, false, null, false, null, false, "term", false);
-        assertTrue(service.validateTerminalPassword(null));
+        assertTrue(service.validateTerminalPassword("term"));
+    }
+
+    @Test
+    void validateTerminal_notRequiredButConfigured_wrongPassword_returnsFalse() throws Exception {
+        var service = createService(null, false, null, false, null, false, "term", false);
+        assertFalse(service.validateTerminalPassword("wrong"));
+    }
+
+    @Test
+    void validateTerminal_notRequiredAndNotConfigured_returnsTrue() throws Exception {
+        var service = createService(null, false, null, false, null, false, null, false);
+        assertTrue(service.validateTerminalPassword("anything"));
     }
 
     // ---- constantTimeEquals ----
@@ -309,14 +459,27 @@ class PasswordValidationServiceTest {
     }
 
     @Test
-    void validateOperations_notRequired_skipsRateLimit() throws Exception {
+    void validateOperations_notRequiredButConfigured_rateLimitsAndRejects() throws Exception {
         var rateLimitPort = mock(RateLimitPort.class);
+        when(rateLimitPort.checkRateLimit(anyString())).thenReturn(Optional.empty());
         var service = createService("secret", false, null, false, null, false, null, false);
         setField(service, "rateLimitPort", rateLimitPort);
         setField(service, "requestProvider", mockRequestProvider("10.0.0.1"));
         setField(service, "trustForwardedHeaders", false);
 
-        assertTrue(service.validateOperationsPassword("wrong"));
+        assertFalse(service.validateOperationsPassword("wrong"));
+        verify(rateLimitPort).recordFailure("ops-pw:10.0.0.1");
+    }
+
+    @Test
+    void validateOperations_notRequiredAndNotConfigured_skipsRateLimit() throws Exception {
+        var rateLimitPort = mock(RateLimitPort.class);
+        var service = createService(null, false, null, false, null, false, null, false);
+        setField(service, "rateLimitPort", rateLimitPort);
+        setField(service, "requestProvider", mockRequestProvider("10.0.0.1"));
+        setField(service, "trustForwardedHeaders", false);
+
+        assertTrue(service.validateOperationsPassword("anything"));
         verifyNoInteractions(rateLimitPort);
     }
 }
