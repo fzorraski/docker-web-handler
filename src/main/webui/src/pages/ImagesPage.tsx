@@ -130,7 +130,12 @@ export default function ImagesPage() {
     return images.filter(img => {
       if (img.inUse) return false
       if (!img.lastUsedAt) return true
-      return new Date(img.lastUsedAt).getTime() < cutoff
+      // Parse dd/MM/yyyy HH:mm:ss format
+      const parts = img.lastUsedAt.match(/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})$/)
+      const ts = parts
+        ? new Date(+parts[3], +parts[2] - 1, +parts[1], +parts[4], +parts[5], +parts[6]).getTime()
+        : new Date(img.lastUsedAt).getTime()
+      return !isNaN(ts) && ts < cutoff
     })
   }, [images, prune.mode, prune.minDays])
 

@@ -139,16 +139,15 @@ class PortFinderTest {
 
     @Test
     void findAvailablePortsPreferring_fallsBackWhenPreferredReserved() {
-        // Reserve the preferred ports first
+        // Reserve 2 ports first
         List<Integer> reserved = portFinder.findAvailablePorts(2);
-        assertTrue(reserved.contains(50000));
-        assertTrue(reserved.contains(50001));
+        assertEquals(2, reserved.size());
 
-        // Now ask for preferred ports — they should be skipped
-        List<Integer> result = portFinder.findAvailablePortsPreferring(List.of(50000, 50001), 2);
+        // Now ask for those same ports as preferred — they should be skipped
+        List<Integer> result = portFinder.findAvailablePortsPreferring(reserved, 2);
         assertEquals(2, result.size());
-        assertFalse(result.contains(50000));
-        assertFalse(result.contains(50001));
+        assertTrue(Collections.disjoint(reserved, result),
+                "Preferred ports were reserved, so result should not contain any of them");
 
         portFinder.releasePorts(reserved);
         portFinder.releasePorts(result);
@@ -156,16 +155,23 @@ class PortFinderTest {
 
     @Test
     void findAvailablePortsPreferring_mixesPreferredAndScanned() {
-        // Reserve one of the preferred ports
+        // Reserve one port first
         List<Integer> reserved = portFinder.findAvailablePorts(1);
-        int reservedPort = reserved.get(0); // 50000
+        int reservedPort = reserved.get(0);
 
-        // Ask for 2 ports preferring 50000 and 50001
-        List<Integer> result = portFinder.findAvailablePortsPreferring(List.of(50000, 50001), 2);
+        // Get another free port to use as a second preferred
+        List<Integer> secondPort = portFinder.findAvailablePorts(1);
+        int freePreferred = secondPort.get(0);
+        portFinder.releasePorts(secondPort);
+
+        // Ask for 2 ports preferring [reservedPort, freePreferred]
+        List<Integer> result = portFinder.findAvailablePortsPreferring(List.of(reservedPort, freePreferred), 2);
         assertEquals(2, result.size());
-        // 50000 is reserved, so 50001 should be used + one scanned
-        assertTrue(result.contains(50001));
-        assertFalse(result.contains(reservedPort));
+        // freePreferred should be used (it was released), reservedPort should be skipped
+        assertTrue(result.contains(freePreferred),
+                "Free preferred port should be in result");
+        assertFalse(result.contains(reservedPort),
+                "Reserved port should not be in result");
 
         portFinder.releasePorts(reserved);
         portFinder.releasePorts(result);
