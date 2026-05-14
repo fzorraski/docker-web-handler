@@ -329,7 +329,7 @@ public class ContainerExpirationService {
         }
     }
 
-    private void removeContainersByDatabase(String databaseName, String excludeShortId) {
+    public void removeContainersByDatabase(String databaseName, String excludeShortId) {
         List<ContainerExpiration> others = expirationRepository.findByDatabaseName(databaseName);
         boolean changed = false;
         for (ContainerExpiration other : others) {

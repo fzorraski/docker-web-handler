@@ -4,6 +4,7 @@ import br.com.fzdevx.application.dto.AnalysisOptions;
 import br.com.fzdevx.application.dto.AnalyzeLogFileRequest;
 import br.com.fzdevx.application.dto.CreateSnapshotRequest;
 import br.com.fzdevx.application.dto.PruneImagesRequest;
+import br.com.fzdevx.application.dto.RemoveContainerRequest;
 import br.com.fzdevx.application.dto.RestoreDumpRequest;
 import br.com.fzdevx.application.dto.RunContainerRequest;
 import br.com.fzdevx.application.dto.RunMigrationRequest;
@@ -35,6 +36,7 @@ public class RequestStash {
     private final ConcurrentHashMap<String, StashedEntry<RunMigrationRequest>> migrationStash = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, StashedEntry<UpgradeContainerRequest>> upgradeStash = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, StashedEntry<AnalyzeLogFileRequest>> logAnalysisStash = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, StashedEntry<RemoveContainerRequest>> removeStash = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, StashedEntry<ComposeRequest>> composeStash = new ConcurrentHashMap<>();
 
     public record ComposeRequest(java.util.List<String> ids, String presetName, int slowThresholdMs, AnalysisOptions options) {}
@@ -68,6 +70,7 @@ public class RequestStash {
                 + evictMap(upgradeStash, cutoff)
                 + evictMap(terminalStash, cutoff)
                 + evictLogAnalysisStash(cutoff)
+                + evictMap(removeStash, cutoff)
                 + evictMap(composeStash, cutoff);
         if (evicted > 0) {
             Log.infof("RequestStash: evicted %d expired ticket(s).", evicted);
@@ -142,6 +145,14 @@ public class RequestStash {
 
     public UpgradeContainerRequest retrieveUpgrade(String ticket) {
         return take(upgradeStash, ticket);
+    }
+
+    public String stashRemove(RemoveContainerRequest request) {
+        return put(removeStash, request);
+    }
+
+    public RemoveContainerRequest retrieveRemove(String ticket) {
+        return take(removeStash, ticket);
     }
 
     // Terminal tickets store the containerId that was authorized

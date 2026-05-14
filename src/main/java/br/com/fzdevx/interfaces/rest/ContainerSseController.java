@@ -2,6 +2,7 @@ package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.shared.InputValidator;
+import br.com.fzdevx.application.dto.RemoveContainerRequest;
 import br.com.fzdevx.application.dto.RunContainerRequest;
 import br.com.fzdevx.application.dto.RunMigrationRequest;
 import br.com.fzdevx.application.dto.UpgradeContainerRequest;
@@ -241,6 +242,63 @@ public class ContainerSseController {
     public Map<String, Boolean> cancelUpgrade(@PathParam("ticket") String ticket) {
         boolean cancelled = upgradeContainerUseCase.cancel(ticket);
         return Map.of("cancelled", cancelled);
+    }
+
+    @POST
+    @Path("/remove/prepare")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public jakarta.ws.rs.core.Response prepareRemove(RemoveContainerRequest request) {
+        if (InputValidator.validateContainerId(request.getContainerId()).isPresent()) {
+            return jakarta.ws.rs.core.Response.status(400)
+                    .entity(Map.of("error", "Invalid container ID.")).build();
+        }
+        if (request.isDeleteDatabase()) {
+            if (request.getRepository() == null || InputValidator.validateRepository(request.getRepository()).isPresent()) {
+                return jakarta.ws.rs.core.Response.status(400)
+                        .entity(Map.of("error", "Invalid repository.")).build();
+            }
+            if (request.getDatabaseName() == null || InputValidator.validateDatabaseName(request.getDatabaseName()).isPresent()) {
+                return jakarta.ws.rs.core.Response.status(400)
+                        .entity(Map.of("error", "Invalid database name.")).build();
+            }
+            if (!dumpStorageService.validateOperationsPassword(request.getOperationsPassword())) {
+                return jakarta.ws.rs.core.Response.status(403)
+                        .entity(Map.of("error", "Invalid operations password.")).build();
+            }
+        }
+        request.setOperationsPassword(null);
+        String ticket = requestStash.stashRemove(request);
+        return jakarta.ws.rs.core.Response.ok(Map.of("ticket", ticket)).build();
+    }
+
+    @GET
+    @Path("/remove/ticket/{ticket}")
+    @Produces(MediaType.SERVER_SENT_EVENTS)
+    public void streamRemoveWithTicket(@PathParam("ticket") String ticket,
+                                       @Context SseEventSink sink,
+                                       @Context Sse sse) {
+        RemoveContainerRequest request = requestStash.retrieveRemove(ticket);
+        if (request == null) {
+            SseHelper.sendEvent(sink, sse, ContainerEvent.error("Error", "Invalid or expired ticket."));
+            SseHelper.closeSink(sink);
+            return;
+        }
+        boolean[] succeeded = {false};
+        try {
+            removeContainerUseCase.execute(
+                    request.getContainerId(),
+                    request.isDeleteDatabase(),
+                    request.getRepository(),
+                    request.getDatabaseName(),
+                    event -> {
+                        SseHelper.sendEvent(sink, sse, event);
+                        if (event.getType() == ContainerEvent.EventType.SUCCESS) succeeded[0] = true;
+                    });
+        } finally {
+            if (succeeded[0]) broadcaster.notifyChange();
+            SseHelper.closeSink(sink);
+        }
     }
 
     @GET

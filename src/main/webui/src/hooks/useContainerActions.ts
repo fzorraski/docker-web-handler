@@ -14,7 +14,7 @@ import {
   type StartResult,
   type UpdateExpirationRequest,
 } from '../services/containerService'
-import { streamRemoveContainer } from '../services/sseService'
+import { streamRemoveContainer, prepareRemoveContainer, streamRemoveContainerWithTicket } from '../services/sseService'
 import { useSseOperation } from './useSseOperation'
 import type { DockerContainer } from '../types'
 
@@ -127,7 +127,6 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
   }, [confirm, t, notify, loadContainers, formatStartError])
 
   const handleRemove = useCallback(async (id: string, name: string) => {
-    if (!(await confirm(t('containers.confirmRemove', { name })))) return
     await lockContainers([id]).catch(() => {})
     removeSse.start(
       (onEvent, onDone, onError) => streamRemoveContainer(id, onEvent, onDone, onError),
@@ -141,7 +140,36 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
       },
       async () => { await unlockContainers([id]).catch(() => {}); loadContainers() },
     )
-  }, [confirm, t, notify, loadContainers, removeSse])
+  }, [t, notify, loadContainers, removeSse])
+
+  const handleRemoveWithDatabase = useCallback(async (
+    id: string, name: string, repository: string, databaseName: string, password?: string
+  ) => {
+    try {
+      const ticket = await prepareRemoveContainer({
+        containerId: id,
+        deleteDatabase: true,
+        repository,
+        databaseName,
+        operationsPassword: password || null,
+      })
+      await lockContainers([id]).catch(() => {})
+      removeSse.start(
+        (onEvent, onDone, onError) => streamRemoveContainerWithTicket(ticket, onEvent, onDone, onError),
+        () => {
+          setTimeout(async () => {
+            removeSse.reset()
+            notify(t('containers.containerRemoved', { name }), 'success')
+            await unlockContainers([id]).catch(() => {})
+            loadContainers()
+          }, 1500)
+        },
+        async () => { await unlockContainers([id]).catch(() => {}); loadContainers() },
+      )
+    } catch (e) {
+      notify(e instanceof Error ? e.message : String(e), 'error')
+    }
+  }, [t, notify, loadContainers, removeSse])
 
   const handleRemoveDialogClose = useCallback(() => {
     removeSse.cleanup()
@@ -253,6 +281,7 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
     handleStop,
     handleStart,
     handleRemove,
+    handleRemoveWithDatabase,
     handleRemoveDialogClose,
     handleExtendExpiration,
     handleUpdateExpiration,

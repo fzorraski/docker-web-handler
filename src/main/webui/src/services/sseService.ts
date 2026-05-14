@@ -270,6 +270,35 @@ export function streamRemoveContainer(
   return streamSse(`/api/containers/sse/remove/${encodeURIComponent(containerId)}`, onEvent, onDone, onError)
 }
 
+export async function prepareRemoveContainer(body: {
+  containerId: string
+  deleteDatabase: boolean
+  repository?: string | null
+  databaseName?: string | null
+  operationsPassword?: string | null
+}): Promise<string> {
+  const res = await fetchWithAuth('/api/containers/sse/remove/prepare', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }))
+    throw new Error(err.error || res.statusText)
+  }
+  const data = await res.json()
+  return data.ticket
+}
+
+export function streamRemoveContainerWithTicket(
+  ticket: string,
+  onEvent: (event: ContainerEvent) => void,
+  onDone: (event: ContainerEvent) => void,
+  onError: (message: string) => void,
+): () => void {
+  return streamSse(`/api/containers/sse/remove/ticket/${encodeURIComponent(ticket)}`, onEvent, onDone, onError)
+}
+
 export async function prepareRestoreDump(body: {
   dumpId?: string
   snapshotId?: string

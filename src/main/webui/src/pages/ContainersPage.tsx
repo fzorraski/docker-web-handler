@@ -26,7 +26,8 @@ import ContainerTerminalDialog from '../components/ContainerTerminalDialog'
 import PasswordConfirmDialog from '../components/PasswordConfirmDialog'
 import ExpirationChip from '../components/ExpirationChip'
 import EditContainerExpirationDialog from '../components/EditContainerExpirationDialog'
-import OperationProgress, { REMOVE_STEPS } from '../components/OperationProgress'
+import OperationProgress, { REMOVE_STEPS, REMOVE_WITH_DB_STEPS } from '../components/OperationProgress'
+import RemoveContainerDialog from '../components/RemoveContainerDialog'
 import { useNotification } from '../components/NotificationProvider'
 import HeroBanner from '../components/HeroBanner'
 import { useTranslation } from 'react-i18next'
@@ -137,6 +138,8 @@ export default function ContainersPage() {
   const [opsPwRequired, setOpsPwRequired] = useState(true)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [remoteLockIds, setRemoteLockIds] = useState<Set<string>>(new Set())
+  const [removeDialogTarget, setRemoveDialogTarget] = useState<DockerContainer | null>(null)
+  const [removingWithDb, setRemovingWithDb] = useState(false)
 
   // Extracted hooks
   const loadContainers = useCallback(() => {
@@ -997,7 +1000,7 @@ export default function ContainersPage() {
               key="delete"
               onClick={() => {
                 if (!actionMenu.target) return
-                actions.handleRemove(actionMenu.target.containerId, actionMenu.target.names)
+                setRemoveDialogTarget(actionMenu.target)
                 actionMenu.close()
               }}
               sx={{ color: 'error.main' }}
@@ -1018,12 +1021,36 @@ export default function ContainersPage() {
         }}
       />
 
+      <RemoveContainerDialog
+        open={!!removeDialogTarget}
+        container={removeDialogTarget}
+        dbDeletionEnabled={dbDeletionEnabled}
+        opsPwRequired={opsPwRequired}
+        onClose={() => setRemoveDialogTarget(null)}
+        onConfirm={(deleteDatabase, password) => {
+          if (!removeDialogTarget) return
+          setRemoveDialogTarget(null)
+          setRemovingWithDb(deleteDatabase)
+          if (deleteDatabase && removeDialogTarget.repository && removeDialogTarget.databaseName) {
+            actions.handleRemoveWithDatabase(
+              removeDialogTarget.containerId,
+              removeDialogTarget.names,
+              removeDialogTarget.repository,
+              removeDialogTarget.databaseName,
+              password,
+            )
+          } else {
+            actions.handleRemove(removeDialogTarget.containerId, removeDialogTarget.names)
+          }
+        }}
+      />
+
       <Dialog open={actions.removeSse.events.length > 0} onClose={actions.handleRemoveDialogClose} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: 'error.main', color: 'white' }}>
           <Delete sx={{ mr: 1, verticalAlign: 'middle' }} /> {t('containers.removingContainer')}
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 3 }}>
-          <OperationProgress events={actions.removeSse.events} steps={REMOVE_STEPS} />
+          <OperationProgress events={actions.removeSse.events} steps={removingWithDb ? REMOVE_WITH_DB_STEPS : REMOVE_STEPS} />
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           {(actions.removeSse.hasError || actions.removeSse.isDone) && (

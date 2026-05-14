@@ -1,10 +1,13 @@
 package br.com.fzdevx.application.usecase;
 
 import br.com.fzdevx.application.port.DockerContainerPort;
+import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.model.ContainerEvent.EventType;
+import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.infrastructure.docker.ContainerSchedulingService;
+import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,6 +17,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -26,6 +30,8 @@ class RemoveContainerUseCaseTest {
     @Mock DockerContainerPort dockerContainerPort;
     @Mock ContainerExpirationService expirationService;
     @Mock ContainerSchedulingService schedulingService;
+    @Mock DatabaseService databaseService;
+    @Mock ManagedDatabaseRepository managedDatabaseRepository;
 
     @InjectMocks
     RemoveContainerUseCase useCase;
@@ -172,5 +178,74 @@ class RemoveContainerUseCaseTest {
         assertEquals("Removing", events.get(4).getStep());
         assertEquals("Complete", events.get(5).getStep());
         assertEquals(EventType.SUCCESS, events.get(5).getType());
+    }
+
+    // ---- database deletion on removal ----
+
+    @Test
+    void execute_withDeleteDatabase_dropsDatabase() {
+        when(managedDatabaseRepository.find("myrepo", "testdb")).thenReturn(Optional.empty());
+
+        useCase.execute(VALID_ID, true, "myrepo", "testdb", events::add);
+
+        verify(databaseService).dropDatabase("myrepo", "testdb");
+        verify(expirationService).removeContainersByDatabase("testdb", VALID_ID);
+        assertTrue(hasEvent(EventType.SUCCESS));
+    }
+
+    @Test
+    void execute_withDeleteDatabaseFalse_doesNotDropDatabase() {
+        useCase.execute(VALID_ID, false, "myrepo", "testdb", events::add);
+
+        verifyNoInteractions(databaseService);
+        verify(expirationService, never()).removeContainersByDatabase(anyString(), anyString());
+        assertTrue(hasEvent(EventType.SUCCESS));
+    }
+
+    @Test
+    void execute_withDeleteDatabase_protectedDb_skipsDeletion() {
+        ManagedDatabase protectedDb = mock(ManagedDatabase.class);
+        when(protectedDb.isProtectedFlag()).thenReturn(true);
+        when(managedDatabaseRepository.find("myrepo", "testdb")).thenReturn(Optional.of(protectedDb));
+
+        useCase.execute(VALID_ID, true, "myrepo", "testdb", events::add);
+
+        verify(databaseService, never()).dropDatabase(anyString(), anyString());
+        assertTrue(hasEvent(EventType.SUCCESS));
+        assertTrue(events.stream().anyMatch(e ->
+                e.getStep().equals("Dropping Database") && e.getMessage().contains("protected")));
+    }
+
+    @Test
+    void execute_withDeleteDatabase_dropFails_sendsError() {
+        when(managedDatabaseRepository.find("myrepo", "testdb")).thenReturn(Optional.empty());
+        doThrow(new RuntimeException("connection refused")).when(databaseService).dropDatabase("myrepo", "testdb");
+
+        useCase.execute(VALID_ID, true, "myrepo", "testdb", events::add);
+
+        assertTrue(hasEvent(EventType.ERROR));
+        assertEquals("Dropping Database", lastEvent().getStep());
+        assertTrue(lastEvent().getMessage().contains("Failed to drop database"));
+    }
+
+    @Test
+    void execute_withDeleteDatabase_producesCorrectSteps() {
+        when(managedDatabaseRepository.find("myrepo", "testdb")).thenReturn(Optional.empty());
+
+        useCase.execute(VALID_ID, true, "myrepo", "testdb", events::add);
+
+        assertTrue(events.stream().anyMatch(e -> e.getStep().equals("Dropping Database")));
+        assertEquals("Complete", lastEvent().getStep());
+        assertEquals(EventType.SUCCESS, lastEvent().getType());
+    }
+
+    @Test
+    void execute_withDeleteDatabase_nullRepoOrDb_skipsDeletion() {
+        useCase.execute(VALID_ID, true, null, "testdb", events::add);
+        verifyNoInteractions(databaseService);
+
+        events.clear();
+        useCase.execute(VALID_ID, true, "myrepo", null, events::add);
+        verifyNoInteractions(databaseService);
     }
 }

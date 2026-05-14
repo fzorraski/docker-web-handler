@@ -1,9 +1,12 @@
 package br.com.fzdevx.application.usecase;
 
 import br.com.fzdevx.application.port.DockerContainerPort;
+import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.domain.model.ContainerEvent;
+import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.infrastructure.docker.ContainerSchedulingService;
+import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.domain.shared.InputValidator;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -23,7 +26,19 @@ public class RemoveContainerUseCase {
     @Inject
     ContainerSchedulingService schedulingService;
 
+    @Inject
+    DatabaseService databaseService;
+
+    @Inject
+    ManagedDatabaseRepository managedDatabaseRepository;
+
     public void execute(String containerId, Consumer<ContainerEvent> eventSink) {
+        execute(containerId, false, null, null, eventSink);
+    }
+
+    public void execute(String containerId, boolean deleteDatabase,
+                        String repository, String databaseName,
+                        Consumer<ContainerEvent> eventSink) {
         Optional<String> idError = InputValidator.validateContainerId(containerId);
         if (idError.isPresent()) {
             eventSink.accept(ContainerEvent.error("Cancelling", idError.get()));
@@ -52,6 +67,29 @@ public class RemoveContainerUseCase {
 
         schedulingService.removeSchedulesByContainer(containerId);
 
-        eventSink.accept(ContainerEvent.success("Complete", "Container " + containerId + " removed successfully."));
+        if (deleteDatabase && repository != null && databaseName != null) {
+            eventSink.accept(ContainerEvent.info("Dropping Database",
+                    "Dropping database '" + databaseName + "'..."));
+            try {
+                boolean isProtected = managedDatabaseRepository.find(repository, databaseName)
+                        .map(ManagedDatabase::isProtectedFlag).orElse(false);
+                if (isProtected) {
+                    eventSink.accept(ContainerEvent.info("Dropping Database",
+                            "Database '" + databaseName + "' is protected, skipping deletion."));
+                } else {
+                    databaseService.dropDatabase(repository, databaseName);
+                    eventSink.accept(ContainerEvent.info("Dropping Database",
+                            "Database '" + databaseName + "' dropped successfully."));
+                    expirationService.removeContainersByDatabase(databaseName, containerId);
+                }
+            } catch (Exception e) {
+                eventSink.accept(ContainerEvent.error("Dropping Database",
+                        "Failed to drop database '" + databaseName + "': " + e.getMessage()));
+                return;
+            }
+        }
+
+        eventSink.accept(ContainerEvent.success("Complete",
+                "Container " + containerId + " removed successfully."));
     }
 }
