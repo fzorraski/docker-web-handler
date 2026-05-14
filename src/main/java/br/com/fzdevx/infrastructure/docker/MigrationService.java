@@ -41,6 +41,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 @ApplicationScoped
 public class MigrationService {
@@ -89,6 +92,40 @@ public class MigrationService {
                 .filter(v -> !v.isBlank())
                 .or(() -> globalApiUrl.filter(v -> !v.isBlank()))
                 .orElse(null);
+    }
+
+    private record TagComponents(String branch, String version) {}
+
+    private Optional<String> getTagVersionPattern(String repository) {
+        return config.getOptionalValue("repository.tag-version-pattern." + repository, String.class)
+                .filter(v -> !v.isBlank());
+    }
+
+    private final Map<String, Pattern> tagPatternCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private TagComponents parseTag(String tag, String repository) {
+        Optional<String> patternStr = getTagVersionPattern(repository);
+        if (patternStr.isEmpty()) {
+            return null;
+        }
+        try {
+            Pattern pattern = tagPatternCache.computeIfAbsent(patternStr.get(), Pattern::compile);
+            Matcher matcher = pattern.matcher(tag);
+            if (matcher.matches()) {
+                String branch = null;
+                String version = null;
+                try { branch = matcher.group("branch"); } catch (IllegalArgumentException ignored) {}
+                try { version = matcher.group("version"); } catch (IllegalArgumentException ignored) {}
+                if (branch != null && version != null) {
+                    return new TagComponents(branch, version);
+                }
+                Log.warnf("Tag pattern for '%s' matched tag '%s' but missing required named groups (branch=%s, version=%s)",
+                        repository, tag, branch, version);
+            }
+        } catch (PatternSyntaxException e) {
+            Log.errorf("Invalid tag-version-pattern for repository '%s': %s", repository, e.getMessage());
+        }
+        return null;
     }
 
     public void recordMigration(String databaseName, String repository, String mode,
@@ -165,9 +202,25 @@ public class MigrationService {
                 .replace("\u201C", "").replace("\u201D", "")
                 .replace(String.valueOf((char) 0x22), "").replace("\u201E", "")
                 .trim();
+
+        String effectiveTargetVersion = targetVersion;
+        String branch = null;
+
+        if (cleaned.contains("{branch}")) {
+            TagComponents parsed = parseTag(targetVersion, repository);
+            if (parsed != null) {
+                branch = parsed.branch();
+                effectiveTargetVersion = parsed.version();
+            }
+        }
+
         String url = cleaned
                 .replace("{sourceVersion}", sourceVersion)
-                .replace("{targetVersion}", targetVersion);
+                .replace("{targetVersion}", effectiveTargetVersion);
+
+        if (branch != null) {
+            url = url.replace("{branch}", branch);
+        }
 
         try {
             HttpRequest request = HttpRequest.newBuilder()
