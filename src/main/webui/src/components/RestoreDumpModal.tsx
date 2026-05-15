@@ -13,7 +13,6 @@ import {
   IconButton,
   FormControlLabel,
   Switch,
-  Checkbox,
   CircularProgress,
   Typography,
   Box,
@@ -23,7 +22,7 @@ import {
 import { Close, Restore, Warning } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import type { DatabaseDump, DatabaseSnapshot } from '../types'
-import { buildTargetDbName, buildSnapshotTargetDbName, formatScriptSize, formatMigrationSummary } from '../utils/format'
+import { buildTargetDbName, buildSnapshotTargetDbName, formatMigrationSummary } from '../utils/format'
 import { getDumpRepositories, cancelRestore, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
 import { getDatabaseConflicts, getRepositoryDatabases, isMigrationEnabled, isMigrationApiAvailable, isWebhookEnabled } from '../services/containerService'
 import { prepareRestoreDump, streamRestoreDump } from '../services/sseService'
@@ -32,6 +31,7 @@ import { useMigrationPreview } from '../hooks/useMigrationPreview'
 import OperationProgress, { RESTORE_STEPS, RESTORE_WITH_SCRIPTS_STEPS, RESTORE_WITH_MIGRATION_STEPS, RESTORE_WITH_SCRIPTS_AND_MIGRATION_STEPS } from './OperationProgress'
 import MigrationConfigModal, { type MigrationConfig } from './MigrationConfigModal'
 import MigrationPreviewModal from './MigrationPreviewModal'
+import PostRestoreScriptsSection from './PostRestoreScriptsSection'
 
 interface Props {
   open: boolean
@@ -337,63 +337,12 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
 
             {scriptsResponse?.enabled && (scriptsResponse.mandatory.length > 0 || scriptsResponse.optional.length > 0) && (
               <Box sx={{ mt: 3 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
-                  {t('restoreDump.postRestoreScripts')}
-                </Typography>
-
-                {scriptsResponse.mandatory.length > 0 && (
-                  <Box sx={{ mb: 1 }}>
-                    <Typography variant="caption" color="text.secondary">{t('restoreDump.mandatoryScripts')}</Typography>
-                    {scriptsResponse.mandatory.map((s) => (
-                      <FormControlLabel
-                        key={s.filename}
-                        control={<Checkbox checked disabled size="small" />}
-                        label={
-                          <Typography variant="body2">
-                            {s.filename}
-                            <Chip label={formatScriptSize(s.fileSize)} size="small" variant="outlined" sx={{ ml: 1 }} />
-                          </Typography>
-                        }
-                        sx={{ display: 'flex', ml: 0 }}
-                      />
-                    ))}
-                  </Box>
-                )}
-
-                {scriptsResponse.optional.length > 0 && (
-                  <Box sx={{ mb: 1 }}>
-                    <Typography variant="caption" color="text.secondary">{t('restoreDump.optionalScripts')}</Typography>
-                    {scriptsResponse.optional.map((s) => (
-                      <FormControlLabel
-                        key={s.filename}
-                        control={
-                          <Checkbox
-                            checked={selectedOptionalScripts.includes(s.filename)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedOptionalScripts((prev) => [...prev, s.filename])
-                              } else {
-                                setSelectedOptionalScripts((prev) => prev.filter((f) => f !== s.filename))
-                              }
-                            }}
-                            size="small"
-                          />
-                        }
-                        label={
-                          <Typography variant="body2">
-                            {s.filename}
-                            <Chip label={formatScriptSize(s.fileSize)} size="small" variant="outlined" sx={{ ml: 1 }} />
-                          </Typography>
-                        }
-                        sx={{ display: 'flex', ml: 0 }}
-                      />
-                    ))}
-                  </Box>
-                )}
-
-                <Typography variant="caption" color="text.secondary">
-                  {scriptsResponse.onFailure === 'stop' ? t('restoreDump.onFailureStop') : t('restoreDump.onFailureContinue')}
-                </Typography>
+                <PostRestoreScriptsSection
+                  scriptsResponse={scriptsResponse}
+                  selectedOptionalScripts={selectedOptionalScripts}
+                  onSelectedOptionalScriptsChange={setSelectedOptionalScripts}
+                  tPrefix="restoreDump"
+                />
               </Box>
             )}
 

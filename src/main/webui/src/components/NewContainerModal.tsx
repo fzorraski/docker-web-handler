@@ -16,7 +16,6 @@ import {
   CircularProgress,
   Switch,
   FormControlLabel,
-  Checkbox,
   Chip,
   ToggleButtonGroup,
   ToggleButton,
@@ -38,9 +37,10 @@ import {
   repositoryHasDatabases,
   validateOperationsPassword,
 } from '../services/containerService'
-import { isDumpEnabled, listDumps, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
+import { listDumps, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
 import type { DatabaseConflict, DatabaseDump, DatabaseSnapshot } from '../types'
-import { buildTargetDbName, buildSnapshotTargetDbName, formatBytes, formatScriptSize, formatMigrationSummary, compareTagsDesc } from '../utils/format'
+import { buildTargetDbName, buildSnapshotTargetDbName, formatBytes, formatMigrationSummary, compareTagsDesc } from '../utils/format'
+import PostRestoreScriptsSection from './PostRestoreScriptsSection'
 import { prepareRunContainer, streamRunContainer, cancelRunContainer } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
 import { useMigrationPreview } from '../hooks/useMigrationPreview'
@@ -902,60 +902,12 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
 
                     {scriptsResponse?.enabled && (selectedDump || selectedSnapshot) && (scriptsResponse.mandatory.length > 0 || scriptsResponse.optional.length > 0) && (
                       <Grid size={{ xs: 12 }}>
-                        <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>
-                          {t('newContainer.postRestoreScripts')}
-                        </Typography>
-                        {scriptsResponse.mandatory.length > 0 && (
-                          <Box sx={{ mb: 1 }}>
-                            <Typography variant="caption" color="text.secondary">{t('newContainer.mandatoryScripts')}</Typography>
-                            {scriptsResponse.mandatory.map((s) => (
-                              <FormControlLabel
-                                key={s.filename}
-                                control={<Checkbox checked disabled size="small" />}
-                                label={
-                                  <Typography variant="body2">
-                                    {s.filename}
-                                    <Chip label={formatScriptSize(s.fileSize)} size="small" variant="outlined" sx={{ ml: 1 }} />
-                                  </Typography>
-                                }
-                                sx={{ display: 'flex', ml: 0 }}
-                              />
-                            ))}
-                          </Box>
-                        )}
-                        {scriptsResponse.optional.length > 0 && (
-                          <Box sx={{ mb: 1 }}>
-                            <Typography variant="caption" color="text.secondary">{t('newContainer.optionalScripts')}</Typography>
-                            {scriptsResponse.optional.map((s) => (
-                              <FormControlLabel
-                                key={s.filename}
-                                control={
-                                  <Checkbox
-                                    checked={selectedOptionalScripts.includes(s.filename)}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        setSelectedOptionalScripts((prev) => [...prev, s.filename])
-                                      } else {
-                                        setSelectedOptionalScripts((prev) => prev.filter((f) => f !== s.filename))
-                                      }
-                                    }}
-                                    size="small"
-                                  />
-                                }
-                                label={
-                                  <Typography variant="body2">
-                                    {s.filename}
-                                    <Chip label={formatScriptSize(s.fileSize)} size="small" variant="outlined" sx={{ ml: 1 }} />
-                                  </Typography>
-                                }
-                                sx={{ display: 'flex', ml: 0 }}
-                              />
-                            ))}
-                          </Box>
-                        )}
-                        <Typography variant="caption" color="text.secondary">
-                          {scriptsResponse.onFailure === 'stop' ? t('newContainer.onFailureStop') : t('newContainer.onFailureContinue')}
-                        </Typography>
+                        <PostRestoreScriptsSection
+                          scriptsResponse={scriptsResponse}
+                          selectedOptionalScripts={selectedOptionalScripts}
+                          onSelectedOptionalScriptsChange={setSelectedOptionalScripts}
+                          tPrefix="newContainer"
+                        />
                       </Grid>
                     )}
 
