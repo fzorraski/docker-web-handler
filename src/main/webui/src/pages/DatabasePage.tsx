@@ -64,7 +64,7 @@ import {
   ListItemText,
   TablePagination,
 } from '@mui/material'
-import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile, CameraAlt, InfoOutlined, CleaningServices, Warning, Edit, Check, Close } from '@mui/icons-material'
+import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile, CameraAlt, InfoOutlined, CleaningServices, Warning, Edit, Check, Close, Dns } from '@mui/icons-material'
 
 type PendingDelete =
   | { kind: 'dump'; dump: DatabaseDump }
@@ -80,8 +80,15 @@ export default function DatabasePage() {
   const snapTableRef = useRef<HTMLDivElement>(null)
   useStickyHeader(dumpTableRef)
   useStickyHeader(snapTableRef)
-  const [activeTab, setActiveTab] = useState(0)
+  const [activeTabIndex, setActiveTabIndex] = useState(0)
   const [dbManagedEnabled, setDbManagedEnabled] = useState(false)
+
+  type TabId = 'databases' | 'backups' | 'snapshots'
+  const tabOrder: TabId[] = useMemo(() => {
+    if (dbManagedEnabled) return ['databases', 'backups', 'snapshots']
+    return ['backups', 'snapshots']
+  }, [dbManagedEnabled])
+  const activeTab = tabOrder[activeTabIndex] ?? tabOrder[0]
 
   // --- Dumps state ---
   const [dumps, setDumps] = useState<DatabaseDump[]>([])
@@ -402,8 +409,8 @@ export default function DatabasePage() {
 
   const snapPagination = useTablePagination(filteredSnapshots, { storageKey: 'snapshots' })
 
-  const currentStorageInfo = activeTab === 0 ? storageInfo : snapStorageInfo
-  const currentFileLabel = activeTab === 0
+  const currentStorageInfo = activeTab === 'backups' ? storageInfo : snapStorageInfo
+  const currentFileLabel = activeTab === 'backups'
     ? (currentStorageInfo?.fileCount === 1 ? t('database.dumpFile') : t('database.dumpFiles'))
     : (currentStorageInfo?.fileCount === 1 ? t('database.snapshotFile') : t('database.snapshotFiles'))
 
@@ -416,13 +423,25 @@ export default function DatabasePage() {
           {t('database.title')}
         </Typography>
 
-        <Tabs value={activeTab} onChange={(_e, v) => setActiveTab(v)} sx={{ mb: 3 }}>
-          <Tab label={t('database.dumpsTab', { count: dumps.length })} />
-          <Tab label={t('database.snapshotsTab', { count: snapshots.length })} />
-          {dbManagedEnabled && <Tab label={t('database.databasesTab')} />}
+        <Tabs value={activeTabIndex} onChange={(_e, v) => setActiveTabIndex(v)} sx={{ mb: 1 }}>
+          {tabOrder.map((tabId) => {
+            switch (tabId) {
+              case 'databases':
+                return <Tab key="databases" icon={<Dns />} iconPosition="start" label={t('database.databasesTab')} />
+              case 'backups':
+                return <Tab key="backups" icon={<CloudUpload />} iconPosition="start" label={t('database.dumpsTab', { count: dumps.length })} />
+              case 'snapshots':
+                return <Tab key="snapshots" icon={<CameraAlt />} iconPosition="start" label={t('database.snapshotsTab', { count: snapshots.length })} />
+            }
+          })}
         </Tabs>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {activeTab === 'databases' && t('database.databasesTabDesc')}
+          {activeTab === 'backups' && t('database.dumpsTabDesc')}
+          {activeTab === 'snapshots' && t('database.snapshotsTabDesc')}
+        </Typography>
 
-        {activeTab < 2 && currentStorageInfo && currentStorageInfo.maxBytes > 0 && (
+        {(activeTab === 'backups' || activeTab === 'snapshots') && currentStorageInfo && currentStorageInfo.maxBytes > 0 && (
           <Paper elevation={2} sx={{ p: 3, mb: 3, borderRadius: 2 }}>
             <Grid container spacing={3} alignItems="center">
               <Grid size={{ xs: 12, md: 4 }}>
@@ -478,7 +497,7 @@ export default function DatabasePage() {
           </Paper>
         )}
 
-        {activeTab < 2 && activeRestores.length > 0 && (
+        {(activeTab === 'backups' || activeTab === 'snapshots') && activeRestores.length > 0 && (
           <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
             <AlertTitle>{t('database.restoreInProgress')}</AlertTitle>
             {activeRestores.map((r, i) => (
@@ -492,7 +511,7 @@ export default function DatabasePage() {
           </Alert>
         )}
 
-        {activeTab === 1 && activeSnaps.length > 0 && (
+        {activeTab === 'snapshots' && activeSnaps.length > 0 && (
           <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
             <AlertTitle>{t('database.snapshotInProgress')}</AlertTitle>
             {activeSnaps.map((s, i) => (
@@ -507,7 +526,7 @@ export default function DatabasePage() {
         )}
 
         {/* ==================== DUMPS TAB ==================== */}
-        {activeTab === 0 && (
+        {activeTab === 'backups' && (
           <>
             <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
               <TextField
@@ -761,7 +780,7 @@ export default function DatabasePage() {
         )}
 
         {/* ==================== SNAPSHOTS TAB ==================== */}
-        {activeTab === 1 && (
+        {activeTab === 'snapshots' && (
           <>
             <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>
               <TextField
@@ -991,7 +1010,7 @@ export default function DatabasePage() {
         )}
 
         {/* ==================== DATABASES TAB ==================== */}
-        {activeTab === 2 && dbManagedEnabled && (
+        {activeTab === 'databases' && (
           <Suspense fallback={<CircularProgress size={28} sx={{ display: 'block', mx: 'auto', my: 4 }} />}>
             <DatabasesTab />
           </Suspense>
