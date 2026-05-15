@@ -310,6 +310,8 @@ public class ManagedDatabaseController {
             case ALREADY_INSTALLED -> Response.ok(Map.of("success", true, "alreadyInstalled", true)).build();
             case NOT_AVAILABLE -> Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "pg_stat_statements module is not available. Add it to shared_preload_libraries in postgresql.conf and restart the server.")).build();
+            case PERMISSION_DENIED -> Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Permission denied: the database user is not a superuser. pg_stat_statements requires superuser privileges to be created.")).build();
         };
     }
 

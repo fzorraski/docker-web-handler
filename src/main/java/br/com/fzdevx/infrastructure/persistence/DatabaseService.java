@@ -11,6 +11,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -672,7 +673,7 @@ public class DatabaseService implements DatabasePort {
         return new DatabaseTableStats(tables, unusedIndexes, usedIndexes, indexImpact, statsResetAt);
     }
 
-    public enum PgssResult { ENABLED, ALREADY_INSTALLED, NOT_AVAILABLE }
+    public enum PgssResult { ENABLED, ALREADY_INSTALLED, NOT_AVAILABLE, PERMISSION_DENIED }
 
     public PgssResult enablePgStatStatements(String repository, String databaseName) {
         try (Connection conn = getTargetDbConnection(repository, databaseName)) {
@@ -693,6 +694,12 @@ public class DatabaseService implements DatabasePort {
             // Create extension
             try (Statement stmt = conn.createStatement()) {
                 stmt.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements");
+            } catch (SQLException createEx) {
+                if ("42501".equals(createEx.getSQLState())) {
+                    Log.warnf("Permission denied to create pg_stat_statements for database '%s' on repository '%s'. The database user is not a superuser.", databaseName, repository);
+                    return PgssResult.PERMISSION_DENIED;
+                }
+                throw createEx;
             }
             Log.infof("pg_stat_statements extension enabled for database '%s' on repository '%s'.", databaseName, repository);
             return PgssResult.ENABLED;
