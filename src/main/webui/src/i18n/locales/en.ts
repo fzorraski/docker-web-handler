@@ -713,6 +713,7 @@ const en = {
     searchSnapshots: 'Search snapshots...',
     noDumpsFound: 'No dumps found',
     noSnapshotsFound: 'No snapshots found',
+    sortBy: 'Sort by',
     dumpColumns: {
       filename: 'Filename',
       version: 'Version',

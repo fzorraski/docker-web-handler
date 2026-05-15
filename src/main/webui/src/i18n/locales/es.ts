@@ -715,6 +715,7 @@ const es: typeof en = {
     searchSnapshots: 'Buscar snapshots...',
     noDumpsFound: 'No se encontraron dumps',
     noSnapshotsFound: 'No se encontraron snapshots',
+    sortBy: 'Ordenar por',
     dumpColumns: {
       filename: 'Nombre del Archivo',
       version: 'Version',

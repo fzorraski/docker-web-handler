@@ -715,6 +715,7 @@ const ptBR: typeof en = {
     searchSnapshots: 'Buscar snapshots...',
     noDumpsFound: 'Nenhum dump encontrado',
     noSnapshotsFound: 'Nenhum snapshot encontrado',
+    sortBy: 'Ordenar por',
     dumpColumns: {
       filename: 'Nome do Arquivo',
       version: 'Versao',
