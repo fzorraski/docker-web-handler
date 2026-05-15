@@ -226,10 +226,10 @@ export default function EditContainerExpirationDialog({
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 3 }}>
           <Alert severity="warning" sx={{ mb: 3 }}>
-            <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbDeletionWarning', { database: container?.databaseName }) }} />
+            <Box component="span" sx={{ '& strong': { userSelect: 'all', cursor: 'pointer' } }} dangerouslySetInnerHTML={{ __html: t('newContainer.dbDeletionWarning', { database: container?.databaseName }) }} />
           </Alert>
           <Typography variant="body2" sx={{ mb: 2 }}>
-            <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbDeletionConfirmText', { database: container?.databaseName }) }} />
+            <Box component="span" sx={{ '& strong': { userSelect: 'all', cursor: 'pointer' } }} dangerouslySetInnerHTML={{ __html: t('newContainer.dbDeletionConfirmText', { database: container?.databaseName }) }} />
           </Typography>
           <TextField
             fullWidth
@@ -237,7 +237,6 @@ export default function EditContainerExpirationDialog({
             placeholder={container?.databaseName ?? ''}
             value={confirmNameInput}
             onChange={(e) => setConfirmNameInput(e.target.value)}
-            onPaste={(e) => e.preventDefault()}
             autoFocus
           />
         </DialogContent>

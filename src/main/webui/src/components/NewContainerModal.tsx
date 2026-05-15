@@ -1203,10 +1203,10 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         </DialogTitle>
         <DialogContent dividers sx={{ pt: 3 }}>
           <Alert severity="warning" sx={{ mb: 3 }}>
-            <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbDeletionWarning', { database: activeDbName }) }} />
+            <Box component="span" sx={{ '& strong': { userSelect: 'all', cursor: 'pointer' } }} dangerouslySetInnerHTML={{ __html: t('newContainer.dbDeletionWarning', { database: activeDbName }) }} />
           </Alert>
           <Typography variant="body2" sx={{ mb: 2 }}>
-            <span dangerouslySetInnerHTML={{ __html: t('newContainer.dbDeletionConfirmText', { database: activeDbName }) }} />
+            <Box component="span" sx={{ '& strong': { userSelect: 'all', cursor: 'pointer' } }} dangerouslySetInnerHTML={{ __html: t('newContainer.dbDeletionConfirmText', { database: activeDbName }) }} />
           </Typography>
           <TextField
             fullWidth
@@ -1214,7 +1214,6 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
             placeholder={activeDbName ?? ''}
             value={confirmNameInput}
             onChange={(e) => setConfirmNameInput(e.target.value)}
-            onPaste={(e) => e.preventDefault()}
             autoFocus
           />
         </DialogContent>
