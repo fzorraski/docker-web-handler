@@ -64,7 +64,7 @@ import {
   ListItemText,
   TablePagination,
 } from '@mui/material'
-import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile, CameraAlt, InfoOutlined, CleaningServices, Warning, Edit, Check, Close, Dns } from '@mui/icons-material'
+import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile, CameraAlt, InfoOutlined, HelpOutline, CleaningServices, Warning, Edit, Check, Close, Dns } from '@mui/icons-material'
 
 type PendingDelete =
   | { kind: 'dump'; dump: DatabaseDump }
@@ -82,6 +82,7 @@ export default function DatabasePage() {
   useStickyHeader(snapTableRef)
   const [activeTabIndex, setActiveTabIndex] = useState(0)
   const [dbManagedEnabled, setDbManagedEnabled] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
 
   type TabId = 'databases' | 'backups' | 'snapshots'
   const tabOrder: TabId[] = useMemo(() => {
@@ -435,11 +436,37 @@ export default function DatabasePage() {
             }
           })}
         </Tabs>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {activeTab === 'databases' && t('database.databasesTabDesc')}
-          {activeTab === 'backups' && t('database.dumpsTabDesc')}
-          {activeTab === 'snapshots' && t('database.snapshotsTabDesc')}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            {activeTab === 'databases' && t('database.databasesTabDesc')}
+            {activeTab === 'backups' && t('database.dumpsTabDesc')}
+            {activeTab === 'snapshots' && t('database.snapshotsTabDesc')}
+          </Typography>
+          <IconButton size="small" onClick={() => setHelpOpen(true)} sx={{ color: 'text.disabled' }}>
+            <HelpOutline sx={{ fontSize: 18 }} />
+          </IconButton>
+        </Box>
+
+        <Dialog open={helpOpen} onClose={() => setHelpOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <HelpOutline color="primary" />
+            {activeTab === 'databases' && t('database.databasesTab')}
+            {activeTab === 'backups' && t('database.dumpsTab', { count: dumps.length })}
+            {activeTab === 'snapshots' && t('database.snapshotsTab', { count: snapshots.length })}
+            <IconButton onClick={() => setHelpOpen(false)} sx={{ ml: 'auto' }}>
+              <Close />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent dividers>
+            <Typography variant="body2" sx={{ whiteSpace: 'pre-line', '& strong': { color: 'warning.main' } }}>
+              <span dangerouslySetInnerHTML={{ __html:
+                activeTab === 'databases' ? t('database.databasesTabHelp')
+                : activeTab === 'backups' ? t('database.dumpsTabHelp')
+                : t('database.snapshotsTabHelp')
+              }} />
+            </Typography>
+          </DialogContent>
+        </Dialog>
 
         {(activeTab === 'backups' || activeTab === 'snapshots') && currentStorageInfo && currentStorageInfo.maxBytes > 0 && (
           <Paper elevation={2} sx={{ p: 3, mb: 3, borderRadius: 2 }}>
