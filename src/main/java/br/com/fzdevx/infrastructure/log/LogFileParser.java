@@ -49,6 +49,10 @@ public class LogFileParser implements LogAnalysisPort {
     int slowConnectionPercentThreshold;
 
     @Inject
+    @ConfigProperty(name = "log.analyzer.session-break-detection", defaultValue = "false")
+    boolean sessionBreakDetection;
+
+    @Inject
     @jakarta.inject.Named("analysisExecutor")
     ExecutorService analysisExecutor;
     private static final long REGEX_SAFETY_TIMEOUT_MS = 2000;
@@ -318,10 +322,43 @@ public class LogFileParser implements LogAnalysisPort {
         // Key: thread + "|" + endpoint (for calls without correlationId — FIFO queue)
         Map<String, Deque<PendingRequest>> pendingByThreadEndpoint = new HashMap<>();
         List<ApiCallPair> pairs = new ArrayList<>();
+        List<OrphanRequest> orphans = new ArrayList<>();
         int lineIndex = 0;
+
+        // Thread session-break detection state (prevents ghost pairings from thread pool reuse)
+        final int sessionBreakMinGaps = 5;
+        final long sessionBreakMultiplier = 50;
+        Map<String, LocalDateTime> threadLastTimestamp = sessionBreakDetection ? new HashMap<>() : null;
+        Map<String, Long> threadMaxNormalGapMs = sessionBreakDetection ? new HashMap<>() : null;
+        Map<String, Integer> threadGapCount = sessionBreakDetection ? new HashMap<>() : null;
 
         for (LogLine line : lines) {
             if ((++lineIndex % 5000 == 0)) checkCancelled(cancelled);
+
+            // Session-break detection: track time gaps between consecutive appearances of each thread.
+            // When a thread reappears after an anomalously large gap (50x its max normal gap),
+            // flush its pending requests as orphans — they belong to a previous thread lifecycle.
+            if (sessionBreakDetection && line.thread() != null && line.timestamp() != null) {
+                LocalDateTime lastTs = threadLastTimestamp.put(line.thread(), line.timestamp());
+                if (lastTs != null) {
+                    long gapMs = Duration.between(lastTs, line.timestamp()).toMillis();
+                    if (gapMs > 0) {
+                        long maxGapMs = threadMaxNormalGapMs.getOrDefault(line.thread(), 0L);
+                        int count = threadGapCount.getOrDefault(line.thread(), 0);
+                        if (count >= sessionBreakMinGaps && maxGapMs > 0
+                                && gapMs > sessionBreakMultiplier * maxGapMs) {
+                            flushThreadPending(line.thread(), pendingByThreadEndpoint,
+                                    orphans, redactionPatterns);
+                            threadMaxNormalGapMs.put(line.thread(), 0L);
+                            threadGapCount.put(line.thread(), 0);
+                        } else {
+                            threadMaxNormalGapMs.merge(line.thread(), gapMs, Math::max);
+                            threadGapCount.merge(line.thread(), 1, Integer::sum);
+                        }
+                    }
+                }
+            }
+
             if (line.message() == null) continue;
             Matcher m = apiCallPattern.matcher(line.message());
             if (!m.matches()) continue;
@@ -378,8 +415,7 @@ public class LogFileParser implements LogAnalysisPort {
             }
         }
 
-        // Collect orphan requests (requests that never got a response)
-        List<OrphanRequest> orphans = new ArrayList<>();
+        // Collect remaining orphan requests (requests that never got a response)
         for (Deque<PendingRequest> queue : pendingByCorrelation.values()) {
             for (PendingRequest p : queue) {
                 orphans.add(new OrphanRequest(p.endpoint, p.thread, p.timestamp,
@@ -676,6 +712,24 @@ public class LogFileParser implements LogAnalysisPort {
             result = entry.getKey().matcher(result).replaceAll(entry.getValue());
         }
         return result;
+    }
+
+    private void flushThreadPending(String thread,
+                                    Map<String, Deque<PendingRequest>> pendingByThreadEndpoint,
+                                    List<OrphanRequest> orphans,
+                                    List<Map.Entry<Pattern, String>> redactionPatterns) {
+        String prefix = thread + "|";
+        var it = pendingByThreadEndpoint.entrySet().iterator();
+        while (it.hasNext()) {
+            var entry = it.next();
+            if (entry.getKey().startsWith(prefix)) {
+                for (PendingRequest p : entry.getValue()) {
+                    orphans.add(new OrphanRequest(p.endpoint, p.thread, p.timestamp,
+                            redactPayload(p.payload, redactionPatterns), p.lineNumber, p.sourceFile));
+                }
+                it.remove();
+            }
+        }
     }
 
     private record PendingRequest(String endpoint, String correlationId, String thread,

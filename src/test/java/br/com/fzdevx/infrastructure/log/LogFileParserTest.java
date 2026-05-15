@@ -24,6 +24,7 @@ class LogFileParserTest {
     void setUp() {
         parser = new LogFileParser();
         setField("maxStoredLines", 500_000);
+        setField("sessionBreakDetection", true);
         setField("analysisExecutor", java.util.concurrent.Executors.newSingleThreadExecutor());
     }
 
@@ -1229,6 +1230,119 @@ class LogFileParserTest {
         LogAnalysis result = parser.analyze(List.of(file), List.of("server.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
 
         assertTrue(result.getApiCalls().stream().noneMatch(c -> c.upstreamDurationMs() >= 0));
+    }
+
+    // ---- Thread session-break detection (ghost pairing prevention) ----
+
+    @Test
+    void sessionBreak_flushesStaleRequestAsOrphan() throws IOException {
+        // Thread t1 is active for 6+ lines (establishing gap baseline of ~1 second),
+        // then makes an API Request. After a 4-hour jump on a different thread,
+        // t1 reappears with the Response. The stale request should become an orphan.
+        Path file = writeLog(
+                "2026-03-30 10:00:00,000 INFO  [a] (t1) log line 1",
+                "2026-03-30 10:00:01,000 INFO  [a] (t1) log line 2",
+                "2026-03-30 10:00:02,000 INFO  [a] (t1) log line 3",
+                "2026-03-30 10:00:03,000 INFO  [a] (t1) log line 4",
+                "2026-03-30 10:00:04,000 INFO  [a] (t1) log line 5",
+                "2026-03-30 10:00:05,000 INFO  [a] (t1) log line 6",
+                "2026-03-30 10:00:06,000 INFO  [stdout] (t1) OrderWS/getOrders Request = stale-request",
+                // 4 hours later, t1 reappears — session break (gap 4h vs max normal 1s, ratio 14400x)
+                "2026-03-30 14:00:06,000 INFO  [stdout] (t1) OrderWS/getOrders Response = ghost-response"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+        assertTrue(result.getApiCalls().isEmpty(), "Ghost pairing should NOT be created");
+        assertEquals(1, result.getOrphanRequests().size(), "Stale request should become orphan");
+        assertEquals("stale-request", result.getOrphanRequests().getFirst().payload());
+    }
+
+    @Test
+    void normalGap_doesNotTriggerSessionBreak() throws IOException {
+        // Thread t1 is active with ~1s gaps, makes Request, then Response arrives 2s later.
+        // Normal gap — should pair correctly.
+        Path file = writeLog(
+                "2026-03-30 10:00:00,000 INFO  [a] (t1) log line 1",
+                "2026-03-30 10:00:01,000 INFO  [a] (t1) log line 2",
+                "2026-03-30 10:00:02,000 INFO  [a] (t1) log line 3",
+                "2026-03-30 10:00:03,000 INFO  [a] (t1) log line 4",
+                "2026-03-30 10:00:04,000 INFO  [a] (t1) log line 5",
+                "2026-03-30 10:00:05,000 INFO  [a] (t1) log line 6",
+                "2026-03-30 10:00:06,000 INFO  [stdout] (t1) OrderWS/getOrders Request = req",
+                "2026-03-30 10:00:08,000 INFO  [stdout] (t1) OrderWS/getOrders Response = resp"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+        assertEquals(1, result.getApiCalls().size(), "Normal pairing should work");
+        assertEquals(2000, result.getApiCalls().getFirst().durationMs());
+        assertTrue(result.getOrphanRequests().isEmpty(), "No orphans expected");
+    }
+
+    @Test
+    void sessionBreak_notTriggeredBeforeMinGaps() throws IOException {
+        // Thread t1 appears only 3 times before a huge time gap.
+        // With MIN_GAPS=5, the session break should NOT trigger, preserving existing behavior.
+        Path file = writeLog(
+                "2026-03-30 10:00:00,000 INFO  [a] (t1) log line 1",
+                "2026-03-30 10:00:01,000 INFO  [a] (t1) log line 2",
+                "2026-03-30 10:00:02,000 INFO  [stdout] (t1) OrderWS/getOrders Request = req-bootstrap",
+                // Only 2 gap observations (line1→line2, line2→request) — below MIN_GAPS=5
+                "2026-03-30 14:00:02,000 INFO  [stdout] (t1) OrderWS/getOrders Response = resp-bootstrap"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+        assertEquals(1, result.getApiCalls().size(), "Should still pair (bootstrap protection)");
+        assertTrue(result.getOrphanRequests().isEmpty());
+    }
+
+    @Test
+    void sessionBreak_disabledByConfig_ghostPairingPreserved() throws IOException {
+        // When sessionBreakDetection=false, the ghost pairing should still occur (existing behavior).
+        setField("sessionBreakDetection", false);
+        try {
+            Path file = writeLog(
+                    "2026-03-30 10:00:00,000 INFO  [a] (t1) log line 1",
+                    "2026-03-30 10:00:01,000 INFO  [a] (t1) log line 2",
+                    "2026-03-30 10:00:02,000 INFO  [a] (t1) log line 3",
+                    "2026-03-30 10:00:03,000 INFO  [a] (t1) log line 4",
+                    "2026-03-30 10:00:04,000 INFO  [a] (t1) log line 5",
+                    "2026-03-30 10:00:05,000 INFO  [a] (t1) log line 6",
+                    "2026-03-30 10:00:06,000 INFO  [stdout] (t1) OrderWS/getOrders Request = stale-request",
+                    "2026-03-30 14:00:06,000 INFO  [stdout] (t1) OrderWS/getOrders Response = ghost-response"
+            );
+
+            LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+            assertEquals(1, result.getApiCalls().size(), "Ghost pairing should occur when detection is disabled");
+            assertTrue(result.getOrphanRequests().isEmpty());
+        } finally {
+            setField("sessionBreakDetection", true);
+        }
+    }
+
+    @Test
+    void correlationIdPairing_unaffectedBySessionBreak() throws IOException {
+        // Request with correlation ID on t1, then a session break, then Response with same ID.
+        // Correlation-based pairing should still work because only pendingByThreadEndpoint is flushed.
+        Path file = writeLog(
+                "2026-03-30 10:00:00,000 INFO  [a] (t1) log line 1",
+                "2026-03-30 10:00:01,000 INFO  [a] (t1) log line 2",
+                "2026-03-30 10:00:02,000 INFO  [a] (t1) log line 3",
+                "2026-03-30 10:00:03,000 INFO  [a] (t1) log line 4",
+                "2026-03-30 10:00:04,000 INFO  [a] (t1) log line 5",
+                "2026-03-30 10:00:05,000 INFO  [a] (t1) log line 6",
+                "2026-03-30 10:00:06,000 INFO  [stdout] (t1) OrderWS/getOrders 99999 Request = correlated-req",
+                "2026-03-30 14:00:06,000 INFO  [stdout] (t1) OrderWS/getOrders 99999 Response = correlated-resp"
+        );
+
+        LogAnalysis result = parser.analyze(List.of(file), List.of("test.log"), LogPreset.WILDFLY, 1000, AnalysisOptions.all());
+
+        assertEquals(1, result.getApiCalls().size(), "Correlation-ID match should survive session break");
+        assertEquals("99999", result.getApiCalls().getFirst().correlationId());
+        assertTrue(result.getOrphanRequests().isEmpty());
     }
 
     // ---- Helpers ----
