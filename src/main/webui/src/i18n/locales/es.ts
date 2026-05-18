@@ -845,6 +845,7 @@ const es: typeof en = {
     configureMigration: 'Configure la migracion primero.',
     migrationManualMode: 'Manual ({{chars}} caracteres)',
     migrationApiMode: 'API',
+    sameTagInfo: 'Misma tag seleccionada — la imagen sera descargada nuevamente del registro para obtener la version mas reciente.',
   },
 
   migrationPreview: {

@@ -68,7 +68,8 @@ export default function UpgradeContainerModal({
     }
   }, [newTag])
 
-  const hasTagChange = !!newTag && newTag !== currentTag
+  const hasTagChange = !!newTag
+  const isSameTag = !!newTag && newTag === currentTag
   const isMigrationOnly = !hasTagChange && migrationEnabled && !!migrationConfig
   const canExecute = (hasTagChange || (migrationEnabled && !!migrationConfig)) && !!password
 
@@ -78,8 +79,7 @@ export default function UpgradeContainerModal({
       setTagsLoading(true)
       getRepositoryTags(repository)
         .then((resp) => {
-          const available = (resp.tags ?? []).filter((t: string) => t !== currentTag)
-          available.sort(compareTagsDesc)
+          const available = [...(resp.tags ?? [])].sort(compareTagsDesc)
           setTags(available)
         })
         .catch(() => setTags([]))
@@ -218,6 +218,12 @@ export default function UpgradeContainerModal({
                   )}
                 />
               </Box>}
+
+              {isSameTag && (
+                <Alert severity="info" variant="outlined">
+                  {t('upgradeContainer.sameTagInfo')}
+                </Alert>
+              )}
 
               {/* Migration toggle */}
               {migrationFeatureEnabled && databaseName && (

@@ -845,6 +845,7 @@ const ptBR: typeof en = {
     configureMigration: 'Configure a migracao primeiro.',
     migrationManualMode: 'Manual ({{chars}} caracteres)',
     migrationApiMode: 'API',
+    sameTagInfo: 'Mesma tag selecionada — a imagem sera baixada novamente do registro para obter a versao mais recente.',
   },
 
   migrationPreview: {

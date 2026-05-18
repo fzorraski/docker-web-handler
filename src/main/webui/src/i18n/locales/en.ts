@@ -843,6 +843,7 @@ const en = {
     configureMigration: 'Please configure the migration first.',
     migrationManualMode: 'Manual ({{chars}} chars)',
     migrationApiMode: 'API',
+    sameTagInfo: 'Same tag selected — the image will be re-pulled from the registry to get the latest version.',
   },
 
   migrationPreview: {
