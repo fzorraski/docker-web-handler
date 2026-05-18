@@ -83,11 +83,19 @@ public class DatabaseService implements DatabasePort {
                     String quoted = rs.getString(1);
                     try (Statement ddl = conn.createStatement()) {
                         ddl.execute("DROP DATABASE IF EXISTS " + quoted);
+                    } catch (SQLException dropEx) {
+                        if ("42501".equals(dropEx.getSQLState())) {
+                            Log.warnf("Permission denied to drop database '%s' on repository '%s'. The database user is not the owner.", databaseName, repository);
+                            throw new DropDatabasePermissionDeniedException(databaseName, dropEx);
+                        }
+                        throw dropEx;
                     }
                 }
             }
 
             Log.infof("Database '%s' dropped successfully for repository '%s'.", databaseName, repository);
+        } catch (DropDatabasePermissionDeniedException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to drop database '" + databaseName + "': " + e.getMessage(), e);
         }

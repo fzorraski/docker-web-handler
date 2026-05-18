@@ -10,6 +10,7 @@ import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
+import br.com.fzdevx.infrastructure.persistence.DropDatabasePermissionDeniedException;
 import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.interfaces.rest.util.ContentDispositionHelper;
@@ -730,7 +731,12 @@ public class ManagedDatabaseController {
             }
         }
 
-        databaseService.dropDatabase(repository, databaseName);
+        try {
+            databaseService.dropDatabase(repository, databaseName);
+        } catch (DropDatabasePermissionDeniedException e) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", e.getMessage())).build();
+        }
         managedDatabaseRepository.delete(repository, databaseName);
         listManagedDatabasesUseCase.invalidateCache(repository);
         resourceCounterService.increment(ResourceCounterService.DATABASES_DELETED);
