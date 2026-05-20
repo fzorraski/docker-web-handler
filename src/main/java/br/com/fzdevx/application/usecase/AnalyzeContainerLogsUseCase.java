@@ -16,11 +16,20 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @ApplicationScoped
 public class AnalyzeContainerLogsUseCase {
 
     private static final Logger LOG = Logger.getLogger(AnalyzeContainerLogsUseCase.class.getName());
+
+    // Docker prepends ISO 8601 timestamps (e.g. "2026-05-20T10:40:00.949377221Z ") when withTimestamps(true)
+    private static final Pattern DOCKER_TS_PREFIX = Pattern.compile(
+            "^(\\d{4}-\\d{2}-\\d{2})T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2}) ");
+    // WildFly/Quarkus console handlers often log time-only (HH:mm:ss,SSS) without date
+    private static final Pattern TIME_ONLY_START = Pattern.compile(
+            "^\\d{2}:\\d{2}:\\d{2}[,.]\\d{3}\\s");
 
     @Inject
     DockerContainerPort dockerContainerPort;
@@ -59,7 +68,7 @@ public class AnalyzeContainerLogsUseCase {
                             error.compareAndSet(null, event.getMessage());
                         } else if (event.getMessage() != null) {
                             if (!isHead || lineCount.incrementAndGet() <= headLimit) {
-                                writer.write(event.getMessage());
+                                writer.write(stripDockerTimestamp(event.getMessage()));
                                 writer.newLine();
                             }
                         }
@@ -84,6 +93,28 @@ public class AnalyzeContainerLogsUseCase {
                 try { Files.deleteIfExists(tempDir); } catch (Exception ignored) {}
             }
         }
+    }
+
+    /**
+     * Strips the Docker-injected timestamp prefix and reconstructs a parseable log line.
+     * Docker's withTimestamps(true) prepends "2026-05-20T10:40:00.949377221Z " to every line.
+     * If the remaining line starts with a time-only timestamp (e.g. "07:40:00,949"),
+     * the date from the Docker prefix is prepended to produce a full datetime that
+     * matches standard preset patterns like "yyyy-MM-dd HH:mm:ss,SSS".
+     *
+     * <p>Note: the Docker date is UTC while the app timestamp is local time. Around midnight
+     * UTC the prepended date may be off by one day. This is acceptable since log analysis
+     * depends on relative line ordering, not absolute dates.</p>
+     */
+    static String stripDockerTimestamp(String line) {
+        Matcher m = DOCKER_TS_PREFIX.matcher(line);
+        if (!m.find()) return line;
+        String date = m.group(1);
+        String rest = line.substring(m.end());
+        if (TIME_ONLY_START.matcher(rest).find()) {
+            return date + " " + rest;
+        }
+        return rest;
     }
 
     public static class ContainerLogException extends RuntimeException {
