@@ -243,7 +243,7 @@ export default function DatabasesTab() {
     loadDatabases()
     isMigrationEnabled().then(setMigrationEnabled).catch(() => setMigrationEnabled(false))
     getMigratedDatabases().then(setMigratedDatabases).catch(() => setMigratedDatabases([]))
-    isQueryEnabled().then(r => { setQueryFeatureEnabled(r.enabled); setQueryWriteEnabled(r.writeEnabled); setQueryStatsResetEnabled(r.queryStatsResetEnabled) }).catch(() => {})
+    isQueryEnabled(currentRepo).then(r => { setQueryFeatureEnabled(r.enabled); setQueryWriteEnabled(r.writeEnabled); setQueryStatsResetEnabled(r.queryStatsResetEnabled) }).catch(() => {})
   }, [currentRepo, loadDatabases])
 
   // Auto-refresh every 60s

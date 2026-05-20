@@ -306,8 +306,8 @@ export async function explainQuery(
   return { success: true, plan: data.plan, tableStats: data.tableStats }
 }
 
-export async function isQueryEnabled(): Promise<{ enabled: boolean; writeEnabled: boolean; queryStatsResetEnabled: boolean }> {
-  const res = await fetchWithAuth(API + 'query-enabled')
+export async function isQueryEnabled(repository: string): Promise<{ enabled: boolean; writeEnabled: boolean; queryStatsResetEnabled: boolean }> {
+  const res = await fetchWithAuth(API + `query-enabled?repository=${encodeURIComponent(repository)}`)
   if (!res.ok) return { enabled: false, writeEnabled: false, queryStatsResetEnabled: false }
   return res.json()
 }

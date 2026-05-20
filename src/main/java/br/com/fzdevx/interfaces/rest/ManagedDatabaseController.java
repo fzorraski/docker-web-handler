@@ -19,6 +19,7 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.eclipse.microprofile.config.Config;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.time.Instant;
@@ -56,8 +57,7 @@ public class ManagedDatabaseController {
     boolean queryCacheTotalRows;
 
     @Inject
-    @ConfigProperty(name = "database.query-stats.reset-enabled", defaultValue = "false")
-    boolean queryStatsResetEnabled;
+    Config config;
 
     @Inject
     ListManagedDatabasesUseCase listManagedDatabasesUseCase;
@@ -82,6 +82,11 @@ public class ManagedDatabaseController {
 
     @Inject
     ResourceCounterService resourceCounterService;
+
+    private boolean isStatsResetEnabled(String repository) {
+        return config.getOptionalValue("database.query-stats.reset-enabled." + repository, Boolean.class)
+                .orElse(false);
+    }
 
     @GET
     @Path("/enabled")
@@ -322,14 +327,14 @@ public class ManagedDatabaseController {
     public Response resetQueryStats(@PathParam("repository") String repository,
                                     @PathParam("databaseName") String databaseName,
                                     @HeaderParam("X-Dump-Password") String password) {
-        if (!managedEnabled || !queryStatsResetEnabled) {
-            return Response.status(Response.Status.NOT_FOUND).build();
-        }
-
         Optional<String> repoError = InputValidator.validateRepository(repository);
         if (repoError.isPresent()) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", repoError.get())).build();
+        }
+
+        if (!managedEnabled || !isStatsResetEnabled(repository)) {
+            return Response.status(Response.Status.NOT_FOUND).build();
         }
 
         Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
@@ -360,14 +365,14 @@ public class ManagedDatabaseController {
     public Response resetTableStats(@PathParam("repository") String repository,
                                     @PathParam("databaseName") String databaseName,
                                     @HeaderParam("X-Dump-Password") String password) {
-        if (!managedEnabled || !queryStatsResetEnabled) {
-            return Response.status(Response.Status.NOT_FOUND).build();
-        }
-
         Optional<String> repoError = InputValidator.validateRepository(repository);
         if (repoError.isPresent()) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", repoError.get())).build();
+        }
+
+        if (!managedEnabled || !isStatsResetEnabled(repository)) {
+            return Response.status(Response.Status.NOT_FOUND).build();
         }
 
         Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
@@ -400,14 +405,14 @@ public class ManagedDatabaseController {
                                           @PathParam("schemaName") String schemaName,
                                           @PathParam("tableName") String tableName,
                                           @HeaderParam("X-Dump-Password") String password) {
-        if (!managedEnabled || !queryStatsResetEnabled) {
-            return Response.status(Response.Status.NOT_FOUND).build();
-        }
-
         Optional<String> repoError = InputValidator.validateRepository(repository);
         if (repoError.isPresent()) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", repoError.get())).build();
+        }
+
+        if (!managedEnabled || !isStatsResetEnabled(repository)) {
+            return Response.status(Response.Status.NOT_FOUND).build();
         }
 
         Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
@@ -450,8 +455,11 @@ public class ManagedDatabaseController {
     @GET
     @Path("/query-enabled")
     @Produces(MediaType.APPLICATION_JSON)
-    public Map<String, Object> isQueryEnabled() {
-        return Map.of("enabled", queryEnabled, "writeEnabled", queryWriteEnabled, "queryStatsResetEnabled", queryStatsResetEnabled);
+    public Map<String, Object> isQueryEnabled(@QueryParam("repository") String repository) {
+        boolean statsReset = repository != null && !repository.isBlank()
+                && InputValidator.validateRepository(repository).isEmpty()
+                && isStatsResetEnabled(repository);
+        return Map.of("enabled", queryEnabled, "writeEnabled", queryWriteEnabled, "queryStatsResetEnabled", statsReset);
     }
 
     @POST
