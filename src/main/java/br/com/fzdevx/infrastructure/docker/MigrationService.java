@@ -164,8 +164,14 @@ public class MigrationService {
             return null;
         }
         if (result.sql().isBlank()) {
-            eventSink.accept(ContainerEvent.error(STEP_NAME, "Migration API returned no SQL statements."));
-            return null;
+            StringBuilder noOp = new StringBuilder("No migration needed");
+            if (result.sourceVersion() != null && result.targetVersion() != null) {
+                noOp.append(" (").append(result.sourceVersion())
+                        .append(" → ").append(result.targetVersion()).append(")");
+            }
+            noOp.append(" — API returned no SQL statements.");
+            eventSink.accept(ContainerEvent.info(STEP_NAME, noOp.toString()));
+            return result;
         }
 
         // Emit metadata as SSE info events
@@ -279,6 +285,9 @@ public class MigrationService {
         return new MigrationResult(trimmed, null, null, null, null);
     }
 
+    private static final int MAX_VERSION_LENGTH = 128;
+    private static final int MAX_VERSIONS_INCLUDED = 256;
+
     private MigrationResult parseJsonObject(JsonObject obj) {
         // Required: statements
         String sql;
@@ -290,13 +299,14 @@ public class MigrationService {
             return new MigrationResult("", null, null, null, null);
         }
 
-        // Optional: sourceVersion
+        // Optional: sourceVersion — sanitized to defend against log/SSE injection
+        // and oversized payloads from a misbehaving or compromised migration API.
         String sourceVersion = obj.containsKey("sourceVersion") && !obj.isNull("sourceVersion")
-                ? obj.getString("sourceVersion") : null;
+                ? sanitizeVersion(obj.getString("sourceVersion")) : null;
 
         // Optional: targetVersion
         String targetVersion = obj.containsKey("targetVersion") && !obj.isNull("targetVersion")
-                ? obj.getString("targetVersion") : null;
+                ? sanitizeVersion(obj.getString("targetVersion")) : null;
 
         // Optional: totalStatements
         Integer totalStatements = obj.containsKey("totalStatements") && !obj.isNull("totalStatements")
@@ -309,12 +319,32 @@ public class MigrationService {
             versionsIncluded = new ArrayList<>();
             for (JsonValue v : arr) {
                 if (v instanceof JsonString js) {
-                    versionsIncluded.add(js.getString());
+                    if (versionsIncluded.size() >= MAX_VERSIONS_INCLUDED) break;
+                    String sanitized = sanitizeVersion(js.getString());
+                    if (sanitized != null) {
+                        versionsIncluded.add(sanitized);
+                    }
                 }
             }
         }
 
         return new MigrationResult(sql, sourceVersion, targetVersion, totalStatements, versionsIncluded);
+    }
+
+    private static String sanitizeVersion(String raw) {
+        if (raw == null) return null;
+        StringBuilder sb = new StringBuilder(Math.min(raw.length(), MAX_VERSION_LENGTH));
+        for (int i = 0; i < raw.length() && sb.length() < MAX_VERSION_LENGTH; i++) {
+            char c = raw.charAt(i);
+            // Strip ISO control chars (CR/LF/TAB/ANSI escape, etc.) — these are the
+            // primary log-injection / SSE-injection vectors. Allow normal printable
+            // chars; non-ASCII is left intact for unicode version tags.
+            if (!Character.isISOControl(c)) {
+                sb.append(c);
+            }
+        }
+        String result = sb.toString().trim();
+        return result.isEmpty() ? null : result;
     }
 
     private String joinStatements(JsonArray arr) {
@@ -347,6 +377,13 @@ public class MigrationService {
         String migrationSql;
         MigrationResult migrationResult = null;
         if ("MANUAL".equals(mode)) {
+            // MANUAL mode with blank SQL is a caller error — fail-closed so we don't
+            // silently record a no-op as a successful migration.
+            if (sql == null || sql.isBlank()) {
+                eventSink.accept(ContainerEvent.error(STEP_NAME,
+                        "Migration SQL is required for MANUAL mode."));
+                return false;
+            }
             migrationSql = sql;
         } else {
             migrationResult = fetchMigrationSql(repository, sourceVersion, targetVersion, eventSink);
@@ -354,6 +391,14 @@ public class MigrationService {
                 return false;
             }
             migrationSql = migrationResult.sql();
+        }
+
+        // API no-op: the migration API correctly reported there is nothing to
+        // migrate between source and target. Treat as success but do not record —
+        // recording would overwrite any prior real migration record for the same
+        // (database, repository) and pollute the executed-migrations counter.
+        if (migrationSql == null || migrationSql.isBlank()) {
+            return true;
         }
 
         boolean ok = executeMigration(migrationSql, pgInfo, targetDatabase, pgImage, eventSink, cancelled);
