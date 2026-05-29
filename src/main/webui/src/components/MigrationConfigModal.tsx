@@ -105,6 +105,10 @@ export default function MigrationConfigModal({ open, config, apiModeAvailable, s
 
   const hasSuggestion = !!(suggestedSourceVersion || suggestedTargetVersion)
 
+  const canSave = mode === 'MANUAL'
+    ? !!sql.trim()
+    : !!sourceVersion.trim() && !!targetVersion.trim()
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ bgcolor: 'primary.dark', color: 'white', display: 'flex', alignItems: 'center' }}>
@@ -239,7 +243,7 @@ export default function MigrationConfigModal({ open, config, apiModeAvailable, s
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2 }}>
         <Button onClick={onClose} color="inherit">{t('common.cancel')}</Button>
-        <Button variant="contained" onClick={handleSave}>{t('migrationConfig.save')}</Button>
+        <Button variant="contained" onClick={handleSave} disabled={!canSave}>{t('migrationConfig.save')}</Button>
       </DialogActions>
     </Dialog>
   )
