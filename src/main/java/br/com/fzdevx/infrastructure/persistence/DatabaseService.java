@@ -206,6 +206,94 @@ public class DatabaseService implements DatabasePort {
         return times;
     }
 
+    /**
+     * Snapshot of the most recent activity timestamp per database, restricted to
+     * client-backend sessions (excludes autovacuum, wal writer, and other
+     * background processes). Intended for the background poller that persists
+     * activity to {@code appLastUsedAt} before sessions disconnect and disappear
+     * from {@code pg_stat_activity}.
+     *
+     * <p>Filters rows where all four timestamp columns are NULL at SQL level —
+     * a non-superuser without {@code pg_read_all_stats} sees NULL for other
+     * users' session columns, and dropping those rows here (instead of using a
+     * 1970-01-01 sentinel that gets silently filtered out in Java) makes the
+     * permission case observable: zero entries returned for an actively-used
+     * database means the PG role can't see other users' stats. The
+     * {@link #checkActivityPermissions} helper reports this at startup.
+     *
+     * <p>Excludes {@code backend_start} from the GREATEST list — that timestamp
+     * is when the session connected, not when activity occurred, and would mark
+     * idle pooled connections as recently used.
+     */
+    public Map<String, Instant> getClientBackendActivity(String repository) {
+        Map<String, Instant> times = new HashMap<>();
+        try (Connection conn = getConnection(repository);
+             PreparedStatement stmt = conn.prepareStatement(
+                     "SELECT datname, GREATEST("
+                             + "MAX(state_change), MAX(query_start), MAX(xact_start)"
+                             + ") AS last_activity FROM pg_stat_activity "
+                             + "WHERE datname IS NOT NULL "
+                             + "  AND datname NOT IN ('postgres') "
+                             + "  AND backend_type = 'client backend' "
+                             + "  AND (state_change IS NOT NULL "
+                             + "       OR query_start IS NOT NULL "
+                             + "       OR xact_start IS NOT NULL) "
+                             + "GROUP BY datname");
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                Timestamp ts = rs.getTimestamp("last_activity");
+                if (ts != null) {
+                    times.put(rs.getString("datname"), ts.toInstant());
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(
+                    "Failed to get client-backend activity for repository '" + repository + "': "
+                            + e.getMessage(), e);
+        }
+        return times;
+    }
+
+    public record ActivityPermissionCheck(
+            String currentUser,
+            boolean isSuperuser,
+            boolean hasReadAllStats,
+            String serverVersion) {
+        public boolean canSeeOtherSessions() {
+            return isSuperuser || hasReadAllStats;
+        }
+    }
+
+    /**
+     * One-time diagnostic intended for startup logging. Tells whether the
+     * configured role can see other users' session details in
+     * {@code pg_stat_activity}; without that privilege, all activity from
+     * sessions of OTHER users comes back with NULL state_change / query_start /
+     * xact_start, and the activity poller will silently never observe them.
+     */
+    public ActivityPermissionCheck checkActivityPermissions(String repository) {
+        try (Connection conn = getConnection(repository);
+             PreparedStatement stmt = conn.prepareStatement(
+                     "SELECT current_user, "
+                             + "(SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS is_super, "
+                             + "pg_has_role(current_user, 'pg_read_all_stats', 'MEMBER') AS can_read_stats, "
+                             + "current_setting('server_version') AS server_version");
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) {
+                return new ActivityPermissionCheck(
+                        rs.getString("current_user"),
+                        rs.getBoolean("is_super"),
+                        rs.getBoolean("can_read_stats"),
+                        rs.getString("server_version"));
+            }
+            return null;
+        } catch (Exception e) {
+            throw new RuntimeException(
+                    "Failed to check activity permissions for repository '" + repository + "': "
+                            + e.getMessage(), e);
+        }
+    }
+
     public record DatabaseHealthInfo(
             long sizeBytes,
             int activeConnections,

@@ -6,8 +6,10 @@ import jakarta.json.bind.JsonbBuilder;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -37,6 +39,25 @@ public abstract class AbstractJsonFileRepository<T> {
             all.removeIf(idMatcher);
             all.add(entity);
             writeToFile(all);
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * Reads, mutates, and writes the whole collection under a single write lock.
+     * Use for bulk updates where N individual {@link #saveEntity} calls would mean
+     * N file rewrites; this collapses them to one. The mutator returns true if it
+     * actually changed anything (so we can skip the write when there is nothing
+     * to persist).
+     */
+    protected void updateAll(Predicate<List<T>> mutator) {
+        lock.writeLock().lock();
+        try {
+            List<T> all = readFromFile();
+            if (mutator.test(all)) {
+                writeToFile(all);
+            }
         } finally {
             lock.writeLock().unlock();
         }
@@ -101,11 +122,31 @@ public abstract class AbstractJsonFileRepository<T> {
     }
 
     private void writeToFile(List<T> entities) {
+        // Write to a sibling temp file then atomically rename. A JVM crash, OOM,
+        // SIGKILL, or container restart mid-write can never leave the target
+        // file truncated or corrupted — readers always see either the previous
+        // complete contents or the new complete contents.
+        Path tmp = null;
         try {
             Files.createDirectories(filePath.getParent());
-            Files.writeString(filePath, jsonb.toJson(entities));
+            tmp = filePath.resolveSibling(filePath.getFileName() + ".tmp." + System.nanoTime());
+            Files.writeString(tmp, jsonb.toJson(entities));
+            try {
+                Files.move(tmp, filePath,
+                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException atomicNotSupported) {
+                // Some filesystems (e.g., older NFS) don't support ATOMIC_MOVE
+                // — fall back to a regular replace. Less safe but better than
+                // never writing at all.
+                Files.move(tmp, filePath, StandardCopyOption.REPLACE_EXISTING);
+            }
+            tmp = null; // moved away — don't delete in finally.
         } catch (IOException e) {
             Log.errorf("Failed to write file %s: %s", filePath, e.getMessage());
+        } finally {
+            if (tmp != null) {
+                try { Files.deleteIfExists(tmp); } catch (IOException ignored) {}
+            }
         }
     }
 }
