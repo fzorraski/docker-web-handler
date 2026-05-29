@@ -1,7 +1,13 @@
 package br.com.fzdevx.infrastructure.docker;
 
 import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.command.InspectContainerCmd;
+import com.github.dockerjava.api.command.InspectContainerResponse;
 import com.github.dockerjava.api.command.ListContainersCmd;
+import com.github.dockerjava.api.model.Container;
+import com.github.dockerjava.api.model.ExposedPort;
+import com.github.dockerjava.api.model.HostConfig;
+import com.github.dockerjava.api.model.Ports;
 import org.eclipse.microprofile.config.Config;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -248,5 +254,168 @@ class PortFinderTest {
         assertEquals(2, ports.size());
         assertTrue(ports.get(0) >= 60000);
         portFinder.releasePorts(ports);
+    }
+
+    // ---- respect-stopped flag ----
+
+    private Container stubContainer(String id, String state) {
+        Container c = mock(Container.class);
+        when(c.getId()).thenReturn(id);
+        when(c.getState()).thenReturn(state);
+        when(c.getPorts()).thenReturn(new com.github.dockerjava.api.model.ContainerPort[0]);
+        return c;
+    }
+
+    private void stubInspectWithHostPort(String containerId, int hostPort) {
+        InspectContainerCmd inspectCmd = mock(InspectContainerCmd.class);
+        InspectContainerResponse inspect = mock(InspectContainerResponse.class);
+        HostConfig hostConfig = mock(HostConfig.class);
+        Ports ports = new Ports();
+        ports.bind(ExposedPort.tcp(80), Ports.Binding.bindPort(hostPort));
+
+        when(dockerClient.inspectContainerCmd(containerId)).thenReturn(inspectCmd);
+        when(inspectCmd.exec()).thenReturn(inspect);
+        when(inspect.getHostConfig()).thenReturn(hostConfig);
+        when(hostConfig.getPortBindings()).thenReturn(ports);
+    }
+
+    @Test
+    void findAvailablePorts_respectStoppedDisabled_ignoresStoppedContainerBindings() throws Exception {
+        setField(portFinder, "respectStoppedPorts", false);
+        Container stopped = stubContainer("stopped123", "exited");
+        when(listContainersCmd.exec()).thenReturn(List.of(stopped));
+
+        List<Integer> result = portFinder.findAvailablePorts(1, 50080);
+
+        assertEquals(List.of(50080), result, "with flag off, stopped container's port should be available");
+        verify(dockerClient, never()).inspectContainerCmd(anyString());
+        portFinder.releasePorts(result);
+    }
+
+    @Test
+    void findAvailablePorts_respectStoppedEnabled_skipsStoppedContainerHostPort() throws Exception {
+        setField(portFinder, "respectStoppedPorts", true);
+        Container stopped = stubContainer("stopped123", "exited");
+        when(listContainersCmd.exec()).thenReturn(List.of(stopped));
+        stubInspectWithHostPort("stopped123", 50080);
+
+        List<Integer> result = portFinder.findAvailablePorts(1, 50080);
+
+        assertEquals(List.of(50081), result,
+                "with flag on, port reserved by a stopped container must be skipped");
+        portFinder.releasePorts(result);
+    }
+
+    @Test
+    void findAvailablePorts_respectStoppedEnabled_doesNotInspectRunningContainers() throws Exception {
+        setField(portFinder, "respectStoppedPorts", true);
+        Container running = stubContainer("running123", "running");
+        when(listContainersCmd.exec()).thenReturn(List.of(running));
+
+        List<Integer> result = portFinder.findAvailablePorts(1, 50080);
+
+        assertEquals(List.of(50080), result);
+        verify(dockerClient, never()).inspectContainerCmd(anyString());
+        portFinder.releasePorts(result);
+    }
+
+    @Test
+    void findAvailablePorts_respectStoppedEnabled_inspectFailureDoesNotPropagate() throws Exception {
+        setField(portFinder, "respectStoppedPorts", true);
+        Container stopped = stubContainer("stopped123", "exited");
+        when(listContainersCmd.exec()).thenReturn(List.of(stopped));
+
+        InspectContainerCmd inspectCmd = mock(InspectContainerCmd.class);
+        when(dockerClient.inspectContainerCmd("stopped123")).thenReturn(inspectCmd);
+        when(inspectCmd.exec()).thenThrow(new RuntimeException("docker daemon error"));
+
+        List<Integer> result = portFinder.findAvailablePorts(1, 50080);
+
+        assertEquals(List.of(50080), result,
+                "inspect failure must not abort allocation; falls back to listing-only view");
+        portFinder.releasePorts(result);
+    }
+
+    @Test
+    void findAvailablePorts_respectStoppedEnabled_reservesEveryPortInRangeSpec() throws Exception {
+        setField(portFinder, "respectStoppedPorts", true);
+        Container stopped = stubContainer("stopped123", "exited");
+        when(listContainersCmd.exec()).thenReturn(List.of(stopped));
+
+        InspectContainerCmd inspectCmd = mock(InspectContainerCmd.class);
+        InspectContainerResponse inspect = mock(InspectContainerResponse.class);
+        HostConfig hostConfig = mock(HostConfig.class);
+        Ports ports = new Ports();
+        // The stopped container has a range binding 50080-50082. All three host
+        // ports must be considered reserved so the allocator skips past them.
+        ports.bind(ExposedPort.tcp(80), new Ports.Binding(null, "50080-50082"));
+        when(dockerClient.inspectContainerCmd("stopped123")).thenReturn(inspectCmd);
+        when(inspectCmd.exec()).thenReturn(inspect);
+        when(inspect.getHostConfig()).thenReturn(hostConfig);
+        when(hostConfig.getPortBindings()).thenReturn(ports);
+
+        List<Integer> result = portFinder.findAvailablePorts(1, 50080);
+
+        assertEquals(List.of(50083), result,
+                "every port in the range should be marked reserved; allocator must skip past 50082");
+        portFinder.releasePorts(result);
+    }
+
+    @Test
+    void findAvailablePorts_respectStoppedEnabled_skipsCreatedAndPausedStates() throws Exception {
+        setField(portFinder, "respectStoppedPorts", true);
+        // Only 'exited' and 'dead' should trigger inspection.
+        Container created = stubContainer("c1", "created");
+        Container paused = stubContainer("c2", "paused");
+        Container restarting = stubContainer("c3", "restarting");
+        Container nullState = stubContainer("c4", null);
+        when(listContainersCmd.exec()).thenReturn(List.of(created, paused, restarting, nullState));
+
+        List<Integer> result = portFinder.findAvailablePorts(1, 50080);
+
+        assertEquals(List.of(50080), result,
+                "ports of created/paused/restarting/null-state containers must not be reserved");
+        verify(dockerClient, never()).inspectContainerCmd(anyString());
+        portFinder.releasePorts(result);
+    }
+
+    @Test
+    void findAvailablePorts_respectStoppedEnabled_inspectsDeadStateContainers() throws Exception {
+        setField(portFinder, "respectStoppedPorts", true);
+        Container dead = stubContainer("dead1", "dead");
+        when(listContainersCmd.exec()).thenReturn(List.of(dead));
+        stubInspectWithHostPort("dead1", 50080);
+
+        List<Integer> result = portFinder.findAvailablePorts(1, 50080);
+
+        assertEquals(List.of(50081), result,
+                "dead containers are treated as stably stopped; their bindings must be reserved");
+        portFinder.releasePorts(result);
+    }
+
+    @Test
+    void findAvailablePorts_respectStoppedEnabled_ignoresOutOfRangeAndJunkSpecs() throws Exception {
+        setField(portFinder, "respectStoppedPorts", true);
+        Container stopped = stubContainer("stopped123", "exited");
+        when(listContainersCmd.exec()).thenReturn(List.of(stopped));
+
+        InspectContainerCmd inspectCmd = mock(InspectContainerCmd.class);
+        InspectContainerResponse inspect = mock(InspectContainerResponse.class);
+        HostConfig hostConfig = mock(HostConfig.class);
+        Ports ports = new Ports();
+        ports.bind(ExposedPort.tcp(80), new Ports.Binding(null, "70000"));   // > MAX_PORT
+        ports.bind(ExposedPort.tcp(81), new Ports.Binding(null, "0"));       // < 1
+        ports.bind(ExposedPort.tcp(82), new Ports.Binding(null, "abc"));     // not a number
+        ports.bind(ExposedPort.tcp(83), new Ports.Binding(null, "1234567890123456789")); // > 16 chars
+        when(dockerClient.inspectContainerCmd("stopped123")).thenReturn(inspectCmd);
+        when(inspectCmd.exec()).thenReturn(inspect);
+        when(inspect.getHostConfig()).thenReturn(hostConfig);
+        when(hostConfig.getPortBindings()).thenReturn(ports);
+
+        List<Integer> result = portFinder.findAvailablePorts(1, 50080);
+
+        assertEquals(List.of(50080), result,
+                "malformed/out-of-range specs should be skipped, not parsed into bogus reservations");
+        portFinder.releasePorts(result);
     }
 }
