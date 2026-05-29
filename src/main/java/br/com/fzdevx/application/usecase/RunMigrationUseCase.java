@@ -24,6 +24,9 @@ public class RunMigrationUseCase {
     @Inject
     DatabaseService databaseService;
 
+    @Inject
+    ManagedDatabaseUsageTracker usageTracker;
+
     private final ConcurrentHashMap<String, AtomicBoolean> activeRuns = new ConcurrentHashMap<>();
 
     public boolean cancel(String ticket) {
@@ -114,6 +117,8 @@ public class RunMigrationUseCase {
             if (!ok) {
                 return;
             }
+
+            usageTracker.markUsed(request.getRepository(), request.getTargetDatabase());
 
             eventSink.accept(ContainerEvent.success("Complete",
                     "Migration completed successfully on database '" + request.getTargetDatabase() + "'."));

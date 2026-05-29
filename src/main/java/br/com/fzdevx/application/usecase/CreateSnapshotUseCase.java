@@ -60,6 +60,9 @@ public class CreateSnapshotUseCase {
     @Inject
     ListManagedDatabasesUseCase listManagedDatabasesUseCase;
 
+    @Inject
+    ManagedDatabaseUsageTracker usageTracker;
+
     public record ActiveSnapshotInfo(String repository, String sourceDatabaseName) {}
 
     static class SnapshotContext {
@@ -162,17 +165,7 @@ public class CreateSnapshotUseCase {
             snapshotStorageService.saveMetadata(snapshot);
             resourceCounterService.increment(ResourceCounterService.SNAPSHOTS);
 
-            // Track app-level usage for managed databases
-            try {
-                ManagedDatabase md = managedDatabaseRepository
-                        .find(request.getRepository(), request.getSourceDatabaseName())
-                        .orElseGet(() -> new ManagedDatabase(request.getRepository(), request.getSourceDatabaseName()));
-                md.setAppLastUsedAt(Instant.now());
-                managedDatabaseRepository.save(md);
-                listManagedDatabasesUseCase.invalidateCache(request.getRepository());
-            } catch (Exception ignored) {
-                // Non-critical: don't fail the snapshot if tracking fails
-            }
+            usageTracker.markUsed(request.getRepository(), request.getSourceDatabaseName());
 
             return snapshot.getId();
 

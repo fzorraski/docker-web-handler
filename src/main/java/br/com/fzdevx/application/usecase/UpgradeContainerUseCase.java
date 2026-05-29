@@ -49,6 +49,7 @@ public class UpgradeContainerUseCase {
     @Inject ContainerListBroadcaster broadcaster;
     @Inject org.eclipse.microprofile.config.Config appConfig;
     @Inject LogRotationResolver logRotationResolver;
+    @Inject ManagedDatabaseUsageTracker usageTracker;
 
     private final ConcurrentHashMap<String, AtomicBoolean> activeRuns = new ConcurrentHashMap<>();
 
@@ -277,6 +278,15 @@ public class UpgradeContainerUseCase {
                     expirationService.saveMetadata(newShortId, newFullId, repo, dbName);
                 }
             }
+
+            // Mark the underlying database as used regardless of whether an
+            // expiration record exists. Containers created without an
+            // expiration (legacy / external) carry the DATABASE_NAME_LABEL set
+            // by RunContainerUseCase, so we can still discover the dbName.
+            String effectiveDbName = oldExpiration != null
+                    ? oldExpiration.getDatabaseName()
+                    : (labels != null ? labels.get(Constants.DATABASE_NAME_LABEL) : null);
+            usageTracker.markUsed(repository, effectiveDbName);
 
             // Transfer schedules
             schedulingService.transferSchedules(shortId, newShortId);

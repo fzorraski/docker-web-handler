@@ -98,6 +98,9 @@ public class RunContainerUseCase {
     @Inject
     ListManagedDatabasesUseCase listManagedDatabasesUseCase;
 
+    @Inject
+    ManagedDatabaseUsageTracker usageTracker;
+
     @ConfigProperty(name = "container.memory-limit.max-mb", defaultValue = "65536")
     long memoryLimitMaxMb;
 
@@ -359,19 +362,7 @@ public class RunContainerUseCase {
 
             resourceCounterService.increment(ResourceCounterService.CONTAINERS);
 
-            // Track app-level usage for managed databases
-            if (request.getDatabaseName() != null && !request.getDatabaseName().isBlank()) {
-                try {
-                    ManagedDatabase md = managedDatabaseRepository
-                            .find(request.getRepository(), request.getDatabaseName())
-                            .orElseGet(() -> new ManagedDatabase(request.getRepository(), request.getDatabaseName()));
-                    md.setAppLastUsedAt(Instant.now());
-                    managedDatabaseRepository.save(md);
-                    listManagedDatabasesUseCase.invalidateCache(request.getRepository());
-                } catch (Exception ignored) {
-                    // Non-critical: don't fail the container start if tracking fails
-                }
-            }
+            usageTracker.markUsed(request.getRepository(), request.getDatabaseName());
 
             createdContainerId = null; // success — don't clean up
             eventSink.accept(ContainerEvent.success("Complete",
@@ -437,6 +428,12 @@ public class RunContainerUseCase {
 
         Map<String, String> labels = new LinkedHashMap<>();
         labels.put(Constants.REPOSITORY_LABEL, request.getRepository());
+        // Persist the managed-database name as a container label so the upgrade
+        // flow can rediscover it even when the ContainerExpiration record is
+        // absent (containers without expiration metadata).
+        if (request.getDatabaseName() != null && !request.getDatabaseName().isBlank()) {
+            labels.put(Constants.DATABASE_NAME_LABEL, request.getDatabaseName());
+        }
         if (request.getExtraLabels() != null) {
             labels.putAll(request.getExtraLabels());
         }
