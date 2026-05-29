@@ -382,6 +382,7 @@ const ptBR: typeof en = {
     editMetadataTitle: 'Confirmar Edição',
     editMetadataPasswordMessage: 'Informe a senha de operações para salvar as alterações de metadados.',
     neverUsed: 'Nunca utilizado',
+    inUseByContainer: 'Em uso por container',
     showNeverUsed: 'Apenas nunca utilizados',
     cleanUpByIdle: 'Limpar por Tempo Ocioso',
     cleanUpByIdleDesc: 'Remover arquivos que não foram utilizados (baixados ou restaurados) por um número especificado de dias',

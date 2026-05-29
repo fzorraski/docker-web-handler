@@ -382,6 +382,7 @@ const es: typeof en = {
     editMetadataTitle: 'Confirmar Edición',
     editMetadataPasswordMessage: 'Ingrese la contraseña de operaciones para guardar los cambios de metadatos.',
     neverUsed: 'Nunca utilizado',
+    inUseByContainer: 'En uso por contenedor',
     showNeverUsed: 'Solo nunca utilizados',
     cleanUpByIdle: 'Limpiar por Tiempo Inactivo',
     cleanUpByIdleDesc: 'Eliminar archivos que no han sido utilizados (descargados o restaurados) por un número especificado de días',

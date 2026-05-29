@@ -1097,8 +1097,18 @@ export default function DatabasesTab() {
                   </TableCell>
                   <TableCell>
                     <Chip
-                      label={getLastUsedLabel(db.effectiveLastUsedAt ?? null, false, '', t('database.neverUsed'))}
-                      color={getLastUsedColor(db.effectiveLastUsedAt ?? null)}
+                      label={getLastUsedLabel(
+                        db.effectiveLastUsedAt ?? null,
+                        false,
+                        '',
+                        t('database.neverUsed'),
+                        { condition: (db.containerCount ?? 0) > 0, label: t('database.inUseByContainer') },
+                      )}
+                      color={getLastUsedColor(
+                        db.effectiveLastUsedAt ?? null,
+                        false,
+                        (db.containerCount ?? 0) > 0,
+                      )}
                       size="small"
                       variant="outlined"
                     />

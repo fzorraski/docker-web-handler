@@ -3,8 +3,13 @@
  * @param lastUsedAt Date string in dd/MM/yyyy HH:mm:ss format, or ISO 8601, or null
  * @param isActive Whether the item is currently active/in use
  */
-export function getLastUsedColor(lastUsedAt: string | null | undefined, isActive?: boolean): 'success' | 'info' | 'warning' | 'error' | 'default' {
+export function getLastUsedColor(lastUsedAt: string | null | undefined, isActive?: boolean, fallbackInUse?: boolean): 'success' | 'info' | 'warning' | 'error' | 'default' {
   if (isActive) return 'success'
+  // If a fallback signal says "currently in use" (e.g. has containers attached),
+  // ignore the age of the last-used date — a database with running containers
+  // should never render as red/warning just because pg_stat_activity hasn't
+  // captured fresh traffic recently.
+  if (fallbackInUse) return 'info'
   if (!lastUsedAt) return 'default'
 
   let date: Date
@@ -29,10 +34,26 @@ export function getLastUsedColor(lastUsedAt: string | null | undefined, isActive
 
 /**
  * Returns a display label for a last-used date.
+ *
+ * @param fallback Optional pair of (flag, label). When `lastUsedAt` would
+ *                 otherwise be `neverLabel`, if `fallback.condition` is true the
+ *                 `fallback.label` is returned instead. Used by the databases
+ *                 tab to say "In use by container" when a database has an
+ *                 associated container even though no PG activity has been
+ *                 captured yet.
  */
-export function getLastUsedLabel(lastUsedAt: string | null | undefined, isActive: boolean, activeLabel: string, neverLabel: string): string {
+export function getLastUsedLabel(
+  lastUsedAt: string | null | undefined,
+  isActive: boolean,
+  activeLabel: string,
+  neverLabel: string,
+  fallback?: { condition: boolean, label: string }
+): string {
   if (isActive) return activeLabel
-  if (!lastUsedAt) return neverLabel
+  if (!lastUsedAt) {
+    if (fallback?.condition) return fallback.label
+    return neverLabel
+  }
 
   // If ISO 8601, format to local display
   if (lastUsedAt.includes('T') || lastUsedAt.includes('Z')) {

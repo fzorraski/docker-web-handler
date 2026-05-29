@@ -380,6 +380,7 @@ const en = {
     editMetadataTitle: 'Confirm Edit',
     editMetadataPasswordMessage: 'Enter the operations password to save the metadata changes.',
     neverUsed: 'Never used',
+    inUseByContainer: 'In use by container',
     showNeverUsed: 'Never used only',
     cleanUpByIdle: 'Clean Up by Idle Time',
     cleanUpByIdleDesc: 'Remove files that have not been used (downloaded or restored) for a specified number of days',

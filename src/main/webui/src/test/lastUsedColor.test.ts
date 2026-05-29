@@ -47,6 +47,15 @@ describe('getLastUsedColor', () => {
     const oldDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
     expect(getLastUsedColor(oldDate, true)).toBe('success')
   })
+
+  it('fallbackInUse overrides old date so DB with attached containers does not render as error', () => {
+    const oldDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
+    expect(getLastUsedColor(oldDate, false, true)).toBe('info')
+  })
+
+  it('fallbackInUse returns info even with null date', () => {
+    expect(getLastUsedColor(null, false, true)).toBe('info')
+  })
 })
 
 describe('getLastUsedLabel', () => {
