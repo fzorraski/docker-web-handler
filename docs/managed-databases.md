@@ -161,34 +161,65 @@ The "Idle Since" value comes from **two sources combined**:
 
 ### 1. PostgreSQL Stats (real-time)
 
-The backend queries `pg_stat_activity` for each database and takes the most recent timestamp from `state_change`, `query_start`, and `xact_start`. This captures SQL activity from **any client** — not just this application.
+The backend queries `pg_stat_activity` for each database and takes the most recent timestamp from `state_change`, `query_start`, and `xact_start`, restricted to client-backend sessions (`backend_type = 'client backend'`, so autovacuum and other internal processes don't masquerade as activity). This captures SQL activity from **any client** — not just this application.
 
-**Limitation:** `pg_stat_activity` only tracks **currently open connections**. Once all connections to a database close, PostgreSQL has no activity data to report.
+**Limitation:** `pg_stat_activity` only reports the snapshot of **currently open connections**. Once a connection closes, its timestamps disappear from the view — that's why the persistent tracking and background poller below exist.
+
+**Permission requirement:** The configured PG role must be a superuser OR a member of the built-in `pg_read_all_stats` role. Without that, PostgreSQL returns `NULL` for `state_change`/`query_start`/`xact_start` on sessions owned by other users, and the poller can't observe their activity. The application logs a loud WARN at startup if the role is missing this privilege, including the exact `GRANT pg_read_all_stats TO <user>;` statement to run.
 
 ### 2. App-Level Tracking (persistent)
 
-A JSON file (`data/managed-databases.json`) stores an `appLastUsedAt` timestamp per database. This is updated when:
+A JSON file (`data/managed-databases.json`) stores an `appLastUsedAt` timestamp per database. The same `ManagedDatabaseUsageTracker` helper is invoked by every code path that touches a managed database, so the value is updated when:
 
+- A **container is started** using the database (the database name is also persisted to the container as a `docker-web-handler.database-name` label so the upgrade flow can rediscover it later)
 - A **dump is restored** into the database
 - A **snapshot is taken** from the database
+- A **standalone migration** is run successfully
+- A **container is upgraded** (with or without an accompanying migration)
 
-This persists across restarts, so even after connections close, the application remembers when a database was last used through its own operations.
+This persists across restarts, so even after all connections close, the application remembers when a database was last touched.
+
+### 3. Background Activity Poller (persistent, all clients)
+
+A `DatabaseActivityPoller` runs once every `database.activity.poll.interval-seconds` (default 60s) per configured repository. Each cycle:
+
+1. Issues one `pg_stat_activity` query per repository (filtered to client backends).
+2. Calls `bulkMarkUsed` on the managed-database repository, which does one read + one mutate + one atomic JSON file rewrite under a single write lock, only when something actually changed.
+3. Skips updates whose proposed timestamp would regress an existing newer value.
+
+Net effect: even databases used **only by external clients** (psql, IDE, other applications, app servers connecting directly) get their `appLastUsedAt` persisted before sessions disconnect, so the "Idle Since" column keeps working long after they close.
+
+Performance is shaped for multi-user hosts: zero impact on user-facing reads (no cache invalidation — the existing 15s cache TTL handles freshness), single-threaded scheduler, per-repository isolation so one bad PG can't break the cycle, and the Docker/SQL I/O runs outside the JSON file's write lock.
 
 ### Combined Result
 
 The backend computes: `effectiveLastUsedAt = max(pgLastActivity, appLastUsedAt)` — whichever is more recent wins.
 
-- If both are null, the database shows **"Never used"**
-- "Never used" databases are always considered eligible for idle cleanup
+- If both are null **and** at least one container is currently attached to the database, the UI shows **"In use by container"** (info-blue chip) — a running container by itself proves the database is in use right now.
+- If both are null **and** there are no attached containers, the database shows **"Never used"**.
+- "Never used" databases are always considered eligible for idle cleanup.
 
 ### Data Refresh
 
 The frontend fetches live data from PostgreSQL **on demand**:
 
-- When the Databases tab is opened
-- Every 30 seconds while the tab remains open
+- When the Databases tab is opened.
+- Every 30 seconds while the tab remains open.
 
-There is no background polling on the backend. If nobody has the tab open, the only updates are app-level tracking from restore/snapshot operations.
+The backend caches the result for `database.managed.cache.ttl-seconds` (default 30s) per repository — all users share the same cache, so PostgreSQL is queried at most once per TTL period regardless of user count.
+
+### Case sensitivity
+
+PostgreSQL folds unquoted identifiers to lowercase (`CREATE DATABASE MyDB` actually stores `mydb`). The managed-database repository matches `(repository, name)` case-insensitively in every code path so user-typed CamelCase from container creation and PostgreSQL-canonical lowercase from the activity poller converge on a single record. The originally typed case is preserved when an entry is updated.
+
+### Configuration
+
+| Property | Default | Purpose |
+|---|---|---|
+| `database.managed.cache.ttl-seconds` | `30` | Shared cache TTL for the databases-tab listing. |
+| `database.activity.poll.enabled` | `true` | Toggle the background activity poller. |
+| `database.activity.poll.interval-seconds` | `60` | Poller cycle interval. Lower values surface activity faster but increase PG and file I/O proportionally. |
+| `database.activity.poll.initial-delay-seconds` | `30` | Delay before the first poll cycle after startup. |
 
 ---
 
