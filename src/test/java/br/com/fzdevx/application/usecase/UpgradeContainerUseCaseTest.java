@@ -44,6 +44,7 @@ class UpgradeContainerUseCaseTest {
     @Mock DockerClient dockerClient;
     @Mock DockerContainerPort dockerContainerPort;
     @Mock RegistryService registryService;
+    @Mock br.com.fzdevx.infrastructure.docker.ContainerProtectionService protectionService;
     @Mock ContainerExpirationService expirationService;
     @Mock ExpirationRepository expirationRepository;
     @Mock ContainerSchedulingService schedulingService;
@@ -138,6 +139,19 @@ class UpgradeContainerUseCaseTest {
         useCase.execute(req, eventSink, null);
 
         assertTrue(events.stream().anyMatch(e -> e.getType() == ContainerEvent.EventType.ERROR));
+    }
+
+    @Test
+    void execute_protectedContainer_emitsErrorAndDoesNotRemove() {
+        stubInspect();
+        when(protectionService.isProtectedImage("myrepo:20.88.2")).thenReturn(true);
+
+        useCase.execute(tagChangeRequest(), eventSink, null);
+
+        assertTrue(events.stream().anyMatch(e ->
+                e.getType() == ContainerEvent.EventType.ERROR && e.getMessage().contains("protected")));
+        verify(dockerClient, never()).stopContainerCmd(anyString());
+        verify(dockerClient, never()).removeContainerCmd(anyString());
     }
 
     @Test

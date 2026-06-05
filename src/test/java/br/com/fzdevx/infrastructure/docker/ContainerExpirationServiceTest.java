@@ -7,6 +7,8 @@ import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.interfaces.rest.util.ContainerListBroadcaster;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.ListContainersCmd;
+import com.github.dockerjava.api.command.RemoveContainerCmd;
+import com.github.dockerjava.api.command.StopContainerCmd;
 import com.github.dockerjava.api.model.Container;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +34,7 @@ class ContainerExpirationServiceTest {
     @Mock DatabaseService databaseService;
     @Mock ManagedDatabaseRepository managedDatabaseRepository;
     @Mock ContainerSchedulingService schedulingService;
+    @Mock ContainerProtectionService protectionService;
     @Mock ContainerListBroadcaster broadcaster;
 
     @InjectMocks
@@ -355,5 +358,40 @@ class ContainerExpirationServiceTest {
         ContainerExpiration saved = captor.getValue();
         assertNull(saved.getExpiresAt());
         assertEquals("mydb", saved.getDatabaseName());
+    }
+
+    // ---- removeContainersByDatabase ----
+
+    @Test
+    void removeContainersByDatabase_skipsProtectedContainer() {
+        ContainerExpiration protectedExp = new ContainerExpiration(
+                "prot123456", "prot123456full", Instant.now().plusSeconds(3600),
+                "myrepo", "mydb", false);
+        when(expirationRepository.findByDatabaseName("mydb")).thenReturn(List.of(protectedExp));
+        when(protectionService.isProtectedContainer("prot123456full")).thenReturn(true);
+
+        service.removeContainersByDatabase("mydb", null);
+
+        verify(dockerClient, never()).stopContainerCmd(anyString());
+        verify(dockerClient, never()).removeContainerCmd(anyString());
+        verify(expirationRepository, never()).delete("prot123456");
+    }
+
+    @Test
+    void removeContainersByDatabase_removesUnprotectedContainer() {
+        ContainerExpiration exp = new ContainerExpiration(
+                "norm123456", "norm123456full", Instant.now().plusSeconds(3600),
+                "myrepo", "mydb", false);
+        when(expirationRepository.findByDatabaseName("mydb")).thenReturn(List.of(exp));
+
+        StopContainerCmd stopCmd = mock(StopContainerCmd.class);
+        when(dockerClient.stopContainerCmd("norm123456full")).thenReturn(stopCmd);
+        RemoveContainerCmd removeCmd = mock(RemoveContainerCmd.class);
+        when(dockerClient.removeContainerCmd("norm123456full")).thenReturn(removeCmd);
+
+        service.removeContainersByDatabase("mydb", null);
+
+        verify(removeCmd).exec();
+        verify(expirationRepository).delete("norm123456");
     }
 }

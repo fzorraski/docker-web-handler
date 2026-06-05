@@ -38,6 +38,8 @@ public class DockerContainer {
 
     private boolean upgradeEnabled;
 
+    private boolean protectedFlag;
+
     public String getContainerId() {
         return containerId;
     }
@@ -172,6 +174,14 @@ public class DockerContainer {
 
     public void setUpgradeEnabled(boolean upgradeEnabled) {
         this.upgradeEnabled = upgradeEnabled;
+    }
+
+    public boolean isProtectedFlag() {
+        return protectedFlag;
+    }
+
+    public void setProtectedFlag(boolean protectedFlag) {
+        this.protectedFlag = protectedFlag;
     }
 
     @Override

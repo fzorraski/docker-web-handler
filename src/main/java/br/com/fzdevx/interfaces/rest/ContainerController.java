@@ -3,9 +3,11 @@ package br.com.fzdevx.interfaces.rest;
 import br.com.fzdevx.domain.model.DockerContainer;
 import br.com.fzdevx.domain.model.HostMemoryStatus;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.ContainerProtectionService;
 import br.com.fzdevx.infrastructure.docker.MemoryGuardService;
 import br.com.fzdevx.application.usecase.RestoreDumpUseCase;
 import br.com.fzdevx.domain.shared.Constants;
+import br.com.fzdevx.domain.shared.ImageReference;
 import br.com.fzdevx.infrastructure.docker.SelfContainerDetector;
 import br.com.fzdevx.infrastructure.util.DateFormatter;
 import br.com.fzdevx.domain.shared.InputValidator;
@@ -45,6 +47,9 @@ public class ContainerController {
     ContainerExpirationService expirationService;
 
     @Inject
+    ContainerProtectionService protectionService;
+
+    @Inject
     MemoryGuardService memoryGuardService;
 
     @Inject
@@ -62,7 +67,7 @@ public class ContainerController {
 
         String selfId = SelfContainerDetector.findSelfContainerId(dockerContainers);
         for (Container dc : dockerContainers) {
-            if (dc.getImage().equals(Constants.DOCKER_WEB_HANDLER_IMAGE)) continue;
+            if (isDockerWebHandlerImage(dc.getImage())) continue;
             if (dc.getId().equals(selfId)) continue;
             if (dc.getLabels() != null && dc.getLabels().containsKey(RestoreDumpUseCase.EPHEMERAL_LABEL)) continue;
 
@@ -73,6 +78,7 @@ public class ContainerController {
             dockerContainer.setImage(dc.getImage());
             dockerContainer.setNames(dc.getNames()[0].replaceFirst("/", ""));
             dockerContainer.setStatus(dc.getStatus());
+            dockerContainer.setProtectedFlag(protectionService.isProtectedImage(dc.getImage()));
             ContainerPort[] ports = dc.getPorts();
             dockerContainer.setPorts(ports.length > 0 ? Arrays.toString(ports) : "-");
             if (ports.length > 0) {
@@ -133,6 +139,10 @@ public class ContainerController {
         if (InputValidator.validateContainerId(dockerContainer.getContainerId()).isPresent()) {
             return false;
         }
+        if (protectionService.isProtectedContainer(dockerContainer.getContainerId())) {
+            Log.warnf("Refusing to stop protected container %s.", dockerContainer.getContainerId());
+            return false;
+        }
         try {
             dockerClient.stopContainerCmd(dockerContainer.getContainerId()).exec();
             broadcaster.notifyChange();
@@ -149,6 +159,10 @@ public class ContainerController {
     @Path("/remove")
     public boolean removeContainer(DockerContainer dockerContainer) {
         if (InputValidator.validateContainerId(dockerContainer.getContainerId()).isPresent()) {
+            return false;
+        }
+        if (protectionService.isProtectedContainer(dockerContainer.getContainerId())) {
+            Log.warnf("Refusing to remove protected container %s.", dockerContainer.getContainerId());
             return false;
         }
         try {
@@ -213,8 +227,17 @@ public class ContainerController {
         return Map.of("success", false, "error", "START_FAILED");
     }
 
+    /**
+     * Matches a container image against the app's own image regardless of tag or digest,
+     * so the docker-web-handler container (e.g. {@code fabriciozrk/docker-web-handler:0.18})
+     * is always filtered out of the listing.
+     */
+    private static boolean isDockerWebHandlerImage(String image) {
+        return Constants.DOCKER_WEB_HANDLER_IMAGE.equals(ImageReference.repository(image));
+    }
+
     private Map<String, String> buildPortPaths(String image, ContainerPort[] ports) {
-        String imageBase = image.contains(":") ? image.substring(0, image.lastIndexOf(':')) : image;
+        String imageBase = ImageReference.repository(image);
 
         Optional<String> pathsValue = config.getOptionalValue("repository.port-paths." + imageBase, String.class);
         if ((pathsValue.isEmpty() || pathsValue.get().isBlank()) && imageBase.contains("/")) {

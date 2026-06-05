@@ -6,6 +6,7 @@ import br.com.fzdevx.domain.model.DockerContainer;
 import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.ContainerProtectionService;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import com.github.dockerjava.api.DockerClient;
@@ -39,6 +40,7 @@ class ContainerExpirationControllerTest {
     @Mock DockerClient dockerClient;
     @Mock ContainerExpirationService expirationService;
     @Mock ManagedDatabaseRepository managedDatabaseRepository;
+    @Mock ContainerProtectionService protectionService;
     @Mock PasswordValidationService passwordValidationService;
     @Mock DatabaseService databaseService;
 
@@ -78,6 +80,13 @@ class ContainerExpirationControllerTest {
     void extendExpiration_serviceFails_returnsFalse() {
         when(expirationService.extendExpiration("abc123def4", 10)).thenReturn(false);
         assertFalse(controller.extendExpiration(req("abc123def4"), 10));
+    }
+
+    @Test
+    void extendExpiration_protected_returnsFalseAndDoesNotExtend() {
+        when(protectionService.isProtectedContainer("abc123def4")).thenReturn(true);
+        assertFalse(controller.extendExpiration(req("abc123def4"), 10));
+        verify(expirationService, never()).extendExpiration(anyString(), anyInt());
     }
 
     // ---- cancelDatabaseDeletion ----
@@ -244,6 +253,27 @@ class ContainerExpirationControllerTest {
         String future = LocalDateTime.now().plusDays(1).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         when(expirationService.updateExpiration(eq("abc123def4"), any(Instant.class), eq(false))).thenReturn(true);
         Response resp = controller.updateExpiration(updateReq("abc123def4", future, false, null));
+        assertEquals(200, resp.getStatus());
+    }
+
+    @Test
+    void updateExpiration_protectedContainer_returns400() {
+        String future = LocalDateTime.now().plusDays(1).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        when(protectionService.isProtectedContainer("abc123def4")).thenReturn(true);
+        Response resp = controller.updateExpiration(updateReq("abc123def4", future, false, null));
+        assertEquals(400, resp.getStatus());
+        @SuppressWarnings("unchecked")
+        Map<String, String> body = (Map<String, String>) resp.getEntity();
+        assertTrue(body.get("error").contains("protected"));
+        verify(expirationService, never()).updateExpiration(anyString(), any(), anyBoolean());
+    }
+
+    @Test
+    void updateExpiration_protectedContainer_clearingStillAllowed() {
+        // Clearing (null expiration) is allowed even when protected.
+        when(protectionService.isProtectedContainer("abc123def4")).thenReturn(true);
+        when(expirationService.updateExpiration(eq("abc123def4"), isNull(), eq(false))).thenReturn(true);
+        Response resp = controller.updateExpiration(updateReq("abc123def4", null, false, null));
         assertEquals(200, resp.getStatus());
     }
 

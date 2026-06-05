@@ -5,6 +5,7 @@ import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.ContainerProtectionService;
 import br.com.fzdevx.infrastructure.docker.ContainerSchedulingService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.domain.shared.InputValidator;
@@ -19,6 +20,9 @@ public class RemoveContainerUseCase {
 
     @Inject
     DockerContainerPort dockerContainerPort;
+
+    @Inject
+    ContainerProtectionService protectionService;
 
     @Inject
     ContainerExpirationService expirationService;
@@ -42,6 +46,12 @@ public class RemoveContainerUseCase {
         Optional<String> idError = InputValidator.validateContainerId(containerId);
         if (idError.isPresent()) {
             eventSink.accept(ContainerEvent.error("Cancelling", idError.get()));
+            return;
+        }
+
+        if (protectionService.isProtectedContainer(containerId)) {
+            eventSink.accept(ContainerEvent.error("Removing",
+                    "Container is protected and cannot be removed."));
             return;
         }
 

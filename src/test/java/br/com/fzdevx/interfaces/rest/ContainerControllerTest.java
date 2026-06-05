@@ -4,6 +4,7 @@ import br.com.fzdevx.domain.model.DockerContainer;
 import br.com.fzdevx.domain.model.HostMemoryStatus;
 import br.com.fzdevx.domain.shared.Constants;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.ContainerProtectionService;
 import br.com.fzdevx.infrastructure.docker.MemoryGuardService;
 import br.com.fzdevx.interfaces.rest.util.ContainerListBroadcaster;
 import br.com.fzdevx.application.usecase.RestoreDumpUseCase;
@@ -41,6 +42,7 @@ class ContainerControllerTest {
 
     @Mock DockerClient dockerClient;
     @Mock ContainerExpirationService expirationService;
+    @Mock ContainerProtectionService protectionService;
     @Mock MemoryGuardService memoryGuardService;
     @Mock ContainerListBroadcaster broadcaster;
     @Mock Config config;
@@ -98,6 +100,41 @@ class ContainerControllerTest {
 
         assertEquals(1, result.size());
         assertEquals("pg", result.getFirst().getNames());
+    }
+
+    @Test
+    void getContainers_filtersOutSelfImageWithTag() {
+        // The app's own image is reported with a tag (e.g. :0.18) and must still be filtered out.
+        Container self = mockContainer("self12345678", Constants.DOCKER_WEB_HANDLER_IMAGE + ":0.18", "self", "Up", "/app");
+        Container other = mockContainer("abcdef1234567890", "postgres:16", "pg", "Up", "/docker-entry");
+        when(listContainersCmd.exec()).thenReturn(List.of(self, other));
+
+        List<DockerContainer> result = controller.getContainers();
+
+        assertEquals(1, result.size());
+        assertEquals("pg", result.getFirst().getNames());
+    }
+
+    @Test
+    void getContainers_setsProtectedFlagFromService() {
+        Container c = mockContainer("abcdef1234567890", "postgres:16", "pg", "Up", "cmd");
+        when(listContainersCmd.exec()).thenReturn(List.of(c));
+        when(protectionService.isProtectedImage("postgres:16")).thenReturn(true);
+
+        List<DockerContainer> result = controller.getContainers();
+
+        assertTrue(result.getFirst().isProtectedFlag());
+    }
+
+    @Test
+    void getContainers_unprotectedImage_flagFalse() {
+        Container c = mockContainer("abcdef1234567890", "postgres:16", "pg", "Up", "cmd");
+        when(listContainersCmd.exec()).thenReturn(List.of(c));
+        when(protectionService.isProtectedImage("postgres:16")).thenReturn(false);
+
+        List<DockerContainer> result = controller.getContainers();
+
+        assertFalse(result.getFirst().isProtectedFlag());
     }
 
     @Test
@@ -190,6 +227,17 @@ class ContainerControllerTest {
 
         assertTrue(controller.stopContainer(req));
         verify(cmd).exec();
+    }
+
+    @Test
+    void stopContainer_protected_returnsFalseAndDoesNotStop() {
+        when(protectionService.isProtectedContainer("abc123def4")).thenReturn(true);
+
+        DockerContainer req = new DockerContainer();
+        req.setContainerId("abc123def4");
+
+        assertFalse(controller.stopContainer(req));
+        verify(dockerClient, never()).stopContainerCmd(any());
     }
 
     @Test
@@ -318,6 +366,18 @@ class ContainerControllerTest {
         assertTrue(controller.removeContainer(req));
         verify(expirationService).remove("abc123def4");
         verify(removeCmd).exec();
+    }
+
+    @Test
+    void removeContainer_protected_returnsFalseAndDoesNotRemove() {
+        when(protectionService.isProtectedContainer("abc123def4")).thenReturn(true);
+
+        DockerContainer req = new DockerContainer();
+        req.setContainerId("abc123def4");
+
+        assertFalse(controller.removeContainer(req));
+        verify(expirationService, never()).remove(anyString());
+        verify(dockerClient, never()).removeContainerCmd(any());
     }
 
     @Test

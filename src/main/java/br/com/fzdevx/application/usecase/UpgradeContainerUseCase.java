@@ -9,6 +9,7 @@ import br.com.fzdevx.domain.shared.Constants;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.application.port.ExpirationRepository;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.ContainerProtectionService;
 import br.com.fzdevx.infrastructure.docker.ContainerSchedulingService;
 import br.com.fzdevx.infrastructure.docker.LogRotationResolver;
 import br.com.fzdevx.infrastructure.docker.MigrationService;
@@ -40,6 +41,7 @@ public class UpgradeContainerUseCase {
     @Inject DockerClient dockerClient;
     @Inject DockerContainerPort dockerContainerPort;
     @Inject RegistryService registryService;
+    @Inject ContainerProtectionService protectionService;
     @Inject ContainerExpirationService expirationService;
     @Inject ExpirationRepository expirationRepository;
     @Inject ContainerSchedulingService schedulingService;
@@ -85,6 +87,13 @@ public class UpgradeContainerUseCase {
                 inspect = dockerClient.inspectContainerCmd(request.getContainerId()).exec();
             } catch (Exception e) {
                 eventSink.accept(ContainerEvent.error("Inspecting", "Failed to inspect container: " + e.getMessage()));
+                return;
+            }
+
+            // A protected container must not be upgraded — upgrade stops and removes it.
+            if (protectionService.isProtectedImage(inspect.getConfig().getImage())) {
+                eventSink.accept(ContainerEvent.error("Validating",
+                        "Container is protected and cannot be upgraded (upgrading would remove it)."));
                 return;
             }
 

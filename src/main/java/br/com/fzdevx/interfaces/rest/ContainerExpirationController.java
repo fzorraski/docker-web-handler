@@ -6,6 +6,7 @@ import br.com.fzdevx.domain.model.DockerContainer;
 import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.ContainerProtectionService;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.domain.shared.InputValidator;
@@ -40,6 +41,9 @@ public class ContainerExpirationController {
 
     @Inject
     ManagedDatabaseRepository managedDatabaseRepository;
+
+    @Inject
+    ContainerProtectionService protectionService;
 
     @Inject
     PasswordValidationService passwordValidationService;
@@ -107,6 +111,9 @@ public class ContainerExpirationController {
         if (minutes < 1 || minutes > 1440) {
             return false;
         }
+        if (protectionService.isProtectedContainer(dockerContainer.getContainerId())) {
+            return false;
+        }
         return expirationService.extendExpiration(dockerContainer.getContainerId(), minutes);
     }
 
@@ -156,6 +163,12 @@ public class ContainerExpirationController {
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", "Expiration time must be in the future.")).build();
             }
+        }
+
+        // A protected container must never expire — reject any attempt to set one.
+        if (expiresInstant != null && protectionService.isProtectedContainer(request.containerId)) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Container is protected; expiration cannot be set.")).build();
         }
 
         if (request.deleteDatabaseOnExpiration) {

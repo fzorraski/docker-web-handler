@@ -47,6 +47,9 @@ public class ContainerSchedulingService {
     MemoryGuardService memoryGuardService;
 
     @Inject
+    ContainerProtectionService protectionService;
+
+    @Inject
     ContainerListBroadcaster broadcaster;
 
     @ConfigProperty(name = "container.scheduling.enabled", defaultValue = "false")
@@ -302,6 +305,11 @@ public class ContainerSchedulingService {
                 return;
             }
 
+            if (protectionService.isProtectedImage(containers.getFirst().getImage())) {
+                updateStatus(schedule, "SKIPPED", "Container image is protected and cannot be stopped.");
+                return;
+            }
+
             dockerClient.stopContainerCmd(containerId).exec();
             updateStatus(schedule, "SUCCESS", "Container stopped successfully.");
             broadcaster.notifyChange();
@@ -325,6 +333,11 @@ public class ContainerSchedulingService {
 
             if (containers.isEmpty()) {
                 updateStatus(schedule, "SKIPPED", "Container not found: " + containerId);
+                return;
+            }
+
+            if (protectionService.isProtectedImage(containers.getFirst().getImage())) {
+                updateStatus(schedule, "SKIPPED", "Container image is protected and cannot be removed.");
                 return;
             }
 

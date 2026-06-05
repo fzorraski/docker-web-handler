@@ -43,6 +43,9 @@ public class ContainerExpirationService {
     ContainerSchedulingService schedulingService;
 
     @Inject
+    ContainerProtectionService protectionService;
+
+    @Inject
     ContainerListBroadcaster broadcaster;
 
     void onStartup(@Observes StartupEvent event) {
@@ -276,6 +279,13 @@ public class ContainerExpirationService {
     }
 
     private void executeExpiration(ContainerExpiration expiration) {
+        if (protectionService.isProtectedContainer(expiration.getFullContainerId())) {
+            Log.infof("Container %s is protected — skipping expiration removal and clearing its expiration.",
+                    expiration.getShortId());
+            scheduledTasks.remove(expiration.getShortId());
+            expirationRepository.delete(expiration.getShortId());
+            return;
+        }
         try {
             try {
                 dockerClient.stopContainerCmd(expiration.getFullContainerId()).exec();
@@ -334,6 +344,11 @@ public class ContainerExpirationService {
         boolean changed = false;
         for (ContainerExpiration other : others) {
             if (other.getShortId().equals(excludeShortId)) {
+                continue;
+            }
+            if (protectionService.isProtectedContainer(other.getFullContainerId())) {
+                Log.infof("Container %s shares database '%s' but is protected — leaving it running.",
+                        other.getShortId(), databaseName);
                 continue;
             }
             Log.infof("Removing container %s because database '%s' was dropped.",

@@ -9,6 +9,7 @@ import br.com.fzdevx.domain.model.ContainerSchedule;
 import br.com.fzdevx.domain.model.ScheduleAction;
 import br.com.fzdevx.domain.model.ScheduleType;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.ContainerProtectionService;
 import br.com.fzdevx.infrastructure.docker.ContainerSchedulingService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,6 +38,7 @@ class ManageScheduleUseCaseTest {
 
     @Mock ScheduleRepository scheduleRepository;
     @Mock ContainerExpirationService expirationService;
+    @Mock ContainerProtectionService protectionService;
     @Mock ContainerSchedulingService schedulingService;
 
     @InjectMocks
@@ -148,6 +150,41 @@ class ManageScheduleUseCaseTest {
                 .thenReturn(List.of(new ContainerSchedule("kill", ScheduleAction.REMOVE, ScheduleType.ONE_TIME)));
 
         assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    // ---- create: protected container ----
+
+    @Test
+    void create_stopOnProtectedContainer_throws() {
+        CreateScheduleRequest req = validOneTimeStopRequest();
+        when(protectionService.isProtectedContainer(VALID_CONTAINER_ID)).thenReturn(true);
+
+        InvalidInputException ex = assertThrows(InvalidInputException.class, () -> useCase.create(req));
+        assertTrue(ex.getMessage().contains("protected"));
+        verify(scheduleRepository, never()).save(any());
+    }
+
+    @Test
+    void create_removeOnProtectedContainer_throws() {
+        CreateScheduleRequest req = validOneTimeStopRequest();
+        req.setAction("REMOVE");
+        when(protectionService.isProtectedContainer(VALID_CONTAINER_ID)).thenReturn(true);
+
+        assertThrows(InvalidInputException.class, () -> useCase.create(req));
+        verify(scheduleRepository, never()).save(any());
+    }
+
+    @Test
+    void create_startOnProtectedContainer_allowed() {
+        CreateScheduleRequest req = validOneTimeStopRequest();
+        req.setAction("START");
+        when(protectionService.isProtectedContainer(VALID_CONTAINER_ID)).thenReturn(true);
+        when(scheduleRepository.findByContainerId(VALID_CONTAINER_ID)).thenReturn(Collections.emptyList());
+
+        ContainerSchedule result = useCase.create(req);
+
+        assertEquals(ScheduleAction.START, result.getAction());
+        verify(scheduleRepository).save(result);
     }
 
     // ---- create: expiration conflict ----

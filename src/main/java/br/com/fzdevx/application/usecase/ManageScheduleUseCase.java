@@ -11,6 +11,7 @@ import br.com.fzdevx.domain.model.ScheduleType;
 import br.com.fzdevx.domain.shared.CronParser;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.ContainerProtectionService;
 import br.com.fzdevx.infrastructure.docker.ContainerSchedulingService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -30,6 +31,9 @@ public class ManageScheduleUseCase {
 
     @Inject
     ContainerExpirationService expirationService;
+
+    @Inject
+    ContainerProtectionService protectionService;
 
     @Inject
     ContainerSchedulingService schedulingService;
@@ -140,6 +144,13 @@ public class ManageScheduleUseCase {
                 if (containerNameError.isPresent()) {
                     throw new InvalidInputException(containerNameError.get());
                 }
+            }
+
+            // A protected container cannot be scheduled to stop or be removed.
+            if ((action == ScheduleAction.STOP || action == ScheduleAction.REMOVE)
+                    && protectionService.isProtectedContainer(request.getContainerId())) {
+                throw new InvalidInputException(
+                        "This container is protected and cannot be scheduled to be stopped or removed.");
             }
 
             // Validate schedule times against the container's expiration.

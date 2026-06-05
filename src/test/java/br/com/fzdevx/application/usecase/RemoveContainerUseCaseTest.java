@@ -6,6 +6,7 @@ import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.model.ContainerEvent.EventType;
 import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
+import br.com.fzdevx.infrastructure.docker.ContainerProtectionService;
 import br.com.fzdevx.infrastructure.docker.ContainerSchedulingService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +29,7 @@ class RemoveContainerUseCaseTest {
     private static final String VALID_ID = "abc123def456";
 
     @Mock DockerContainerPort dockerContainerPort;
+    @Mock ContainerProtectionService protectionService;
     @Mock ContainerExpirationService expirationService;
     @Mock ContainerSchedulingService schedulingService;
     @Mock DatabaseService databaseService;
@@ -86,6 +88,22 @@ class RemoveContainerUseCaseTest {
 
         assertEquals(EventType.ERROR, lastEvent().getType());
         verifyNoInteractions(dockerContainerPort);
+    }
+
+    // ---- protected container ----
+
+    @Test
+    void execute_protectedContainer_sendsErrorAndDoesNotRemove() {
+        when(protectionService.isProtectedContainer(VALID_ID)).thenReturn(true);
+
+        useCase.execute(VALID_ID, events::add);
+
+        assertTrue(hasEvent(EventType.ERROR));
+        assertFalse(hasEvent(EventType.SUCCESS));
+        assertTrue(lastEvent().getMessage().contains("protected"));
+        verifyNoInteractions(dockerContainerPort);
+        verify(expirationService, never()).remove(anyString());
+        verify(schedulingService, never()).removeSchedulesByContainer(anyString());
     }
 
     // ---- happy path ----
