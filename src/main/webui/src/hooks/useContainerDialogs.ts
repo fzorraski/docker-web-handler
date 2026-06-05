@@ -30,6 +30,7 @@ export function useContainerDialogs() {
   const [scheduleContainerId, setScheduleContainerId] = useState('')
   const [scheduleContainerName, setScheduleContainerName] = useState('')
   const [scheduleExpiresAt, setScheduleExpiresAt] = useState<string | undefined>(undefined)
+  const [scheduleProtected, setScheduleProtected] = useState(false)
   const [scheduleOpen, setScheduleOpen] = useState(false)
   const [scheduleInitialTab, setScheduleInitialTab] = useState(0)
 
@@ -87,6 +88,7 @@ export function useContainerDialogs() {
     setScheduleContainerId(c.containerId)
     setScheduleContainerName(c.names)
     setScheduleExpiresAt(c.expiresAt)
+    setScheduleProtected(!!c.protectedFlag)
     setScheduleInitialTab(initialTab)
     setScheduleOpen(true)
   }, [])
@@ -116,7 +118,7 @@ export function useContainerDialogs() {
     migration: { open: migrationOpen, repo: migrationRepo, db: migrationDb, containerId: migrationContainerId, containerName: migrationContainerName, image: migrationContainerImage, upgradeEnabled: migrationUpgradeEnabled },
     openMigration, closeMigration,
 
-    schedule: { open: scheduleOpen, containerId: scheduleContainerId, containerName: scheduleContainerName, expiresAt: scheduleExpiresAt, initialTab: scheduleInitialTab },
+    schedule: { open: scheduleOpen, containerId: scheduleContainerId, containerName: scheduleContainerName, expiresAt: scheduleExpiresAt, protectedFlag: scheduleProtected, initialTab: scheduleInitialTab },
     openSchedule, closeSchedule,
 
     editExpiration: { open: editExpirationOpen, container: editExpirationContainer },

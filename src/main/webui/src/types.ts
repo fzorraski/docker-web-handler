@@ -13,6 +13,7 @@ export interface DockerContainer {
   repository?: string
   ipAddress?: string
   upgradeEnabled?: boolean
+  protectedFlag?: boolean
 }
 
 export interface DockerImage {

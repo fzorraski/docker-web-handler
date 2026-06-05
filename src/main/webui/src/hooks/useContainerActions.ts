@@ -82,7 +82,11 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
     return { succeeded, failed, errors }
   }, [])
 
-  const handleStop = useCallback(async (id: string, name: string) => {
+  const handleStop = useCallback(async (id: string, name: string, isProtected?: boolean) => {
+    if (isProtected) {
+      notify(t('containers.protectedBlocked', { name }), 'warning')
+      return
+    }
     if (!(await confirm(t('containers.confirmStop', { name })))) return
     setStoppingId(id)
     await lockContainers([id]).catch(() => {})
@@ -126,7 +130,11 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
     loadContainers()
   }, [confirm, t, notify, loadContainers, formatStartError])
 
-  const handleRemove = useCallback(async (id: string, name: string) => {
+  const handleRemove = useCallback(async (id: string, name: string, isProtected?: boolean) => {
+    if (isProtected) {
+      notify(t('containers.protectedBlocked', { name }), 'warning')
+      return
+    }
     await lockContainers([id]).catch(() => {})
     removeSse.start(
       (onEvent, onDone, onError) => streamRemoveContainer(id, onEvent, onDone, onError),
@@ -224,7 +232,8 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
     loadContainers()
   }, [confirm, t, notify, loadContainers])
 
-  const handleCleanup = useCallback(async (candidates: DockerContainer[]) => {
+  const handleCleanup = useCallback(async (allCandidates: DockerContainer[]) => {
+    const candidates = allCandidates.filter(c => !c.protectedFlag)
     if (candidates.length === 0) return
     const { succeeded: removed, failed } = await executeBulk(
       candidates, t('containers.bulk.progressRemoving'), c => removeContainer(c.containerId),
@@ -253,7 +262,7 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
   }, [executeBulk, confirm, t, notify, loadContainers])
 
   const handleBulkStop = useCallback(async (containers: DockerContainer[]) => {
-    const stoppable = containers.filter(c => c.status.includes('Up'))
+    const stoppable = containers.filter(c => c.status.includes('Up') && !c.protectedFlag)
     if (stoppable.length === 0) return
     if (!(await confirm(t('containers.bulk.confirmStop', { count: stoppable.length })))) return
     const { succeeded: stopped, failed } = await executeBulk(
@@ -263,7 +272,8 @@ export function useContainerActions({ notify, confirm, t, loadContainers }: Deps
     loadContainers()
   }, [executeBulk, confirm, t, notify, loadContainers])
 
-  const handleBulkRemove = useCallback(async (containers: DockerContainer[]) => {
+  const handleBulkRemove = useCallback(async (allContainers: DockerContainer[]) => {
+    const containers = allContainers.filter(c => !c.protectedFlag)
     if (containers.length === 0) return
     if (!(await confirm(t('containers.bulk.confirmRemove', { count: containers.length })))) return
     const { succeeded: removed, failed } = await executeBulk(

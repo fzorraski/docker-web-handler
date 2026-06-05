@@ -25,12 +25,13 @@ interface Props {
   containerId: string
   containerName: string
   expiresAt?: string
+  protectedFlag?: boolean
   onClose: () => void
   passwordRequired?: boolean
   initialTab?: number
 }
 
-export default function QuickScheduleDialog({ open, containerId, containerName, expiresAt, onClose, passwordRequired = true, initialTab = 0 }: Props) {
+export default function QuickScheduleDialog({ open, containerId, containerName, expiresAt, protectedFlag = false, onClose, passwordRequired = true, initialTab = 0 }: Props) {
   const { t } = useTranslation()
   const { notify } = useNotification()
   const [tab, setTab] = useState(initialTab)
@@ -209,10 +210,10 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
             <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'flex-start' }}>
               <Box>
                 <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>{t('schedules.columns.action')}</Typography>
-                <ToggleButtonGroup value={action} exclusive onChange={(_e, v) => { if (v) setAction(v) }} size="small">
+                <ToggleButtonGroup value={action} exclusive onChange={(_e, v) => { if (v && !(protectedFlag && (v === 'STOP' || v === 'REMOVE'))) setAction(v) }} size="small">
                   <ToggleButton value="START"><PlayArrow sx={{ mr: 0.5 }} /> {t('schedules.actionStart')}</ToggleButton>
-                  <ToggleButton value="STOP"><Stop sx={{ mr: 0.5 }} /> {t('schedules.actionStop')}</ToggleButton>
-                  <ToggleButton value="REMOVE"><Delete sx={{ mr: 0.5 }} /> {t('schedules.actionRemove')}</ToggleButton>
+                  <ToggleButton value="STOP" disabled={protectedFlag}><Stop sx={{ mr: 0.5 }} /> {t('schedules.actionStop')}</ToggleButton>
+                  <ToggleButton value="REMOVE" disabled={protectedFlag}><Delete sx={{ mr: 0.5 }} /> {t('schedules.actionRemove')}</ToggleButton>
                 </ToggleButtonGroup>
               </Box>
 
@@ -224,6 +225,12 @@ export default function QuickScheduleDialog({ open, containerId, containerName, 
                 </ToggleButtonGroup>
               </Box>
             </Box>
+
+            {protectedFlag && (
+              <Alert severity="info" icon={<Lock />}>
+                {t('schedules.protectedContainer')}
+              </Alert>
+            )}
 
             {conflictWarning && (
               <Alert severity="warning" icon={<Warning />}>

@@ -75,7 +75,7 @@ import {
   TablePagination,
   LinearProgress,
 } from '@mui/material'
-import { Search, AddCircleOutline, Stop, PlayArrow, Delete, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord, Code, Memory, Timer, SystemUpdateAlt } from '@mui/icons-material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord, Code, Memory, Timer, SystemUpdateAlt, Lock } from '@mui/icons-material'
 import { isSchedulingEnabled, listSchedules } from '../services/scheduleService'
 import { subscribeContainerUpdates } from '../services/sseService'
 import type { ContainerSchedule } from '../types'
@@ -739,7 +739,20 @@ export default function ContainersPage() {
                   )}
                   {vis.has('expires') && (
                     <TableCell>
-                      {c.expiresAt ? (
+                      {c.protectedFlag ? (
+                        c.expiresAt ? (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <ExpirationChip expiresAt={c.expiresAt} onCancel={() => actions.handleCancelExpiration(c.containerId, c.names)} onExpired={loadContainers} />
+                            <Tooltip title={t('containers.protectedNoExpiration')}>
+                              <Lock fontSize="small" color="disabled" />
+                            </Tooltip>
+                          </Box>
+                        ) : (
+                          <Tooltip title={t('containers.protectedNoExpiration')}>
+                            <Lock fontSize="small" color="disabled" />
+                          </Tooltip>
+                        )
+                      ) : c.expiresAt ? (
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <ExpirationChip expiresAt={c.expiresAt} onCancel={() => actions.handleCancelExpiration(c.containerId, c.names)} onExpired={loadContainers} onClick={() => dialogs.openEditExpiration(c)} />
@@ -800,19 +813,26 @@ export default function ContainersPage() {
                         </Tooltip>
                       ) : (
                         <Box sx={{ display: 'flex', gap: 0.25, alignItems: 'center' }}>
+                          {c.protectedFlag && (
+                            <Tooltip title={t('containers.protected')}>
+                              <Lock fontSize="small" color="disabled" sx={{ mr: 0.25 }} />
+                            </Tooltip>
+                          )}
                           {isUp(c.status) ? (
+                            c.protectedFlag ? null : (
                             <Tooltip title={actions.stoppingId === c.containerId ? t('containers.stopping') : t('containers.stop')}>
                               <span>
                                 <IconButton
                                   size="small"
                                   color="warning"
-                                  onClick={() => actions.handleStop(c.containerId, c.names)}
+                                  onClick={() => actions.handleStop(c.containerId, c.names, c.protectedFlag)}
                                   disabled={actions.stoppingId === c.containerId}
                                 >
                                   {actions.stoppingId === c.containerId ? <CircularProgress size={18} color="inherit" /> : <Stop />}
                                 </IconButton>
                               </span>
                             </Tooltip>
+                            )
                           ) : (
                             <Tooltip title={t('containers.start')}>
                               <IconButton
@@ -867,18 +887,20 @@ export default function ContainersPage() {
         >
           {actionMenu.target && [
             isUp(actionMenu.target.status) ? (
-              <MenuItem
-                key="stop"
-                onClick={() => {
-                  if (!actionMenu.target) return
-                  actions.handleStop(actionMenu.target.containerId, actionMenu.target.names)
-                  actionMenu.close()
-                }}
-                disabled={actions.stoppingId === actionMenu.target?.containerId}
-              >
-                <ListItemIcon><Stop fontSize="small" color="warning" /></ListItemIcon>
-                <ListItemText>{t('containers.stop')}</ListItemText>
-              </MenuItem>
+              actionMenu.target.protectedFlag ? null : (
+                <MenuItem
+                  key="stop"
+                  onClick={() => {
+                    if (!actionMenu.target) return
+                    actions.handleStop(actionMenu.target.containerId, actionMenu.target.names, actionMenu.target.protectedFlag)
+                    actionMenu.close()
+                  }}
+                  disabled={actions.stoppingId === actionMenu.target?.containerId}
+                >
+                  <ListItemIcon><Stop fontSize="small" color="warning" /></ListItemIcon>
+                  <ListItemText>{t('containers.stop')}</ListItemText>
+                </MenuItem>
+              )
             ) : (
               <MenuItem
                 key="start"
@@ -893,7 +915,7 @@ export default function ContainersPage() {
               </MenuItem>
             ),
 
-            <Divider key="action-divider" />,
+            (isUp(actionMenu.target.status) && actionMenu.target.protectedFlag) ? null : <Divider key="action-divider" />,
 
             <MenuItem
               key="logs"
@@ -955,7 +977,7 @@ export default function ContainersPage() {
               </Tooltip>
             ),
 
-            (actionMenu.target.upgradeEnabled || (migrationFeatureEnabled && actionMenu.target.databaseName)) && actionMenu.target.repository && (
+            !actionMenu.target.protectedFlag && (actionMenu.target.upgradeEnabled || (migrationFeatureEnabled && actionMenu.target.databaseName)) && actionMenu.target.repository && (
               <MenuItem
                 key="upgrade"
                 onClick={() => {
@@ -981,33 +1003,37 @@ export default function ContainersPage() {
               </MenuItem>
             ),
 
-            <Divider key="exp-divider" />,
+            actionMenu.target.protectedFlag ? null : <Divider key="exp-divider" />,
 
-            <MenuItem
-              key="edit-expiration"
-              onClick={() => {
-                dialogs.openEditExpiration(actionMenu.target!)
-                actionMenu.close()
-              }}
-            >
-              <ListItemIcon><Timer fontSize="small" /></ListItemIcon>
-              <ListItemText>{actionMenu.target.expiresAt ? t('containers.editExpiration') : t('containers.addExpiration')}</ListItemText>
-            </MenuItem>,
+            actionMenu.target.protectedFlag ? null : (
+              <MenuItem
+                key="edit-expiration"
+                onClick={() => {
+                  dialogs.openEditExpiration(actionMenu.target!)
+                  actionMenu.close()
+                }}
+              >
+                <ListItemIcon><Timer fontSize="small" /></ListItemIcon>
+                <ListItemText>{actionMenu.target.expiresAt ? t('containers.editExpiration') : t('containers.addExpiration')}</ListItemText>
+              </MenuItem>
+            ),
 
-            <Divider key="delete-divider" />,
+            actionMenu.target.protectedFlag ? null : <Divider key="delete-divider" />,
 
-            <MenuItem
-              key="delete"
-              onClick={() => {
-                if (!actionMenu.target) return
-                setRemoveDialogTarget(actionMenu.target)
-                actionMenu.close()
-              }}
-              sx={{ color: 'error.main' }}
-            >
-              <ListItemIcon><Delete fontSize="small" color="error" /></ListItemIcon>
-              <ListItemText>{t('common.remove')}</ListItemText>
-            </MenuItem>,
+            actionMenu.target.protectedFlag ? null : (
+              <MenuItem
+                key="delete"
+                onClick={() => {
+                  if (!actionMenu.target) return
+                  setRemoveDialogTarget(actionMenu.target)
+                  actionMenu.close()
+                }}
+                sx={{ color: 'error.main' }}
+              >
+                <ListItemIcon><Delete fontSize="small" color="error" /></ListItemIcon>
+                <ListItemText>{t('common.remove')}</ListItemText>
+              </MenuItem>
+            ),
           ]}
         </Menu>
       </Box>
@@ -1196,6 +1222,7 @@ export default function ContainersPage() {
         containerId={dialogs.schedule.containerId}
         containerName={dialogs.schedule.containerName}
         expiresAt={dialogs.schedule.expiresAt}
+        protectedFlag={dialogs.schedule.protectedFlag}
         passwordRequired={schedulingPwRequired}
         initialTab={dialogs.schedule.initialTab}
         onClose={() => {
