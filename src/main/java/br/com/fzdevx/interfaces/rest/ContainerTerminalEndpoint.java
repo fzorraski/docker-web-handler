@@ -3,6 +3,7 @@ package br.com.fzdevx.interfaces.rest;
 import br.com.fzdevx.application.port.DockerTerminalPort;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.infrastructure.config.RequestStash;
+import br.com.fzdevx.infrastructure.docker.TerminalInitCommandResolver;
 import br.com.fzdevx.infrastructure.docker.TerminalSessionManager;
 import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
@@ -19,6 +20,7 @@ import java.io.OutputStream;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.List;
 import java.util.Optional;
 
 @ServerEndpoint(value = "/api/containers/terminal/{ticket}", configurator = AuthWebSocketConfigurator.class)
@@ -34,12 +36,19 @@ public class ContainerTerminalEndpoint {
     TerminalSessionManager sessionManager;
 
     @Inject
+    TerminalInitCommandResolver initCommandResolver;
+
+    @Inject
     @ConfigProperty(name = "container.terminal.enabled", defaultValue = "false")
     boolean terminalEnabled;
 
     @Inject
     @ConfigProperty(name = "container.terminal.default-shell", defaultValue = "/bin/bash")
     String defaultShell;
+
+    @Inject
+    @ConfigProperty(name = "container.terminal.init-command.delay-ms", defaultValue = "300")
+    long initCommandDelayMs;
 
     @OnOpen
     public void onOpen(Session session, @PathParam("ticket") String ticket) {
@@ -65,7 +74,8 @@ public class ContainerTerminalEndpoint {
             return;
         }
 
-        if (!dockerTerminalPort.isContainerRunning(containerId)) {
+        DockerTerminalPort.ContainerRuntimeInfo containerInfo = dockerTerminalPort.inspectContainer(containerId);
+        if (!containerInfo.running()) {
             sendAndClose(session, errorMsg("Container is not running."));
             return;
         }
@@ -99,8 +109,15 @@ public class ContainerTerminalEndpoint {
             });
 
             final DockerTerminalPort.ExecSession finalExec = execSession;
+
+            final List<String> initCommands = initCommandResolver.resolve(containerInfo.image());
+
             Thread.ofVirtual().name("terminal-exit-watcher-" + session.getId()).start(() -> {
                 try {
+                    // Send init commands from this long-lived thread. Writing from a
+                    // short-lived thread that then dies would break the stdin pipe
+                    // ("Write end dead"), permanently blocking further user input.
+                    sendInitCommands(finalExec, initCommands);
                     while (finalExec.isRunning() && session.isOpen()) {
                         Thread.sleep(1000);
                     }
@@ -157,6 +174,23 @@ public class ContainerTerminalEndpoint {
     public void onError(Session session, Throwable error) {
         sessionManager.removeSession(session.getId());
         Log.warnf("Terminal WebSocket error: session=%s, error=%s", session.getId(), error.getMessage());
+    }
+
+    private void sendInitCommands(DockerTerminalPort.ExecSession execSession, List<String> commands)
+            throws InterruptedException {
+        if (commands.isEmpty()) return;
+        if (initCommandDelayMs > 0) {
+            Thread.sleep(initCommandDelayMs);
+        }
+        try {
+            OutputStream stdin = execSession.getStdin();
+            for (String cmd : commands) {
+                stdin.write((cmd + "\n").getBytes(StandardCharsets.UTF_8));
+                stdin.flush();
+            }
+        } catch (IOException e) {
+            Log.warnf("Failed to send terminal init command: %s", e.getMessage());
+        }
     }
 
     private void handleInput(JsonObject json, TerminalSessionManager.TerminalSession ts) {

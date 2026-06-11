@@ -165,6 +165,18 @@ public class DockerTerminalAdapter implements DockerTerminalPort {
     }
 
     @Override
+    public ContainerRuntimeInfo inspectContainer(String containerId) {
+        try {
+            InspectContainerResponse info = dockerClient.inspectContainerCmd(containerId).exec();
+            boolean running = info.getState() != null && Boolean.TRUE.equals(info.getState().getRunning());
+            String image = info.getConfig() != null ? info.getConfig().getImage() : null;
+            return new ContainerRuntimeInfo(running, image);
+        } catch (Exception e) {
+            return ContainerRuntimeInfo.NOT_FOUND;
+        }
+    }
+
+    @Override
     public void copyFileToContainer(String containerId, Path hostFile, String remotePath) {
         dockerClient.copyArchiveToContainerCmd(containerId)
                 .withHostResource(hostFile.toAbsolutePath().toString())
