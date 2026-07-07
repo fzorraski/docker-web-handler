@@ -45,8 +45,7 @@ public class LogAnalyzerSseController {
     LogPresetProvider logPresetProvider;
 
     @Inject
-    @ConfigProperty(name = "log.analyzer.enabled", defaultValue = "false")
-    boolean enabled;
+    br.com.fzdevx.infrastructure.config.RuntimeSettingsService runtimeSettings;
 
     @Inject
     @ConfigProperty(name = "log.analyzer.default-preset", defaultValue = "WILDFLY")
@@ -82,7 +81,7 @@ public class LogAnalyzerSseController {
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Produces(MediaType.APPLICATION_JSON)
     public Response prepareUpload(MultipartFormDataInput input) {
-        if (!enabled) {
+        if (!runtimeSettings.isLogAnalyzerEnabled()) {
             return Response.status(Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "Log analyzer is disabled.")).build();
         }
@@ -181,7 +180,7 @@ public class LogAnalyzerSseController {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response prepareCompose(Map<String, Object> body) {
-        if (!enabled) {
+        if (!runtimeSettings.isLogAnalyzerEnabled()) {
             return Response.status(Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "Log analyzer is disabled.")).build();
         }

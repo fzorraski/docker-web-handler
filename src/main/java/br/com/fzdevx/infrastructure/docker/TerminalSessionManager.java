@@ -7,7 +7,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import jakarta.websocket.Session;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,12 +21,7 @@ import java.util.concurrent.TimeUnit;
 public class TerminalSessionManager {
 
     @Inject
-    @ConfigProperty(name = "container.terminal.max-sessions", defaultValue = "5")
-    int maxSessions;
-
-    @Inject
-    @ConfigProperty(name = "container.terminal.idle-timeout-minutes", defaultValue = "30")
-    int idleTimeoutMinutes;
+    br.com.fzdevx.infrastructure.config.RuntimeSettingsService runtimeSettings;
 
     private final ConcurrentHashMap<String, TerminalSession> sessions = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
@@ -51,7 +45,7 @@ public class TerminalSessionManager {
             String sessionId, Session wsSession,
             DockerTerminalPort.ExecSession execSession,
             String containerId, String execId) {
-        if (sessions.size() >= maxSessions) {
+        if (sessions.size() >= runtimeSettings.getTerminalMaxSessions()) {
             return Optional.empty();
         }
         TerminalSession ts = new TerminalSession(sessionId, wsSession, execSession, containerId, execId);
@@ -83,6 +77,7 @@ public class TerminalSessionManager {
 
     private void checkIdleSessions() {
         long now = System.currentTimeMillis();
+        int idleTimeoutMinutes = runtimeSettings.getTerminalIdleTimeoutMinutes();
         long timeoutMs = idleTimeoutMinutes * 60_000L;
         List<String> expired = new ArrayList<>();
         for (var entry : sessions.entrySet()) {

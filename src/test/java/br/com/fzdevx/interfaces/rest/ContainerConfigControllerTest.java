@@ -46,6 +46,7 @@ class ContainerConfigControllerTest {
     @Mock MemoryGuardService memoryGuardService;
     @Mock RequestStash requestStash;
     @Mock Config config;
+    @Mock br.com.fzdevx.infrastructure.config.RuntimeSettingsService runtimeSettings;
 
     @InjectMocks
     ContainerConfigController controller;
@@ -58,7 +59,7 @@ class ContainerConfigControllerTest {
         setField("logRotationMaxSize", "10m");
         setField("logRotationMaxFiles", "3");
         setField("uiLocale", Optional.of("en"));
-        setField("terminalEnabled", false);
+        when(runtimeSettings.isTerminalEnabled()).thenReturn(false);
     }
 
     private void setField(String name, Object value) {
@@ -334,21 +335,21 @@ class ContainerConfigControllerTest {
 
     @Test
     void authorizeTerminal_enabled_noContainerId_returnsBadRequest() {
-        try { setField("terminalEnabled", true); } catch (Exception ignored) {}
+        when(runtimeSettings.isTerminalEnabled()).thenReturn(true);
         var res = controller.authorizeTerminal(Map.of("password", "x"));
         assertEquals(400, res.getStatus());
     }
 
     @Test
     void authorizeTerminal_enabled_invalidContainerId_returnsBadRequest() {
-        try { setField("terminalEnabled", true); } catch (Exception ignored) {}
+        when(runtimeSettings.isTerminalEnabled()).thenReturn(true);
         var res = controller.authorizeTerminal(Map.of("containerId", "BAD!", "password", "x"));
         assertEquals(400, res.getStatus());
     }
 
     @Test
     void authorizeTerminal_enabled_invalidPassword_returnsForbidden() {
-        try { setField("terminalEnabled", true); } catch (Exception ignored) {}
+        when(runtimeSettings.isTerminalEnabled()).thenReturn(true);
         when(passwordValidationService.validateTerminalPassword("wrong")).thenReturn(false);
         var res = controller.authorizeTerminal(Map.of("containerId", "abc123def4", "password", "wrong"));
         assertEquals(403, res.getStatus());
@@ -356,7 +357,7 @@ class ContainerConfigControllerTest {
 
     @Test
     void authorizeTerminal_valid_returnsTicket() {
-        try { setField("terminalEnabled", true); } catch (Exception ignored) {}
+        when(runtimeSettings.isTerminalEnabled()).thenReturn(true);
         when(passwordValidationService.validateTerminalPassword("secret")).thenReturn(true);
         when(requestStash.stashTerminal("abc123def4")).thenReturn("ticket-123");
         var res = controller.authorizeTerminal(Map.of("containerId", "abc123def4", "password", "secret"));

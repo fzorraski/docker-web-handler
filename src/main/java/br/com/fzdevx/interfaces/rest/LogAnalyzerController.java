@@ -104,8 +104,7 @@ public class LogAnalyzerController {
     br.com.fzdevx.interfaces.rest.util.LogAnalysisBroadcaster logAnalysisBroadcaster;
 
     @Inject
-    @ConfigProperty(name = "log.analyzer.enabled", defaultValue = "false")
-    boolean enabled;
+    br.com.fzdevx.infrastructure.config.RuntimeSettingsService runtimeSettings;
 
     @Inject
     @ConfigProperty(name = "log.analyzer.max-file-size-mb", defaultValue = "500")
@@ -132,7 +131,7 @@ public class LogAnalyzerController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response getStatus() {
         return Response.ok(Map.of(
-                "enabled", enabled,
+                "enabled", runtimeSettings.isLogAnalyzerEnabled(),
                 "presets", logPresetProvider.allPresets().stream().map(AnalysisSummaryMapper::presetToMap).toList(),
                 "defaultPreset", defaultPresetName,
                 "containerTail", defaultContainerTail,
@@ -147,7 +146,7 @@ public class LogAnalyzerController {
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Produces(MediaType.APPLICATION_JSON)
     public Response uploadAndAnalyze(MultipartFormDataInput input) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
 
         AnalyzeLogFileRequest request = null;
         try {
@@ -203,7 +202,7 @@ public class LogAnalyzerController {
                                          @QueryParam("slowThresholdMs") Integer slowThresholdMs,
                                          @QueryParam("lines") Integer lines,
                                          @QueryParam("direction") @DefaultValue("tail") String direction) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
 
         Optional<String> idError = InputValidator.validateContainerId(containerId);
         if (idError.isPresent()) {
@@ -239,7 +238,7 @@ public class LogAnalyzerController {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response compose(Map<String, Object> body) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
 
         Object idsObj = body.get("ids");
         if (!(idsObj instanceof List<?> rawList)) {
@@ -275,7 +274,7 @@ public class LogAnalyzerController {
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAnalysis(@PathParam("id") String id) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
         return Response.ok(AnalysisSummaryMapper.toSummaryMap(analysis)).build();
@@ -286,7 +285,7 @@ public class LogAnalyzerController {
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response deleteAnalysis(@PathParam("id") String id) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         boolean deleted = analyzeLogFileUseCase.delete(id);
         if (!deleted) return analysisNotFound();
         logAnalysisBroadcaster.broadcastDeleted(id);
@@ -313,7 +312,7 @@ public class LogAnalyzerController {
                                 @QueryParam("sortDir") @DefaultValue("asc") String sortDir,
                                 @QueryParam("page") @DefaultValue("0") int page,
                                 @QueryParam("size") @DefaultValue("50") int size) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -341,7 +340,7 @@ public class LogAnalyzerController {
     @Path("/{id}/api-stats")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getApiStats(@PathParam("id") String id) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
         return Response.ok(analysis.getEndpointStats()).build();
@@ -351,7 +350,7 @@ public class LogAnalyzerController {
     @Path("/{id}/api-stats/export")
     @Produces(MediaType.APPLICATION_JSON)
     public Response exportApiStats(@PathParam("id") String id) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -367,7 +366,7 @@ public class LogAnalyzerController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response getPerformanceInsights(@PathParam("id") String id,
                                            @QueryParam("endpoint") String endpoint) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -384,7 +383,7 @@ public class LogAnalyzerController {
                                        @QueryParam("timestamp") String timestamp,
                                        @QueryParam("endpoint") String endpoint,
                                        @QueryParam("limit") @DefaultValue("7") int limit) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
         if (timestamp == null || timestamp.isBlank()) {
@@ -416,7 +415,7 @@ public class LogAnalyzerController {
                              @QueryParam("exclude") String exclude,
                              @QueryParam("page") @DefaultValue("0") int page,
                              @QueryParam("size") @DefaultValue("100") int size) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -435,7 +434,7 @@ public class LogAnalyzerController {
                                        @QueryParam("search") String search,
                                        @QueryParam("exclude") String exclude,
                                        @QueryParam("size") @DefaultValue("1000") int size) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -459,7 +458,7 @@ public class LogAnalyzerController {
                                   @QueryParam("level") String level,
                                   @QueryParam("page") @DefaultValue("0") int page,
                                   @QueryParam("size") @DefaultValue("500") int size) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
         if (from <= 0 || to <= 0 || from > to) {
@@ -478,7 +477,7 @@ public class LogAnalyzerController {
     @Produces(MediaType.TEXT_PLAIN)
     public Response downloadLineContent(@PathParam("id") String id,
                                          @QueryParam("line") int line) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -505,7 +504,7 @@ public class LogAnalyzerController {
     @Path("/{id}/threads")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getThreads(@PathParam("id") String id) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -516,7 +515,7 @@ public class LogAnalyzerController {
     @Path("/{id}/endpoints")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getEndpoints(@PathParam("id") String id) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
         return Response.ok(analysis.getEndpoints()).build();
@@ -533,7 +532,7 @@ public class LogAnalyzerController {
                             @QueryParam("sortDir") @DefaultValue("asc") String sortDir,
                             @QueryParam("page") @DefaultValue("0") int page,
                             @QueryParam("size") @DefaultValue("50") int size) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -545,7 +544,7 @@ public class LogAnalyzerController {
     @Path("/{id}/jobs/filters")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getJobFilters(@PathParam("id") String id) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -558,7 +557,7 @@ public class LogAnalyzerController {
     public Response getFailures(@PathParam("id") String id,
                                 @QueryParam("page") @DefaultValue("0") int page,
                                 @QueryParam("size") @DefaultValue("50") int size) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
         var result = PaginatedResult.of(analysis.getRepeatedFailures(), page, size);
@@ -574,7 +573,7 @@ public class LogAnalyzerController {
                                       @QueryParam("thread") String thread,
                                       @QueryParam("page") @DefaultValue("0") int page,
                                       @QueryParam("size") @DefaultValue("50") int size) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -591,7 +590,7 @@ public class LogAnalyzerController {
                                   @QueryParam("thread") String thread,
                                   @QueryParam("page") @DefaultValue("0") int page,
                                   @QueryParam("size") @DefaultValue("50") int size) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -605,7 +604,7 @@ public class LogAnalyzerController {
     public Response downloadApiCallPayload(@PathParam("id") String id,
                                            @QueryParam("line") int line,
                                            @QueryParam("type") @DefaultValue("request") String type) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -634,7 +633,7 @@ public class LogAnalyzerController {
     @Produces(MediaType.TEXT_PLAIN)
     public Response downloadOrphanPayload(@PathParam("id") String id,
                                            @QueryParam("line") int line) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -662,7 +661,7 @@ public class LogAnalyzerController {
     @Produces(MediaType.APPLICATION_JSON)
     public Response getCriticalIssues(@PathParam("id") String id,
                                       @QueryParam("category") String category) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -679,7 +678,7 @@ public class LogAnalyzerController {
     public Response getCriticalBursts(@PathParam("id") String id,
                                       @QueryParam("threshold") Integer threshold,
                                       @QueryParam("window") Integer windowMinutes) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -693,7 +692,7 @@ public class LogAnalyzerController {
                                                 @PathParam("category") String category,
                                                 @QueryParam("page") @DefaultValue("0") int page,
                                                 @QueryParam("size") @DefaultValue("10") int size) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -709,7 +708,7 @@ public class LogAnalyzerController {
                                            @PathParam("burstIndex") int burstIndex,
                                            @QueryParam("page") @DefaultValue("0") int page,
                                            @QueryParam("size") @DefaultValue("25") int size) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -728,7 +727,7 @@ public class LogAnalyzerController {
     public Response getNpeAnalysis(@PathParam("id") String id,
                                    @QueryParam("page") @DefaultValue("0") int page,
                                    @QueryParam("size") @DefaultValue("50") int size) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -744,7 +743,7 @@ public class LogAnalyzerController {
                                       @PathParam("origin") String origin,
                                       @QueryParam("page") @DefaultValue("0") int page,
                                       @QueryParam("size") @DefaultValue("25") int size) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -759,7 +758,7 @@ public class LogAnalyzerController {
     public Response getExceptionAnalysis(@PathParam("id") String id,
                                           @QueryParam("page") @DefaultValue("0") int page,
                                           @QueryParam("size") @DefaultValue("50") int size) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -775,7 +774,7 @@ public class LogAnalyzerController {
                                              @PathParam("origin") String origin,
                                              @QueryParam("page") @DefaultValue("0") int page,
                                              @QueryParam("size") @DefaultValue("25") int size) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -795,7 +794,7 @@ public class LogAnalyzerController {
                                           @QueryParam("sortDir") @DefaultValue("asc") String sortDir,
                                           @QueryParam("page") @DefaultValue("0") int page,
                                           @QueryParam("size") @DefaultValue("100") int size) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -834,7 +833,7 @@ public class LogAnalyzerController {
                                          @QueryParam("baselineWindow") @DefaultValue("8") int baselineWindow,
                                          @QueryParam("metric") @DefaultValue("count") String metric,
                                          @QueryParam("method") @DefaultValue("ratio") String method) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -874,7 +873,7 @@ public class LogAnalyzerController {
     @Path("/{id}/anomaly-detection/signal-types")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getAvailableSignalTypes(@PathParam("id") String id) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -887,7 +886,7 @@ public class LogAnalyzerController {
     public Response getSystemHealth(@PathParam("id") String id,
                                      @QueryParam("bucketSize") @DefaultValue("300") int bucketSize,
                                      @QueryParam("metric") @DefaultValue("count") String metric) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -907,7 +906,7 @@ public class LogAnalyzerController {
                                           @QueryParam("matchBy") @DefaultValue("endpoint+payload") String matchBy,
                                           @QueryParam("timeWindowSeconds") @DefaultValue("0") int timeWindowSeconds,
                                           @QueryParam("minOccurrences") @DefaultValue("2") int minOccurrences) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 
@@ -928,7 +927,7 @@ public class LogAnalyzerController {
     @Path("/list")
     @Produces(MediaType.APPLICATION_JSON)
     public Response listAnalyses() {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         var summaries = analyzeLogFileUseCase.listAll().stream()
                 .map(AnalysisSummaryMapper::toSummaryMap)
                 .toList();
@@ -942,7 +941,7 @@ public class LogAnalyzerController {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces("text/html")
     public Response compareStats(Map<String, Object> body) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         try {
             String labelA = (String) body.getOrDefault("labelA", "A");
             String labelB = (String) body.getOrDefault("labelB", "B");
@@ -965,7 +964,7 @@ public class LogAnalyzerController {
     @Produces("text/html")
     public Response downloadReport(@PathParam("id") String id,
                                    @PathParam("type") String type) {
-        if (!enabled) return featureDisabled();
+        if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
 

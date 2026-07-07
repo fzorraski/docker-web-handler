@@ -26,8 +26,7 @@ public class AuthSessionManager {
     boolean authEnabled;
 
     @Inject
-    @ConfigProperty(name = "app.auth.session-timeout-minutes", defaultValue = "480")
-    int sessionTimeoutMinutes;
+    RuntimeSettingsService runtimeSettings;
 
     private static class Session {
         final Instant createdAt;
@@ -93,7 +92,7 @@ public class AuthSessionManager {
         Session session = sessions.get(sessionId);
         if (session == null) return null;
 
-        Instant cutoff = Instant.now().minusSeconds((long) sessionTimeoutMinutes * 60);
+        Instant cutoff = Instant.now().minusSeconds((long) runtimeSettings.getSessionTimeoutMinutes() * 60);
         if (session.lastAccessedAt.isBefore(cutoff)) {
             sessions.remove(sessionId);
             return null;
@@ -126,11 +125,11 @@ public class AuthSessionManager {
     }
 
     public int getSessionTimeoutMinutes() {
-        return sessionTimeoutMinutes;
+        return runtimeSettings.getSessionTimeoutMinutes();
     }
 
     private void evictExpired() {
-        Instant cutoff = Instant.now().minusSeconds((long) sessionTimeoutMinutes * 60);
+        Instant cutoff = Instant.now().minusSeconds((long) runtimeSettings.getSessionTimeoutMinutes() * 60);
         int evicted = 0;
         for (Map.Entry<String, Session> entry : sessions.entrySet()) {
             if (entry.getValue().lastAccessedAt.isBefore(cutoff)) {

@@ -77,16 +77,7 @@ public class ContainerConfigController {
     Optional<String> uiLocale;
 
     @Inject
-    @ConfigProperty(name = "container.terminal.enabled", defaultValue = "false")
-    boolean terminalEnabled;
-
-    @Inject
-    @ConfigProperty(name = "container.terminal.upload.enabled", defaultValue = "false")
-    boolean terminalUploadEnabled;
-
-    @Inject
-    @ConfigProperty(name = "container.terminal.upload.max-size-mb", defaultValue = "100")
-    int terminalUploadMaxSizeMb;
+    br.com.fzdevx.infrastructure.config.RuntimeSettingsService runtimeSettings;
 
     @Inject
     @ConfigProperty(name = "container.terminal.upload.default-path", defaultValue = "/tmp")
@@ -291,15 +282,15 @@ public class ContainerConfigController {
         features.put("dump", dumpStorageService.isEnabled());
         features.put("migration", migrationService.isEnabled());
         features.put("webhook", webhookService.isEnabled());
-        features.put("terminal", terminalEnabled);
+        features.put("terminal", runtimeSettings.isTerminalEnabled());
         features.put("defaultExpirationMinutes", defaultExpirationMinutes);
         features.put("uploadPasswordRequired", passwordValidationService.isUploadPasswordRequired());
         features.put("operationsPasswordRequired", passwordValidationService.isOperationsPasswordRequired());
         features.put("memoryGuard", memoryGuardService.isEnabled());
         features.put("schedulingPasswordRequired", passwordValidationService.isSchedulingPasswordRequired());
         features.put("terminalPasswordRequired", passwordValidationService.isTerminalPasswordRequired());
-        features.put("terminalUpload", terminalUploadEnabled);
-        features.put("terminalUploadMaxSizeMb", terminalUploadMaxSizeMb);
+        features.put("terminalUpload", runtimeSettings.isTerminalUploadEnabled());
+        features.put("terminalUploadMaxSizeMb", runtimeSettings.getTerminalUploadMaxSizeMb());
         features.put("terminalUploadDefaultPath", terminalUploadDefaultPath);
         features.put("rbac", rbacSettings.isRbacEnabled());
         return features;
@@ -311,7 +302,7 @@ public class ContainerConfigController {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public jakarta.ws.rs.core.Response authorizeTerminal(Map<String, String> body) {
-        if (!terminalEnabled) {
+        if (!runtimeSettings.isTerminalEnabled()) {
             return jakarta.ws.rs.core.Response.status(jakarta.ws.rs.core.Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "Terminal feature is disabled.")).build();
         }

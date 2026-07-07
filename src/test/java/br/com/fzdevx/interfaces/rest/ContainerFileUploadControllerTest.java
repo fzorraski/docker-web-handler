@@ -16,7 +16,6 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.io.ByteArrayInputStream;
-import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -39,31 +38,22 @@ class ContainerFileUploadControllerTest {
 
     @Mock DockerTerminalPort dockerTerminalPort;
     @Mock PasswordValidationService passwordValidationService;
+    @Mock br.com.fzdevx.infrastructure.config.RuntimeSettingsService runtimeSettings;
 
     @InjectMocks
     ContainerFileUploadController controller;
 
     @BeforeEach
     void setUp() {
-        setField("uploadEnabled", true);
-        setField("maxSizeMb", 100);
-    }
-
-    private void setField(String name, Object value) {
-        try {
-            Field f = ContainerFileUploadController.class.getDeclaredField(name);
-            f.setAccessible(true);
-            f.set(controller, value);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        when(runtimeSettings.isTerminalUploadEnabled()).thenReturn(true);
+        when(runtimeSettings.getTerminalUploadMaxSizeMb()).thenReturn(100);
     }
 
     // ---- Feature disabled ----
 
     @Test
     void uploadFile_disabled_returnsForbidden() {
-        setField("uploadEnabled", false);
+        when(runtimeSettings.isTerminalUploadEnabled()).thenReturn(false);
 
         Response response = controller.uploadFile(VALID_CONTAINER_ID, mock(MultipartFormDataInput.class));
 
@@ -162,7 +152,7 @@ class ContainerFileUploadControllerTest {
 
     @Test
     void uploadFile_exceedsMaxSize_returnsBadRequest() throws Exception {
-        setField("maxSizeMb", 1); // 1 MB limit
+        when(runtimeSettings.getTerminalUploadMaxSizeMb()).thenReturn(1); // 1 MB limit
         byte[] largeFile = new byte[1024 * 1024 + 1]; // 1 MB + 1 byte
         MultipartFormDataInput input = mockForm(VALID_PASSWORD, VALID_REMOTE_PATH, "big.bin", largeFile);
         when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);

@@ -66,6 +66,9 @@ class LogAnalyzerControllerTest {
     @Mock
     br.com.fzdevx.interfaces.rest.util.LogAnalysisBroadcaster logAnalysisBroadcaster;
 
+    @Mock
+    br.com.fzdevx.infrastructure.config.RuntimeSettingsService runtimeSettings;
+
     // Use cases with no dependencies — @Spy creates real instances
     @Spy QueryApiCallsUseCase queryApiCallsUseCase;
     @Spy ExportApiStatsUseCase exportApiStatsUseCase;
@@ -89,7 +92,7 @@ class LogAnalyzerControllerTest {
 
     @BeforeEach
     void setUp() {
-        setField("enabled", true);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(true);
         setField("maxFileSizeMb", 500);
         setField("defaultSlowThresholdMs", 1000);
         setField("defaultPresetName", "WILDFLY");
@@ -312,7 +315,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void upload_disabled_returnsForbidden() throws Exception {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.uploadAndAnalyze(mock(MultipartFormDataInput.class));
 
@@ -321,7 +324,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getAnalysis_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.getAnalysis(ANALYSIS_ID);
 
@@ -330,7 +333,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void deleteAnalysis_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.deleteAnalysis(ANALYSIS_ID);
 
@@ -339,7 +342,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getApiCalls_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.getApiCalls(ANALYSIS_ID, null, null, null, null, false, false, null, null, null, null, null, null, "time", "asc", 0, 50);
 
@@ -348,7 +351,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getApiStats_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.getApiStats(ANALYSIS_ID);
 
@@ -357,7 +360,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getLines_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.getLines(ANALYSIS_ID, null, null, null, null, 0, 100);
 
@@ -366,7 +369,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getThreads_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.getThreads(ANALYSIS_ID);
 
@@ -375,7 +378,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getEndpoints_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.getEndpoints(ANALYSIS_ID);
 
@@ -384,7 +387,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getJobs_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.getJobs(ANALYSIS_ID, null, null, null, "time", "asc", 0, 50);
 
@@ -393,7 +396,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getFailures_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.getFailures(ANALYSIS_ID, 0, 50);
 
@@ -402,7 +405,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void listAnalyses_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.listAnalyses();
 
@@ -411,7 +414,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void compose_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.compose(Map.of("ids", List.of("a", "b")));
 
@@ -856,7 +859,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getJobFilters_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.getJobFilters(ANALYSIS_ID);
 
@@ -893,7 +896,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getOrphanRequests_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.getOrphanRequests(ANALYSIS_ID, null, null, 0, 50);
 
@@ -1010,7 +1013,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void analyzeContainerLogs_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
         Response response = controller.analyzeContainerLogs("abcdef123456", null, null, null, null, "tail");
         assertEquals(403, response.getStatus());
     }
@@ -1071,7 +1074,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getCustomFieldMatches_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
         Response response = controller.getCustomFieldMatches("id", "Entity Changes", null, null, null, "asc", 0, 100);
         assertEquals(403, response.getStatus());
     }
@@ -1186,7 +1189,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getAnomalyDetection_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.getAnomalyDetection(ANALYSIS_ID, "ERROR_COUNT", 300, 3.0, 8, "count", "ratio");
 
@@ -1309,7 +1312,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getAvailableSignalTypes_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.getAvailableSignalTypes(ANALYSIS_ID);
 
@@ -1358,7 +1361,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getSystemHealth_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
 
         Response response = controller.getSystemHealth(ANALYSIS_ID, 300, "count");
 
@@ -1524,7 +1527,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void downloadReport_disabled_returns403() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
         Response response = controller.downloadReport("id", "compact");
         assertEquals(403, response.getStatus());
     }
@@ -1575,7 +1578,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void exportApiStats_disabled_returns403() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
         Response response = controller.exportApiStats("id");
         assertEquals(403, response.getStatus());
     }
@@ -1631,7 +1634,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void compareStats_disabled_returns403() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
         Response response = controller.compareStats(Map.of());
         assertEquals(403, response.getStatus());
     }
@@ -1657,7 +1660,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getPerformanceInsights_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
         Response response = controller.getPerformanceInsights(ANALYSIS_ID, null);
         assertEquals(403, response.getStatus());
     }
@@ -1731,7 +1734,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getBucketEndpoints_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
         Response response = controller.getBucketEndpoints(ANALYSIS_ID, "2025-06-15T10:00:00", null, 7);
         assertEquals(403, response.getStatus());
     }
@@ -1815,7 +1818,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getLineRange_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
         Response response = controller.getLineRange(ANALYSIS_ID, 1, 10, null, 0, 500);
         assertEquals(403, response.getStatus());
     }
@@ -1924,7 +1927,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getCriticalIssues_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
         Response response = controller.getCriticalIssues(ANALYSIS_ID, null);
         assertEquals(403, response.getStatus());
     }
@@ -2019,7 +2022,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getCriticalBursts_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
         Response response = controller.getCriticalBursts(ANALYSIS_ID, null, null);
         assertEquals(403, response.getStatus());
     }
@@ -2100,7 +2103,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getCriticalBurstsByCategory_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
         Response response = controller.getCriticalBurstsByCategory(ANALYSIS_ID, "JDBC_CONNECT_ERROR", 0, 10);
         assertEquals(403, response.getStatus());
     }
@@ -2150,7 +2153,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getCriticalBurstIssues_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
         Response response = controller.getCriticalBurstIssues(ANALYSIS_ID, "JDBC_CONNECT_ERROR", 0, 0, 25);
         assertEquals(403, response.getStatus());
     }
@@ -2258,7 +2261,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getNpeAnalysis_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
         Response response = controller.getNpeAnalysis(ANALYSIS_ID, 0, 50);
         assertEquals(403, response.getStatus());
     }
@@ -2294,7 +2297,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getNpeOccurrences_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
         Response response = controller.getNpeOccurrences(ANALYSIS_ID, "some.origin", 0, 25);
         assertEquals(403, response.getStatus());
     }
@@ -2371,7 +2374,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getExceptionAnalysis_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
         Response response = controller.getExceptionAnalysis(ANALYSIS_ID, 0, 50);
         assertEquals(403, response.getStatus());
     }
@@ -2407,7 +2410,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void getExceptionOccurrences_disabled_returnsForbidden() {
-        setField("enabled", false);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(false);
         Response response = controller.getExceptionOccurrences(ANALYSIS_ID, "some.origin", 0, 25);
         assertEquals(403, response.getStatus());
     }

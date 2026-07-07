@@ -9,7 +9,6 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.resteasy.plugins.providers.multipart.InputPart;
 import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
 
@@ -29,19 +28,14 @@ public class ContainerFileUploadController {
     PasswordValidationService passwordValidationService;
 
     @Inject
-    @ConfigProperty(name = "container.terminal.upload.enabled", defaultValue = "false")
-    boolean uploadEnabled;
-
-    @Inject
-    @ConfigProperty(name = "container.terminal.upload.max-size-mb", defaultValue = "100")
-    int maxSizeMb;
+    br.com.fzdevx.infrastructure.config.RuntimeSettingsService runtimeSettings;
 
     @POST
     @Path("/{containerId}/upload")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Produces(MediaType.APPLICATION_JSON)
     public Response uploadFile(@PathParam("containerId") String containerId, MultipartFormDataInput input) {
-        if (!uploadEnabled) {
+        if (!runtimeSettings.isTerminalUploadEnabled()) {
             return Response.status(Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "File upload to container is disabled."))
                     .build();
@@ -104,6 +98,7 @@ public class ContainerFileUploadController {
 
             tempDir = java.nio.file.Files.createTempDirectory("container-upload-");
             tempFile = tempDir.resolve(filename);
+            int maxSizeMb = runtimeSettings.getTerminalUploadMaxSizeMb();
             long maxBytes = (long) maxSizeMb * 1024 * 1024;
             long size;
             try (InputStream is = filePart.getBody(InputStream.class, null);

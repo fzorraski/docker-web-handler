@@ -10,12 +10,26 @@ import static org.junit.jupiter.api.Assertions.*;
 class AuthSessionManagerTest {
 
     private AuthSessionManager manager;
+    private RuntimeSettingsService runtimeSettings;
 
     @BeforeEach
     void setUp() {
         manager = new AuthSessionManager();
+        runtimeSettings = new RuntimeSettingsService();
+        runtimeSettings.sessionTimeoutMinutesDefault = 480;
+        runtimeSettings.settingsRepository = new br.com.fzdevx.application.port.SettingsRepository() {
+            @Override
+            public br.com.fzdevx.domain.model.RuntimeSettings get() {
+                return new br.com.fzdevx.domain.model.RuntimeSettings();
+            }
+
+            @Override
+            public void save(br.com.fzdevx.domain.model.RuntimeSettings settings) {
+                // no-op
+            }
+        };
         setField("authEnabled", true);
-        setField("sessionTimeoutMinutes", 480);
+        setField("runtimeSettings", runtimeSettings);
     }
 
     private void setField(String name, Object value) {
@@ -75,7 +89,7 @@ class AuthSessionManagerTest {
     @Test
     void validateAndTouch_expiredSession_returnsFalse() {
         // Set timeout to 0 so session expires immediately
-        setField("sessionTimeoutMinutes", 0);
+        runtimeSettings.sessionTimeoutMinutesDefault = 0;
         String id = manager.createSession();
         assertFalse(manager.validateAndTouch(id));
     }

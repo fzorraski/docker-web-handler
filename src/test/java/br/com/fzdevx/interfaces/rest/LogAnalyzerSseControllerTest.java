@@ -21,7 +21,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
-import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -45,6 +44,7 @@ class LogAnalyzerSseControllerTest {
     @Mock Sse sse;
     @Mock OutboundSseEvent.Builder eventBuilder;
     @Mock OutboundSseEvent outboundEvent;
+    @Mock br.com.fzdevx.infrastructure.config.RuntimeSettingsService runtimeSettings;
 
     @InjectMocks
     LogAnalyzerSseController controller;
@@ -53,7 +53,7 @@ class LogAnalyzerSseControllerTest {
 
     @BeforeEach
     void setUp() {
-        setField("enabled", true);
+        when(runtimeSettings.isLogAnalyzerEnabled()).thenReturn(true);
 
         // Prepare a mock request
         request = mock(AnalyzeLogFileRequest.class);
@@ -70,16 +70,6 @@ class LogAnalyzerSseControllerTest {
         when(eventBuilder.data(eq(ContainerEvent.class), any())).thenReturn(eventBuilder);
         when(eventBuilder.mediaType(any())).thenReturn(eventBuilder);
         when(eventBuilder.build()).thenReturn(outboundEvent);
-    }
-
-    private void setField(String name, Object value) {
-        try {
-            Field f = LogAnalyzerSseController.class.getDeclaredField(name);
-            f.setAccessible(true);
-            f.set(controller, value);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
     }
 
     // ---- streamAnalysis: invalid ticket ----

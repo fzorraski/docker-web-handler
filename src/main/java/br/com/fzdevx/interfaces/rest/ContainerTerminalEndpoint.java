@@ -3,6 +3,7 @@ package br.com.fzdevx.interfaces.rest;
 import br.com.fzdevx.application.port.DockerTerminalPort;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.infrastructure.config.RequestStash;
+import br.com.fzdevx.infrastructure.config.RuntimeSettingsService;
 import br.com.fzdevx.infrastructure.docker.TerminalInitCommandResolver;
 import br.com.fzdevx.infrastructure.docker.TerminalSessionManager;
 import io.quarkus.logging.Log;
@@ -39,8 +40,7 @@ public class ContainerTerminalEndpoint {
     TerminalInitCommandResolver initCommandResolver;
 
     @Inject
-    @ConfigProperty(name = "container.terminal.enabled", defaultValue = "false")
-    boolean terminalEnabled;
+    RuntimeSettingsService runtimeSettings;
 
     @Inject
     @ConfigProperty(name = "container.terminal.default-shell", defaultValue = "/bin/bash")
@@ -58,7 +58,7 @@ public class ContainerTerminalEndpoint {
             return;
         }
 
-        if (!terminalEnabled) {
+        if (!runtimeSettings.isTerminalEnabled()) {
             sendAndClose(session, errorMsg("Terminal feature is disabled."));
             return;
         }
