@@ -27,6 +27,7 @@ import { getDumpRepositories, cancelRestore, getPostRestoreScripts, type PostRes
 import { getDatabaseConflicts, getRepositoryDatabases, isMigrationEnabled, isMigrationApiAvailable, isWebhookEnabled } from '../services/containerService'
 import { prepareRestoreDump, streamRestoreDump } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
+import { useAuth } from './AuthProvider'
 import { useMigrationPreview } from '../hooks/useMigrationPreview'
 import OperationProgress, { RESTORE_STEPS, RESTORE_WITH_SCRIPTS_STEPS, RESTORE_WITH_MIGRATION_STEPS, RESTORE_WITH_SCRIPTS_AND_MIGRATION_STEPS } from './OperationProgress'
 import MigrationConfigModal, { type MigrationConfig } from './MigrationConfigModal'
@@ -46,6 +47,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
   const source = snapshot ?? dump
   const isSnapshot = !!snapshot
   const { notify } = useNotification()
+  const { rbacEnabled } = useAuth()
   const { t } = useTranslation()
   const [repositories, setRepositories] = useState<string[]>([])
   const [selectedRepo, setSelectedRepo] = useState('')
@@ -167,7 +169,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
     if (!source) return
     if (!selectedRepo) return notify(t('restoreDump.selectRepoWarning'), 'warning')
     if (!targetDb.trim()) return notify(t('restoreDump.enterTargetDbWarning'), 'warning')
-    if (!password) return notify(t('restoreDump.enterPasswordWarning'), 'warning')
+    if (!rbacEnabled && !password) return notify(t('restoreDump.enterPasswordWarning'), 'warning')
 
     if (dbExists) {
       setConfirmOverrideOpen(true)
@@ -256,16 +258,18 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
           } />
         ) : (
           <>
-            <TextField
-              fullWidth
-              type="password"
-              label={t('common.operationsPassword')}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              size="small"
-              sx={{ mb: 3 }}
-              autoComplete="off"
-            />
+            {!rbacEnabled && (
+              <TextField
+                fullWidth
+                type="password"
+                label={t('common.operationsPassword')}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                size="small"
+                sx={{ mb: 3 }}
+                autoComplete="off"
+              />
+            )}
 
             <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid size={{ xs: 12, md: 6 }}>
@@ -419,7 +423,7 @@ export default function RestoreDumpModal({ open, dump, snapshot, onClose, onRest
               variant="contained"
               color="success"
               onClick={handleRestoreClick}
-              disabled={sse.isRunning || !selectedRepo || !targetDb.trim() || !password}
+              disabled={sse.isRunning || !selectedRepo || !targetDb.trim() || (!rbacEnabled && !password)}
               startIcon={<Restore />}
             >
               {t('common.restore')}

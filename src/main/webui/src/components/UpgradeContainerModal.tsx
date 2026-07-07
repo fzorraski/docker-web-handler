@@ -23,6 +23,7 @@ import { getRepositoryTags, isMigrationApiAvailable } from '../services/containe
 import { formatMigrationSummary, compareTagsDesc } from '../utils/format'
 import { prepareUpgradeContainer, streamUpgradeContainer, cancelUpgradeContainer } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
+import { useAuth } from './AuthProvider'
 import { useMigrationPreview } from '../hooks/useMigrationPreview'
 import OperationProgress, { UPGRADE_STEPS, UPGRADE_WITH_MIGRATION_STEPS, MIGRATION_STEPS } from './OperationProgress'
 import MigrationConfigModal, { type MigrationConfig } from './MigrationConfigModal'
@@ -47,6 +48,7 @@ export default function UpgradeContainerModal({
 }: Props) {
   const { t } = useTranslation()
   const { notify } = useNotification()
+  const { rbacEnabled } = useAuth()
   const sse = useSseOperation()
 
   const [tags, setTags] = useState<string[]>([])
@@ -71,7 +73,7 @@ export default function UpgradeContainerModal({
   const hasTagChange = !!newTag
   const isSameTag = !!newTag && newTag === currentTag
   const isMigrationOnly = !hasTagChange && migrationEnabled && !!migrationConfig
-  const canExecute = (hasTagChange || (migrationEnabled && !!migrationConfig)) && !!password
+  const canExecute = (hasTagChange || (migrationEnabled && !!migrationConfig)) && (rbacEnabled || !!password)
 
   useEffect(() => {
     if (!open || !repository) return
@@ -109,7 +111,7 @@ export default function UpgradeContainerModal({
   }
 
   async function handleRun() {
-    if (!password) return notify(t('upgradeContainer.passwordRequired'), 'warning')
+    if (!rbacEnabled && !password) return notify(t('upgradeContainer.passwordRequired'), 'warning')
     if (!hasTagChange && !migrationEnabled) return notify(t('upgradeContainer.selectTagOrMigration'), 'warning')
     if (migrationEnabled && !migrationConfig) return notify(t('upgradeContainer.configureMigration'), 'warning')
 
@@ -270,15 +272,17 @@ export default function UpgradeContainerModal({
               )}
 
               {/* Password */}
-              <TextField
-                fullWidth
-                type="password"
-                label={t('common.operationsPassword')}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                size="small"
-                autoComplete="off"
-              />
+              {!rbacEnabled && (
+                <TextField
+                  fullWidth
+                  type="password"
+                  label={t('common.operationsPassword')}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  size="small"
+                  autoComplete="off"
+                />
+              )}
             </Box>
           )}
         </DialogContent>

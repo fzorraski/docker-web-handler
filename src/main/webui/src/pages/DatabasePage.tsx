@@ -4,6 +4,7 @@ import { listDumps, deleteDump, deleteDumpsBulk, getStorageInfo, getActiveRestor
 import { listSnapshots, deleteSnapshot, deleteSnapshotsBulk, getSnapshotStorageInfo, getActiveSnapshots, updateSnapshotExpiration, type ActiveSnapshot } from '../services/snapshotService'
 import { isManagedDatabasesEnabled } from '../services/managedDatabaseService'
 import { useNotification } from '../components/NotificationProvider'
+import { useAuth } from '../components/AuthProvider'
 import HeroBanner from '../components/HeroBanner'
 
 const DatabasesTab = lazy(() => import('../components/DatabasesTab'))
@@ -74,6 +75,7 @@ type PendingDelete =
 
 export default function DatabasePage() {
   const { notify } = useNotification()
+  const { rbacEnabled } = useAuth()
   const { t } = useTranslation()
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
   const dumpTableRef = useRef<HTMLDivElement>(null)
@@ -1250,17 +1252,19 @@ export default function DatabasePage() {
             </Alert>
           )}
 
-          <TextField
-            fullWidth
-            type="password"
-            label={t('common.operationsPassword')}
-            value={cleanup.password}
-            onChange={(e) => cleanup.setPassword(e.target.value)}
-            size="small"
-            autoComplete="off"
-            error={!!cleanup.error}
-            helperText={cleanup.error}
-          />
+          {!rbacEnabled && (
+            <TextField
+              fullWidth
+              type="password"
+              label={t('common.operationsPassword')}
+              value={cleanup.password}
+              onChange={(e) => cleanup.setPassword(e.target.value)}
+              size="small"
+              autoComplete="off"
+              error={!!cleanup.error}
+              helperText={cleanup.error}
+            />
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={cleanup.close} color="inherit" disabled={cleanup.loading}>
@@ -1270,7 +1274,7 @@ export default function DatabasePage() {
             variant="contained"
             color="warning"
             onClick={cleanup.confirm}
-            disabled={cleanup.loading || !cleanup.password}
+            disabled={cleanup.loading || (!rbacEnabled && !cleanup.password)}
             startIcon={cleanup.loading ? <CircularProgress size={20} /> : <CleaningServices />}
           >
             {cleanup.loading ? t('common.deleting') : t('common.confirm')}

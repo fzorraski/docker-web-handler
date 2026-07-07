@@ -26,6 +26,7 @@ import { getSnapshotRepositories, cancelSnapshot } from '../services/snapshotSer
 import { getRepositoryDatabases } from '../services/containerService'
 import { prepareSnapshot, streamSnapshot } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
+import { useAuth } from './AuthProvider'
 import OperationProgress, { SNAPSHOT_STEPS } from './OperationProgress'
 
 interface Props {
@@ -39,6 +40,7 @@ interface Props {
 
 export default function CreateSnapshotModal({ open, onClose, onCreated, initialRepository, initialDatabase, containerName }: Props) {
   const { notify } = useNotification()
+  const { rbacEnabled } = useAuth()
   const { t } = useTranslation()
   const locked = !!(initialRepository && initialDatabase)
   const [repositories, setRepositories] = useState<string[]>([])
@@ -172,11 +174,11 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
   function validate(): boolean {
     if (!selectedRepo) { notify(t('createSnapshot.selectRepoWarning'), 'warning'); return false }
     if (!selectedDb) { notify(t('createSnapshot.selectDbWarning'), 'warning'); return false }
-    if (!password) { notify(t('createSnapshot.enterPasswordWarning'), 'warning'); return false }
+    if (!rbacEnabled && !password) { notify(t('createSnapshot.enterPasswordWarning'), 'warning'); return false }
     return true
   }
 
-  const formReady = selectedRepo && selectedDb && password
+  const formReady = selectedRepo && selectedDb && (rbacEnabled || password)
 
   return (
     <Dialog
@@ -341,15 +343,17 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
               )}
             </Grid>
 
-            <TextField
-              fullWidth
-              type="password"
-              label={t('common.operationsPassword')}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              size="small"
-              autoComplete="off"
-            />
+            {!rbacEnabled && (
+              <TextField
+                fullWidth
+                type="password"
+                label={t('common.operationsPassword')}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                size="small"
+                autoComplete="off"
+              />
+            )}
           </>
         )}
       </DialogContent>

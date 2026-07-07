@@ -13,6 +13,7 @@ import {
 import { Delete } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { RateLimitError } from '../services/fetchWithAuth'
+import { useAuth } from './AuthProvider'
 
 function sanitizeHtml(html: string): string {
   return html.replace(/<(?!\/?(?:strong|b|em|br)\b)[^>]*>/gi, '')
@@ -42,11 +43,15 @@ export default function PasswordConfirmDialog({
   icon,
 }: Props) {
   const { t } = useTranslation()
+  const { rbacEnabled } = useAuth()
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [retryAfter, setRetryAfter] = useState(0)
   const isLocked = retryAfter > 0
+  // Under RBAC role permissions replace the operation passwords: the dialog
+  // stays as a confirmation step but no password is asked (backend ignores it).
+  const needPassword = !rbacEnabled
 
   useEffect(() => {
     if (!isLocked) return
@@ -105,18 +110,20 @@ export default function PasswordConfirmDialog({
         <Typography sx={{ mb: 2 }}>
           <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(message) }} />
         </Typography>
-        <TextField
-          fullWidth
-          type="password"
-          label={t('common.operationsPassword')}
-          value={password}
-          onChange={(e) => { setPassword(e.target.value); setError(null) }}
-          size="small"
-          autoComplete="off"
-          autoFocus
-          disabled={isLocked}
-          onKeyDown={(e) => { if (e.key === 'Enter' && password && !loading && !isLocked) handleConfirm() }}
-        />
+        {needPassword && (
+          <TextField
+            fullWidth
+            type="password"
+            label={t('common.operationsPassword')}
+            value={password}
+            onChange={(e) => { setPassword(e.target.value); setError(null) }}
+            size="small"
+            autoComplete="off"
+            autoFocus
+            disabled={isLocked}
+            onKeyDown={(e) => { if (e.key === 'Enter' && password && !loading && !isLocked) handleConfirm() }}
+          />
+        )}
         {errorMessage && (
           <Alert severity="error" sx={{ mt: 2 }}>
             {errorMessage}
@@ -131,7 +138,7 @@ export default function PasswordConfirmDialog({
           variant="contained"
           color={confirmColor}
           onClick={handleConfirm}
-          disabled={loading || !password || isLocked}
+          disabled={loading || (needPassword && !password) || isLocked}
           startIcon={loading ? <CircularProgress size={20} /> : resolvedIcon}
         >
           {loading

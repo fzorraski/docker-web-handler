@@ -19,6 +19,7 @@ import {
   getDatabaseReportUrl,
 } from '../services/managedDatabaseService'
 import { useNotification } from './NotificationProvider'
+import { useAuth } from './AuthProvider'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
 import FullscreenToggleButton from './FullscreenToggleButton'
 import CreateSnapshotModal from './CreateSnapshotModal'
@@ -126,6 +127,7 @@ const DB_COLUMNS: { key: string; label: string }[] = [
 
 export default function DatabasesTab() {
   const { notify } = useNotification()
+  const { rbacEnabled } = useAuth()
   const { t } = useTranslation()
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
   const tableRef = useRef<HTMLDivElement>(null)
@@ -1315,20 +1317,22 @@ export default function DatabasesTab() {
               {t('database.dbCleanupNoneAffected')}
             </Alert>
           )}
-          <TextField
-            fullWidth
-            type="password"
-            label={t('common.operationsPassword')}
-            value={cleanup.password}
-            onChange={(e) => cleanup.setPassword(e.target.value)}
-            size="small"
-            autoComplete="off"
-            error={!!cleanup.error}
-            helperText={cleanup.error}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && cleanup.password) cleanup.confirm()
-            }}
-          />
+          {!rbacEnabled && (
+            <TextField
+              fullWidth
+              type="password"
+              label={t('common.operationsPassword')}
+              value={cleanup.password}
+              onChange={(e) => cleanup.setPassword(e.target.value)}
+              size="small"
+              autoComplete="off"
+              error={!!cleanup.error}
+              helperText={cleanup.error}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && cleanup.password) cleanup.confirm()
+              }}
+            />
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={cleanup.close} disabled={cleanup.loading}>
@@ -1338,7 +1342,7 @@ export default function DatabasesTab() {
             variant="contained"
             color="warning"
             onClick={cleanup.confirm}
-            disabled={!cleanup.password || cleanup.loading}
+            disabled={(!rbacEnabled && !cleanup.password) || cleanup.loading}
           >
             {cleanup.loading ? <CircularProgress size={20} /> : t('common.confirm')}
           </Button>

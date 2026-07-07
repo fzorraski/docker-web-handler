@@ -9,11 +9,13 @@ import {
   FormControlLabel,
   Switch,
   CircularProgress,
+  Alert,
 } from '@mui/material'
 import { Timer } from '@mui/icons-material'
 import { MobileDateTimePicker } from '@mui/x-date-pickers/MobileDateTimePicker'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useTranslation } from 'react-i18next'
+import { useAuth } from './AuthProvider'
 
 interface Props {
   open: boolean
@@ -25,6 +27,7 @@ interface Props {
 
 export default function EditExpirationDialog({ open, title, currentExpiresAt, onClose, onSave }: Props) {
   const { t } = useTranslation()
+  const { rbacEnabled } = useAuth()
   const [enabled, setEnabled] = useState(false)
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(dayjs().add(7, 'day'))
   const [password, setPassword] = useState('')
@@ -47,7 +50,7 @@ export default function EditExpirationDialog({ open, title, currentExpiresAt, on
   }, [open, currentExpiresAt])
 
   async function handleSave() {
-    if (!password) { setError(t('editExpiration.passwordRequired')); return }
+    if (!rbacEnabled && !password) { setError(t('editExpiration.passwordRequired')); return }
     setSaving(true)
     setError('')
     const value = enabled && expiresAt ? expiresAt.format('YYYY-MM-DDTHH:mm:ss') : null
@@ -66,18 +69,24 @@ export default function EditExpirationDialog({ open, title, currentExpiresAt, on
         <Timer /> {t('editExpiration.title', { title })}
       </DialogTitle>
       <DialogContent dividers sx={{ pt: 3 }}>
-        <TextField
-          fullWidth
-          type="password"
-          label={t('common.operationsPassword')}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          size="small"
-          sx={{ mb: 3 }}
-          autoComplete="off"
-          error={!!error}
-          helperText={error}
-        />
+        {!rbacEnabled && (
+          <TextField
+            fullWidth
+            type="password"
+            label={t('common.operationsPassword')}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            size="small"
+            sx={{ mb: 3 }}
+            autoComplete="off"
+            error={!!error}
+            helperText={error}
+          />
+        )}
+
+        {rbacEnabled && error && (
+          <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>
+        )}
 
         <FormControlLabel
           control={
@@ -111,7 +120,7 @@ export default function EditExpirationDialog({ open, title, currentExpiresAt, on
         <Button
           variant="contained"
           onClick={handleSave}
-          disabled={saving || !password}
+          disabled={saving || (!rbacEnabled && !password)}
           startIcon={saving ? <CircularProgress size={20} /> : <Timer />}
         >
           {saving ? t('common.saving') : t('common.save')}

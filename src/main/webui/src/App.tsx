@@ -4,7 +4,9 @@ import { Box, CircularProgress } from '@mui/material'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 import ErrorBoundary from './components/ErrorBoundary'
+import RequirePermission from './components/RequirePermission'
 import { useAuth } from './components/AuthProvider'
+import { P } from './utils/permissions'
 import LoginPage from './pages/LoginPage'
 
 const ContainersPage = lazy(() => import('./pages/ContainersPage'))
@@ -44,9 +46,9 @@ export default function App() {
             <Routes>
               <Route path="/" element={<ContainersPage />} />
               <Route path="/images" element={<ImagesPage />} />
-              <Route path="/database" element={<DatabasePage />} />
-              <Route path="/schedules" element={<SchedulesPage />} />
-              <Route path="/logs" element={<LogAnalyzerPage />} />
+              <Route path="/database" element={<RequirePermission permission={P.DATABASE_VIEW}><DatabasePage /></RequirePermission>} />
+              <Route path="/schedules" element={<RequirePermission permission={P.SCHEDULES_VIEW}><SchedulesPage /></RequirePermission>} />
+              <Route path="/logs" element={<RequirePermission permission={P.LOGS_VIEW}><LogAnalyzerPage /></RequirePermission>} />
               <Route path="/compare" element={<StatsComparisonPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

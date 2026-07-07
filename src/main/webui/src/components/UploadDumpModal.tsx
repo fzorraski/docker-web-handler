@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next'
 import { uploadDump } from '../services/dumpService'
 import { getDefaultExpirationMinutes } from '../services/containerService'
 import { useNotification } from './NotificationProvider'
+import { useAuth } from './AuthProvider'
 import type { DatabaseDump } from '../types'
 
 interface Props {
@@ -43,6 +44,7 @@ const ACCEPTED_EXTENSIONS = '.sql,.dump,.gz'
 
 export default function UploadDumpModal({ open, onClose, onUploaded, existingFilenames }: Props) {
   const { notify } = useNotification()
+  const { rbacEnabled } = useAuth()
   const { t } = useTranslation()
   const [password, setPassword] = useState('')
   const [file, setFile] = useState<File | null>(null)
@@ -95,7 +97,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
 
   async function handleUpload() {
     if (!file) return notify(t('uploadDump.selectFileWarning'), 'warning')
-    if (!password) return notify(t('uploadDump.enterPasswordWarning'), 'warning')
+    if (!rbacEnabled && !password) return notify(t('uploadDump.enterPasswordWarning'), 'warning')
 
     setUploading(true)
     setUploadProgress(0)
@@ -195,16 +197,18 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
         {/* Form */}
         {showForm && (
           <>
-            <TextField
-              fullWidth
-              type="password"
-              label={t('common.uploadPassword')}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              size="small"
-              sx={{ mb: 3 }}
-              autoComplete="off"
-            />
+            {!rbacEnabled && (
+              <TextField
+                fullWidth
+                type="password"
+                label={t('common.uploadPassword')}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                size="small"
+                sx={{ mb: 3 }}
+                autoComplete="off"
+              />
+            )}
 
             <Box sx={{ mb: 3 }}>
               <Button variant="outlined" component="label" startIcon={<CloudUpload />} fullWidth>
@@ -342,7 +346,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
               variant="contained"
               color="primary"
               onClick={handleUpload}
-              disabled={uploading || !file || !password || isDuplicateFilename}
+              disabled={uploading || !file || (!rbacEnabled && !password) || isDuplicateFilename}
               startIcon={<CloudUpload />}
             >
               {t('common.upload')}

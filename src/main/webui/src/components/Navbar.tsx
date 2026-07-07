@@ -15,12 +15,13 @@ import { isSchedulingEnabled } from '../services/scheduleService'
 import { isLogAnalyzerEnabled } from '../services/logAnalyzerService'
 import { useThemeMode } from './ThemeModeProvider'
 import { useAuth } from './AuthProvider'
+import { P } from '../utils/permissions'
 import LanguageSwitcher from './LanguageSwitcher'
 
 export default function Navbar() {
   const location = useLocation()
   const { mode, toggleMode } = useThemeMode()
-  const { authEnabled, logout } = useAuth()
+  const { authEnabled, logout, hasPermission } = useAuth()
   const { t } = useTranslation()
   const [dumpEnabled, setDumpEnabled] = useState(false)
   const [schedulingEnabled, setSchedulingEnabled] = useState(false)
@@ -40,9 +41,9 @@ export default function Navbar() {
   const navItems = [
     { label: t('navbar.containers'), path: '/' },
     { label: t('navbar.images'), path: '/images' },
-    ...(dumpEnabled ? [{ label: t('navbar.database'), path: '/database' }] : []),
-    ...(schedulingEnabled ? [{ label: t('navbar.schedules'), path: '/schedules' }] : []),
-    ...(logAnalyzerEnabled ? [{ label: t('navbar.logs'), path: '/logs' }] : []),
+    ...(dumpEnabled && hasPermission(P.DATABASE_VIEW) ? [{ label: t('navbar.database'), path: '/database' }] : []),
+    ...(schedulingEnabled && hasPermission(P.SCHEDULES_VIEW) ? [{ label: t('navbar.schedules'), path: '/schedules' }] : []),
+    ...(logAnalyzerEnabled && hasPermission(P.LOGS_VIEW) ? [{ label: t('navbar.logs'), path: '/logs' }] : []),
   ]
 
   const handleDrawerToggle = () => {

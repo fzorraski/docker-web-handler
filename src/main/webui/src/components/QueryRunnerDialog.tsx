@@ -4,6 +4,7 @@ import { executeQuery, explainQuery } from '../services/managedDatabaseService'
 import type { DatabaseTableStats } from '../types'
 import { copyToClipboard } from '../utils/clipboard'
 import { useNotification } from './NotificationProvider'
+import { useAuth } from './AuthProvider'
 import FullscreenToggleButton from './FullscreenToggleButton'
 import { useTranslation } from 'react-i18next'
 import {
@@ -85,6 +86,7 @@ function saveHistory(dbKey: string, sql: string) {
 
 export default function QueryRunnerDialog({ open, database, repository, writeEnabled, onClose }: Props) {
   const { notify } = useNotification()
+  const { rbacEnabled } = useAuth()
   const { t } = useTranslation()
   const [sql, setSql] = useState('')
   const sqlRef = useRef(sql)
@@ -124,7 +126,7 @@ export default function QueryRunnerDialog({ open, database, repository, writeEna
     return upper.startsWith('INSERT') || upper.startsWith('UPDATE') || upper.startsWith('DELETE')
   }, [])
 
-  const needsPassword = isWriteQuery(sql) && writeEnabled
+  const needsPassword = isWriteQuery(sql) && writeEnabled && !rbacEnabled
 
   const handleExecute = useCallback(async (p?: number) => {
     const currentSql = sqlRef.current

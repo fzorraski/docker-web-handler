@@ -4,6 +4,7 @@ import { getImages } from '../services/imageService'
 import { streamRemoveImage } from '../services/sseService'
 import OperationProgress, { REMOVE_IMAGE_STEPS, PRUNE_IMAGES_STEPS } from '../components/OperationProgress'
 import { useNotification } from '../components/NotificationProvider'
+import { useAuth } from '../components/AuthProvider'
 import HeroBanner from '../components/HeroBanner'
 import { useTranslation } from 'react-i18next'
 import { formatBackendDate } from '../utils/format'
@@ -70,6 +71,7 @@ export default function ImagesPage() {
   const tableRef = useRef<HTMLDivElement>(null)
   useStickyHeader(tableRef)
   const { notify, confirm } = useNotification()
+  const { rbacEnabled } = useAuth()
   const { t } = useTranslation()
   const [images, setImages] = useState<DockerImage[]>([])
   const [loading, setLoading] = useState(true)
@@ -484,17 +486,19 @@ export default function ImagesPage() {
             </>
           )}
 
-          <TextField
-            fullWidth
-            type="password"
-            label={t('common.operationsPassword')}
-            value={prune.password}
-            onChange={(e) => prune.setPassword(e.target.value)}
-            size="small"
-            autoComplete="off"
-            error={!!prune.error}
-            helperText={prune.error}
-          />
+          {!rbacEnabled && (
+            <TextField
+              fullWidth
+              type="password"
+              label={t('common.operationsPassword')}
+              value={prune.password}
+              onChange={(e) => prune.setPassword(e.target.value)}
+              size="small"
+              autoComplete="off"
+              error={!!prune.error}
+              helperText={prune.error}
+            />
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
           <Button onClick={prune.close} color="inherit" disabled={prune.preparing}>
@@ -504,7 +508,7 @@ export default function ImagesPage() {
             variant="contained"
             color={prune.mode === 'all' ? 'error' : 'warning'}
             onClick={prune.confirm}
-            disabled={prune.preparing || !prune.password}
+            disabled={prune.preparing || (!rbacEnabled && !prune.password)}
             startIcon={prune.preparing ? <CircularProgress size={20} /> : (prune.mode === 'all' ? <DeleteSweep /> : <CleaningServices />)}
           >
             {prune.preparing ? t('common.preparing') : t('common.confirm')}

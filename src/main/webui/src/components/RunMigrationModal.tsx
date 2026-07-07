@@ -18,6 +18,7 @@ import { isMigrationApiAvailable } from '../services/containerService'
 import { formatMigrationSummary } from '../utils/format'
 import { prepareRunMigration, streamRunMigration, cancelRunMigration } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
+import { useAuth } from './AuthProvider'
 import { useMigrationPreview } from '../hooks/useMigrationPreview'
 import OperationProgress, { MIGRATION_STEPS } from './OperationProgress'
 import MigrationConfigModal, { type MigrationConfig } from './MigrationConfigModal'
@@ -34,6 +35,7 @@ interface Props {
 export default function RunMigrationModal({ open, repository, databaseName, onClose, onCompleted }: Props) {
   const { t } = useTranslation()
   const { notify } = useNotification()
+  const { rbacEnabled } = useAuth()
   const sse = useSseOperation()
 
   const [password, setPassword] = useState('')
@@ -67,7 +69,7 @@ export default function RunMigrationModal({ open, repository, databaseName, onCl
   }
 
   async function handleRun() {
-    if (!password) return notify(t('runMigration.enterPasswordWarning'), 'warning')
+    if (!rbacEnabled && !password) return notify(t('runMigration.enterPasswordWarning'), 'warning')
     if (!migrationConfig) return notify(t('runMigration.configureMigrationWarning'), 'warning')
 
     const shown = await migrationPreview.showPreview(migrationConfig, repository)
@@ -138,15 +140,17 @@ export default function RunMigrationModal({ open, repository, databaseName, onCl
                 {t('runMigration.description', { database: databaseName, repository })}
               </Typography>
 
-              <TextField
-                fullWidth
-                type="password"
-                label={t('common.operationsPassword')}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                size="small"
-                autoComplete="off"
-              />
+              {!rbacEnabled && (
+                <TextField
+                  fullWidth
+                  type="password"
+                  label={t('common.operationsPassword')}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  size="small"
+                  autoComplete="off"
+                />
+              )}
 
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                 <Button
@@ -193,7 +197,7 @@ export default function RunMigrationModal({ open, repository, databaseName, onCl
                 variant="contained"
                 color="success"
                 onClick={handleRun}
-                disabled={!password || !migrationConfig}
+                disabled={(!rbacEnabled && !password) || !migrationConfig}
                 startIcon={<SwapHoriz />}
               >
                 {t('runMigration.execute')}
