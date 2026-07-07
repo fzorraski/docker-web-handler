@@ -1032,10 +1032,12 @@ const es: typeof en = {
   login: {
     title: 'Docker Handler',
     subtitle: 'Ingrese la contraseña para continuar',
+    username: 'Usuario',
     password: 'Contraseña',
     signIn: 'Iniciar sesión',
     signingIn: 'Iniciando sesión...',
     invalidPassword: 'Contraseña inválida.',
+    invalidCredentials: 'Usuario o contraseña inválidos.',
     tooManyAttempts: 'Demasiados intentos fallidos. Intente de nuevo en {{seconds}}s.',
     sessionExpired: 'Sesión expirada. Inicie sesión nuevamente.',
     logout: 'Cerrar sesión',

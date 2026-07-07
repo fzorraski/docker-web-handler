@@ -1032,10 +1032,12 @@ const ptBR: typeof en = {
   login: {
     title: 'Docker Handler',
     subtitle: 'Digite a senha para continuar',
+    username: 'Usuário',
     password: 'Senha',
     signIn: 'Entrar',
     signingIn: 'Entrando...',
     invalidPassword: 'Senha inválida.',
+    invalidCredentials: 'Usuário ou senha inválidos.',
     tooManyAttempts: 'Muitas tentativas falhas. Tente novamente em {{seconds}}s.',
     sessionExpired: 'Sessão expirada. Faça login novamente.',
     logout: 'Sair',

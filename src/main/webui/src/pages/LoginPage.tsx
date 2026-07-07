@@ -8,8 +8,9 @@ import LanguageSwitcher from '../components/LanguageSwitcher'
 
 export default function LoginPage() {
   const { t } = useTranslation()
-  const { login } = useAuth()
+  const { login, rbacEnabled } = useAuth()
   const { mode, toggleMode } = useThemeMode()
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -34,15 +35,16 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!password.trim() || loading || retryAfter > 0) return
+    if (rbacEnabled && !username.trim()) return
     setLoading(true)
     setError('')
-    const result = await login(password)
+    const result = await login(password, rbacEnabled ? username.trim() : undefined)
     if (!result.success) {
       if (result.retryAfter) {
         setRetryAfter(result.retryAfter)
         setError(t('login.tooManyAttempts', { seconds: result.retryAfter }))
       } else {
-        setError(result.error || t('login.invalidPassword'))
+        setError(result.error || t(rbacEnabled ? 'login.invalidCredentials' : 'login.invalidPassword'))
       }
       setLoading(false)
     }
@@ -142,13 +144,26 @@ export default function LoginPage() {
               {errorMessage}
             </Alert>
           )}
+          {rbacEnabled && (
+            <TextField
+              label={t('login.username')}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              fullWidth
+              autoFocus
+              autoComplete="username"
+              disabled={loading || isLocked}
+              sx={{ mb: 2.5 }}
+            />
+          )}
           <TextField
             type="password"
             label={t('login.password')}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             fullWidth
-            autoFocus
+            autoFocus={!rbacEnabled}
+            autoComplete="current-password"
             disabled={loading || isLocked}
             sx={{ mb: 2.5 }}
           />
@@ -157,7 +172,7 @@ export default function LoginPage() {
             variant="contained"
             fullWidth
             size="large"
-            disabled={!password.trim() || loading || isLocked}
+            disabled={!password.trim() || (rbacEnabled && !username.trim()) || loading || isLocked}
             startIcon={<Lock />}
             sx={{ py: 1.3, fontWeight: 600, fontSize: '0.95rem' }}
           >

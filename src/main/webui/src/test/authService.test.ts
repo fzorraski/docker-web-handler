@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { getAuthStatus, checkSession, login, logout } from '../services/authService'
+import { getAuthStatus, checkSession, getMe, changeOwnPassword, login, logout } from '../services/authService'
 
 const mockFetch = vi.fn()
 global.fetch = mockFetch
@@ -32,9 +32,79 @@ describe('authService', () => {
       expect((await getAuthStatus()).authEnabled).toBe(false)
     })
 
+    it('returns rbacEnabled from the backend', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ authEnabled: true, rbacEnabled: true }))
+      const result = await getAuthStatus()
+      expect(result.rbacEnabled).toBe(true)
+    })
+
     it('returns false on network error', async () => {
       mockFetch.mockReturnValue(jsonResponse(null, false))
-      expect((await getAuthStatus()).authEnabled).toBe(false)
+      const result = await getAuthStatus()
+      expect(result.authEnabled).toBe(false)
+      expect(result.rbacEnabled).toBe(false)
+    })
+  })
+
+  // ---- getMe ----
+
+  describe('getMe', () => {
+    it('returns the current user with permissions', async () => {
+      mockFetch.mockReturnValue(jsonResponse({
+        rbac: true,
+        username: 'alice',
+        roleId: 'builtin-operator',
+        roleName: 'OPERATOR',
+        permissions: ['CONTAINERS_VIEW', 'CONTAINERS_RUN'],
+      }))
+      const user = await getMe()
+      expect(mockFetch).toHaveBeenCalledWith('/api/auth/me')
+      expect(user).toEqual({
+        username: 'alice',
+        roleId: 'builtin-operator',
+        roleName: 'OPERATOR',
+        permissions: ['CONTAINERS_VIEW', 'CONTAINERS_RUN'],
+      })
+    })
+
+    it('returns null in legacy (non-rbac) mode', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ rbac: false, authenticated: true }))
+      expect(await getMe()).toBeNull()
+    })
+
+    it('returns null on error status', async () => {
+      mockFetch.mockReturnValue(
+        Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) } as Response),
+      )
+      expect(await getMe()).toBeNull()
+    })
+  })
+
+  // ---- changeOwnPassword ----
+
+  describe('changeOwnPassword', () => {
+    it('sends both passwords and reports success', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ success: true }))
+      const result = await changeOwnPassword('old-pw', 'new-pw')
+      expect(mockFetch).toHaveBeenCalledWith('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword: 'old-pw', newPassword: 'new-pw' }),
+      })
+      expect(result.success).toBe(true)
+    })
+
+    it('returns backend error message on failure', async () => {
+      mockFetch.mockReturnValue(
+        Promise.resolve({
+          ok: false,
+          status: 400,
+          json: () => Promise.resolve({ code: 'INVALID_INPUT', message: 'Current password is incorrect.' }),
+        } as Response),
+      )
+      const result = await changeOwnPassword('bad', 'new-pw')
+      expect(result.success).toBe(false)
+      expect(result.error).toBe('Current password is incorrect.')
     })
   })
 
@@ -73,6 +143,17 @@ describe('authService', () => {
       })
       expect(result.authenticated).toBe(true)
       expect(result.error).toBeUndefined()
+    })
+
+    it('includes username in body when provided (RBAC mode)', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ authenticated: true }))
+      await login('secret', 'alice')
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'alice', password: 'secret' }),
+      })
     })
 
     it('returns error on wrong password', async () => {

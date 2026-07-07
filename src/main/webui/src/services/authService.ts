@@ -1,9 +1,24 @@
+import fetchWithAuth from './fetchWithAuth'
+
 const API = '/api/auth/'
 
-export async function getAuthStatus(): Promise<{ authEnabled: boolean }> {
+export interface AuthStatus {
+  authEnabled: boolean
+  rbacEnabled: boolean
+}
+
+export interface CurrentUser {
+  username: string
+  roleId: string
+  roleName: string
+  permissions: string[]
+}
+
+export async function getAuthStatus(): Promise<AuthStatus> {
   const res = await fetch(API + 'status')
-  if (!res.ok) return { authEnabled: false }
-  return res.json()
+  if (!res.ok) return { authEnabled: false, rbacEnabled: false }
+  const data = await res.json()
+  return { authEnabled: !!data.authEnabled, rbacEnabled: !!data.rbacEnabled }
 }
 
 export async function checkSession(): Promise<{ authenticated: boolean }> {
@@ -12,11 +27,28 @@ export async function checkSession(): Promise<{ authenticated: boolean }> {
   return res.json()
 }
 
-export async function login(password: string): Promise<{ authenticated: boolean; error?: string; retryAfter?: number }> {
+export async function getMe(): Promise<CurrentUser | null> {
+  const res = await fetchWithAuth(API + 'me')
+  if (!res.ok) return null
+  const data = await res.json()
+  if (!data.rbac) return null
+  return {
+    username: data.username ?? '',
+    roleId: data.roleId ?? '',
+    roleName: data.roleName ?? '',
+    permissions: Array.isArray(data.permissions) ? data.permissions : [],
+  }
+}
+
+export async function login(
+  password: string,
+  username?: string,
+): Promise<{ authenticated: boolean; error?: string; retryAfter?: number }> {
+  const body = username === undefined ? { password } : { username, password }
   const res = await fetch(API + 'login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify(body),
   })
   const data = await res.json().catch(() => ({}))
   if (res.status === 429) {
@@ -27,6 +59,22 @@ export async function login(password: string): Promise<{ authenticated: boolean;
     return { authenticated: false, error: data.message || 'Login failed.' }
   }
   return { authenticated: true }
+}
+
+export async function changeOwnPassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ success: boolean; error?: string }> {
+  const res = await fetchWithAuth(API + 'change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.message || 'Failed to change password.' }
+  }
+  return { success: true }
 }
 
 export async function logout(): Promise<void> {
