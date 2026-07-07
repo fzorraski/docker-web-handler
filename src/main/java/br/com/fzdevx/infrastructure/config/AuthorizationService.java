@@ -1,0 +1,93 @@
+package br.com.fzdevx.infrastructure.config;
+
+import br.com.fzdevx.application.port.RoleRepository;
+import br.com.fzdevx.application.port.UserRepository;
+import br.com.fzdevx.domain.model.auth.Permission;
+import br.com.fzdevx.domain.model.auth.Role;
+import br.com.fzdevx.domain.model.auth.User;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+
+import java.util.EnumSet;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+/**
+ * Resolves user identity and permissions from an in-memory snapshot of the
+ * user/role repositories. The JSON file repositories re-read their file on
+ * every query, which is too slow for per-request permission checks, so this
+ * service caches a snapshot and management use cases call
+ * {@link #invalidateCache()} after every write - role edits and user
+ * disable/delete take effect immediately without re-login.
+ */
+@ApplicationScoped
+public class AuthorizationService {
+
+    @Inject
+    UserRepository userRepository;
+
+    @Inject
+    RoleRepository roleRepository;
+
+    public record ResolvedUser(String userId, String username, String roleId, String roleName,
+                               boolean enabled, Set<Permission> permissions) {
+
+        public boolean hasPermission(Permission permission) {
+            return permissions.contains(permission);
+        }
+    }
+
+    private volatile Snapshot snapshot;
+
+    private record Snapshot(Map<String, User> usersById, Map<String, Role> rolesById) {
+    }
+
+    public Optional<ResolvedUser> resolve(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return Optional.empty();
+        }
+        Snapshot snap = loadSnapshot();
+        User user = snap.usersById().get(userId);
+        if (user == null) {
+            return Optional.empty();
+        }
+        Role role = snap.rolesById().get(user.getRoleId());
+        Set<Permission> permissions = role == null || role.getPermissions().isEmpty()
+                ? Set.of()
+                : EnumSet.copyOf(role.getPermissions());
+        return Optional.of(new ResolvedUser(user.getId(), user.getUsername(), user.getRoleId(),
+                role != null ? role.getName() : null, user.isEnabled(), permissions));
+    }
+
+    public boolean hasPermission(String userId, Permission permission) {
+        return resolve(userId)
+                .filter(ResolvedUser::enabled)
+                .map(u -> u.hasPermission(permission))
+                .orElse(false);
+    }
+
+    public void invalidateCache() {
+        snapshot = null;
+    }
+
+    private Snapshot loadSnapshot() {
+        Snapshot snap = snapshot;
+        if (snap == null) {
+            synchronized (this) {
+                snap = snapshot;
+                if (snap == null) {
+                    snap = new Snapshot(
+                            userRepository.findAll().stream()
+                                    .collect(Collectors.toUnmodifiableMap(User::getId, Function.identity())),
+                            roleRepository.findAll().stream()
+                                    .collect(Collectors.toUnmodifiableMap(Role::getId, Function.identity())));
+                    snapshot = snap;
+                }
+            }
+        }
+        return snap;
+    }
+}

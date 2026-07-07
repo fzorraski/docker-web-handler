@@ -30,6 +30,9 @@ class AuthenticationFilterTest {
 
     @Mock AuthSessionManager sessionManager;
     @Mock RateLimitPort rateLimitPort;
+    @Mock br.com.fzdevx.infrastructure.config.RbacSettings rbacSettings;
+    @Mock br.com.fzdevx.infrastructure.config.AuthorizationService authorizationService;
+    @Mock br.com.fzdevx.infrastructure.config.CurrentUser currentUser;
     @Mock jakarta.inject.Provider<HttpServerRequest> vertxRequestProvider;
     @Mock HttpServerRequest httpServerRequest;
     @Mock SocketAddress remoteAddress;
@@ -140,6 +143,59 @@ class AuthenticationFilterTest {
         filter.filter(requestContext);
 
         verify(requestContext, never()).abortWith(any());
+    }
+
+    // ---- RBAC identity population ----
+
+    @Test
+    void filter_rbacValidSession_populatesCurrentUser() {
+        when(uriInfo.getPath()).thenReturn("/containers/list");
+        when(requestContext.getCookies()).thenReturn(Map.of("DWH-SESSION", new Cookie("DWH-SESSION", "valid")));
+        when(sessionManager.validateAndTouch("valid")).thenReturn(true);
+        when(rbacSettings.isRbacEnabled()).thenReturn(true);
+        when(sessionManager.getUserIdIfValid("valid")).thenReturn(java.util.Optional.of("user-1"));
+        var resolved = new br.com.fzdevx.infrastructure.config.AuthorizationService.ResolvedUser(
+                "user-1", "alice", "role-1", "VIEWER", true,
+                java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_VIEW));
+        when(authorizationService.resolve("user-1")).thenReturn(java.util.Optional.of(resolved));
+
+        filter.filter(requestContext);
+
+        verify(requestContext, never()).abortWith(any());
+        verify(currentUser).set("user-1", "alice",
+                java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_VIEW));
+    }
+
+    @Test
+    void filter_rbacSessionOfDeletedUser_aborts401AndKillsSession() {
+        when(uriInfo.getPath()).thenReturn("/containers/list");
+        when(requestContext.getCookies()).thenReturn(Map.of("DWH-SESSION", new Cookie("DWH-SESSION", "valid")));
+        when(sessionManager.validateAndTouch("valid")).thenReturn(true);
+        when(rbacSettings.isRbacEnabled()).thenReturn(true);
+        when(sessionManager.getUserIdIfValid("valid")).thenReturn(java.util.Optional.of("gone"));
+        when(authorizationService.resolve("gone")).thenReturn(java.util.Optional.empty());
+
+        filter.filter(requestContext);
+
+        verify(sessionManager).invalidateSession("valid");
+        verify(requestContext).abortWith(any());
+        verify(currentUser, never()).set(any(), any(), any());
+    }
+
+    @Test
+    void filter_rbacSessionOfDisabledUser_aborts401() {
+        when(uriInfo.getPath()).thenReturn("/containers/list");
+        when(requestContext.getCookies()).thenReturn(Map.of("DWH-SESSION", new Cookie("DWH-SESSION", "valid")));
+        when(sessionManager.validateAndTouch("valid")).thenReturn(true);
+        when(rbacSettings.isRbacEnabled()).thenReturn(true);
+        when(sessionManager.getUserIdIfValid("valid")).thenReturn(java.util.Optional.of("user-1"));
+        var resolved = new br.com.fzdevx.infrastructure.config.AuthorizationService.ResolvedUser(
+                "user-1", "alice", "role-1", "VIEWER", false, java.util.Set.of());
+        when(authorizationService.resolve("user-1")).thenReturn(java.util.Optional.of(resolved));
+
+        filter.filter(requestContext);
+
+        verify(requestContext).abortWith(any());
     }
 
     // ---- non-allowlisted paths require auth ----

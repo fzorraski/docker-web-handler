@@ -2,7 +2,10 @@ package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.application.port.RateLimitPort;
 import br.com.fzdevx.infrastructure.config.AuthSessionManager;
+import br.com.fzdevx.infrastructure.config.AuthorizationService;
+import br.com.fzdevx.infrastructure.config.CurrentUser;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
+import br.com.fzdevx.infrastructure.config.RbacSettings;
 import io.vertx.core.http.HttpServerRequest;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.container.ContainerRequestContext;
@@ -52,6 +55,15 @@ public class AuthenticationFilter implements ContainerRequestFilter {
     RateLimitPort rateLimitPort;
 
     @Inject
+    RbacSettings rbacSettings;
+
+    @Inject
+    AuthorizationService authorizationService;
+
+    @Inject
+    CurrentUser currentUser;
+
+    @Inject
     jakarta.inject.Provider<HttpServerRequest> vertxRequestProvider;
 
     @Override
@@ -91,6 +103,21 @@ public class AuthenticationFilter implements ContainerRequestFilter {
         Cookie sessionCookie = requestContext.getCookies().get(AuthController.SESSION_COOKIE);
         if (sessionCookie == null || !sessionManager.validateAndTouch(sessionCookie.getValue())) {
             abort(requestContext, 401, "UNAUTHORIZED", "Authentication required.");
+            return;
+        }
+
+        if (rbacSettings.isRbacEnabled()) {
+            var resolved = sessionManager.getUserIdIfValid(sessionCookie.getValue())
+                    .flatMap(authorizationService::resolve)
+                    .filter(AuthorizationService.ResolvedUser::enabled);
+            if (resolved.isEmpty()) {
+                // session belongs to a deleted/disabled user - treat as dead
+                sessionManager.invalidateSession(sessionCookie.getValue());
+                abort(requestContext, 401, "UNAUTHORIZED", "Authentication required.");
+                return;
+            }
+            var user = resolved.get();
+            currentUser.set(user.userId(), user.username(), user.permissions());
         }
     }
 

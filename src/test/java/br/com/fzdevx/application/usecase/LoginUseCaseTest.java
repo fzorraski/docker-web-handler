@@ -2,6 +2,11 @@ package br.com.fzdevx.application.usecase;
 
 import br.com.fzdevx.application.dto.LoginResult;
 import br.com.fzdevx.application.port.RateLimitPort;
+import br.com.fzdevx.application.port.UserRepository;
+import br.com.fzdevx.domain.model.auth.BuiltInRoles;
+import br.com.fzdevx.domain.model.auth.User;
+import br.com.fzdevx.domain.shared.PasswordHasher;
+import br.com.fzdevx.infrastructure.config.RbacSettings;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,12 +27,16 @@ class LoginUseCaseTest {
     @Mock
     RateLimitPort rateLimitPort;
 
+    @Mock
+    UserRepository userRepository;
+
     @InjectMocks
     LoginUseCase useCase;
 
     @BeforeEach
     void setUp() {
         setField("authPassword", Optional.of("secret"));
+        setField("rbacSettings", rbacSettings(true, "password"));
         lenient().when(rateLimitPort.checkRateLimit(anyString())).thenReturn(Optional.empty());
     }
 
@@ -36,6 +45,21 @@ class LoginUseCaseTest {
             Field f = LoginUseCase.class.getDeclaredField(name);
             f.setAccessible(true);
             f.set(useCase, value);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    static RbacSettings rbacSettings(boolean enabled, String mode) {
+        try {
+            RbacSettings settings = new RbacSettings();
+            Field enabledField = RbacSettings.class.getDeclaredField("authEnabled");
+            enabledField.setAccessible(true);
+            enabledField.set(settings, enabled);
+            Field modeField = RbacSettings.class.getDeclaredField("authMode");
+            modeField.setAccessible(true);
+            modeField.set(settings, mode);
+            return settings;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -138,5 +162,110 @@ class LoginUseCaseTest {
         LoginResult result = useCase.execute("1.2.3.4", "anything");
 
         assertEquals(LoginResult.Status.INVALID_PASSWORD, result.status());
+    }
+
+    // ---- RBAC mode ----
+
+    private User rbacUser(String username, String rawPassword) {
+        return new User(username, PasswordHasher.hash(rawPassword), BuiltInRoles.OPERATOR_ID);
+    }
+
+    private void enableRbac() {
+        setField("rbacSettings", rbacSettings(true, "rbac"));
+    }
+
+    @Test
+    void executeRbac_correctCredentials_returnsSuccessWithUserId() {
+        enableRbac();
+        User user = rbacUser("alice", "pw123");
+        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
+
+        LoginResult result = useCase.execute("1.2.3.4", "alice", "pw123");
+
+        assertEquals(LoginResult.Status.SUCCESS, result.status());
+        assertEquals(user.getId(), result.userId());
+        verify(rateLimitPort).recordSuccess("login:1.2.3.4");
+        verify(rateLimitPort).recordSuccess("login-user:alice");
+    }
+
+    @Test
+    void executeRbac_correctCredentials_updatesLastLogin() {
+        enableRbac();
+        User user = rbacUser("alice", "pw123");
+        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
+
+        useCase.execute("1.2.3.4", "alice", "pw123");
+
+        verify(userRepository).save(argThat(saved -> saved.getLastLoginAt() != null));
+    }
+
+    @Test
+    void executeRbac_wrongPassword_returnsInvalidAndRecordsBothKeys() {
+        enableRbac();
+        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(rbacUser("alice", "pw123")));
+
+        LoginResult result = useCase.execute("1.2.3.4", "alice", "wrong");
+
+        assertEquals(LoginResult.Status.INVALID_PASSWORD, result.status());
+        verify(rateLimitPort).recordFailure("login:1.2.3.4");
+        verify(rateLimitPort).recordFailure("login-user:alice");
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void executeRbac_unknownUsername_returnsInvalidPassword() {
+        enableRbac();
+        when(userRepository.findByUsername("ghost")).thenReturn(Optional.empty());
+
+        LoginResult result = useCase.execute("1.2.3.4", "ghost", "whatever");
+
+        assertEquals(LoginResult.Status.INVALID_PASSWORD, result.status());
+        verify(rateLimitPort).recordFailure("login:1.2.3.4");
+    }
+
+    @Test
+    void executeRbac_disabledUser_returnsInvalidPassword() {
+        enableRbac();
+        User user = rbacUser("alice", "pw123");
+        user.setEnabled(false);
+        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
+
+        LoginResult result = useCase.execute("1.2.3.4", "alice", "pw123");
+
+        assertEquals(LoginResult.Status.INVALID_PASSWORD, result.status());
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void executeRbac_blankUsername_returnsInvalidPassword() {
+        enableRbac();
+
+        assertEquals(LoginResult.Status.INVALID_PASSWORD, useCase.execute("1.2.3.4", null, "pw").status());
+        assertEquals(LoginResult.Status.INVALID_PASSWORD, useCase.execute("1.2.3.4", "  ", "pw").status());
+        verify(userRepository, never()).findByUsername(anyString());
+    }
+
+    @Test
+    void executeRbac_userLevelRateLimit_returnsRateLimited() {
+        enableRbac();
+        when(rateLimitPort.checkRateLimit("login:1.2.3.4")).thenReturn(Optional.empty());
+        when(rateLimitPort.checkRateLimit("login-user:alice")).thenReturn(Optional.of(60L));
+
+        LoginResult result = useCase.execute("1.2.3.4", "Alice", "pw123");
+
+        assertEquals(LoginResult.Status.RATE_LIMITED, result.status());
+        assertEquals(60, result.retryAfterSeconds());
+        verify(userRepository, never()).findByUsername(anyString());
+    }
+
+    @Test
+    void executeRbac_usernameLookupIsTrimmed() {
+        enableRbac();
+        User user = rbacUser("alice", "pw123");
+        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(user));
+
+        LoginResult result = useCase.execute("1.2.3.4", "  alice  ", "pw123");
+
+        assertEquals(LoginResult.Status.SUCCESS, result.status());
     }
 }

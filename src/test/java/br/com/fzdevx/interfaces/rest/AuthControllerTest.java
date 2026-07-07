@@ -2,7 +2,11 @@ package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.application.dto.LoginResult;
 import br.com.fzdevx.application.usecase.LoginUseCase;
+import br.com.fzdevx.domain.model.auth.BuiltInRoles;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.infrastructure.config.AuthSessionManager;
+import br.com.fzdevx.infrastructure.config.AuthorizationService;
+import br.com.fzdevx.infrastructure.config.RbacSettings;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.net.SocketAddress;
 import jakarta.ws.rs.core.Cookie;
@@ -31,6 +35,8 @@ class AuthControllerTest {
 
     @Mock AuthSessionManager sessionManager;
     @Mock LoginUseCase loginUseCase;
+    @Mock RbacSettings rbacSettings;
+    @Mock AuthorizationService authorizationService;
     @Mock HttpServerRequest httpServerRequest;
     @Mock SocketAddress remoteAddress;
 
@@ -113,8 +119,8 @@ class AuthControllerTest {
 
     @Test
     void login_success_returns200WithCookie() {
-        when(loginUseCase.execute("127.0.0.1", "secret")).thenReturn(LoginResult.success());
-        when(sessionManager.createSession()).thenReturn("session-123");
+        when(loginUseCase.execute("127.0.0.1", null, "secret")).thenReturn(LoginResult.success());
+        when(sessionManager.createSession(null)).thenReturn("session-123");
         when(sessionManager.getSessionTimeoutMinutes()).thenReturn(480);
 
         Response response = controller.login(Map.of("password", "secret"), httpServerRequest);
@@ -131,7 +137,7 @@ class AuthControllerTest {
 
     @Test
     void login_invalidPassword_returns401() {
-        when(loginUseCase.execute("127.0.0.1", "wrong")).thenReturn(LoginResult.invalidPassword());
+        when(loginUseCase.execute("127.0.0.1", null, "wrong")).thenReturn(LoginResult.invalidPassword());
 
         Response response = controller.login(Map.of("password", "wrong"), httpServerRequest);
         assertEquals(401, response.getStatus());
@@ -139,7 +145,7 @@ class AuthControllerTest {
 
     @Test
     void login_nullBody_returns401() {
-        when(loginUseCase.execute(anyString(), isNull())).thenReturn(LoginResult.invalidPassword());
+        when(loginUseCase.execute(anyString(), isNull(), isNull())).thenReturn(LoginResult.invalidPassword());
 
         Response response = controller.login(null, httpServerRequest);
         assertEquals(401, response.getStatus());
@@ -147,7 +153,7 @@ class AuthControllerTest {
 
     @Test
     void login_rateLimited_returns429() {
-        when(loginUseCase.execute("127.0.0.1", "anything")).thenReturn(LoginResult.rateLimited(30));
+        when(loginUseCase.execute("127.0.0.1", null, "anything")).thenReturn(LoginResult.rateLimited(30));
 
         Response response = controller.login(Map.of("password", "anything"), httpServerRequest);
 
@@ -159,7 +165,7 @@ class AuthControllerTest {
     @Test
     @SuppressWarnings("unchecked")
     void login_rateLimited_bodyContainsRetryAfter() {
-        when(loginUseCase.execute("127.0.0.1", "anything")).thenReturn(LoginResult.rateLimited(45));
+        when(loginUseCase.execute("127.0.0.1", null, "anything")).thenReturn(LoginResult.rateLimited(45));
 
         Response response = controller.login(Map.of("password", "anything"), httpServerRequest);
 
@@ -193,8 +199,8 @@ class AuthControllerTest {
 
     @Test
     void login_cookie_isHttpOnly() {
-        when(loginUseCase.execute("127.0.0.1", "secret")).thenReturn(LoginResult.success());
-        when(sessionManager.createSession()).thenReturn("id");
+        when(loginUseCase.execute("127.0.0.1", null, "secret")).thenReturn(LoginResult.success());
+        when(sessionManager.createSession(null)).thenReturn("id");
         when(sessionManager.getSessionTimeoutMinutes()).thenReturn(60);
 
         Response response = controller.login(Map.of("password", "secret"), httpServerRequest);
@@ -205,14 +211,88 @@ class AuthControllerTest {
 
     @Test
     void login_cookie_hasSameSiteStrict() {
-        when(loginUseCase.execute("127.0.0.1", "secret")).thenReturn(LoginResult.success());
-        when(sessionManager.createSession()).thenReturn("id");
+        when(loginUseCase.execute("127.0.0.1", null, "secret")).thenReturn(LoginResult.success());
+        when(sessionManager.createSession(null)).thenReturn("id");
         when(sessionManager.getSessionTimeoutMinutes()).thenReturn(60);
 
         Response response = controller.login(Map.of("password", "secret"), httpServerRequest);
         NewCookie cookie = response.getCookies().get("DWH-SESSION");
 
         assertEquals(NewCookie.SameSite.STRICT, cookie.getSameSite());
+    }
+
+    // ---- rbac: status / login / me ----
+
+    @Test
+    void getStatus_includesRbacEnabled() {
+        when(rbacSettings.isRbacEnabled()).thenReturn(true);
+        Map<String, Object> result = controller.getStatus();
+        assertEquals(true, result.get("rbacEnabled"));
+    }
+
+    @Test
+    void login_rbacSuccess_createsSessionForUser() {
+        when(loginUseCase.execute("127.0.0.1", "alice", "pw")).thenReturn(LoginResult.success("user-1"));
+        when(sessionManager.createSession("user-1")).thenReturn("session-9");
+        when(sessionManager.getSessionTimeoutMinutes()).thenReturn(480);
+
+        Response response = controller.login(Map.of("username", "alice", "password", "pw"), httpServerRequest);
+
+        assertEquals(200, response.getStatus());
+        assertEquals("session-9", response.getCookies().get("DWH-SESSION").getValue());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getMe_legacyMode_reportsRbacDisabled() {
+        when(rbacSettings.isRbacEnabled()).thenReturn(false);
+        Cookie cookie = new Cookie("DWH-SESSION", "valid-id");
+        when(sessionManager.validateAndTouch("valid-id")).thenReturn(true);
+
+        Response response = controller.getMe(cookie);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertEquals(false, body.get("rbac"));
+        assertEquals(true, body.get("authenticated"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getMe_rbacMode_returnsUserWithPermissions() {
+        when(rbacSettings.isRbacEnabled()).thenReturn(true);
+        Cookie cookie = new Cookie("DWH-SESSION", "valid-id");
+        when(sessionManager.getUserIdIfValid("valid-id")).thenReturn(Optional.of("user-1"));
+        when(authorizationService.resolve("user-1")).thenReturn(Optional.of(
+                new AuthorizationService.ResolvedUser("user-1", "alice", BuiltInRoles.VIEWER_ID,
+                        "VIEWER", true, java.util.Set.of(Permission.CONTAINERS_VIEW, Permission.LOGS_VIEW))));
+
+        Response response = controller.getMe(cookie);
+
+        assertEquals(200, response.getStatus());
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertEquals("alice", body.get("username"));
+        assertEquals("VIEWER", body.get("roleName"));
+        assertEquals(java.util.List.of("CONTAINERS_VIEW", "LOGS_VIEW"), body.get("permissions"));
+    }
+
+    @Test
+    void getMe_rbacMode_noSession_returns401() {
+        when(rbacSettings.isRbacEnabled()).thenReturn(true);
+
+        assertEquals(401, controller.getMe(null).getStatus());
+    }
+
+    @Test
+    void getMe_rbacMode_disabledUser_returns401() {
+        when(rbacSettings.isRbacEnabled()).thenReturn(true);
+        Cookie cookie = new Cookie("DWH-SESSION", "valid-id");
+        when(sessionManager.getUserIdIfValid("valid-id")).thenReturn(Optional.of("user-1"));
+        when(authorizationService.resolve("user-1")).thenReturn(Optional.of(
+                new AuthorizationService.ResolvedUser("user-1", "alice", BuiltInRoles.VIEWER_ID,
+                        "VIEWER", false, java.util.Set.of())));
+
+        assertEquals(401, controller.getMe(cookie).getStatus());
     }
 
     // ---- extractClientIp ----

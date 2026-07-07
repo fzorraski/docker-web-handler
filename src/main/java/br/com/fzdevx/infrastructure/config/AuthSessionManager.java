@@ -9,6 +9,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -30,10 +31,12 @@ public class AuthSessionManager {
 
     private static class Session {
         final Instant createdAt;
+        final String userId; // null in legacy single-password mode
         volatile Instant lastAccessedAt;
 
-        Session(Instant now) {
+        Session(Instant now, String userId) {
             this.createdAt = now;
+            this.userId = userId;
             this.lastAccessedAt = now;
         }
     }
@@ -60,31 +63,55 @@ public class AuthSessionManager {
     }
 
     public String createSession() {
+        return createSession(null);
+    }
+
+    public String createSession(String userId) {
         String sessionId = UUID.randomUUID().toString();
-        sessions.put(sessionId, new Session(Instant.now()));
+        sessions.put(sessionId, new Session(Instant.now(), userId));
         return sessionId;
     }
 
     public boolean validateAndTouch(String sessionId) {
-        if (sessionId == null || sessionId.isBlank()) return false;
+        return validAndTouched(sessionId) != null;
+    }
+
+    /**
+     * Validates and touches the session, returning the user id it was created
+     * for. Empty means the session is invalid/expired OR it is a legacy
+     * single-password session (which has no user id) - use
+     * {@link #validateAndTouch(String)} to test validity alone.
+     */
+    public Optional<String> getUserIdIfValid(String sessionId) {
+        Session session = validAndTouched(sessionId);
+        return session == null ? Optional.empty() : Optional.ofNullable(session.userId);
+    }
+
+    private Session validAndTouched(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) return null;
 
         Session session = sessions.get(sessionId);
-        if (session == null) return false;
+        if (session == null) return null;
 
         Instant cutoff = Instant.now().minusSeconds((long) sessionTimeoutMinutes * 60);
         if (session.lastAccessedAt.isBefore(cutoff)) {
             sessions.remove(sessionId);
-            return false;
+            return null;
         }
 
         session.lastAccessedAt = Instant.now();
-        return true;
+        return session;
     }
 
     public void invalidateSession(String sessionId) {
         if (sessionId != null) {
             sessions.remove(sessionId);
         }
+    }
+
+    public void invalidateSessionsForUser(String userId) {
+        if (userId == null) return;
+        sessions.entrySet().removeIf(entry -> userId.equals(entry.getValue().userId));
     }
 
     public boolean isAuthEnabled() {

@@ -3,6 +3,8 @@ package br.com.fzdevx.interfaces.rest;
 import br.com.fzdevx.application.dto.LoginResult;
 import br.com.fzdevx.application.usecase.LoginUseCase;
 import br.com.fzdevx.infrastructure.config.AuthSessionManager;
+import br.com.fzdevx.infrastructure.config.AuthorizationService;
+import br.com.fzdevx.infrastructure.config.RbacSettings;
 import io.quarkus.logging.Log;
 import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.event.Observes;
@@ -39,11 +41,18 @@ public class AuthController {
     LoginUseCase loginUseCase;
 
     @Inject
+    RbacSettings rbacSettings;
+
+    @Inject
+    AuthorizationService authorizationService;
+
+    @Inject
     @ConfigProperty(name = "app.rate-limit.trust-forwarded-headers", defaultValue = "false")
     boolean trustForwardedHeaders;
 
     void onStartup(@Observes StartupEvent event) {
-        if (authEnabled && (authPassword.isEmpty() || authPassword.get().isBlank())) {
+        if (authEnabled && !rbacSettings.isRbacEnabled()
+                && (authPassword.isEmpty() || authPassword.get().isBlank())) {
             Log.warn("app.auth.enabled is true but app.auth.password is blank — all login attempts will be rejected.");
         }
     }
@@ -52,7 +61,35 @@ public class AuthController {
     @Path("/status")
     @Produces(MediaType.APPLICATION_JSON)
     public Map<String, Object> getStatus() {
-        return Map.of("authEnabled", authEnabled);
+        return Map.of("authEnabled", authEnabled,
+                "rbacEnabled", rbacSettings.isRbacEnabled());
+    }
+
+    @GET
+    @Path("/me")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getMe(@CookieParam(SESSION_COOKIE) Cookie sessionCookie) {
+        if (!rbacSettings.isRbacEnabled()) {
+            boolean authenticated = !authEnabled
+                    || (sessionCookie != null && sessionManager.validateAndTouch(sessionCookie.getValue()));
+            return Response.ok(Map.of("rbac", false, "authenticated", authenticated)).build();
+        }
+
+        return Optional.ofNullable(sessionCookie)
+                .flatMap(cookie -> sessionManager.getUserIdIfValid(cookie.getValue()))
+                .flatMap(authorizationService::resolve)
+                .filter(AuthorizationService.ResolvedUser::enabled)
+                .map(user -> Response.ok(Map.of(
+                        "rbac", true,
+                        "userId", user.userId(),
+                        "username", user.username(),
+                        "roleId", user.roleId() != null ? user.roleId() : "",
+                        "roleName", user.roleName() != null ? user.roleName() : "",
+                        "permissions", user.permissions().stream().map(Enum::name).sorted().toList()
+                )).build())
+                .orElseGet(() -> Response.status(Response.Status.UNAUTHORIZED)
+                        .entity(Map.of("code", "UNAUTHORIZED", "message", "Authentication required."))
+                        .build());
     }
 
     @GET
@@ -76,13 +113,14 @@ public class AuthController {
         }
 
         String password = body != null ? body.get("password") : null;
+        String username = body != null ? body.get("username") : null;
         String clientIp = extractClientIp(request, trustForwardedHeaders);
 
-        LoginResult result = loginUseCase.execute(clientIp, password);
+        LoginResult result = loginUseCase.execute(clientIp, username, password);
 
         return switch (result.status()) {
             case SUCCESS -> {
-                String sessionId = sessionManager.createSession();
+                String sessionId = sessionManager.createSession(result.userId());
                 NewCookie cookie = new NewCookie.Builder(SESSION_COOKIE)
                         .value(sessionId)
                         .path("/")
