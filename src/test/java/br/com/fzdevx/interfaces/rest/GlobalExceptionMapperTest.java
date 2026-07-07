@@ -70,6 +70,21 @@ class GlobalExceptionMapperTest {
     }
 
     @Test
+    void accessDeniedException_returns403() {
+        Response res = mapper.toResponse(new AccessDeniedException("no permission"));
+        assertEquals(403, res.getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void accessDeniedException_includesForbiddenCode() {
+        Response res = mapper.toResponse(new AccessDeniedException("no permission"));
+        Map<String, Object> entity = (Map<String, Object>) res.getEntity();
+        assertEquals("FORBIDDEN", entity.get("code"));
+        assertEquals("no permission", entity.get("message"));
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void domainException_includesCodeAndMessage() {
         Response res = mapper.toResponse(new EntityNotFoundException("item missing"));

@@ -4,7 +4,7 @@ package br.com.fzdevx.domain.exception;
 public sealed class DomainException extends RuntimeException
         permits EntityNotFoundException, DuplicateEntityException,
                 InvalidInputException, OperationInProgressException,
-                RateLimitedException {
+                RateLimitedException, AccessDeniedException {
 
     private final String code;
 

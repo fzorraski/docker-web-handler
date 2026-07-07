@@ -1,5 +1,6 @@
 package br.com.fzdevx.interfaces.rest;
 
+import br.com.fzdevx.domain.exception.AccessDeniedException;
 import br.com.fzdevx.domain.exception.DomainException;
 import br.com.fzdevx.domain.exception.DuplicateDumpException;
 import br.com.fzdevx.domain.exception.DuplicateEntityException;
@@ -66,6 +67,7 @@ public class GlobalExceptionMapper implements ExceptionMapper<Exception> {
             case DuplicateEntityException e -> 409;
             case OperationInProgressException e -> 409;
             case RateLimitedException e -> 429;
+            case AccessDeniedException e -> 403;
             default -> 500;
         };
     }
