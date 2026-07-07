@@ -63,11 +63,22 @@ public class ContainerTerminalEndpoint {
             return;
         }
 
-        String containerId = requestStash.retrieveTerminal(ticket);
-        if (containerId == null) {
+        br.com.fzdevx.infrastructure.config.RequestStash.TerminalGrant grant =
+                requestStash.retrieveTerminal(ticket);
+        if (grant == null) {
             sendAndClose(session, errorMsg("Invalid or expired ticket."));
             return;
         }
+
+        // Under RBAC the ticket may only be redeemed by the user who created it.
+        String handshakeUserId = (String) session.getUserProperties()
+                .get(AuthWebSocketConfigurator.AUTH_USER_ID_KEY);
+        if (grant.userId() != null && !grant.userId().equals(handshakeUserId)) {
+            sendAndClose(session, errorMsg("Invalid or expired ticket."));
+            return;
+        }
+
+        String containerId = grant.containerId();
 
         if (InputValidator.validateContainerId(containerId).isPresent()) {
             sendAndClose(session, errorMsg("Invalid container ID."));

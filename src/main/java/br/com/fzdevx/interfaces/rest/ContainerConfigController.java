@@ -55,6 +55,9 @@ public class ContainerConfigController {
     PasswordValidationService passwordValidationService;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.RbacSettings rbacSettings;
+
+    @Inject
     RequestStash requestStash;
 
     @Inject
@@ -298,6 +301,7 @@ public class ContainerConfigController {
         features.put("terminalUpload", terminalUploadEnabled);
         features.put("terminalUploadMaxSizeMb", terminalUploadMaxSizeMb);
         features.put("terminalUploadDefaultPath", terminalUploadDefaultPath);
+        features.put("rbac", rbacSettings.isRbacEnabled());
         return features;
     }
 

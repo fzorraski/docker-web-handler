@@ -13,6 +13,7 @@ import io.quarkus.logging.Log;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 import java.time.Instant;
 import java.util.Map;
@@ -27,7 +28,10 @@ public class RequestStash {
 
     private static final long TTL_MINUTES = 5;
 
-    private record StashedEntry<T>(T request, Instant createdAt) {}
+    private record StashedEntry<T>(T request, Instant createdAt, String userId) {}
+
+    @Inject
+    CurrentUser currentUser;
 
     private final ConcurrentHashMap<String, StashedEntry<RunContainerRequest>> stash = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, StashedEntry<RestoreDumpRequest>> restoreStash = new ConcurrentHashMap<>();
@@ -90,13 +94,33 @@ public class RequestStash {
 
     private <T> String put(ConcurrentHashMap<String, StashedEntry<T>> map, T request) {
         String ticket = UUID.randomUUID().toString();
-        map.put(ticket, new StashedEntry<>(request, Instant.now()));
+        map.put(ticket, new StashedEntry<>(request, Instant.now(), safeCurrentUserId()));
         return ticket;
     }
 
     private <T> T take(ConcurrentHashMap<String, StashedEntry<T>> map, String ticket) {
         StashedEntry<T> entry = map.remove(ticket);
-        return entry != null ? entry.request() : null;
+        if (entry == null) {
+            return null;
+        }
+        // Under RBAC a ticket may only be redeemed by the user who created it.
+        if (entry.userId() != null && !entry.userId().equals(safeCurrentUserId())) {
+            Log.warnf("RequestStash: ticket redeemed by a different user - rejecting.");
+            return null;
+        }
+        return entry.request();
+    }
+
+    /**
+     * The id of the RBAC user bound to the current request, or null when RBAC
+     * is inactive or no request scope is active (e.g. WebSocket handshake).
+     */
+    private String safeCurrentUserId() {
+        try {
+            return currentUser.isRbacActive() ? currentUser.getUserId() : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     public String stash(RunContainerRequest request) {
@@ -155,15 +179,24 @@ public class RequestStash {
         return take(removeStash, ticket);
     }
 
-    // Terminal tickets store the containerId that was authorized
-    private final ConcurrentHashMap<String, StashedEntry<String>> terminalStash = new ConcurrentHashMap<>();
+    // Terminal tickets store the containerId that was authorized plus the
+    // authorizing user. The WebSocket endpoint redeems them outside any REST
+    // request scope, so the user match happens there (against the handshake's
+    // session user), not in take().
+    public record TerminalGrant(String containerId, String userId) {}
+
+    private final ConcurrentHashMap<String, StashedEntry<TerminalGrant>> terminalStash = new ConcurrentHashMap<>();
 
     public String stashTerminal(String containerId) {
-        return put(terminalStash, containerId);
+        String ticket = UUID.randomUUID().toString();
+        terminalStash.put(ticket, new StashedEntry<>(
+                new TerminalGrant(containerId, safeCurrentUserId()), Instant.now(), null));
+        return ticket;
     }
 
-    public String retrieveTerminal(String ticket) {
-        return take(terminalStash, ticket);
+    public TerminalGrant retrieveTerminal(String ticket) {
+        StashedEntry<TerminalGrant> entry = terminalStash.remove(ticket);
+        return entry != null ? entry.request() : null;
     }
 
     public String stashLogAnalysis(AnalyzeLogFileRequest request) {

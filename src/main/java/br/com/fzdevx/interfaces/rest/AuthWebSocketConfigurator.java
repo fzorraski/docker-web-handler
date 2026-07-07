@@ -1,6 +1,9 @@
 package br.com.fzdevx.interfaces.rest;
 
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.infrastructure.config.AuthSessionManager;
+import br.com.fzdevx.infrastructure.config.AuthorizationService;
+import br.com.fzdevx.infrastructure.config.RbacSettings;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.websocket.HandshakeResponse;
@@ -10,20 +13,26 @@ import jakarta.websocket.server.ServerEndpointConfig;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public class AuthWebSocketConfigurator extends ServerEndpointConfig.Configurator {
 
     static final String AUTH_RESULT_KEY = "auth.authenticated";
+    static final String AUTH_USER_ID_KEY = "auth.userId";
 
     @Override
     public void modifyHandshake(ServerEndpointConfig sec, HandshakeRequest request, HandshakeResponse response) {
         AuthSessionManager sessionManager;
+        RbacSettings rbacSettings;
+        AuthorizationService authorizationService;
         try {
             sessionManager = CDI.current().select(AuthSessionManager.class).get();
+            rbacSettings = CDI.current().select(RbacSettings.class).get();
+            authorizationService = CDI.current().select(AuthorizationService.class).get();
         } catch (Exception e) {
             // Fail closed: if we cannot resolve the auth manager we cannot prove
             // the request is authenticated, so deny rather than grant access.
-            Log.errorf("Terminal WebSocket auth check failed to resolve AuthSessionManager: %s", e.getMessage());
+            Log.errorf("Terminal WebSocket auth check failed to resolve auth services: %s", e.getMessage());
             sec.getUserProperties().put(AUTH_RESULT_KEY, false);
             return;
         }
@@ -36,14 +45,35 @@ public class AuthWebSocketConfigurator extends ServerEndpointConfig.Configurator
         // A browser may legitimately send more than one DWH-SESSION cookie
         // (e.g. a stale duplicate scoped to a different path alongside the
         // current one). Accept the handshake if any of them is valid.
-        boolean valid = false;
+        String validSessionId = null;
         for (String sessionId : extractSessionCookies(request)) {
             if (sessionManager.validateAndTouch(sessionId)) {
-                valid = true;
+                validSessionId = sessionId;
                 break;
             }
         }
-        sec.getUserProperties().put(AUTH_RESULT_KEY, valid);
+        if (validSessionId == null) {
+            sec.getUserProperties().put(AUTH_RESULT_KEY, false);
+            return;
+        }
+
+        if (!rbacSettings.isRbacEnabled()) {
+            sec.getUserProperties().put(AUTH_RESULT_KEY, true);
+            return;
+        }
+
+        // Under RBAC the session must belong to an enabled user with terminal access.
+        Optional<AuthorizationService.ResolvedUser> user =
+                sessionManager.getUserIdIfValid(validSessionId)
+                        .flatMap(authorizationService::resolve)
+                        .filter(AuthorizationService.ResolvedUser::enabled)
+                        .filter(u -> u.hasPermission(Permission.TERMINAL_ACCESS));
+        if (user.isEmpty()) {
+            sec.getUserProperties().put(AUTH_RESULT_KEY, false);
+            return;
+        }
+        sec.getUserProperties().put(AUTH_RESULT_KEY, true);
+        sec.getUserProperties().put(AUTH_USER_ID_KEY, user.get().userId());
     }
 
     private List<String> extractSessionCookies(HandshakeRequest request) {

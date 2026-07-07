@@ -55,32 +55,55 @@ public class PasswordValidationService {
     RateLimitPort rateLimitPort;
 
     @Inject
+    RbacSettings rbacSettings;
+
+    @Inject
     jakarta.inject.Provider<HttpServerRequest> requestProvider;
 
     @Inject
     @ConfigProperty(name = "app.rate-limit.trust-forwarded-headers", defaultValue = "false")
     boolean trustForwardedHeaders;
 
+    // When RBAC is active, role permissions replace the per-operation
+    // passwords: AuthorizationFilter is the enforcement point, so every
+    // validate* returns true and every is*Required returns false (which also
+    // tells the frontend to stop prompting).
+
     public boolean validateUploadPassword(String password) {
+        if (rbacSettings.isRbacEnabled()) return true;
         return validate("upload-pw", uploadPassword, uploadPasswordRequired, password);
     }
 
     public boolean validateOperationsPassword(String password) {
+        if (rbacSettings.isRbacEnabled()) return true;
         return validate("ops-pw", operationsPassword, operationsPasswordRequired, password);
     }
 
     public boolean validateSchedulingPassword(String password) {
+        if (rbacSettings.isRbacEnabled()) return true;
         return validate("schedule-pw", schedulingPassword, schedulingPasswordRequired, password);
     }
 
     public boolean validateTerminalPassword(String password) {
+        if (rbacSettings.isRbacEnabled()) return true;
         return validate("terminal-pw", terminalPassword, terminalPasswordRequired, password);
     }
 
-    public boolean isUploadPasswordRequired() { return uploadPasswordRequired || hasPassword(uploadPassword); }
-    public boolean isOperationsPasswordRequired() { return operationsPasswordRequired || hasPassword(operationsPassword); }
-    public boolean isSchedulingPasswordRequired() { return schedulingPasswordRequired || hasPassword(schedulingPassword); }
-    public boolean isTerminalPasswordRequired() { return terminalPasswordRequired || hasPassword(terminalPassword); }
+    public boolean isUploadPasswordRequired() {
+        return !rbacSettings.isRbacEnabled() && (uploadPasswordRequired || hasPassword(uploadPassword));
+    }
+
+    public boolean isOperationsPasswordRequired() {
+        return !rbacSettings.isRbacEnabled() && (operationsPasswordRequired || hasPassword(operationsPassword));
+    }
+
+    public boolean isSchedulingPasswordRequired() {
+        return !rbacSettings.isRbacEnabled() && (schedulingPasswordRequired || hasPassword(schedulingPassword));
+    }
+
+    public boolean isTerminalPasswordRequired() {
+        return !rbacSettings.isRbacEnabled() && (terminalPasswordRequired || hasPassword(terminalPassword));
+    }
 
     /**
      * Constant-time password comparison. Returns false if configured is empty/blank.

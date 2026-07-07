@@ -42,6 +42,7 @@ class ContainerConfigControllerTest {
     @Mock DumpStorageService dumpStorageService;
     @Mock WebhookService webhookService;
     @Mock PasswordValidationService passwordValidationService;
+    @Mock br.com.fzdevx.infrastructure.config.RbacSettings rbacSettings;
     @Mock MemoryGuardService memoryGuardService;
     @Mock RequestStash requestStash;
     @Mock Config config;

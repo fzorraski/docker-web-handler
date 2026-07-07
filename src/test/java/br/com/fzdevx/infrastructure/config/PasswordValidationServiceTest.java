@@ -22,6 +22,7 @@ class PasswordValidationServiceTest {
             String terminalPassword, boolean terminalRequired
     ) throws Exception {
         PasswordValidationService service = new PasswordValidationService();
+        service.rbacSettings = rbacSettings(false, "password");
         setField(service, "operationsPassword", Optional.ofNullable(operationsPassword));
         setField(service, "operationsPasswordRequired", operationsRequired);
         setField(service, "uploadPassword", Optional.ofNullable(uploadPassword));
@@ -41,6 +42,13 @@ class PasswordValidationServiceTest {
         Field field = target.getClass().getDeclaredField(name);
         field.setAccessible(true);
         field.set(target, value);
+    }
+
+    static RbacSettings rbacSettings(boolean enabled, String mode) {
+        RbacSettings settings = new RbacSettings();
+        settings.authEnabled = enabled;
+        settings.authMode = mode;
+        return settings;
     }
 
     // ---- operations password: required=true ----
@@ -483,5 +491,38 @@ class PasswordValidationServiceTest {
 
         assertTrue(service.validateOperationsPassword("anything"));
         verifyNoInteractions(rateLimitPort);
+    }
+
+    // ---- RBAC mode: role permissions replace the password tiers ----
+
+    @Test
+    void rbacEnabled_allValidatesPassWithoutPassword() throws Exception {
+        var service = createService("secret", true, "secret", true, "secret", true, "secret", true);
+        service.rbacSettings = rbacSettings(true, "rbac");
+
+        assertTrue(service.validateOperationsPassword(null));
+        assertTrue(service.validateUploadPassword(""));
+        assertTrue(service.validateSchedulingPassword("wrong"));
+        assertTrue(service.validateTerminalPassword(null));
+    }
+
+    @Test
+    void rbacEnabled_noPasswordsReportedRequired() throws Exception {
+        var service = createService("secret", true, "secret", true, "secret", true, "secret", true);
+        service.rbacSettings = rbacSettings(true, "rbac");
+
+        assertFalse(service.isOperationsPasswordRequired());
+        assertFalse(service.isUploadPasswordRequired());
+        assertFalse(service.isSchedulingPasswordRequired());
+        assertFalse(service.isTerminalPasswordRequired());
+    }
+
+    @Test
+    void rbacModeButAuthDisabled_passwordTiersStillApply() throws Exception {
+        var service = createService("secret", true, null, false, null, false, null, false);
+        service.rbacSettings = rbacSettings(false, "rbac");
+
+        assertTrue(service.isOperationsPasswordRequired());
+        assertFalse(service.validateOperationsPassword("wrong"));
     }
 }

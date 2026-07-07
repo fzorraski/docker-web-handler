@@ -111,7 +111,9 @@ class RequestStashTest {
     @Test
     void stashAndRetrieve_terminal() {
         String ticket = stash.stashTerminal("abc123def4");
-        assertEquals("abc123def4", stash.retrieveTerminal(ticket));
+        RequestStash.TerminalGrant grant = stash.retrieveTerminal(ticket);
+        assertEquals("abc123def4", grant.containerId());
+        assertNull(grant.userId());
     }
 
     @Test
@@ -119,6 +121,47 @@ class RequestStashTest {
         String ticket = stash.stashTerminal("abc123def4");
         assertNotNull(stash.retrieveTerminal(ticket));
         assertNull(stash.retrieveTerminal(ticket));
+    }
+
+    // ---- RBAC ticket identity ----
+
+    private CurrentUser userContext(String userId) {
+        CurrentUser user = new CurrentUser();
+        user.set(userId, userId + "-name", java.util.Set.of());
+        return user;
+    }
+
+    @Test
+    void take_sameUser_redeemsTicket() {
+        stash.currentUser = userContext("u1");
+        String ticket = stash.stash(new RunContainerRequest());
+        assertNotNull(stash.retrieve(ticket));
+    }
+
+    @Test
+    void take_differentUser_rejectsTicket() {
+        stash.currentUser = userContext("u1");
+        String ticket = stash.stash(new RunContainerRequest());
+
+        stash.currentUser = userContext("u2");
+        assertNull(stash.retrieve(ticket));
+    }
+
+    @Test
+    void take_legacyTicketWithoutUser_redeemableByAnyone() {
+        // stashed with no RBAC context (currentUser null -> userId null)
+        String ticket = stash.stash(new RunContainerRequest());
+        stash.currentUser = userContext("u1");
+        assertNotNull(stash.retrieve(ticket));
+    }
+
+    @Test
+    void stashTerminal_capturesAuthorizingUserForEndpointCheck() {
+        stash.currentUser = userContext("u1");
+        String ticket = stash.stashTerminal("abc123def4");
+
+        RequestStash.TerminalGrant grant = stash.retrieveTerminal(ticket);
+        assertEquals("u1", grant.userId());
     }
 
     // ---- Uniqueness ----
