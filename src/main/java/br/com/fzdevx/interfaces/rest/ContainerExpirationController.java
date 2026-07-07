@@ -4,6 +4,7 @@ import br.com.fzdevx.domain.model.ContainerExpiration;
 import br.com.fzdevx.domain.model.DatabaseConflict;
 import br.com.fzdevx.domain.model.DockerContainer;
 import br.com.fzdevx.domain.model.ManagedDatabase;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.infrastructure.docker.ContainerProtectionService;
@@ -31,6 +32,7 @@ import java.util.Optional;
 
 
 @Path("/containers")
+@RequiresPermission(Permission.CONTAINERS_VIEW)
 public class ContainerExpirationController {
 
     @Inject
@@ -99,6 +101,7 @@ public class ContainerExpirationController {
         return conflict;
     }
 
+    @RequiresPermission(Permission.CONTAINERS_OPERATE)
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.TEXT_PLAIN)
@@ -117,6 +120,7 @@ public class ContainerExpirationController {
         return expirationService.extendExpiration(dockerContainer.getContainerId(), minutes);
     }
 
+    @RequiresPermission(Permission.CONTAINERS_OPERATE)
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.TEXT_PLAIN)
@@ -128,6 +132,7 @@ public class ContainerExpirationController {
         return expirationService.disableDatabaseDeletion(dockerContainer.getContainerId());
     }
 
+    @RequiresPermission(Permission.CONTAINERS_OPERATE)
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.TEXT_PLAIN)
@@ -140,6 +145,7 @@ public class ContainerExpirationController {
         return true;
     }
 
+    @RequiresPermission(Permission.CONTAINERS_OPERATE)
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)

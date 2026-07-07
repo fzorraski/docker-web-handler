@@ -1,6 +1,7 @@
 package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.domain.model.ContainerEvent;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.application.dto.RestoreDumpRequest;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
 import br.com.fzdevx.infrastructure.persistence.SnapshotStorageService;
@@ -19,6 +20,7 @@ import jakarta.ws.rs.sse.SseEventSink;
 import java.util.Map;
 
 @Path("/database/dumps/sse")
+@RequiresPermission(Permission.DATABASE_OPERATE)
 public class DatabaseDumpSseController {
 
     @Inject

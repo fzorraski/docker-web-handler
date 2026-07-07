@@ -2,6 +2,7 @@ package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.domain.model.DockerContainer;
 import br.com.fzdevx.domain.model.HostMemoryStatus;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.infrastructure.docker.ContainerProtectionService;
 import br.com.fzdevx.infrastructure.docker.MemoryGuardService;
@@ -38,6 +39,7 @@ import java.util.regex.Pattern;
 
 
 @Path("/containers")
+@RequiresPermission(Permission.CONTAINERS_VIEW)
 public class ContainerController {
 
     @Inject
@@ -131,6 +133,7 @@ public class ContainerController {
         return containers;
     }
 
+    @RequiresPermission(Permission.CONTAINERS_OPERATE)
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.TEXT_PLAIN)
@@ -153,6 +156,7 @@ public class ContainerController {
         }
     }
 
+    @RequiresPermission(Permission.CONTAINERS_RUN)
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.TEXT_PLAIN)
@@ -180,6 +184,7 @@ public class ContainerController {
         }
     }
 
+    @RequiresPermission(Permission.CONTAINERS_OPERATE)
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)

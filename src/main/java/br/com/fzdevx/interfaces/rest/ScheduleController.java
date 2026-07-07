@@ -4,6 +4,7 @@ import br.com.fzdevx.application.dto.CreateScheduleRequest;
 import br.com.fzdevx.application.dto.UpdateScheduleRequest;
 import br.com.fzdevx.application.usecase.ManageScheduleUseCase;
 import br.com.fzdevx.domain.model.ContainerSchedule;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
 import br.com.fzdevx.infrastructure.docker.ContainerSchedulingService;
@@ -18,6 +19,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @Path("/schedules")
+@RequiresPermission(Permission.SCHEDULES_VIEW)
 public class ScheduleController {
 
     @Inject
@@ -79,6 +81,7 @@ public class ScheduleController {
         return manageScheduleUseCase.findByContainerId(containerId);
     }
 
+    @RequiresPermission(Permission.SCHEDULES_MANAGE)
     @POST
     @Path("/create")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -98,6 +101,7 @@ public class ScheduleController {
         return Response.status(Response.Status.CREATED).entity(schedule).build();
     }
 
+    @RequiresPermission(Permission.SCHEDULES_MANAGE)
     @PUT
     @Path("/{id}")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -125,6 +129,7 @@ public class ScheduleController {
         return Response.ok(schedule).build();
     }
 
+    @RequiresPermission(Permission.SCHEDULES_MANAGE)
     @POST
     @Path("/{id}/toggle")
     @Produces(MediaType.APPLICATION_JSON)
@@ -150,6 +155,7 @@ public class ScheduleController {
         return Response.ok(schedule).build();
     }
 
+    @RequiresPermission(Permission.SCHEDULES_MANAGE)
     @DELETE
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
@@ -175,6 +181,7 @@ public class ScheduleController {
         return Response.ok(Map.of("success", true)).build();
     }
 
+    @RequiresPermission(Permission.SCHEDULES_MANAGE)
     @POST
     @Path("/{id}/execute-now")
     @Produces(MediaType.APPLICATION_JSON)

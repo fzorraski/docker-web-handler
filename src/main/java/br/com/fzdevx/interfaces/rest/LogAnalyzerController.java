@@ -12,6 +12,7 @@ import br.com.fzdevx.application.dto.PaginatedResult;
 import br.com.fzdevx.application.usecase.*;
 import br.com.fzdevx.domain.model.*;
 import br.com.fzdevx.domain.model.anomaly.*;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.infrastructure.config.LogPresetProvider;
 import br.com.fzdevx.interfaces.rest.util.AnalysisSummaryMapper;
@@ -37,6 +38,7 @@ import java.time.format.DateTimeParseException;
 import java.util.*;
 
 @Path("/logs/analyzer")
+@RequiresPermission(Permission.LOGS_VIEW)
 public class LogAnalyzerController {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -139,6 +141,7 @@ public class LogAnalyzerController {
         )).build();
     }
 
+    @RequiresPermission(Permission.LOGS_ANALYZE)
     @POST
     @Path("/upload")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
@@ -190,6 +193,7 @@ public class LogAnalyzerController {
                 defaultSlowThresholdMs, maxFileSizeMb);
     }
 
+    @RequiresPermission(Permission.LOGS_ANALYZE)
     @POST
     @Path("/from-container/{containerId}")
     @Produces(MediaType.APPLICATION_JSON)
@@ -229,6 +233,7 @@ public class LogAnalyzerController {
         }
     }
 
+    @RequiresPermission(Permission.LOGS_ANALYZE)
     @POST
     @Path("/compose")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -276,6 +281,7 @@ public class LogAnalyzerController {
         return Response.ok(AnalysisSummaryMapper.toSummaryMap(analysis)).build();
     }
 
+    @RequiresPermission(Permission.LOGS_ANALYZE)
     @DELETE
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)

@@ -1,6 +1,7 @@
 package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.domain.model.DatabaseSnapshot;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
@@ -24,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @Path("/database/snapshots")
+@RequiresPermission(Permission.DATABASE_VIEW)
 public class SnapshotController {
 
     @Inject
@@ -88,6 +90,7 @@ public class SnapshotController {
                 .build();
     }
 
+    @RequiresPermission(Permission.DATABASE_OPERATE)
     @DELETE
     @Path("/delete/{id}")
     @Produces(MediaType.APPLICATION_JSON)
@@ -122,6 +125,7 @@ public class SnapshotController {
         return Response.ok(Map.of("success", true)).build();
     }
 
+    @RequiresPermission(Permission.DATABASE_OPERATE)
     @DELETE
     @Path("/delete/bulk")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -157,6 +161,7 @@ public class SnapshotController {
         return Response.ok(Map.of("success", true, "deleted", deleted)).build();
     }
 
+    @RequiresPermission(Permission.DATABASE_OPERATE)
     @PUT
     @Path("/metadata/{id}")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -187,6 +192,7 @@ public class SnapshotController {
         return Response.ok(Map.of("success", true)).build();
     }
 
+    @RequiresPermission(Permission.DATABASE_OPERATE)
     @PUT
     @Path("/expiration/{id}")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -217,6 +223,7 @@ public class SnapshotController {
         return Response.ok(Map.of("success", true)).build();
     }
 
+    @RequiresPermission(Permission.DATABASE_OPERATE)
     @POST
     @Path("/cleanup-idle")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -292,6 +299,7 @@ public class SnapshotController {
                 .toList();
     }
 
+    @RequiresPermission(Permission.DATABASE_OPERATE)
     @POST
     @Path("/cancel")
     @Consumes(MediaType.APPLICATION_JSON)

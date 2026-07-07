@@ -1,6 +1,7 @@
 package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.application.port.DockerTerminalPort;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
 import br.com.fzdevx.domain.shared.InputValidator;
 import io.quarkus.logging.Log;
@@ -18,6 +19,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @Path("/containers")
+@RequiresPermission(Permission.TERMINAL_ACCESS)
 public class ContainerFileUploadController {
 
     @Inject

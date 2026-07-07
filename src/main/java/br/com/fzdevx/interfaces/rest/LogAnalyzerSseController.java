@@ -5,6 +5,7 @@ import br.com.fzdevx.application.dto.AnalyzeLogFileRequest;
 import br.com.fzdevx.application.usecase.AnalyzeLogFileUseCase;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.model.LogPreset;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.infrastructure.config.LogPresetProvider;
 import br.com.fzdevx.infrastructure.config.RequestStash;
 import br.com.fzdevx.interfaces.rest.util.LogAnalysisBroadcaster;
@@ -25,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 
 @Path("/logs/analyzer/sse")
+@RequiresPermission(Permission.LOGS_VIEW)
 public class LogAnalyzerSseController {
 
     @Inject
@@ -74,6 +76,7 @@ public class LogAnalyzerSseController {
         return Map.of("ok", true);
     }
 
+    @RequiresPermission(Permission.LOGS_ANALYZE)
     @POST
     @Path("/upload/prepare")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
@@ -110,6 +113,7 @@ public class LogAnalyzerSseController {
         }
     }
 
+    @RequiresPermission(Permission.LOGS_ANALYZE)
     @GET
     @Path("/upload/{ticket}")
     @Produces(MediaType.SERVER_SENT_EVENTS)
@@ -160,6 +164,7 @@ public class LogAnalyzerSseController {
         }
     }
 
+    @RequiresPermission(Permission.LOGS_ANALYZE)
     @POST
     @Path("/upload/cancel/{ticket}")
     @Produces(MediaType.APPLICATION_JSON)
@@ -170,6 +175,7 @@ public class LogAnalyzerSseController {
 
     // ── Compose with SSE progress ──────────────────────────────────────────────
 
+    @RequiresPermission(Permission.LOGS_ANALYZE)
     @POST
     @Path("/compose/prepare")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -206,6 +212,7 @@ public class LogAnalyzerSseController {
         }
     }
 
+    @RequiresPermission(Permission.LOGS_ANALYZE)
     @GET
     @Path("/compose/{ticket}")
     @Produces(MediaType.SERVER_SENT_EVENTS)
@@ -248,6 +255,7 @@ public class LogAnalyzerSseController {
         }
     }
 
+    @RequiresPermission(Permission.LOGS_ANALYZE)
     @POST
     @Path("/compose/cancel/{ticket}")
     @Produces(MediaType.APPLICATION_JSON)

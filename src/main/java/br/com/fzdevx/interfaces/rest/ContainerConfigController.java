@@ -4,6 +4,7 @@ import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
 import br.com.fzdevx.infrastructure.config.RequestStash;
 import br.com.fzdevx.domain.model.DatabaseMigrationRecord;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.infrastructure.docker.MemoryGuardService;
 import br.com.fzdevx.infrastructure.docker.MigrationService;
 import br.com.fzdevx.domain.model.HostMemoryStatus;
@@ -29,6 +30,7 @@ import java.util.Optional;
 
 
 @Path("/containers")
+@RequiresPermission(Permission.CONTAINERS_VIEW)
 public class ContainerConfigController {
 
     @Inject
@@ -299,6 +301,7 @@ public class ContainerConfigController {
         return features;
     }
 
+    @RequiresPermission(Permission.TERMINAL_ACCESS)
     @POST
     @Path("/terminal/authorize")
     @Consumes(MediaType.APPLICATION_JSON)

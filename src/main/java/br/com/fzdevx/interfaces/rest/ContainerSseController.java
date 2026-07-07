@@ -1,6 +1,7 @@
 package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.domain.model.ContainerEvent;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.application.dto.RemoveContainerRequest;
 import br.com.fzdevx.application.dto.RunContainerRequest;
@@ -31,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 
 @Path("/containers/sse")
+@RequiresPermission(Permission.CONTAINERS_VIEW)
 public class ContainerSseController {
 
     @Inject
@@ -97,6 +99,7 @@ public class ContainerSseController {
                 .toList();
     }
 
+    @RequiresPermission(Permission.CONTAINERS_RUN)
     @POST
     @Path("/run/prepare")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -114,6 +117,7 @@ public class ContainerSseController {
         return jakarta.ws.rs.core.Response.ok(Map.of("ticket", ticket)).build();
     }
 
+    @RequiresPermission(Permission.CONTAINERS_RUN)
     @GET
     @Path("/run/{ticket}")
     @Produces(MediaType.SERVER_SENT_EVENTS)
@@ -154,6 +158,7 @@ public class ContainerSseController {
         }
     }
 
+    @RequiresPermission(Permission.CONTAINERS_RUN)
     @POST
     @Path("/run/cancel/{ticket}")
     @Produces(MediaType.APPLICATION_JSON)
@@ -162,6 +167,7 @@ public class ContainerSseController {
         return Map.of("cancelled", cancelled);
     }
 
+    @RequiresPermission(Permission.CONTAINERS_RUN)
     @POST
     @Path("/migration/prepare")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -176,6 +182,7 @@ public class ContainerSseController {
         return jakarta.ws.rs.core.Response.ok(Map.of("ticket", ticket)).build();
     }
 
+    @RequiresPermission(Permission.CONTAINERS_RUN)
     @GET
     @Path("/migration/{ticket}")
     @Produces(MediaType.SERVER_SENT_EVENTS)
@@ -195,6 +202,7 @@ public class ContainerSseController {
         }
     }
 
+    @RequiresPermission(Permission.CONTAINERS_RUN)
     @POST
     @Path("/migration/cancel/{ticket}")
     @Produces(MediaType.APPLICATION_JSON)
@@ -203,6 +211,7 @@ public class ContainerSseController {
         return Map.of("cancelled", cancelled);
     }
 
+    @RequiresPermission(Permission.CONTAINERS_RUN)
     @POST
     @Path("/upgrade/prepare")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -217,6 +226,7 @@ public class ContainerSseController {
         return jakarta.ws.rs.core.Response.ok(Map.of("ticket", ticket)).build();
     }
 
+    @RequiresPermission(Permission.CONTAINERS_RUN)
     @GET
     @Path("/upgrade/{ticket}")
     @Produces(MediaType.SERVER_SENT_EVENTS)
@@ -236,6 +246,7 @@ public class ContainerSseController {
         }
     }
 
+    @RequiresPermission(Permission.CONTAINERS_RUN)
     @POST
     @Path("/upgrade/cancel/{ticket}")
     @Produces(MediaType.APPLICATION_JSON)
@@ -244,6 +255,7 @@ public class ContainerSseController {
         return Map.of("cancelled", cancelled);
     }
 
+    @RequiresPermission(Permission.CONTAINERS_RUN)
     @POST
     @Path("/remove/prepare")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -272,6 +284,7 @@ public class ContainerSseController {
         return jakarta.ws.rs.core.Response.ok(Map.of("ticket", ticket)).build();
     }
 
+    @RequiresPermission(Permission.CONTAINERS_RUN)
     @GET
     @Path("/remove/ticket/{ticket}")
     @Produces(MediaType.SERVER_SENT_EVENTS)
@@ -301,6 +314,7 @@ public class ContainerSseController {
         }
     }
 
+    @RequiresPermission(Permission.CONTAINERS_RUN)
     @GET
     @Path("/remove/{containerId}")
     @Produces(MediaType.SERVER_SENT_EVENTS)
@@ -324,6 +338,7 @@ public class ContainerSseController {
         }
     }
 
+    @RequiresPermission(Permission.LOGS_VIEW)
     @GET
     @Path("/logs/{containerId}")
     @Produces(MediaType.SERVER_SENT_EVENTS)

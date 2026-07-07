@@ -1,6 +1,7 @@
 package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.domain.model.HostMemoryStatus;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.infrastructure.docker.MemoryGuardService;
 import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import io.quarkus.logging.Log;
@@ -19,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Path("/stats")
+@RequiresPermission(Permission.CONTAINERS_VIEW)
 public class StatsController {
 
     @Inject

@@ -1,6 +1,7 @@
 package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.domain.model.DockerImage;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.interfaces.rest.dto.Response;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.interfaces.rest.dto.ResponseWrapper;
@@ -16,6 +17,7 @@ import java.util.Optional;
 
 
 @Path("/images")
+@RequiresPermission(Permission.CONTAINERS_VIEW)
 public class ImagesController {
 
     @Inject
@@ -31,6 +33,7 @@ public class ImagesController {
         return listImagesUseCase.execute();
     }
 
+    @RequiresPermission(Permission.IMAGES_MANAGE)
     @POST
     @Path("/remove")
     @Consumes(MediaType.APPLICATION_JSON)

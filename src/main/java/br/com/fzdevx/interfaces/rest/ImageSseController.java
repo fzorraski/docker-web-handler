@@ -4,6 +4,7 @@ import br.com.fzdevx.application.dto.PruneImagesRequest;
 import br.com.fzdevx.application.usecase.PruneImagesUseCase;
 import br.com.fzdevx.application.usecase.RemoveImageUseCase;
 import br.com.fzdevx.domain.model.ContainerEvent;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
 import br.com.fzdevx.infrastructure.config.RequestStash;
 import br.com.fzdevx.interfaces.rest.util.SseHelper;
@@ -18,6 +19,7 @@ import jakarta.ws.rs.sse.SseEventSink;
 import java.util.Map;
 
 @Path("/images/sse")
+@RequiresPermission(Permission.IMAGES_MANAGE)
 public class ImageSseController {
 
     @Inject

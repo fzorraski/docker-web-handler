@@ -8,6 +8,7 @@ import br.com.fzdevx.application.usecase.ListManagedDatabasesUseCase;
 import br.com.fzdevx.domain.model.ContainerExpiration;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.domain.model.ManagedDatabase;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
 import br.com.fzdevx.infrastructure.persistence.DropDatabasePermissionDeniedException;
@@ -30,6 +31,7 @@ import java.util.Optional;
 
 
 @Path("/database/managed")
+@RequiresPermission(Permission.DATABASE_VIEW)
 public class ManagedDatabaseController {
 
     @Inject
@@ -283,6 +285,7 @@ public class ManagedDatabaseController {
         return Response.ok(stats).build();
     }
 
+    @RequiresPermission(Permission.DATABASE_OPERATE)
     @POST
     @Path("/{repository}/{databaseName}/enable-pgss")
     @Produces(MediaType.APPLICATION_JSON)
@@ -321,6 +324,7 @@ public class ManagedDatabaseController {
         };
     }
 
+    @RequiresPermission(Permission.DATABASE_OPERATE)
     @POST
     @Path("/{repository}/{databaseName}/reset-query-stats")
     @Produces(MediaType.APPLICATION_JSON)
@@ -359,6 +363,7 @@ public class ManagedDatabaseController {
         }
     }
 
+    @RequiresPermission(Permission.DATABASE_OPERATE)
     @POST
     @Path("/{repository}/{databaseName}/reset-table-stats")
     @Produces(MediaType.APPLICATION_JSON)
@@ -397,6 +402,7 @@ public class ManagedDatabaseController {
         }
     }
 
+    @RequiresPermission(Permission.DATABASE_OPERATE)
     @POST
     @Path("/{repository}/{databaseName}/reset-table-stats/{schemaName}/{tableName}")
     @Produces(MediaType.APPLICATION_JSON)
@@ -512,6 +518,7 @@ public class ManagedDatabaseController {
         }
     }
 
+    @RequiresPermission(Permission.DATABASE_OPERATE)
     @POST
     @Path("/{repository}/{databaseName}/query")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -676,6 +683,7 @@ public class ManagedDatabaseController {
         }
     }
 
+    @RequiresPermission(Permission.DATABASE_OPERATE)
     @DELETE
     @Path("/{repository}/{databaseName}")
     @Produces(MediaType.APPLICATION_JSON)
@@ -751,6 +759,7 @@ public class ManagedDatabaseController {
         return Response.ok(Map.of("success", true)).build();
     }
 
+    @RequiresPermission(Permission.DATABASE_OPERATE)
     @DELETE
     @Path("/{repository}/bulk")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -833,6 +842,7 @@ public class ManagedDatabaseController {
         return Response.ok(Map.of("success", true, "deleted", deleted, "skipped", skipped)).build();
     }
 
+    @RequiresPermission(Permission.DATABASE_OPERATE)
     @PUT
     @Path("/{repository}/{databaseName}/description")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -876,6 +886,7 @@ public class ManagedDatabaseController {
         return Response.ok(Map.of("success", true)).build();
     }
 
+    @RequiresPermission(Permission.DATABASE_OPERATE)
     @PUT
     @Path("/{repository}/{databaseName}/protected")
     @Produces(MediaType.APPLICATION_JSON)
@@ -930,6 +941,7 @@ public class ManagedDatabaseController {
                 "disabledDeletionCount", disabledDeletionCount)).build();
     }
 
+    @RequiresPermission(Permission.DATABASE_OPERATE)
     @POST
     @Path("/{repository}/cleanup-idle")
     @Consumes(MediaType.APPLICATION_JSON)
