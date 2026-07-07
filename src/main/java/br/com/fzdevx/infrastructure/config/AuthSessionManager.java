@@ -114,6 +114,13 @@ public class AuthSessionManager {
         sessions.entrySet().removeIf(entry -> userId.equals(entry.getValue().userId));
     }
 
+    /** Invalidates all of a user's sessions except the given one (e.g. keep the session that just changed its own password). */
+    public void invalidateSessionsForUserExcept(String userId, String sessionIdToKeep) {
+        if (userId == null) return;
+        sessions.entrySet().removeIf(entry -> userId.equals(entry.getValue().userId)
+                && !entry.getKey().equals(sessionIdToKeep));
+    }
+
     public boolean isAuthEnabled() {
         return authEnabled;
     }

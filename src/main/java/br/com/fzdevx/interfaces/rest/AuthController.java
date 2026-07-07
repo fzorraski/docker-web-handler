@@ -47,6 +47,9 @@ public class AuthController {
     AuthorizationService authorizationService;
 
     @Inject
+    br.com.fzdevx.application.usecase.ChangeOwnPasswordUseCase changeOwnPasswordUseCase;
+
+    @Inject
     @ConfigProperty(name = "app.rate-limit.trust-forwarded-headers", defaultValue = "false")
     boolean trustForwardedHeaders;
 
@@ -144,6 +147,30 @@ public class AuthController {
                     ))
                     .build();
         };
+    }
+
+    @POST
+    @Path("/change-password")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response changeOwnPassword(Map<String, String> body,
+                                      @CookieParam(SESSION_COOKIE) Cookie sessionCookie) {
+        if (!rbacSettings.isRbacEnabled()) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("code", "NOT_FOUND", "message", "RBAC is not enabled."))
+                    .build();
+        }
+        String sessionId = sessionCookie != null ? sessionCookie.getValue() : null;
+        Optional<String> userId = sessionManager.getUserIdIfValid(sessionId);
+        if (userId.isEmpty()) {
+            return Response.status(Response.Status.UNAUTHORIZED)
+                    .entity(Map.of("code", "UNAUTHORIZED", "message", "Authentication required."))
+                    .build();
+        }
+        changeOwnPasswordUseCase.execute(userId.get(), sessionId,
+                body != null ? body.get("currentPassword") : null,
+                body != null ? body.get("newPassword") : null);
+        return Response.ok(Map.of("success", true)).build();
     }
 
     @POST
