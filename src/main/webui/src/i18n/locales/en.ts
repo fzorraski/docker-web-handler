@@ -280,6 +280,7 @@ const en = {
       tag: 'Tag',
       command: 'Command',
       created: 'Created',
+      createdBy: 'Created By',
       status: 'Status',
       ports: 'Published Ports',
       ipAddress: 'IP Address',
@@ -1118,6 +1119,7 @@ const en = {
     LOGS_VIEW: 'View container logs',
     LOGS_ANALYZE: 'Run log analysis',
     USERS_MANAGE: 'Manage users and roles',
+    AUDIT_VIEW: 'See who created resources',
     SYSTEM_CONFIG: 'Edit system settings and manage super admins',
     categories: {
       CONTAINERS: 'Containers',

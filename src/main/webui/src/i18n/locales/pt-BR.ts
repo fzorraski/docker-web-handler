@@ -282,6 +282,7 @@ const ptBR: typeof en = {
       tag: 'Tag',
       command: 'Comando',
       created: 'Criado',
+      createdBy: 'Criado Por',
       status: 'Status',
       ports: 'Portas Publicadas',
       ipAddress: 'Endereço IP',
@@ -1120,6 +1121,7 @@ const ptBR: typeof en = {
     LOGS_VIEW: 'Ver logs de containers',
     LOGS_ANALYZE: 'Executar análise de logs',
     USERS_MANAGE: 'Gerenciar usuários e papéis',
+    AUDIT_VIEW: 'Ver quem criou os recursos',
     SYSTEM_CONFIG: 'Editar configurações do sistema e gerenciar super admins',
     categories: {
       CONTAINERS: 'Containers',

@@ -171,6 +171,33 @@ class ContainerControllerTest {
         assertEquals("short", result.getFirst().getCommand());
     }
 
+    @org.junit.jupiter.api.BeforeEach
+    void injectCurrentUser() {
+        // real instance: outside RBAC it grants everything (legacy behavior)
+        controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+    }
+
+    @Test
+    void getContainers_setsCreatedByFromLabel() {
+        Container c = mockContainer("abcdef1234567890", "pg:16", "pg", "Up", "cmd");
+        when(c.getLabels()).thenReturn(Map.of(Constants.CREATED_BY_LABEL, "alice"));
+        when(listContainersCmd.exec()).thenReturn(List.of(c));
+
+        assertEquals("alice", controller.getContainers().getFirst().getCreatedBy());
+    }
+
+    @Test
+    void getContainers_hidesCreatedBy_withoutAuditViewPermission() {
+        var rbacUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        rbacUser.set("u1", "bob", java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_VIEW));
+        controller.currentUser = rbacUser;
+        Container c = mockContainer("abcdef1234567890", "pg:16", "pg", "Up", "cmd");
+        when(c.getLabels()).thenReturn(Map.of(Constants.CREATED_BY_LABEL, "alice"));
+        when(listContainersCmd.exec()).thenReturn(List.of(c));
+
+        assertNull(controller.getContainers().getFirst().getCreatedBy());
+    }
+
     @Test
     void getContainers_setsRepositoryFromLabel() {
         Container c = mockContainer("abcdef1234567890", "pg:16", "pg", "Up", "cmd");

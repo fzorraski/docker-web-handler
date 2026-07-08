@@ -36,6 +36,8 @@ public class DockerContainer {
 
     private String ipAddress;
 
+    private String createdBy;
+
     private boolean upgradeEnabled;
 
     private boolean protectedFlag;
@@ -158,6 +160,14 @@ public class DockerContainer {
 
     public void setRepository(String repository) {
         this.repository = repository;
+    }
+
+    public String getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
     }
 
     public String getIpAddress() {

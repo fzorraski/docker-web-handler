@@ -282,6 +282,7 @@ const es: typeof en = {
       tag: 'Tag',
       command: 'Comando',
       created: 'Creado',
+      createdBy: 'Creado Por',
       status: 'Estado',
       ports: 'Puertos Publicados',
       ipAddress: 'Dirección IP',
@@ -1120,6 +1121,7 @@ const es: typeof en = {
     LOGS_VIEW: 'Ver logs de contenedores',
     LOGS_ANALYZE: 'Ejecutar análisis de logs',
     USERS_MANAGE: 'Gestionar usuarios y roles',
+    AUDIT_VIEW: 'Ver quién creó los recursos',
     SYSTEM_CONFIG: 'Editar configuración del sistema y gestionar súper admins',
     categories: {
       CONTAINERS: 'Contenedores',

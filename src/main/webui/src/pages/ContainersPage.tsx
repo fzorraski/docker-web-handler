@@ -191,14 +191,19 @@ export default function ContainersPage() {
     { key: 'database', label: t('containers.columns.database'), defaultVisible: true },
     { key: 'expires', label: t('containers.columns.expires'), defaultVisible: true },
     { key: 'created', label: t('containers.columns.created'), defaultVisible: true },
+    { key: 'createdBy', label: t('containers.columns.createdBy'), defaultVisible: true },
     { key: 'containerId', label: t('containers.columns.containerId'), defaultVisible: false },
     { key: 'command', label: t('containers.columns.command'), defaultVisible: false },
     { key: 'actions', label: t('containers.columns.actions'), defaultVisible: true },
   ], [t])
 
+  const canViewAudit = hasPermission(P.AUDIT_VIEW)
   const columns = useMemo(() =>
-    dbListingEnabled ? BASE_COLUMNS : BASE_COLUMNS.filter((c) => c.key !== 'database'),
-  [dbListingEnabled, BASE_COLUMNS])
+    BASE_COLUMNS
+      .filter((c) => dbListingEnabled || c.key !== 'database')
+      // creator visibility is its own permission (AUDIT_VIEW); backend omits the field without it
+      .filter((c) => canViewAudit || c.key !== 'createdBy'),
+  [dbListingEnabled, canViewAudit, BASE_COLUMNS])
 
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(() => loadVisibility(BASE_COLUMNS))
   const visibleColumns = columns.filter((c) => columnVisibility[c.key])
@@ -828,6 +833,7 @@ export default function ContainersPage() {
                     </TableCell>
                   )}
                   {vis.has('created') &&<TableCell sx={{ fontSize: '0.85rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>{formatBackendDate(c.created)}</TableCell>}
+                  {vis.has('createdBy') &&<TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{c.createdBy || '-'}</TableCell>}
                   {vis.has('containerId') &&<TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem' }}>{c.containerId}</TableCell>}
                   {vis.has('command') &&<TableCell>{c.command}</TableCell>}
                   {vis.has('actions') && (

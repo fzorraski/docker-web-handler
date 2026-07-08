@@ -50,6 +50,9 @@ public class ContainerController {
     AuditLogger auditLogger;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.CurrentUser currentUser;
+
+    @Inject
     ContainerExpirationService expirationService;
 
     @Inject
@@ -105,6 +108,11 @@ public class ContainerController {
 
             if (dc.getLabels() != null && dc.getLabels().containsKey(Constants.REPOSITORY_LABEL)) {
                 dockerContainer.setRepository(dc.getLabels().get(Constants.REPOSITORY_LABEL));
+            }
+
+            // creator visibility is its own permission (AUDIT_VIEW)
+            if (dc.getLabels() != null && currentUser.hasPermission(Permission.AUDIT_VIEW)) {
+                dockerContainer.setCreatedBy(dc.getLabels().get(Constants.CREATED_BY_LABEL));
             }
 
             Instant expiresAt = expirationService.getExpiresAt(dockerContainer.getContainerId());

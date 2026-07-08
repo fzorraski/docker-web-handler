@@ -17,6 +17,7 @@ public enum Permission {
     LOGS_VIEW("LOGS"),
     LOGS_ANALYZE("LOGS"),
     USERS_MANAGE("ADMINISTRATION"),
+    AUDIT_VIEW("ADMINISTRATION"),
     SYSTEM_CONFIG("ADMINISTRATION");
 
     private final String category;

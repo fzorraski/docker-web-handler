@@ -12,6 +12,7 @@ export interface DockerContainer {
   deleteDatabaseOnExpiration?: boolean
   repository?: string
   ipAddress?: string
+  createdBy?: string
   upgradeEnabled?: boolean
   protectedFlag?: boolean
 }
