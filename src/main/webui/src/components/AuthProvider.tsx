@@ -89,6 +89,23 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('auth:session-expired', handler)
   }, [])
 
+  // Re-fetch permissions when the tab regains focus so role edits made by an
+  // admin propagate to already-open sessions without a re-login or reload.
+  useEffect(() => {
+    if (!rbacEnabled || !authenticated) return
+    const handler = () => {
+      if (document.visibilityState === 'visible') {
+        getMe().then(setCurrentUser).catch(() => {})
+      }
+    }
+    window.addEventListener('focus', handler)
+    document.addEventListener('visibilitychange', handler)
+    return () => {
+      window.removeEventListener('focus', handler)
+      document.removeEventListener('visibilitychange', handler)
+    }
+  }, [rbacEnabled, authenticated])
+
   const login = useCallback(async (password: string, username?: string) => {
     const result = await apiLogin(password, username)
     if (result.authenticated) {
