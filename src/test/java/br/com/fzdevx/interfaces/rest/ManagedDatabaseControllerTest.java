@@ -49,6 +49,12 @@ class ManagedDatabaseControllerTest {
     @InjectMocks
     ManagedDatabaseController controller;
 
+    @org.junit.jupiter.api.BeforeEach
+    void injectCurrentUser() {
+        // real instance: outside RBAC it grants everything (legacy behavior)
+        controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+    }
+
     @BeforeEach
     void setUp() {
         setField("managedEnabled", true);
@@ -109,6 +115,37 @@ class ManagedDatabaseControllerTest {
 
         Response response = controller.listDatabases(REPO);
         assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listDatabases_stripsCreatorWithoutAuditView() {
+        ManagedDatabaseInfo db = new ManagedDatabaseInfo("mydb", REPO, 1024L, 0, null, null,
+                null, false, Instant.now(), null, 0, null, false, null, null, "alice");
+        when(listManagedDatabasesUseCase.listDatabases(REPO)).thenReturn(List.of(db));
+        var rbacUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        rbacUser.set("u1", "bob", java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.DATABASE_VIEW));
+        controller.currentUser = rbacUser;
+
+        List<ManagedDatabaseInfo> body =
+                (List<ManagedDatabaseInfo>) controller.listDatabases(REPO).getEntity();
+
+        assertEquals(1, body.size());
+        assertNull(body.getFirst().createdBy(), "creator must be stripped without AUDIT_VIEW");
+        assertEquals("alice", db.createdBy(), "the cached instance must not be mutated");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listDatabases_keepsCreatorWithAuditView() {
+        ManagedDatabaseInfo db = new ManagedDatabaseInfo("mydb", REPO, 1024L, 0, null, null,
+                null, false, Instant.now(), null, 0, null, false, null, null, "alice");
+        when(listManagedDatabasesUseCase.listDatabases(REPO)).thenReturn(List.of(db));
+
+        List<ManagedDatabaseInfo> body =
+                (List<ManagedDatabaseInfo>) controller.listDatabases(REPO).getEntity();
+
+        assertEquals("alice", body.getFirst().createdBy());
     }
 
     @Test
@@ -661,7 +698,7 @@ class ManagedDatabaseControllerTest {
 
     private ManagedDatabaseInfo makeDb(String name) {
         return new ManagedDatabaseInfo(name, REPO, 1024L, 0, null, null,
-                null, false, Instant.now(), null, 0, null, false, null, null);
+                null, false, Instant.now(), null, 0, null, false, null, null, null);
     }
 
     private void setField(String name, Object value) {

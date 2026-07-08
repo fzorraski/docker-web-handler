@@ -148,7 +148,7 @@ class CleanupIdleDatabasesUseCaseTest {
     @Test
     void cleanup_skipsDatabasesInUseByContainers() {
         ManagedDatabaseInfo inUse = new ManagedDatabaseInfo("in_use_db", REPO, 1024L, 0, null, null,
-                null, false, Instant.now(), null, 1, null, false, null, null);
+                null, false, Instant.now(), null, 1, null, false, null, null, null);
         when(listManagedDatabasesUseCase.listDatabases(REPO)).thenReturn(List.of(inUse));
 
         int deleted = useCase.cleanup(REPO, 1);
@@ -160,7 +160,7 @@ class CleanupIdleDatabasesUseCaseTest {
     @Test
     void cleanup_skipsDatabasesWithActiveConnections() {
         ManagedDatabaseInfo withConns = new ManagedDatabaseInfo("active_db", REPO, 1024L, 5, null, null,
-                null, false, Instant.now(), null, 0, null, false, null, null);
+                null, false, Instant.now(), null, 0, null, false, null, null, null);
         when(listManagedDatabasesUseCase.listDatabases(REPO)).thenReturn(List.of(withConns));
 
         int deleted = useCase.cleanup(REPO, 1);
@@ -173,6 +173,6 @@ class CleanupIdleDatabasesUseCaseTest {
 
     private ManagedDatabaseInfo makeDb(String name, boolean protectedFlag, Instant effectiveLastUsedAt) {
         return new ManagedDatabaseInfo(name, REPO, 1024L, 0, null, null,
-                effectiveLastUsedAt, protectedFlag, Instant.now(), null, 0, null, false, null, null);
+                effectiveLastUsedAt, protectedFlag, Instant.now(), null, 0, null, false, null, null, null);
     }
 }

@@ -38,6 +38,9 @@ public class ManagedDatabaseController {
     br.com.fzdevx.application.port.AuditLogger auditLogger;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.CurrentUser currentUser;
+
+    @Inject
     @ConfigProperty(name = "database.managed.enabled", defaultValue = "false")
     boolean managedEnabled;
 
@@ -670,6 +673,10 @@ public class ManagedDatabaseController {
 
         try {
             List<ManagedDatabaseInfo> databases = listManagedDatabasesUseCase.listDatabases(repository);
+            // creator visibility is its own permission (AUDIT_VIEW); the cached list is shared, so copy
+            if (!currentUser.hasPermission(Permission.AUDIT_VIEW)) {
+                databases = databases.stream().map(ManagedDatabaseInfo::withoutCreatedBy).toList();
+            }
             return Response.ok(databases).build();
         } catch (Exception e) {
             String msg = e.getMessage() != null ? e.getMessage() : "Unknown error";

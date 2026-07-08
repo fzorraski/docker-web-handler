@@ -14,6 +14,7 @@ public class ManagedDatabase {
     private String description;
     private String lastRestoredFrom;
     private Instant lastRestoredAt;
+    private String createdBy;
 
     public ManagedDatabase() {
     }
@@ -61,4 +62,7 @@ public class ManagedDatabase {
     public int hashCode() {
         return Objects.hash(repository, name);
     }
+
+    public String getCreatedBy() { return createdBy; }
+    public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
 }

@@ -438,6 +438,7 @@ const en = {
       connections: 'Active Connections',
       idleSince: 'Idle Since',
       protected: 'Protected',
+      createdBy: 'Created By',
       actions: 'Actions',
     },
     dbSummary: {

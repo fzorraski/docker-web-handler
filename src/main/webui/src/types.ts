@@ -255,4 +255,5 @@ export interface ManagedDatabaseInfo {
   scheduledForDeletion: boolean
   lastRestoredFrom?: string
   lastRestoredAt?: string
+  createdBy?: string
 }

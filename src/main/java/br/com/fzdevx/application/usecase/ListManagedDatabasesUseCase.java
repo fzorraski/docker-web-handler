@@ -134,7 +134,8 @@ public class ListManagedDatabasesUseCase {
                     earliestExp,
                     scheduledForDeletion,
                     md.getLastRestoredFrom(),
-                    md.getLastRestoredAt()
+                    md.getLastRestoredAt(),
+                    md.getCreatedBy()
             ));
         }
 

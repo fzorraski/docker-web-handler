@@ -440,6 +440,7 @@ const ptBR: typeof en = {
       connections: 'Conexões Ativas',
       idleSince: 'Ocioso Desde',
       protected: 'Protegido',
+      createdBy: 'Criado Por',
       actions: 'Ações',
     },
     dbSummary: {

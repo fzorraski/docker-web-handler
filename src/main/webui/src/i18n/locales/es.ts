@@ -440,6 +440,7 @@ const es: typeof en = {
       connections: 'Conexiones Activas',
       idleSince: 'Inactivo Desde',
       protected: 'Protegida',
+      createdBy: 'Creado Por',
       actions: 'Acciones',
     },
     dbSummary: {

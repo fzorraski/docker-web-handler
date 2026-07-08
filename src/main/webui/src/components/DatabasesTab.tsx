@@ -123,6 +123,7 @@ const DB_COLUMNS: { key: string; label: string }[] = [
   { key: 'activeConnections', label: '' },
   { key: 'effectiveLastUsedAt', label: '' },
   { key: 'protectedFlag', label: '' },
+  { key: 'createdBy', label: '' },
   { key: 'action', label: '' },
 ]
 
@@ -133,6 +134,7 @@ export default function DatabasesTab() {
   const canDbDelete = hasPermission(P.DATABASE_DELETE)
   const canRunContainers = hasPermission(P.CONTAINERS_RUN)
   const canViewContainers = hasPermission(P.CONTAINERS_VIEW)
+  const canViewAudit = hasPermission(P.AUDIT_VIEW)
   const { t } = useTranslation()
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
   const tableRef = useRef<HTMLDivElement>(null)
@@ -215,9 +217,10 @@ export default function DatabasesTab() {
       : col.key === 'activeConnections' ? t('database.dbColumns.connections')
       : col.key === 'effectiveLastUsedAt' ? t('database.dbColumns.idleSince')
       : col.key === 'protectedFlag' ? t('database.dbColumns.protected')
+      : col.key === 'createdBy' ? t('database.dbColumns.createdBy')
       : col.key === 'action' ? t('database.dbColumns.actions')
       : '',
-  })), [t])
+  })).filter(col => canViewAudit || col.key !== 'createdBy'), [t, canViewAudit])
 
   const safeActiveRepo = activeRepo < repositories.length ? activeRepo : 0
   const currentRepo = repositories[safeActiveRepo] ?? ''
@@ -1139,6 +1142,11 @@ export default function DatabasesTab() {
                       />
                     </Tooltip>
                   </TableCell>
+                  {canViewAudit && (
+                    <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
+                      {db.createdBy || '-'}
+                    </TableCell>
+                  )}
                   <TableCell>
                     {canDbDelete && (
                       <Tooltip title={db.protectedFlag ? t('database.databaseProtected') : t('common.delete')}>

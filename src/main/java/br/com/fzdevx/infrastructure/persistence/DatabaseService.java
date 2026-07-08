@@ -24,6 +24,12 @@ import java.util.Optional;
 @ApplicationScoped
 public class DatabaseService implements DatabasePort {
 
+    @jakarta.inject.Inject
+    br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
+
+    @jakarta.inject.Inject
+    br.com.fzdevx.application.port.ManagedDatabaseRepository managedDatabaseRepository;
+
     @Inject
     Config config;
 
@@ -142,6 +148,7 @@ public class DatabaseService implements DatabasePort {
                 stmt.execute("CREATE DATABASE " + quoted);
             }
             Log.infof("Database '%s' created successfully for repository '%s'.", databaseName, repository);
+            recordCreator(repository, databaseName);
         } catch (Exception e) {
             throw new RuntimeException("Failed to create database '" + databaseName + "': " + e.getMessage(), e);
         }
@@ -1141,5 +1148,21 @@ public class DatabaseService implements DatabasePort {
         String user = config.getOptionalValue("repository.pg-user." + repository, String.class).orElse("postgres");
         String password = config.getOptionalValue("repository.pg-password." + repository, String.class).orElse("");
         return new PgConnectionInfo(host, port, user, password);
+    }
+
+
+    /** Stamps who created the database on its metadata record ("who created this?"). */
+    private void recordCreator(String repository, String databaseName) {
+        try {
+            var md = managedDatabaseRepository.find(repository, databaseName)
+                    .orElseGet(() -> new br.com.fzdevx.domain.model.ManagedDatabase(repository, databaseName));
+            if (md.getCreatedBy() == null) {
+                md.setCreatedBy(actorResolver.usernameOrSystem());
+                managedDatabaseRepository.save(md);
+            }
+        } catch (Exception e) {
+            // metadata only - never fail the creation because of it
+            Log.warnf("Could not record creator for database '%s': %s", databaseName, e.getMessage());
+        }
     }
 }
