@@ -34,8 +34,8 @@ public class ManageSettingsUseCase {
         return runtimeSettingsService.describe();
     }
 
-    /** Applies a partial update; only the keys present in the map change. */
-    public List<Map<String, Object>> update(Map<String, Object> changes) {
+    /** Applies a partial update; only the keys present in the map change. Synchronized: concurrent read-modify-write of the settings file would silently drop one admin's change. */
+    public synchronized List<Map<String, Object>> update(Map<String, Object> changes) {
         if (changes == null || changes.isEmpty()) {
             throw new InvalidInputException("No settings provided.");
         }
@@ -53,7 +53,7 @@ public class ManageSettingsUseCase {
     }
 
     /** Removes an override so the application.properties default applies again. */
-    public List<Map<String, Object>> reset(String key) {
+    public synchronized List<Map<String, Object>> reset(String key) {
         RuntimeSettings settings = settingsRepository.get();
         apply(settings, key, null);
         settingsRepository.save(settings);

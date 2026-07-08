@@ -99,16 +99,19 @@ public class RequestStash {
     }
 
     private <T> T take(ConcurrentHashMap<String, StashedEntry<T>> map, String ticket) {
-        StashedEntry<T> entry = map.remove(ticket);
+        StashedEntry<T> entry = map.get(ticket);
         if (entry == null) {
             return null;
         }
         // Under RBAC a ticket may only be redeemed by the user who created it.
+        // Checked before removal so a foreign redemption attempt does not
+        // consume (and thereby invalidate) the rightful owner's ticket.
         if (entry.userId() != null && !entry.userId().equals(safeCurrentUserId())) {
             Log.warnf("RequestStash: ticket redeemed by a different user - rejecting.");
             return null;
         }
-        return entry.request();
+        // conditional remove keeps single-use semantics under concurrent redemption
+        return map.remove(ticket, entry) ? entry.request() : null;
     }
 
     /**

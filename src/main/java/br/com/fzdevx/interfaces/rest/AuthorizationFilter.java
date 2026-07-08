@@ -18,6 +18,7 @@ import jakarta.ws.rs.ext.Provider;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Enforces {@link RequiresPermission} annotations when RBAC is active.
@@ -29,6 +30,15 @@ import java.util.Map;
 @Provider
 @Priority(Priorities.AUTHORIZATION)
 public class AuthorizationFilter implements ContainerRequestFilter {
+
+    /**
+     * Resources that manage RBAC itself (users, roles, runtime settings).
+     * Without RBAC there is no admin identity to authorize them, so exposing
+     * them would let any caller mutate users or override runtime settings -
+     * they are hidden entirely unless RBAC is active.
+     */
+    private static final Set<Class<?>> RBAC_ONLY_RESOURCES =
+            Set.of(UserController.class, RoleController.class, SettingsController.class);
 
     @Context
     ResourceInfo resourceInfo;
@@ -42,6 +52,13 @@ public class AuthorizationFilter implements ContainerRequestFilter {
     @Override
     public void filter(ContainerRequestContext requestContext) {
         if (!rbacSettings.isRbacEnabled()) {
+            Class<?> resourceClass = resourceInfo.getResourceClass();
+            if (resourceClass != null && RBAC_ONLY_RESOURCES.contains(resourceClass)) {
+                requestContext.abortWith(Response.status(Response.Status.NOT_FOUND)
+                        .type(MediaType.APPLICATION_JSON)
+                        .entity(Map.of("code", "NOT_FOUND", "message", "RBAC is not enabled."))
+                        .build());
+            }
             return;
         }
 

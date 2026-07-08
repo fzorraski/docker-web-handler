@@ -85,6 +85,31 @@ class AuthorizationFilterTest {
     // ---- mode / path skips ----
 
     @Test
+    void filter_rbacDisabled_hidesRbacManagementResources() {
+        when(rbacSettings.isRbacEnabled()).thenReturn(false);
+        doReturn(SettingsController.class).when(resourceInfo).getResourceClass();
+
+        filter.filter(requestContext);
+
+        ArgumentCaptor<Response> captor = ArgumentCaptor.forClass(Response.class);
+        verify(requestContext).abortWith(captor.capture());
+        assertEquals(404, captor.getValue().getStatus());
+    }
+
+    @Test
+    void filter_rbacDisabled_hidesUserAndRoleControllers() {
+        when(rbacSettings.isRbacEnabled()).thenReturn(false);
+        for (Class<?> resource : new Class<?>[]{UserController.class, RoleController.class}) {
+            clearInvocations(requestContext);
+            doReturn(resource).when(resourceInfo).getResourceClass();
+
+            filter.filter(requestContext);
+
+            verify(requestContext).abortWith(any());
+        }
+    }
+
+    @Test
     void filter_rbacDisabled_allowsEverything() throws Exception {
         when(rbacSettings.isRbacEnabled()).thenReturn(false);
         givenResource(AnnotatedResource.class, "classDefaultMethod");

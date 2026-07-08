@@ -148,6 +148,18 @@ class RequestStashTest {
     }
 
     @Test
+    void take_differentUser_doesNotConsumeOwnersTicket() {
+        stash.currentUser = userContext("u1");
+        String ticket = stash.stash(new RunContainerRequest());
+
+        stash.currentUser = userContext("u2");
+        assertNull(stash.retrieve(ticket), "foreign redemption must be rejected");
+
+        stash.currentUser = userContext("u1");
+        assertNotNull(stash.retrieve(ticket), "owner's ticket must survive a foreign redemption attempt");
+    }
+
+    @Test
     void take_legacyTicketWithoutUser_redeemableByAnyone() {
         // stashed with no RBAC context (currentUser null -> userId null)
         String ticket = stash.stash(new RunContainerRequest());
