@@ -1111,7 +1111,7 @@ const es: typeof en = {
     IMAGES_VIEW: 'Ver imágenes',
     IMAGES_MANAGE: 'Eliminar y limpiar imágenes',
     DATABASE_VIEW: 'Ver dumps, snapshots y bases de datos',
-    DATABASE_OPERATE: 'Restaurar, eliminar y gestionar bases de datos',
+    DATABASE_OPERATE: 'Restaurar, crear snapshots y gestionar bases de datos (eliminar requiere DATABASE_DELETE)',
     DATABASE_UPLOAD: 'Subir dumps de bases de datos',
     DATABASE_DELETE: 'Eliminar bases de datos',
     SCHEDULES_VIEW: 'Ver agendamientos',

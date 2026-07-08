@@ -1109,7 +1109,7 @@ const en = {
     IMAGES_VIEW: 'View images',
     IMAGES_MANAGE: 'Remove and prune images',
     DATABASE_VIEW: 'View dumps, snapshots and databases',
-    DATABASE_OPERATE: 'Restore, delete and manage databases',
+    DATABASE_OPERATE: 'Restore, snapshot and manage databases (deletion requires DATABASE_DELETE)',
     DATABASE_UPLOAD: 'Upload database dumps',
     DATABASE_DELETE: 'Delete databases',
     SCHEDULES_VIEW: 'View schedules',

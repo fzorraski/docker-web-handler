@@ -1111,7 +1111,7 @@ const ptBR: typeof en = {
     IMAGES_VIEW: 'Ver imagens',
     IMAGES_MANAGE: 'Remover e limpar imagens',
     DATABASE_VIEW: 'Ver dumps, snapshots e bancos de dados',
-    DATABASE_OPERATE: 'Restaurar, excluir e gerenciar bancos de dados',
+    DATABASE_OPERATE: 'Restaurar, criar snapshots e gerenciar bancos de dados (excluir requer DATABASE_DELETE)',
     DATABASE_UPLOAD: 'Enviar dumps de banco de dados',
     DATABASE_DELETE: 'Excluir bancos de dados',
     SCHEDULES_VIEW: 'Ver agendamentos',
