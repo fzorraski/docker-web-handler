@@ -411,6 +411,7 @@ const ptBR: typeof en = {
       uploadedAt: 'Enviado Em',
       expires: 'Expira',
       lastUsed: 'Último Uso',
+      createdBy: 'Criado Por',
       actions: 'Ações',
     },
     snapColumns: {
@@ -424,6 +425,7 @@ const ptBR: typeof en = {
       createdAt: 'Criado Em',
       expires: 'Expira',
       lastUsed: 'Último Uso',
+      createdBy: 'Criado Por',
       actions: 'Ações',
     },
     databasesTab: 'Bancos Ativos',
@@ -1002,6 +1004,7 @@ const ptBR: typeof en = {
       nextRun: 'Próxima Execução',
       lastRun: 'Última Execução',
       status: 'Status',
+      createdBy: 'Criado Por',
       actions: 'Ações',
     },
     conflict: {

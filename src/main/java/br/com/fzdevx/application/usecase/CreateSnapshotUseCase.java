@@ -39,6 +39,9 @@ import java.util.function.Consumer;
 @ApplicationScoped
 public class CreateSnapshotUseCase {
 
+    @Inject
+    br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
+
     private static final String EPHEMERAL_LABEL = "docker-web-handler.ephemeral";
     private static final int TEMPORARY_SNAPSHOT_TTL_SECONDS = 120;
 
@@ -125,6 +128,7 @@ public class CreateSnapshotUseCase {
 
         DatabaseSnapshot snapshot = new DatabaseSnapshot(
                 request.getRepository(), request.getSourceDatabaseName(), format, request.getLabel());
+        snapshot.setCreatedBy(actorResolver.usernameOrSystem());
         snapshot.setContainerName(request.getContainerName());
         snapshot.setDescription(request.getDescription());
         snapshot.setTemporary(request.isTemporary());

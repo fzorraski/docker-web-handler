@@ -36,6 +36,9 @@ import java.util.zip.GZIPOutputStream;
 @ApplicationScoped
 public class DumpStorageService {
 
+    @Inject
+    br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
+
     private final ConcurrentHashMap<String, ScheduledFuture<?>> scheduledExpirations = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
@@ -109,6 +112,7 @@ public class DumpStorageService {
         Files.createDirectories(dir);
 
         DatabaseDump dump = new DatabaseDump(originalFilename, databaseName, version, expiresAt, 0);
+        dump.setCreatedBy(actorResolver.usernameOrSystem());
         Path storedPath = dir.resolve(dump.getStoredFilename());
 
         MessageDigest digest;

@@ -58,6 +58,7 @@ export interface DatabaseDump {
   format: 'SQL' | 'CUSTOM' | 'COMPRESSED'
   description?: string
   lastUsedAt?: string
+  createdBy?: string
 }
 
 export interface ContainerSchedule {
@@ -76,6 +77,7 @@ export interface ContainerSchedule {
   lastExecutedAt?: string
   lastExecutionStatus?: string
   lastExecutionMessage?: string
+  createdBy?: string
 }
 
 export interface RunContainerConfig {
@@ -112,6 +114,7 @@ export interface DatabaseSnapshot {
   containerName?: string
   description?: string
   lastUsedAt?: string
+  createdBy?: string
 }
 
 export interface ActiveSession {

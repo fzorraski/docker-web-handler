@@ -27,6 +27,9 @@ import java.util.Optional;
 public class ManageScheduleUseCase {
 
     @Inject
+    br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
+
+    @Inject
     ScheduleRepository scheduleRepository;
 
     @Inject
@@ -102,6 +105,7 @@ public class ManageScheduleUseCase {
         }
 
         ContainerSchedule schedule = new ContainerSchedule(request.getName(), action, type);
+        schedule.setCreatedBy(actorResolver.usernameOrSystem());
 
         if (type == ScheduleType.RECURRING) {
             Optional<String> cronError = InputValidator.validateCronExpression(request.getCronExpression());

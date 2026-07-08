@@ -409,6 +409,7 @@ const en = {
       uploadedAt: 'Uploaded At',
       expires: 'Expires',
       lastUsed: 'Last Used',
+      createdBy: 'Created By',
       actions: 'Actions',
     },
     snapColumns: {
@@ -422,6 +423,7 @@ const en = {
       createdAt: 'Created At',
       expires: 'Expires',
       lastUsed: 'Last Used',
+      createdBy: 'Created By',
       actions: 'Actions',
     },
     databasesTab: 'Live Databases',
@@ -1000,6 +1002,7 @@ const en = {
       nextRun: 'Next Run',
       lastRun: 'Last Run',
       status: 'Status',
+      createdBy: 'Created By',
       actions: 'Actions',
     },
     conflict: {

@@ -24,6 +24,7 @@ public class DatabaseSnapshot {
     private String description;
     private Instant lastUsedAt;
     private boolean temporary;
+    private String createdBy;
 
     public DatabaseSnapshot() {
     }
@@ -96,4 +97,7 @@ public class DatabaseSnapshot {
     public int hashCode() {
         return Objects.hash(id);
     }
+
+    public String getCreatedBy() { return createdBy; }
+    public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
 }

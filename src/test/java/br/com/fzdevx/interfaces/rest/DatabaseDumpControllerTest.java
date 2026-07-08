@@ -44,6 +44,12 @@ class DatabaseDumpControllerTest {
     @InjectMocks
     DatabaseDumpController controller;
 
+    @org.junit.jupiter.api.BeforeEach
+    void injectCurrentUser() {
+        // real instance: outside RBAC it grants everything (legacy behavior)
+        controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+    }
+
     // ---- isEnabled ----
 
     @Test

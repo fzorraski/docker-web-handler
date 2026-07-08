@@ -64,16 +64,7 @@ public class RunContainerUseCase {
     AuditLogger auditLogger;
 
     @Inject
-    br.com.fzdevx.infrastructure.config.CurrentUser currentUser;
-
-    /** Username under RBAC, "system" outside a request scope (scheduler), null in legacy mode. */
-    private String resolveCreator() {
-        try {
-            return currentUser.isRbacActive() ? currentUser.getUsername() : null;
-        } catch (jakarta.enterprise.context.ContextNotActiveException e) {
-            return "system";
-        }
-    }
+    br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
 
     @Inject
     RegistryService registryService;
@@ -453,7 +444,7 @@ public class RunContainerUseCase {
         }
         // Stamp the creator so "who created this container?" survives restarts;
         // scheduled/system creations run outside a request scope and get "system".
-        String creator = resolveCreator();
+        String creator = actorResolver.usernameOrSystem();
         if (creator != null) {
             labels.put(Constants.CREATED_BY_LABEL, creator);
         }

@@ -22,6 +22,7 @@ public class DatabaseDump {
     private Format format;
     private String description;
     private Instant lastUsedAt;
+    private String createdBy;
 
     public DatabaseDump() {
     }
@@ -101,4 +102,7 @@ public class DatabaseDump {
     public int hashCode() {
         return Objects.hash(id);
     }
+
+    public String getCreatedBy() { return createdBy; }
+    public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
 }

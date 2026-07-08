@@ -411,6 +411,7 @@ const es: typeof en = {
       uploadedAt: 'Subido El',
       expires: 'Expira',
       lastUsed: 'Último Uso',
+      createdBy: 'Creado Por',
       actions: 'Acciones',
     },
     snapColumns: {
@@ -424,6 +425,7 @@ const es: typeof en = {
       createdAt: 'Creado El',
       expires: 'Expira',
       lastUsed: 'Último Uso',
+      createdBy: 'Creado Por',
       actions: 'Acciones',
     },
     databasesTab: 'Bases de Datos Activas',
@@ -1002,6 +1004,7 @@ const es: typeof en = {
       nextRun: 'Próxima Ejecución',
       lastRun: 'Última Ejecución',
       status: 'Estado',
+      createdBy: 'Creado Por',
       actions: 'Acciones',
     },
     conflict: {

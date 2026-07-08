@@ -79,6 +79,7 @@ export default function DatabasePage() {
   const { rbacEnabled, hasPermission } = useAuth()
   const canDbOperate = hasPermission(P.DATABASE_OPERATE)
   const canDbUpload = hasPermission(P.DATABASE_UPLOAD)
+  const canViewAudit = hasPermission(P.AUDIT_VIEW)
   const { t } = useTranslation()
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
   const dumpTableRef = useRef<HTMLDivElement>(null)
@@ -146,8 +147,9 @@ export default function DatabasePage() {
     { key: 'uploadedAt', label: t('database.dumpColumns.uploadedAt') },
     { key: 'expiresAt', label: t('database.dumpColumns.expires') },
     { key: 'lastUsedAt', label: t('database.dumpColumns.lastUsed') },
+    ...(canViewAudit ? [{ key: 'createdBy', label: t('database.dumpColumns.createdBy') }] : []),
     { key: 'action', label: t('database.dumpColumns.actions') },
-  ], [t])
+  ], [t, canViewAudit])
 
   const SNAP_COLUMNS: { key: string; label: string }[] = useMemo(() => [
     { key: 'label', label: t('database.snapColumns.label') },
@@ -160,8 +162,9 @@ export default function DatabasePage() {
     { key: 'createdAt', label: t('database.snapColumns.createdAt') },
     { key: 'expiresAt', label: t('database.snapColumns.expires') },
     { key: 'lastUsedAt', label: t('database.snapColumns.lastUsed') },
+    ...(canViewAudit ? [{ key: 'createdBy', label: t('database.snapColumns.createdBy') }] : []),
     { key: 'action', label: t('database.snapColumns.actions') },
-  ], [t])
+  ], [t, canViewAudit])
 
   // --- Dumps logic ---
   function handleSort(key: string) {
@@ -776,6 +779,11 @@ export default function DatabasePage() {
                           variant="outlined"
                         />
                       </TableCell>
+                      {canViewAudit && (
+                        <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
+                          {dump.createdBy || '-'}
+                        </TableCell>
+                      )}
                       <TableCell>
                         <Box sx={{ display: 'flex', gap: 0.25 }}>
                           <Tooltip title={t('common.download')}>
@@ -1014,6 +1022,11 @@ export default function DatabasePage() {
                           variant="outlined"
                         />
                       </TableCell>
+                      {canViewAudit && (
+                        <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
+                          {snap.createdBy || '-'}
+                        </TableCell>
+                      )}
                       <TableCell>
                         <Box sx={{ display: 'flex', gap: 0.25 }}>
                           <Tooltip title={t('common.download')}>

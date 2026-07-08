@@ -40,6 +40,7 @@ class ManageScheduleUseCaseTest {
     @Mock ContainerExpirationService expirationService;
     @Mock ContainerProtectionService protectionService;
     @Mock ContainerSchedulingService schedulingService;
+    @Mock br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
 
     @InjectMocks
     ManageScheduleUseCase useCase;

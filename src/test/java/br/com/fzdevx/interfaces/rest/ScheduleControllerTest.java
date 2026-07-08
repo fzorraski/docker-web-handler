@@ -38,6 +38,12 @@ class ScheduleControllerTest {
     @InjectMocks
     ScheduleController controller;
 
+    @org.junit.jupiter.api.BeforeEach
+    void injectCurrentUser() {
+        // real instance: outside RBAC it grants everything (legacy behavior)
+        controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+    }
+
     private ContainerSchedule makeSchedule() {
         return new ContainerSchedule("test", ScheduleAction.STOP, ScheduleType.ONE_TIME);
     }

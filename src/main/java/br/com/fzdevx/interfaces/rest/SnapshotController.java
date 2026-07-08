@@ -29,6 +29,17 @@ import java.util.Optional;
 public class SnapshotController {
 
     @Inject
+    br.com.fzdevx.infrastructure.config.CurrentUser currentUser;
+
+    /** Creator visibility is its own permission (AUDIT_VIEW); strip it for callers without it. */
+    private <T> java.util.List<T> withCreatorVisibility(java.util.List<T> items, java.util.function.BiConsumer<T, String> setter) {
+        if (!currentUser.hasPermission(br.com.fzdevx.domain.model.auth.Permission.AUDIT_VIEW)) {
+            items.forEach(item -> setter.accept(item, null));
+        }
+        return items;
+    }
+
+    @Inject
     SnapshotStorageService snapshotStorageService;
 
     @Inject
@@ -50,9 +61,9 @@ public class SnapshotController {
         if (!dumpStorageService.isEnabled()) {
             return Collections.emptyList();
         }
-        return snapshotStorageService.findAll().stream()
+        return withCreatorVisibility(new java.util.ArrayList<>(snapshotStorageService.findAll().stream()
                 .filter(s -> !s.isTemporary())
-                .toList();
+                .toList()), DatabaseSnapshot::setCreatedBy);
     }
 
     @GET

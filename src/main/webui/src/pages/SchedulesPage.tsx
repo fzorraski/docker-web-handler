@@ -42,6 +42,7 @@ export default function SchedulesPage() {
   const { hasPermission } = useAuth()
   const canManageSchedules = hasPermission(P.SCHEDULES_MANAGE)
   const canViewContainers = hasPermission(P.CONTAINERS_VIEW)
+  const canViewAudit = hasPermission(P.AUDIT_VIEW)
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
   const tableRef = useRef<HTMLDivElement>(null)
   useStickyHeader(tableRef)
@@ -486,6 +487,7 @@ export default function SchedulesPage() {
                   { key: 'nextExecutionAt', label: t('schedules.columns.nextRun') },
                   { key: 'lastExecutedAt', label: t('schedules.columns.lastRun') },
                   { key: 'status', label: t('schedules.columns.status') },
+                  ...(canViewAudit ? [{ key: 'createdBy', label: t('schedules.columns.createdBy') }] : []),
                   { key: 'actions', label: t('schedules.columns.actions') },
                 ].map((col) => (
                   <TableCell key={col.key} sx={{ bgcolor: theadBg, color: theadColor, fontWeight: 600 }}>
@@ -594,6 +596,11 @@ export default function SchedulesPage() {
                       <Typography variant="body2" color="text.secondary">-</Typography>
                     )}
                   </TableCell>
+                  {canViewAudit && (
+                    <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
+                      {s.createdBy || '-'}
+                    </TableCell>
+                  )}
                   <TableCell>
                     <Box sx={{ display: 'flex', gap: 0.25 }}>
                       {canManageSchedules && s.enabled && (

@@ -31,6 +31,7 @@ public class ContainerSchedule {
     private Instant lastExecutedAt;
     private String lastExecutionStatus; // SUCCESS, FAILED, SKIPPED
     private String lastExecutionMessage;
+    private String createdBy;
 
     public ContainerSchedule() {
     }
@@ -101,4 +102,7 @@ public class ContainerSchedule {
     public int hashCode() {
         return Objects.hash(id);
     }
+
+    public String getCreatedBy() { return createdBy; }
+    public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
 }
