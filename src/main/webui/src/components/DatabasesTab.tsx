@@ -289,7 +289,8 @@ export default function DatabasesTab() {
     // Text filter
     if (filter) {
       const lc = filter.toLowerCase()
-      data = data.filter((db) => db.name.toLowerCase().includes(lc))
+      data = data.filter((db) => db.name.toLowerCase().includes(lc)
+        || (db.createdBy ?? '').toLowerCase().includes(lc))
     }
 
     // Connections filter

@@ -263,7 +263,7 @@ export default function DatabasePage() {
   const filteredDumps = useMemo(() => {
     let data = showNeverUsedDumps ? dumps.filter(d => !d.lastUsedAt) : dumps
     const result = data.filter((d) =>
-      [d.originalFilename, d.databaseName ?? '', d.version ?? '', d.format, formatBytes(d.fileSize), d.description ?? '']
+      [d.originalFilename, d.databaseName ?? '', d.version ?? '', d.format, formatBytes(d.fileSize), d.description ?? '', d.createdBy ?? '']
         .some((v) => v.toLowerCase().includes(filter.toLowerCase())),
     )
     if (!sortKey) return result
@@ -400,7 +400,7 @@ export default function DatabasePage() {
   const filteredSnapshots = useMemo(() => {
     let data = showNeverUsedSnaps ? snapshots.filter(s => !s.lastUsedAt) : snapshots
     const result = data.filter((s) =>
-      [s.label ?? '', s.repository, s.sourceDatabaseName, s.containerName ?? '', s.format, formatBytes(s.fileSize), s.description ?? '']
+      [s.label ?? '', s.repository, s.sourceDatabaseName, s.containerName ?? '', s.format, formatBytes(s.fileSize), s.description ?? '', s.createdBy ?? '']
         .some((v) => v.toLowerCase().includes(snapFilter.toLowerCase())),
     )
     if (!snapSortKey) return result

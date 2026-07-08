@@ -102,7 +102,8 @@ export default function SchedulesPage() {
       if (f && !(
         s.name.toLowerCase().includes(f) ||
         s.action.toLowerCase().includes(f) ||
-        (s.containerName || '').toLowerCase().includes(f)
+        (s.containerName || '').toLowerCase().includes(f) ||
+        (s.createdBy || '').toLowerCase().includes(f)
       )) return false
       if (actionFilter && s.action !== actionFilter) return false
       if (typeFilter && s.scheduleType !== typeFilter) return false
