@@ -6,6 +6,7 @@ import {
 import { LockReset } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { resetUserPassword, type AppUser } from '../../services/userService'
+import { MIN_PASSWORD_LENGTH } from '../../utils/validation'
 
 interface Props {
   open: boolean
@@ -13,8 +14,6 @@ interface Props {
   onDone: () => void
   user: AppUser | null
 }
-
-const MIN_PASSWORD_LENGTH = 6
 
 export default function ResetPasswordDialog({ open, onClose, onDone, user }: Props) {
   const { t } = useTranslation()

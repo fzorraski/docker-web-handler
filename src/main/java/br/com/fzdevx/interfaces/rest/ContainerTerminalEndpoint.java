@@ -43,6 +43,12 @@ public class ContainerTerminalEndpoint {
     RuntimeSettingsService runtimeSettings;
 
     @Inject
+    br.com.fzdevx.application.port.AuditLogger auditLogger;
+
+    @Inject
+    br.com.fzdevx.infrastructure.config.AuthorizationService authorizationService;
+
+    @Inject
     @ConfigProperty(name = "container.terminal.default-shell", defaultValue = "/bin/bash")
     String defaultShell;
 
@@ -84,6 +90,14 @@ public class ContainerTerminalEndpoint {
             sendAndClose(session, errorMsg("Invalid container ID."));
             return;
         }
+
+        // terminal access is the most privileged operation - always audit who opened it
+        // (WebSocket handshakes have no request scope, so the actor is resolved explicitly)
+        String actor = grant.userId() == null ? "anonymous"
+                : authorizationService.resolve(grant.userId())
+                        .map(br.com.fzdevx.infrastructure.config.AuthorizationService.ResolvedUser::username)
+                        .orElse(grant.userId());
+        auditLogger.logAs(actor, "TERMINAL_OPEN", containerId, null);
 
         DockerTerminalPort.ContainerRuntimeInfo containerInfo = dockerTerminalPort.inspectContainer(containerId);
         if (!containerInfo.running()) {

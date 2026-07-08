@@ -151,7 +151,6 @@ class AuthenticationFilterTest {
     void filter_rbacValidSession_populatesCurrentUser() {
         when(uriInfo.getPath()).thenReturn("/containers/list");
         when(requestContext.getCookies()).thenReturn(Map.of("DWH-SESSION", new Cookie("DWH-SESSION", "valid")));
-        when(sessionManager.validateAndTouch("valid")).thenReturn(true);
         when(rbacSettings.isRbacEnabled()).thenReturn(true);
         when(sessionManager.getUserIdIfValid("valid")).thenReturn(java.util.Optional.of("user-1"));
         var resolved = new br.com.fzdevx.infrastructure.config.AuthorizationService.ResolvedUser(
@@ -170,7 +169,6 @@ class AuthenticationFilterTest {
     void filter_rbacSessionOfDeletedUser_aborts401AndKillsSession() {
         when(uriInfo.getPath()).thenReturn("/containers/list");
         when(requestContext.getCookies()).thenReturn(Map.of("DWH-SESSION", new Cookie("DWH-SESSION", "valid")));
-        when(sessionManager.validateAndTouch("valid")).thenReturn(true);
         when(rbacSettings.isRbacEnabled()).thenReturn(true);
         when(sessionManager.getUserIdIfValid("valid")).thenReturn(java.util.Optional.of("gone"));
         when(authorizationService.resolve("gone")).thenReturn(java.util.Optional.empty());
@@ -186,7 +184,6 @@ class AuthenticationFilterTest {
     void filter_rbacSessionOfDisabledUser_aborts401() {
         when(uriInfo.getPath()).thenReturn("/containers/list");
         when(requestContext.getCookies()).thenReturn(Map.of("DWH-SESSION", new Cookie("DWH-SESSION", "valid")));
-        when(sessionManager.validateAndTouch("valid")).thenReturn(true);
         when(rbacSettings.isRbacEnabled()).thenReturn(true);
         when(sessionManager.getUserIdIfValid("valid")).thenReturn(java.util.Optional.of("user-1"));
         var resolved = new br.com.fzdevx.infrastructure.config.AuthorizationService.ResolvedUser(

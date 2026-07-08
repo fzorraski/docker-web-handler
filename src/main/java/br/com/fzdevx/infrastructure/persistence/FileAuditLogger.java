@@ -8,15 +8,14 @@ import jakarta.enterprise.context.ContextNotActiveException;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.IOException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
-import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -58,7 +57,9 @@ public class FileAuditLogger implements AuditLogger {
 
     /**
      * Rewrites the audit file keeping only entries at or after the cutoff.
-     * Lines whose timestamp cannot be parsed are kept (never silently lose data).
+     * Lines whose timestamp cannot be parsed are kept (never silently lose
+     * data). Streams line by line so memory stays bounded even for audit
+     * files that grew for months with retention disabled.
      *
      * @return the number of entries removed
      */
@@ -69,24 +70,29 @@ public class FileAuditLogger implements AuditLogger {
             if (!Files.exists(path)) {
                 return 0;
             }
-            List<String> lines = Files.readAllLines(path);
-            List<String> kept = lines.stream()
-                    .filter(line -> {
-                        Instant timestamp = parseTimestamp(line);
-                        return timestamp == null || !timestamp.isBefore(cutoff);
-                    })
-                    .toList();
-            int removed = lines.size() - kept.size();
+            Path tmp = path.resolveSibling(path.getFileName() + ".tmp." + System.nanoTime());
+            int removed = 0;
+            try (BufferedReader reader = Files.newBufferedReader(path);
+                 BufferedWriter writer = Files.newBufferedWriter(tmp)) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    Instant timestamp = parseTimestamp(line);
+                    if (timestamp != null && timestamp.isBefore(cutoff)) {
+                        removed++;
+                    } else {
+                        writer.write(line);
+                        writer.newLine();
+                    }
+                }
+            } catch (IOException e) {
+                Files.deleteIfExists(tmp);
+                throw e;
+            }
             if (removed == 0) {
+                Files.deleteIfExists(tmp);
                 return 0;
             }
-            Path tmp = path.resolveSibling(path.getFileName() + ".tmp." + System.nanoTime());
-            Files.write(tmp, kept);
-            try {
-                Files.move(tmp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING);
-            }
+            AtomicFileWriter.move(tmp, path);
             return removed;
         } catch (IOException e) {
             Log.errorf(e, "Failed to clean up audit file %s.", file);

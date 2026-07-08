@@ -44,14 +44,9 @@ export default function AdminPage() {
 
   const load = useCallback(async () => {
     try {
-      const [userList, roleList, permCatalog] = await Promise.all([
-        listUsers(),
-        listRoles(),
-        getPermissionCatalog(),
-      ])
+      const [userList, roleList] = await Promise.all([listUsers(), listRoles()])
       setUsers(userList)
       setRoles(roleList)
-      setCatalog(permCatalog)
     } catch (e) {
       notify(e instanceof Error ? e.message : t('common.unexpectedError'), 'error')
     } finally {
@@ -60,6 +55,11 @@ export default function AdminPage() {
   }, [notify, t])
 
   useEffect(() => { load() }, [load])
+
+  // the permission catalog is a static enum list - fetch it once, not per mutation
+  useEffect(() => {
+    getPermissionCatalog().then(setCatalog).catch(() => setCatalog([]))
+  }, [])
 
   function roleOf(user: AppUser): AppRole | undefined {
     return roles.find(r => r.id === user.roleId)

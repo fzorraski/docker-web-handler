@@ -1,6 +1,10 @@
-import fetchWithAuth from './fetchWithAuth'
+import fetchWithAuth, { handleJsonResponse } from './fetchWithAuth'
 
 const API = '/api/users'
+
+// the admin page surfaces backend messages itself (e.g. the super-admin rails),
+// so the global forbidden toast is suppressed to avoid double notifications
+const OPTS = { forbiddenEvent: false }
 
 export interface AppUser {
   id: string
@@ -12,17 +16,9 @@ export interface AppUser {
   lastLoginAt: string | null
 }
 
-async function handleResponse<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || data.message || res.statusText)
-  }
-  return res.json()
-}
-
 export async function listUsers(): Promise<AppUser[]> {
-  const res = await fetchWithAuth(API)
-  return handleResponse(res)
+  const res = await fetchWithAuth(API, undefined, OPTS)
+  return handleJsonResponse(res)
 }
 
 export async function createUser(request: { username: string; password: string; roleId: string }): Promise<AppUser> {
@@ -30,8 +26,8 @@ export async function createUser(request: { username: string; password: string; 
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
-  })
-  return handleResponse(res)
+  }, OPTS)
+  return handleJsonResponse(res)
 }
 
 export async function updateUser(id: string, request: { roleId?: string; enabled?: boolean }): Promise<AppUser> {
@@ -39,8 +35,8 @@ export async function updateUser(id: string, request: { roleId?: string; enabled
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
-  })
-  return handleResponse(res)
+  }, OPTS)
+  return handleJsonResponse(res)
 }
 
 export async function resetUserPassword(id: string, password: string): Promise<{ success: boolean }> {
@@ -48,11 +44,11 @@ export async function resetUserPassword(id: string, password: string): Promise<{
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password }),
-  })
-  return handleResponse(res)
+  }, OPTS)
+  return handleJsonResponse(res)
 }
 
 export async function deleteUser(id: string): Promise<{ success: boolean }> {
-  const res = await fetchWithAuth(`${API}/${encodeURIComponent(id)}`, { method: 'DELETE' })
-  return handleResponse(res)
+  const res = await fetchWithAuth(`${API}/${encodeURIComponent(id)}`, { method: 'DELETE' }, OPTS)
+  return handleJsonResponse(res)
 }

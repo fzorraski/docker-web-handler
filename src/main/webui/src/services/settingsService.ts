@@ -1,6 +1,10 @@
-import fetchWithAuth from './fetchWithAuth'
+import fetchWithAuth, { handleJsonResponse } from './fetchWithAuth'
 
 const API = '/api/settings'
+
+// the settings tab surfaces backend messages itself, so the global forbidden
+// toast is suppressed to avoid double notifications
+const OPTS = { forbiddenEvent: false }
 
 export interface RuntimeSetting {
   key: string
@@ -10,17 +14,9 @@ export interface RuntimeSetting {
   overridden: boolean
 }
 
-async function handleResponse<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || data.message || res.statusText)
-  }
-  return res.json()
-}
-
 export async function listSettings(): Promise<RuntimeSetting[]> {
-  const res = await fetchWithAuth(API)
-  return handleResponse(res)
+  const res = await fetchWithAuth(API, undefined, OPTS)
+  return handleJsonResponse(res)
 }
 
 export async function updateSettings(changes: Record<string, boolean | number>): Promise<RuntimeSetting[]> {
@@ -28,11 +24,11 @@ export async function updateSettings(changes: Record<string, boolean | number>):
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(changes),
-  })
-  return handleResponse(res)
+  }, OPTS)
+  return handleJsonResponse(res)
 }
 
 export async function resetSetting(key: string): Promise<RuntimeSetting[]> {
-  const res = await fetchWithAuth(`${API}/${encodeURIComponent(key)}`, { method: 'DELETE' })
-  return handleResponse(res)
+  const res = await fetchWithAuth(`${API}/${encodeURIComponent(key)}`, { method: 'DELETE' }, OPTS)
+  return handleJsonResponse(res)
 }

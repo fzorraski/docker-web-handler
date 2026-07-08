@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next'
 import { createUser, updateUser, type AppUser } from '../../services/userService'
 import type { AppRole } from '../../services/roleService'
 import { P } from '../../utils/permissions'
+import { MIN_PASSWORD_LENGTH } from '../../utils/validation'
 
 interface Props {
   open: boolean
@@ -19,8 +20,6 @@ interface Props {
   /** whether the acting user holds SYSTEM_CONFIG (may assign super-admin roles) */
   canSystemConfig: boolean
 }
-
-const MIN_PASSWORD_LENGTH = 6
 
 export default function UserFormDialog({ open, onClose, onSaved, roles, user, canSystemConfig }: Props) {
   const { t } = useTranslation()

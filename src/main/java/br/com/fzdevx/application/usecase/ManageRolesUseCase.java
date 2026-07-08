@@ -12,7 +12,6 @@ import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.domain.model.auth.Role;
 import br.com.fzdevx.infrastructure.config.AuthorizationService;
 import br.com.fzdevx.infrastructure.config.CurrentUser;
-import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 

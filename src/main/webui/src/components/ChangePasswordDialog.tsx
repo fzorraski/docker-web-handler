@@ -7,13 +7,12 @@ import { Password } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { changeOwnPassword } from '../services/authService'
 import { useNotification } from './NotificationProvider'
+import { MIN_PASSWORD_LENGTH } from '../utils/validation'
 
 interface Props {
   open: boolean
   onClose: () => void
 }
-
-const MIN_PASSWORD_LENGTH = 6
 
 export default function ChangePasswordDialog({ open, onClose }: Props) {
   const { t } = useTranslation()

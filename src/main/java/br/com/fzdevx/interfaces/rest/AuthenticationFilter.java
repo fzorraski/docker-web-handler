@@ -109,17 +109,18 @@ public class AuthenticationFilter implements ContainerRequestFilter, ContainerRe
         if (ALLOWLISTED_PATHS.contains(path)) return;
 
         Cookie sessionCookie = requestContext.getCookies().get(AuthController.SESSION_COOKIE);
-        if (sessionCookie == null || !sessionManager.validateAndTouch(sessionCookie.getValue())) {
+        if (sessionCookie == null) {
             abort(requestContext, 401, "UNAUTHORIZED", "Authentication required.");
             return;
         }
 
         if (rbacSettings.isRbacEnabled()) {
+            // single validate-and-touch: under RBAC every session carries a userId
             var resolved = sessionManager.getUserIdIfValid(sessionCookie.getValue())
                     .flatMap(authorizationService::resolve)
                     .filter(AuthorizationService.ResolvedUser::enabled);
             if (resolved.isEmpty()) {
-                // session belongs to a deleted/disabled user - treat as dead
+                // invalid session, or one belonging to a deleted/disabled user - treat as dead
                 sessionManager.invalidateSession(sessionCookie.getValue());
                 abort(requestContext, 401, "UNAUTHORIZED", "Authentication required.");
                 return;
@@ -127,6 +128,8 @@ public class AuthenticationFilter implements ContainerRequestFilter, ContainerRe
             var user = resolved.get();
             currentUser.set(user.userId(), user.username(), user.permissions());
             MDC.put(MDC_USER_KEY, user.username());
+        } else if (!sessionManager.validateAndTouch(sessionCookie.getValue())) {
+            abort(requestContext, 401, "UNAUTHORIZED", "Authentication required.");
         }
     }
 

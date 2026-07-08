@@ -17,13 +17,13 @@ import br.com.fzdevx.domain.shared.PasswordHasher;
 import br.com.fzdevx.infrastructure.config.AuthSessionManager;
 import br.com.fzdevx.infrastructure.config.AuthorizationService;
 import br.com.fzdevx.infrastructure.config.CurrentUser;
-import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -186,12 +186,17 @@ public class ManageUsersUseCase {
 
     /** True if this user is the only enabled user whose role holds SYSTEM_CONFIG. */
     private boolean isLastSuperAdmin(User target) {
-        if (!target.isEnabled() || !roleHoldsSystemConfig(target.getRoleId())) {
+        // resolve the super-admin roles once - findById re-reads the roles file per call
+        Set<String> superAdminRoleIds = roleRepository.findAll().stream()
+                .filter(r -> r.hasPermission(Permission.SYSTEM_CONFIG))
+                .map(Role::getId)
+                .collect(Collectors.toSet());
+        if (!target.isEnabled() || !superAdminRoleIds.contains(target.getRoleId())) {
             return false;
         }
         return userRepository.findAll().stream()
                 .filter(User::isEnabled)
-                .filter(u -> roleHoldsSystemConfig(u.getRoleId()))
+                .filter(u -> superAdminRoleIds.contains(u.getRoleId()))
                 .allMatch(u -> u.getId().equals(target.getId()));
     }
 }

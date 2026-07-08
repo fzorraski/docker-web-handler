@@ -8,7 +8,6 @@ import br.com.fzdevx.domain.model.auth.User;
 import br.com.fzdevx.domain.shared.PasswordHasher;
 import br.com.fzdevx.infrastructure.config.AuthSessionManager;
 import br.com.fzdevx.infrastructure.config.AuthorizationService;
-import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
