@@ -6,6 +6,7 @@ import br.com.fzdevx.domain.model.DatabaseSnapshot;
 import br.com.fzdevx.domain.model.PostRestoreScriptInfo;
 import br.com.fzdevx.application.dto.RestoreDumpRequest;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
+import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.application.port.DatabasePort;
 import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.domain.model.ManagedDatabase;
@@ -53,6 +54,9 @@ public class RestoreDumpUseCase {
 
     @Inject
     DumpStorageService dumpStorageService;
+
+    @Inject
+    AuditLogger auditLogger;
 
     @Inject
     DatabaseService databaseService;
@@ -434,6 +438,7 @@ public class RestoreDumpUseCase {
                 // Non-critical: don't fail the restore if tracking fails
             }
 
+            auditLogger.log("DATABASE_RESTORE", request.getTargetDatabase(), "source=" + displayName);
             return true;
 
         } catch (Exception e) {

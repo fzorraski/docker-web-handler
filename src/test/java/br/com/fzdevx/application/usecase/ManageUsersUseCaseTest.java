@@ -67,6 +67,7 @@ class ManageUsersUseCaseTest {
         useCase.roleRepository = roleRepository;
         useCase.authorizationService = authorizationService;
         useCase.sessionManager = sessionManager;
+        useCase.auditLogger = ManageSettingsUseCaseTest.NO_OP_AUDIT;
         actAs(superAdmin, EnumSet.allOf(Permission.class));
     }
 

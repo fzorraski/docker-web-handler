@@ -1,5 +1,6 @@
 package br.com.fzdevx.application.usecase;
 
+import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.application.port.DockerContainerPort;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.application.dto.RestoreDumpRequest;
@@ -58,6 +59,9 @@ public class RunContainerUseCase {
 
     @Inject
     DockerContainerPort dockerContainerPort;
+
+    @Inject
+    AuditLogger auditLogger;
 
     @Inject
     RegistryService registryService;
@@ -365,6 +369,7 @@ public class RunContainerUseCase {
             usageTracker.markUsed(request.getRepository(), request.getDatabaseName());
 
             createdContainerId = null; // success — don't clean up
+            auditLogger.log("CONTAINER_CREATE", request.getContainerName(), "image=" + imageRef);
             eventSink.accept(ContainerEvent.success("Complete",
                     "Container started successfully from " + imageRef + expirationMessage));
         } finally {

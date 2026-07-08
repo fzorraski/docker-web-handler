@@ -44,6 +44,7 @@ class ManagedDatabaseControllerTest {
     @Mock PasswordValidationService passwordValidationService;
     @Mock ContainerExpirationService expirationService;
     @Mock ResourceCounterService resourceCounterService;
+    @Mock br.com.fzdevx.application.port.AuditLogger auditLogger;
 
     @InjectMocks
     ManagedDatabaseController controller;

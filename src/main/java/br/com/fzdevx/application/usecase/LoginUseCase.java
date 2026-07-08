@@ -1,6 +1,7 @@
 package br.com.fzdevx.application.usecase;
 
 import br.com.fzdevx.application.dto.LoginResult;
+import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.application.port.RateLimitPort;
 import br.com.fzdevx.application.port.UserRepository;
 import br.com.fzdevx.domain.model.auth.User;
@@ -31,6 +32,9 @@ public class LoginUseCase {
 
     @Inject
     UserRepository userRepository;
+
+    @Inject
+    AuditLogger auditLogger;
 
     @Inject
     @ConfigProperty(name = "app.auth.password")
@@ -88,6 +92,8 @@ public class LoginUseCase {
             if (userKey != null) {
                 rateLimitPort.recordFailure(userKey);
             }
+            auditLogger.logAs(username == null ? "unknown" : username.trim(),
+                    "LOGIN_FAILED", "session", "ip=" + clientIp);
             return LoginResult.invalidPassword();
         }
 
@@ -97,6 +103,7 @@ public class LoginUseCase {
         User found = user.get();
         found.setLastLoginAt(Instant.now());
         userRepository.save(found);
+        auditLogger.logAs(found.getUsername(), "LOGIN", "session", "ip=" + clientIp);
         return LoginResult.success(found.getId());
     }
 }

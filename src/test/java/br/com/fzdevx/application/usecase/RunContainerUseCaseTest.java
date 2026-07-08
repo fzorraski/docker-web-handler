@@ -69,6 +69,7 @@ class RunContainerUseCaseTest {
     @Mock MemoryGuardService memoryGuardService;
     @Mock br.com.fzdevx.infrastructure.docker.LogRotationResolver logRotationResolver;
     @Mock ManagedDatabaseUsageTracker usageTracker;
+    @Mock br.com.fzdevx.application.port.AuditLogger auditLogger;
 
     @InjectMocks
     RunContainerUseCase useCase;

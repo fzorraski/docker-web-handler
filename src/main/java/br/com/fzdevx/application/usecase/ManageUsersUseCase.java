@@ -3,6 +3,7 @@ package br.com.fzdevx.application.usecase;
 import br.com.fzdevx.application.dto.CreateUserRequest;
 import br.com.fzdevx.application.dto.UpdateUserRequest;
 import br.com.fzdevx.application.dto.UserResponse;
+import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.application.port.RoleRepository;
 import br.com.fzdevx.application.port.UserRepository;
 import br.com.fzdevx.domain.exception.AccessDeniedException;
@@ -48,6 +49,9 @@ public class ManageUsersUseCase {
     @Inject
     CurrentUser currentUser;
 
+    @Inject
+    AuditLogger auditLogger;
+
     public List<UserResponse> list() {
         Map<String, Role> rolesById = roleRepository.findAll().stream()
                 .collect(Collectors.toMap(Role::getId, Function.identity()));
@@ -72,8 +76,7 @@ public class ManageUsersUseCase {
         User user = new User(username, PasswordHasher.hash(request.getPassword()), role.getId());
         userRepository.save(user);
         authorizationService.invalidateCache();
-        Log.infof("RBAC: user '%s' created by '%s' with role '%s'.",
-                username, currentUser.getUsername(), role.getName());
+        auditLogger.log("USER_CREATE", username, "role=" + role.getName());
         return UserResponse.of(user, role);
     }
 
@@ -105,8 +108,8 @@ public class ManageUsersUseCase {
         if (disabling) {
             sessionManager.invalidateSessionsForUser(user.getId());
         }
-        Log.infof("RBAC: user '%s' updated by '%s' (role=%s, enabled=%s).",
-                user.getUsername(), currentUser.getUsername(), user.getRoleId(), user.isEnabled());
+        auditLogger.log("USER_UPDATE", user.getUsername(),
+                "role=" + role.getName() + " enabled=" + user.isEnabled());
         return UserResponse.of(user, role);
     }
 
@@ -120,8 +123,7 @@ public class ManageUsersUseCase {
         userRepository.save(user);
         authorizationService.invalidateCache();
         sessionManager.invalidateSessionsForUser(user.getId());
-        Log.infof("RBAC: password of user '%s' reset by '%s'.",
-                user.getUsername(), currentUser.getUsername());
+        auditLogger.log("USER_PASSWORD_RESET", user.getUsername(), null);
     }
 
     public void delete(String id) {
@@ -137,7 +139,7 @@ public class ManageUsersUseCase {
         userRepository.delete(user.getId());
         authorizationService.invalidateCache();
         sessionManager.invalidateSessionsForUser(user.getId());
-        Log.infof("RBAC: user '%s' deleted by '%s'.", user.getUsername(), currentUser.getUsername());
+        auditLogger.log("USER_DELETE", user.getUsername(), null);
     }
 
     private void validatePassword(String password) {

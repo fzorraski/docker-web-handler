@@ -1,11 +1,10 @@
 package br.com.fzdevx.application.usecase;
 
+import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.application.port.SettingsRepository;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.RuntimeSettings;
-import br.com.fzdevx.infrastructure.config.CurrentUser;
 import br.com.fzdevx.infrastructure.config.RuntimeSettingsService;
-import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -25,7 +24,7 @@ public class ManageSettingsUseCase {
     RuntimeSettingsService runtimeSettingsService;
 
     @Inject
-    CurrentUser currentUser;
+    AuditLogger auditLogger;
 
     public List<Map<String, Object>> describe() {
         return runtimeSettingsService.describe();
@@ -42,8 +41,7 @@ public class ManageSettingsUseCase {
         }
         settingsRepository.save(settings);
         runtimeSettingsService.invalidate();
-        Log.infof("RBAC: runtime settings %s updated by '%s'.",
-                changes.keySet(), currentUser.getUsername());
+        auditLogger.log("SETTINGS_UPDATE", String.join(",", changes.keySet()), null);
         return runtimeSettingsService.describe();
     }
 
@@ -53,8 +51,7 @@ public class ManageSettingsUseCase {
         apply(settings, key, null);
         settingsRepository.save(settings);
         runtimeSettingsService.invalidate();
-        Log.infof("RBAC: runtime setting '%s' reset to default by '%s'.",
-                key, currentUser.getUsername());
+        auditLogger.log("SETTINGS_RESET", key, null);
         return runtimeSettingsService.describe();
     }
 

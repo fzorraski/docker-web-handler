@@ -1,6 +1,7 @@
 package br.com.fzdevx.application.usecase;
 
 import br.com.fzdevx.application.dto.CreateRoleRequest;
+import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.application.port.RoleRepository;
 import br.com.fzdevx.application.port.UserRepository;
 import br.com.fzdevx.domain.exception.AccessDeniedException;
@@ -34,6 +35,9 @@ public class ManageRolesUseCase {
     @Inject
     CurrentUser currentUser;
 
+    @Inject
+    AuditLogger auditLogger;
+
     public List<Role> list() {
         return roleRepository.findAll();
     }
@@ -49,8 +53,7 @@ public class ManageRolesUseCase {
         Role role = new Role(name, trimmedDescription(request), permissions);
         roleRepository.save(role);
         authorizationService.invalidateCache();
-        Log.infof("RBAC: role '%s' created by '%s' with %d permission(s).",
-                name, currentUser.getUsername(), permissions.size());
+        auditLogger.log("ROLE_CREATE", name, permissions.size() + " permission(s)");
         return role;
     }
 
@@ -75,7 +78,7 @@ public class ManageRolesUseCase {
         role.setPermissions(permissions);
         roleRepository.save(role);
         authorizationService.invalidateCache();
-        Log.infof("RBAC: role '%s' updated by '%s'.", name, currentUser.getUsername());
+        auditLogger.log("ROLE_UPDATE", name, permissions.size() + " permission(s)");
         return role;
     }
 
@@ -94,7 +97,7 @@ public class ManageRolesUseCase {
 
         roleRepository.delete(role.getId());
         authorizationService.invalidateCache();
-        Log.infof("RBAC: role '%s' deleted by '%s'.", role.getName(), currentUser.getUsername());
+        auditLogger.log("ROLE_DELETE", role.getName(), null);
     }
 
     private Role requireRole(String id) {

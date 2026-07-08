@@ -55,6 +55,7 @@ class UpgradeContainerUseCaseTest {
     @Mock org.eclipse.microprofile.config.Config appConfig;
     @Mock br.com.fzdevx.infrastructure.docker.LogRotationResolver logRotationResolver;
     @Mock ManagedDatabaseUsageTracker usageTracker;
+    @Mock br.com.fzdevx.application.port.AuditLogger auditLogger;
 
     @InjectMocks
     UpgradeContainerUseCase useCase;

@@ -37,6 +37,9 @@ public class DatabaseDumpController {
     DumpStorageService dumpStorageService;
 
     @Inject
+    br.com.fzdevx.application.port.AuditLogger auditLogger;
+
+    @Inject
     DatabaseService databaseService;
 
     @Inject
@@ -225,6 +228,7 @@ public class DatabaseDumpController {
         }
 
         dumpStorageService.deleteDump(id);
+        auditLogger.log("DUMP_DELETE", id, null);
         return Response.ok(Map.of("success", true)).build();
     }
 
@@ -261,6 +265,9 @@ public class DatabaseDumpController {
             }
         }
 
+        if (deleted > 0) {
+            auditLogger.log("DUMP_DELETE", deleted + " dump(s)", null);
+        }
         return Response.ok(Map.of("success", true, "deleted", deleted)).build();
     }
 

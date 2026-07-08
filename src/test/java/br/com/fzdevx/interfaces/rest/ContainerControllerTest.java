@@ -46,6 +46,7 @@ class ContainerControllerTest {
     @Mock MemoryGuardService memoryGuardService;
     @Mock ContainerListBroadcaster broadcaster;
     @Mock Config config;
+    @Mock br.com.fzdevx.application.port.AuditLogger auditLogger;
 
     @InjectMocks
     ContainerController controller;

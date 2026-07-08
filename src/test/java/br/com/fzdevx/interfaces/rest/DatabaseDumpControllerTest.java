@@ -39,6 +39,7 @@ class DatabaseDumpControllerTest {
     @Mock PostRestoreScriptService postRestoreScriptService;
     @Mock AllowedRepositoryResolver allowedRepositoryResolver;
     @Mock ResourceCounterService resourceCounterService;
+    @Mock br.com.fzdevx.application.port.AuditLogger auditLogger;
 
     @InjectMocks
     DatabaseDumpController controller;

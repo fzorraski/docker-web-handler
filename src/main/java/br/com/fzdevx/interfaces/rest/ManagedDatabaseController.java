@@ -35,6 +35,9 @@ import java.util.Optional;
 public class ManagedDatabaseController {
 
     @Inject
+    br.com.fzdevx.application.port.AuditLogger auditLogger;
+
+    @Inject
     @ConfigProperty(name = "database.managed.enabled", defaultValue = "false")
     boolean managedEnabled;
 
@@ -756,6 +759,7 @@ public class ManagedDatabaseController {
         managedDatabaseRepository.delete(repository, databaseName);
         listManagedDatabasesUseCase.invalidateCache(repository);
         resourceCounterService.increment(ResourceCounterService.DATABASES_DELETED);
+        auditLogger.log("DATABASE_DELETE", databaseName, "repository=" + repository);
         return Response.ok(Map.of("success", true)).build();
     }
 
@@ -831,6 +835,7 @@ public class ManagedDatabaseController {
                 databaseService.dropDatabase(repository, name);
                 managedDatabaseRepository.delete(repository, name);
                 resourceCounterService.increment(ResourceCounterService.DATABASES_DELETED);
+                auditLogger.log("DATABASE_DELETE", name, "repository=" + repository);
                 deleted++;
             } catch (Exception e) {
                 Log.errorf("Bulk delete: failed to drop database '%s': %s", name, e.getMessage());

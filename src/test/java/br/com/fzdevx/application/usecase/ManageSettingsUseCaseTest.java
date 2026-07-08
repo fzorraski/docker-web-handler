@@ -1,8 +1,8 @@
 package br.com.fzdevx.application.usecase;
 
+import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.RuntimeSettings;
-import br.com.fzdevx.infrastructure.config.CurrentUser;
 import br.com.fzdevx.infrastructure.config.RuntimeSettingsService;
 import br.com.fzdevx.infrastructure.persistence.JsonFileSettingsRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,10 +42,13 @@ class ManageSettingsUseCaseTest {
         useCase = new ManageSettingsUseCase();
         useCase.settingsRepository = repository;
         useCase.runtimeSettingsService = service;
-        CurrentUser actor = new CurrentUser();
-        actor.set("u1", "root", java.util.Set.of());
-        useCase.currentUser = actor;
+        useCase.auditLogger = NO_OP_AUDIT;
     }
+
+    static final AuditLogger NO_OP_AUDIT = new AuditLogger() {
+        @Override public void log(String action, String target, String detail) { }
+        @Override public void logAs(String actor, String action, String target, String detail) { }
+    };
 
     private static void setField(Object target, String name, Object value) throws Exception {
         Field f = target.getClass().getDeclaredField(name);

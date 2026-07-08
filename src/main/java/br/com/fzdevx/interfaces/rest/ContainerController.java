@@ -1,5 +1,6 @@
 package br.com.fzdevx.interfaces.rest;
 
+import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.domain.model.DockerContainer;
 import br.com.fzdevx.domain.model.HostMemoryStatus;
 import br.com.fzdevx.domain.model.auth.Permission;
@@ -44,6 +45,9 @@ public class ContainerController {
 
     @Inject
     DockerClient dockerClient;
+
+    @Inject
+    AuditLogger auditLogger;
 
     @Inject
     ContainerExpirationService expirationService;
@@ -149,6 +153,7 @@ public class ContainerController {
         try {
             dockerClient.stopContainerCmd(dockerContainer.getContainerId()).exec();
             broadcaster.notifyChange();
+            auditLogger.log("CONTAINER_STOP", dockerContainer.getContainerId(), null);
             return true;
         } catch (Exception e) {
             Log.errorf("Failed to stop container %s: %s", dockerContainer.getContainerId(), e.getMessage());
@@ -177,6 +182,7 @@ public class ContainerController {
             }
             dockerClient.removeContainerCmd(dockerContainer.getContainerId()).exec();
             broadcaster.notifyChange();
+            auditLogger.log("CONTAINER_REMOVE", dockerContainer.getContainerId(), null);
             return true;
         } catch (Exception e) {
             Log.errorf("Failed to remove container %s: %s", dockerContainer.getContainerId(), e.getMessage());
@@ -208,6 +214,7 @@ public class ContainerController {
         try {
             dockerClient.startContainerCmd(dockerContainer.getContainerId()).exec();
             broadcaster.notifyChange();
+            auditLogger.log("CONTAINER_START", dockerContainer.getContainerId(), null);
             return Response.ok(Map.of("success", true), MediaType.APPLICATION_JSON_TYPE).build();
         } catch (Exception e) {
             Log.errorf("Failed to start container %s: %s", dockerContainer.getContainerId(), e.getMessage());

@@ -1,5 +1,6 @@
 package br.com.fzdevx.application.usecase;
 
+import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.application.port.UserRepository;
 import br.com.fzdevx.domain.exception.EntityNotFoundException;
 import br.com.fzdevx.domain.exception.InvalidInputException;
@@ -25,6 +26,9 @@ public class ChangeOwnPasswordUseCase {
     @Inject
     AuthSessionManager sessionManager;
 
+    @Inject
+    AuditLogger auditLogger;
+
     /**
      * Changes the calling user's own password after verifying the current one.
      * All other sessions of the user are invalidated; the session performing
@@ -47,6 +51,6 @@ public class ChangeOwnPasswordUseCase {
         userRepository.save(user);
         authorizationService.invalidateCache();
         sessionManager.invalidateSessionsForUserExcept(userId, currentSessionId);
-        Log.infof("RBAC: user '%s' changed their own password.", user.getUsername());
+        auditLogger.log("PASSWORD_CHANGE", user.getUsername(), null);
     }
 }

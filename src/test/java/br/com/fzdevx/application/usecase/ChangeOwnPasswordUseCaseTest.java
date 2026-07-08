@@ -1,5 +1,6 @@
 package br.com.fzdevx.application.usecase;
 
+import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.domain.exception.EntityNotFoundException;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.auth.BuiltInRoles;
@@ -26,6 +27,7 @@ class ChangeOwnPasswordUseCaseTest {
 
     @TempDir Path tempDir;
     @Mock AuthSessionManager sessionManager;
+    @Mock AuditLogger auditLogger;
 
     ChangeOwnPasswordUseCase useCase;
     JsonFileUserRepository userRepository;
@@ -46,6 +48,7 @@ class ChangeOwnPasswordUseCaseTest {
         useCase.userRepository = userRepository;
         useCase.authorizationService = authorizationService;
         useCase.sessionManager = sessionManager;
+        useCase.auditLogger = auditLogger;
     }
 
     @Test

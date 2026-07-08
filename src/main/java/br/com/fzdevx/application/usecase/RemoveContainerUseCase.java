@@ -1,5 +1,6 @@
 package br.com.fzdevx.application.usecase;
 
+import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.application.port.DockerContainerPort;
 import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.domain.model.ContainerEvent;
@@ -20,6 +21,9 @@ public class RemoveContainerUseCase {
 
     @Inject
     DockerContainerPort dockerContainerPort;
+
+    @Inject
+    AuditLogger auditLogger;
 
     @Inject
     ContainerProtectionService protectionService;
@@ -99,6 +103,8 @@ public class RemoveContainerUseCase {
             }
         }
 
+        auditLogger.log("CONTAINER_REMOVE", containerId,
+                deleteDatabase && databaseName != null ? "database=" + databaseName : null);
         eventSink.accept(ContainerEvent.success("Complete",
                 "Container " + containerId + " removed successfully."));
     }

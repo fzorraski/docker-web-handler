@@ -34,6 +34,7 @@ class RemoveContainerUseCaseTest {
     @Mock ContainerSchedulingService schedulingService;
     @Mock DatabaseService databaseService;
     @Mock ManagedDatabaseRepository managedDatabaseRepository;
+    @Mock br.com.fzdevx.application.port.AuditLogger auditLogger;
 
     @InjectMocks
     RemoveContainerUseCase useCase;

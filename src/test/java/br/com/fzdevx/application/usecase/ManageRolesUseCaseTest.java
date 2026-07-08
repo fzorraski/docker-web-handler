@@ -46,6 +46,7 @@ class ManageRolesUseCaseTest {
         useCase.roleRepository = roleRepository;
         useCase.userRepository = userRepository;
         useCase.authorizationService = authorizationService;
+        useCase.auditLogger = ManageSettingsUseCaseTest.NO_OP_AUDIT;
         actWithPermissions(EnumSet.allOf(Permission.class)); // super admin by default
     }
 

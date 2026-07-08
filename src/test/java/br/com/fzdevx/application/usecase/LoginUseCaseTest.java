@@ -30,6 +30,9 @@ class LoginUseCaseTest {
     @Mock
     UserRepository userRepository;
 
+    @Mock
+    br.com.fzdevx.application.port.AuditLogger auditLogger;
+
     @InjectMocks
     LoginUseCase useCase;
 

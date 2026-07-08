@@ -1,6 +1,7 @@
 package br.com.fzdevx.application.usecase;
 
 import br.com.fzdevx.application.dto.UpgradeContainerRequest;
+import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.application.port.DatabasePort;
 import br.com.fzdevx.application.port.DockerContainerPort;
 import br.com.fzdevx.domain.model.ContainerEvent;
@@ -40,6 +41,7 @@ public class UpgradeContainerUseCase {
 
     @Inject DockerClient dockerClient;
     @Inject DockerContainerPort dockerContainerPort;
+    @Inject AuditLogger auditLogger;
     @Inject RegistryService registryService;
     @Inject ContainerProtectionService protectionService;
     @Inject ContainerExpirationService expirationService;
@@ -304,6 +306,7 @@ public class UpgradeContainerUseCase {
             if (migrationFailed) {
                 successMsg += " Warning: migration did not complete — you may need to run it manually.";
             }
+            auditLogger.log("CONTAINER_UPGRADE", containerName, "image=" + repository + ":" + tag);
             eventSink.accept(ContainerEvent.success("Complete", successMsg));
             broadcaster.notifyChange();
 

@@ -10,12 +10,15 @@ import io.vertx.core.http.HttpServerRequest;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
+import jakarta.ws.rs.container.ContainerResponseContext;
+import jakarta.ws.rs.container.ContainerResponseFilter;
 import jakarta.ws.rs.container.PreMatching;
 import jakarta.ws.rs.core.Cookie;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.Provider;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.jboss.logging.MDC;
 
 import java.util.Map;
 import java.util.Optional;
@@ -23,7 +26,10 @@ import java.util.Set;
 
 @Provider
 @PreMatching
-public class AuthenticationFilter implements ContainerRequestFilter {
+public class AuthenticationFilter implements ContainerRequestFilter, ContainerResponseFilter {
+
+    /** MDC key rendered by the log format so every request log line carries the acting user. */
+    static final String MDC_USER_KEY = "user";
 
     private static final Set<String> ALLOWLISTED_PATHS = Set.of(
             "/auth/login",
@@ -69,9 +75,11 @@ public class AuthenticationFilter implements ContainerRequestFilter {
     @Override
     public void filter(ContainerRequestContext requestContext) {
         String path = requestContext.getUriInfo().getPath();
+        MDC.put(MDC_USER_KEY, "anonymous");
 
         // CI API key auth (independent of app.auth.enabled)
         if (path.startsWith("/ci/")) {
+            MDC.put(MDC_USER_KEY, "ci");
             if (!ciEnabled) {
                 abort(requestContext, 404, "NOT_FOUND", "CI API is not enabled.");
                 return;
@@ -118,7 +126,14 @@ public class AuthenticationFilter implements ContainerRequestFilter {
             }
             var user = resolved.get();
             currentUser.set(user.userId(), user.username(), user.permissions());
+            MDC.put(MDC_USER_KEY, user.username());
         }
+    }
+
+    @Override
+    public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
+        // worker threads are pooled - clear the user so it never leaks into another request's logs
+        MDC.remove(MDC_USER_KEY);
     }
 
     private String extractClientIp() {
