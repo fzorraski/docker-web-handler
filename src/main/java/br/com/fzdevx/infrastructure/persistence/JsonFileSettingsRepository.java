@@ -4,6 +4,7 @@ import br.com.fzdevx.application.port.SettingsRepository;
 import br.com.fzdevx.domain.model.RuntimeSettings;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import jakarta.json.bind.Jsonb;
 import jakarta.json.bind.JsonbBuilder;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -32,6 +33,7 @@ public class JsonFileSettingsRepository implements SettingsRepository {
         this.filePath = null; // CDI proxy constructor
     }
 
+    @Inject
     public JsonFileSettingsRepository(
             @ConfigProperty(name = "rbac.settings.file",
                     defaultValue = "data/settings.json") String filePath) {
