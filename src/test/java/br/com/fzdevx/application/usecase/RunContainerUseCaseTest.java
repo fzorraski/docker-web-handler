@@ -434,6 +434,32 @@ class RunContainerUseCaseTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void execute_happyPath_labelsContainerWithCreator() {
+        stubHappyPath();
+        when(actorResolver.usernameOrSystem()).thenReturn("alice");
+
+        useCase.execute(validRequest(), events::add);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(java.util.Map.class);
+        verify(dockerClient.createContainerCmd(IMAGE_REF)).withLabels(captor.capture());
+        assertEquals("alice", captor.getValue().get(br.com.fzdevx.domain.shared.Constants.CREATED_BY_LABEL));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void execute_happyPath_noIdentity_skipsCreatorLabel() {
+        stubHappyPath();
+        when(actorResolver.usernameOrSystem()).thenReturn(null); // legacy password mode
+
+        useCase.execute(validRequest(), events::add);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(java.util.Map.class);
+        verify(dockerClient.createContainerCmd(IMAGE_REF)).withLabels(captor.capture());
+        assertFalse(captor.getValue().containsKey(br.com.fzdevx.domain.shared.Constants.CREATED_BY_LABEL));
+    }
+
+    @Test
     void execute_happyPathWithTicket_cleansUpTicket() {
         stubHappyPath();
         String ticket = "test-ticket";
