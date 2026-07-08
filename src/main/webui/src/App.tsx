@@ -1,11 +1,13 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Box, CircularProgress } from '@mui/material'
+import { useTranslation } from 'react-i18next'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 import ErrorBoundary from './components/ErrorBoundary'
 import RequirePermission from './components/RequirePermission'
 import { useAuth } from './components/AuthProvider'
+import { useNotification } from './components/NotificationProvider'
 import { P } from './utils/permissions'
 import LoginPage from './pages/LoginPage'
 
@@ -24,7 +26,19 @@ const PageSpinner = () => (
 )
 
 export default function App() {
-  const { authEnabled, authenticated, loading } = useAuth()
+  const { authEnabled, authenticated, loading, refreshUser } = useAuth()
+  const { notify } = useNotification()
+  const { t } = useTranslation()
+
+  // RBAC denial: warn the user and re-fetch permissions (they may have been revoked mid-session)
+  useEffect(() => {
+    const handler = () => {
+      notify(t('errors.forbidden'), 'error')
+      refreshUser()
+    }
+    window.addEventListener('auth:forbidden', handler)
+    return () => window.removeEventListener('auth:forbidden', handler)
+  }, [notify, refreshUser, t])
 
   if (loading) {
     return (

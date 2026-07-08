@@ -1044,6 +1044,10 @@ const ptBR: typeof en = {
     logout: 'Sair',
   },
 
+  errors: {
+    forbidden: 'Você não tem permissão para executar esta ação.',
+  },
+
   admin: {
     title: 'Administração',
     tabs: {

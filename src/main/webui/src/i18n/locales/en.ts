@@ -1042,6 +1042,10 @@ const en = {
     logout: 'Logout',
   },
 
+  errors: {
+    forbidden: 'You do not have permission to perform this action.',
+  },
+
   admin: {
     title: 'Administration',
     tabs: {

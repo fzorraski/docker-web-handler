@@ -1044,6 +1044,10 @@ const es: typeof en = {
     logout: 'Cerrar sesión',
   },
 
+  errors: {
+    forbidden: 'No tiene permiso para realizar esta acción.',
+  },
+
   admin: {
     title: 'Administración',
     tabs: {
