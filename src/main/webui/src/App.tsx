@@ -15,6 +15,7 @@ const DatabasePage = lazy(() => import('./pages/DatabasePage'))
 const SchedulesPage = lazy(() => import('./pages/SchedulesPage'))
 const LogAnalyzerPage = lazy(() => import('./pages/LogAnalyzerPage'))
 const StatsComparisonPage = lazy(() => import('./pages/StatsComparisonPage'))
+const AdminPage = lazy(() => import('./pages/AdminPage'))
 
 const PageSpinner = () => (
   <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
@@ -50,6 +51,7 @@ export default function App() {
               <Route path="/schedules" element={<RequirePermission permission={P.SCHEDULES_VIEW}><SchedulesPage /></RequirePermission>} />
               <Route path="/logs" element={<RequirePermission permission={P.LOGS_VIEW}><LogAnalyzerPage /></RequirePermission>} />
               <Route path="/compare" element={<StatsComparisonPage />} />
+              <Route path="/admin" element={<RequirePermission permission={P.USERS_MANAGE}><AdminPage /></RequirePermission>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>

@@ -4,11 +4,11 @@
 import { useState, useEffect } from 'react'
 import {
   AppBar, Toolbar, Typography, Button, Box, IconButton, Tooltip,
-  Drawer, List, ListItem, ListItemButton, ListItemText, Divider,
-  useMediaQuery, useTheme,
+  Drawer, List, ListItem, ListItemButton, ListItemText, ListItemIcon, Divider,
+  Menu, MenuItem, useMediaQuery, useTheme,
 } from '@mui/material'
 import { Link, useLocation } from 'react-router-dom'
-import { DarkMode, LightMode, Logout, Menu as MenuIcon } from '@mui/icons-material'
+import { DarkMode, LightMode, Logout, Menu as MenuIcon, AccountCircle, Password } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { isDumpEnabled } from '../services/dumpService'
 import { isSchedulingEnabled } from '../services/scheduleService'
@@ -17,16 +17,19 @@ import { useThemeMode } from './ThemeModeProvider'
 import { useAuth } from './AuthProvider'
 import { P } from '../utils/permissions'
 import LanguageSwitcher from './LanguageSwitcher'
+import ChangePasswordDialog from './ChangePasswordDialog'
 
 export default function Navbar() {
   const location = useLocation()
   const { mode, toggleMode } = useThemeMode()
-  const { authEnabled, logout, hasPermission } = useAuth()
+  const { authEnabled, rbacEnabled, currentUser, logout, hasPermission } = useAuth()
   const { t } = useTranslation()
   const [dumpEnabled, setDumpEnabled] = useState(false)
   const [schedulingEnabled, setSchedulingEnabled] = useState(false)
   const [logAnalyzerEnabled, setLogAnalyzerEnabled] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [accountAnchor, setAccountAnchor] = useState<HTMLElement | null>(null)
+  const [changePwOpen, setChangePwOpen] = useState(false)
 
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
@@ -44,6 +47,7 @@ export default function Navbar() {
     ...(dumpEnabled && hasPermission(P.DATABASE_VIEW) ? [{ label: t('navbar.database'), path: '/database' }] : []),
     ...(schedulingEnabled && hasPermission(P.SCHEDULES_VIEW) ? [{ label: t('navbar.schedules'), path: '/schedules' }] : []),
     ...(logAnalyzerEnabled && hasPermission(P.LOGS_VIEW) ? [{ label: t('navbar.logs'), path: '/logs' }] : []),
+    ...(rbacEnabled && hasPermission(P.USERS_MANAGE) ? [{ label: t('navbar.admin'), path: '/admin' }] : []),
   ]
 
   const handleDrawerToggle = () => {
@@ -149,7 +153,21 @@ export default function Navbar() {
                 {mode === 'light' ? <DarkMode /> : <LightMode />}
               </IconButton>
             </Tooltip>
-            {authEnabled && (
+            {authEnabled && rbacEnabled && (
+              <Tooltip title={currentUser?.username ?? t('account.title')} arrow>
+                <IconButton
+                  onClick={(e) => setAccountAnchor(e.currentTarget)}
+                  sx={{
+                    ml: 0.5,
+                    color: isDark ? 'rgba(255,255,255,0.55)' : 'text.secondary',
+                    '&:hover': { color: 'primary.main' },
+                  }}
+                >
+                  <AccountCircle />
+                </IconButton>
+              </Tooltip>
+            )}
+            {authEnabled && !rbacEnabled && (
               <Tooltip title={t('login.logout')} arrow>
                 <IconButton
                   onClick={logout}
@@ -225,7 +243,14 @@ export default function Navbar() {
                 {mode === 'light' ? <DarkMode /> : <LightMode />}
               </IconButton>
             </Tooltip>
-            {authEnabled && (
+            {authEnabled && rbacEnabled && (
+              <Tooltip title={currentUser?.username ?? t('account.title')} arrow>
+                <IconButton onClick={(e) => setAccountAnchor(e.currentTarget)} sx={{ '&:hover': { color: 'primary.main' } }}>
+                  <AccountCircle />
+                </IconButton>
+              </Tooltip>
+            )}
+            {authEnabled && !rbacEnabled && (
               <Tooltip title={t('login.logout')} arrow>
                 <IconButton onClick={logout} sx={{ '&:hover': { color: 'error.main' } }}>
                   <Logout />
@@ -236,6 +261,33 @@ export default function Navbar() {
         </Box>
       </Drawer>
 
+      {/* Account menu (RBAC mode) */}
+      <Menu
+        anchorEl={accountAnchor}
+        open={Boolean(accountAnchor)}
+        onClose={() => setAccountAnchor(null)}
+        slotProps={{ paper: { sx: { minWidth: 200 } } }}
+      >
+        <Box sx={{ px: 2, py: 1 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+            {currentUser?.username}
+          </Typography>
+          {currentUser?.roleName && (
+            <Typography variant="caption" color="text.secondary">{currentUser.roleName}</Typography>
+          )}
+        </Box>
+        <Divider />
+        <MenuItem onClick={() => { setAccountAnchor(null); setChangePwOpen(true) }}>
+          <ListItemIcon><Password fontSize="small" /></ListItemIcon>
+          <ListItemText>{t('account.changePassword')}</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => { setAccountAnchor(null); logout() }}>
+          <ListItemIcon><Logout fontSize="small" color="error" /></ListItemIcon>
+          <ListItemText>{t('login.logout')}</ListItemText>
+        </MenuItem>
+      </Menu>
+
+      <ChangePasswordDialog open={changePwOpen} onClose={() => setChangePwOpen(false)} />
     </>
   )
 }
