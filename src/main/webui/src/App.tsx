@@ -60,7 +60,7 @@ export default function App() {
           <Suspense fallback={<PageSpinner />}>
             <Routes>
               <Route path="/" element={<ContainersPage />} />
-              <Route path="/images" element={<ImagesPage />} />
+              <Route path="/images" element={<RequirePermission permission={P.IMAGES_VIEW}><ImagesPage /></RequirePermission>} />
               <Route path="/database" element={<RequirePermission permission={P.DATABASE_VIEW}><DatabasePage /></RequirePermission>} />
               <Route path="/schedules" element={<RequirePermission permission={P.SCHEDULES_VIEW}><SchedulesPage /></RequirePermission>} />
               <Route path="/logs" element={<RequirePermission permission={P.LOGS_VIEW}><LogAnalyzerPage /></RequirePermission>} />

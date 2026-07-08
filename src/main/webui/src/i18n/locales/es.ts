@@ -1105,6 +1105,7 @@ const es: typeof en = {
     CONTAINERS_VIEW: 'Ver contenedores y estadísticas',
     CONTAINERS_OPERATE: 'Iniciar/detener contenedores y gestionar expiración',
     CONTAINERS_RUN: 'Crear, eliminar y actualizar contenedores',
+    IMAGES_VIEW: 'Ver imágenes',
     IMAGES_MANAGE: 'Eliminar y limpiar imágenes',
     DATABASE_VIEW: 'Ver dumps, snapshots y bases de datos',
     DATABASE_OPERATE: 'Restaurar, eliminar y gestionar bases de datos',

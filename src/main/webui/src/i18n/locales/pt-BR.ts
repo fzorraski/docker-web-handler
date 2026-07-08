@@ -1105,6 +1105,7 @@ const ptBR: typeof en = {
     CONTAINERS_VIEW: 'Ver containers e estatísticas',
     CONTAINERS_OPERATE: 'Iniciar/parar containers e gerenciar expiração',
     CONTAINERS_RUN: 'Criar, remover e atualizar containers',
+    IMAGES_VIEW: 'Ver imagens',
     IMAGES_MANAGE: 'Remover e limpar imagens',
     DATABASE_VIEW: 'Ver dumps, snapshots e bancos de dados',
     DATABASE_OPERATE: 'Restaurar, excluir e gerenciar bancos de dados',

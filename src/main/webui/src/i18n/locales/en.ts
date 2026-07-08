@@ -1103,6 +1103,7 @@ const en = {
     CONTAINERS_VIEW: 'View containers and stats',
     CONTAINERS_OPERATE: 'Start/stop containers and manage expiration',
     CONTAINERS_RUN: 'Create, remove and upgrade containers',
+    IMAGES_VIEW: 'View images',
     IMAGES_MANAGE: 'Remove and prune images',
     DATABASE_VIEW: 'View dumps, snapshots and databases',
     DATABASE_OPERATE: 'Restore, delete and manage databases',

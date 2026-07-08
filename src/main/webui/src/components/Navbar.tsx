@@ -43,7 +43,7 @@ export default function Navbar() {
 
   const navItems = [
     { label: t('navbar.containers'), path: '/' },
-    { label: t('navbar.images'), path: '/images' },
+    ...(hasPermission(P.IMAGES_VIEW) ? [{ label: t('navbar.images'), path: '/images' }] : []),
     ...(dumpEnabled && hasPermission(P.DATABASE_VIEW) ? [{ label: t('navbar.database'), path: '/database' }] : []),
     ...(schedulingEnabled && hasPermission(P.SCHEDULES_VIEW) ? [{ label: t('navbar.schedules'), path: '/schedules' }] : []),
     ...(logAnalyzerEnabled && hasPermission(P.LOGS_VIEW) ? [{ label: t('navbar.logs'), path: '/logs' }] : []),

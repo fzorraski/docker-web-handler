@@ -44,8 +44,9 @@ public final class BuiltInRoles {
     public static Role viewer() {
         return builtIn(VIEWER_ID, "VIEWER",
                 "Read-only access.",
-                EnumSet.of(Permission.CONTAINERS_VIEW, Permission.DATABASE_VIEW,
-                        Permission.SCHEDULES_VIEW, Permission.LOGS_VIEW));
+                EnumSet.of(Permission.CONTAINERS_VIEW, Permission.IMAGES_VIEW,
+                        Permission.DATABASE_VIEW, Permission.SCHEDULES_VIEW,
+                        Permission.LOGS_VIEW));
     }
 
     private static Role builtIn(String id, String name, String description, Set<Permission> permissions) {

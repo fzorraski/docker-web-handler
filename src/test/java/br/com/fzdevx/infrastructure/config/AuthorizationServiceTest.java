@@ -48,8 +48,9 @@ class AuthorizationServiceTest {
         assertEquals("alice", resolved.username());
         assertEquals("VIEWER", resolved.roleName());
         assertTrue(resolved.enabled());
-        assertEquals(Set.of(Permission.CONTAINERS_VIEW, Permission.DATABASE_VIEW,
-                Permission.SCHEDULES_VIEW, Permission.LOGS_VIEW), resolved.permissions());
+        assertEquals(Set.of(Permission.CONTAINERS_VIEW, Permission.IMAGES_VIEW,
+                Permission.DATABASE_VIEW, Permission.SCHEDULES_VIEW,
+                Permission.LOGS_VIEW), resolved.permissions());
     }
 
     @Test

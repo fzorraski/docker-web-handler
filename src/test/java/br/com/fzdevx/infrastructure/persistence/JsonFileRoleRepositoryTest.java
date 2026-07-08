@@ -76,8 +76,9 @@ class JsonFileRoleRepositoryTest {
         assertTrue(BuiltInRoles.admin().hasPermission(Permission.USERS_MANAGE));
         assertFalse(BuiltInRoles.operator().hasPermission(Permission.USERS_MANAGE));
         assertFalse(BuiltInRoles.operator().hasPermission(Permission.SYSTEM_CONFIG));
-        assertEquals(EnumSet.of(Permission.CONTAINERS_VIEW, Permission.DATABASE_VIEW,
-                        Permission.SCHEDULES_VIEW, Permission.LOGS_VIEW),
+        assertEquals(EnumSet.of(Permission.CONTAINERS_VIEW, Permission.IMAGES_VIEW,
+                        Permission.DATABASE_VIEW, Permission.SCHEDULES_VIEW,
+                        Permission.LOGS_VIEW),
                 BuiltInRoles.viewer().getPermissions());
     }
 }

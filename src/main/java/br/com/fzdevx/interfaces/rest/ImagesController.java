@@ -17,7 +17,7 @@ import java.util.Optional;
 
 
 @Path("/images")
-@RequiresPermission(Permission.CONTAINERS_VIEW)
+@RequiresPermission(Permission.IMAGES_VIEW)
 public class ImagesController {
 
     @Inject
