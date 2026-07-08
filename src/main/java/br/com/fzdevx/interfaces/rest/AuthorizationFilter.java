@@ -55,6 +55,11 @@ public class AuthorizationFilter implements ContainerRequestFilter {
             return;
         }
 
+        // empty = any authenticated user (the authentication filter already ran)
+        if (annotation.value().length == 0) {
+            return;
+        }
+
         boolean allowed = Arrays.stream(annotation.value()).anyMatch(currentUser::hasPermission);
         if (!allowed) {
             String required = Arrays.stream(annotation.value()).map(Permission::name)

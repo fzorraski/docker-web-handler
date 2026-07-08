@@ -47,6 +47,9 @@ class AuthorizationFilterTest {
 
         @RequiresPermission({Permission.SCHEDULES_MANAGE, Permission.DATABASE_OPERATE})
         public void anyOfMethod() {}
+
+        @RequiresPermission({})
+        public void anyAuthenticatedUserMethod() {}
     }
 
     static class UnannotatedResource {
@@ -164,6 +167,16 @@ class AuthorizationFilterTest {
     void filter_unannotatedResource_allows() throws Exception {
         givenResource(UnannotatedResource.class, "openMethod");
         currentUser.set("u1", "alice", Set.of());
+
+        filter.filter(requestContext);
+
+        verify(requestContext, never()).abortWith(any());
+    }
+
+    @Test
+    void filter_emptyAnnotation_allowsAnyAuthenticatedUser() throws Exception {
+        givenResource(AnnotatedResource.class, "anyAuthenticatedUserMethod");
+        currentUser.set("u1", "alice", Set.of()); // no permissions at all
 
         filter.filter(requestContext);
 

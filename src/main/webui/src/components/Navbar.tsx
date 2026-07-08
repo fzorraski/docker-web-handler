@@ -38,7 +38,13 @@ export default function Navbar() {
   useEffect(() => {
     isDumpEnabled().then(setDumpEnabled).catch(() => setDumpEnabled(false))
     isSchedulingEnabled().then(setSchedulingEnabled).catch(() => setSchedulingEnabled(false))
-    isLogAnalyzerEnabled().then(setLogAnalyzerEnabled).catch(() => setLogAnalyzerEnabled(false))
+    // the analyzer status endpoint requires LOGS_VIEW; without it the nav entry is hidden anyway
+    if (hasPermission(P.LOGS_VIEW)) {
+      isLogAnalyzerEnabled().then(setLogAnalyzerEnabled).catch(() => setLogAnalyzerEnabled(false))
+    } else {
+      setLogAnalyzerEnabled(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const navItems = [

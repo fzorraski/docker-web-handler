@@ -270,6 +270,8 @@ public class ContainerConfigController {
         return webhookService.isEnabled();
     }
 
+    /** App-wide feature probe used by the whole UI regardless of role, hence no permission required. */
+    @RequiresPermission({})
     @GET
     @Path("/features")
     @Produces(MediaType.APPLICATION_JSON)

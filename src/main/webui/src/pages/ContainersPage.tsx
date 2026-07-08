@@ -114,6 +114,7 @@ export default function ContainersPage() {
   const canViewLogs = hasPermission(P.LOGS_VIEW)
   const canManageSchedules = hasPermission(P.SCHEDULES_MANAGE)
   const canDbOperate = hasPermission(P.DATABASE_OPERATE)
+  const canDbView = hasPermission(P.DATABASE_VIEW)
   const { t } = useTranslation()
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
   const tableRef = useRef<HTMLDivElement>(null)
@@ -262,11 +263,13 @@ export default function ContainersPage() {
   useEffect(() => { refreshMemoryStatus() }, [refreshMemoryStatus, containers])
 
   useEffect(() => {
+    // the active-restores endpoint requires DATABASE_VIEW; skip polling (and 403 noise) without it
+    if (!canDbView) return
     const check = () => getActiveRestores().then(setActiveRestores).catch(() => setActiveRestores([]))
     check()
     const interval = setInterval(check, 3000)
     return () => clearInterval(interval)
-  }, [])
+  }, [canDbView])
 
   useEffect(() => {
     const now = Date.now()

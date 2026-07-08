@@ -31,6 +31,8 @@ public class ScheduleController {
     @Inject
     PasswordValidationService passwordValidationService;
 
+    /** Feature-flag probe: called by the navbar for every user, hence no permission required. */
+    @RequiresPermission({})
     @GET
     @Path("/enabled")
     @Produces(MediaType.APPLICATION_JSON)

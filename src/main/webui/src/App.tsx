@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Box, CircularProgress } from '@mui/material'
 import { useTranslation } from 'react-i18next'
@@ -30,9 +30,14 @@ export default function App() {
   const { notify } = useNotification()
   const { t } = useTranslation()
 
-  // RBAC denial: warn the user and re-fetch permissions (they may have been revoked mid-session)
+  // RBAC denial: warn the user and re-fetch permissions (they may have been revoked mid-session).
+  // Rate-limited so parallel failing calls don't stack toasts.
+  const lastForbiddenAt = useRef(0)
   useEffect(() => {
     const handler = () => {
+      const now = Date.now()
+      if (now - lastForbiddenAt.current < 5000) return
+      lastForbiddenAt.current = now
       notify(t('errors.forbidden'), 'error')
       refreshUser()
     }
