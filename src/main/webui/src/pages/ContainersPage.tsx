@@ -113,6 +113,7 @@ export default function ContainersPage() {
   const canTerminal = hasPermission(P.TERMINAL_ACCESS)
   const canViewLogs = hasPermission(P.LOGS_VIEW)
   const canManageSchedules = hasPermission(P.SCHEDULES_MANAGE)
+  const canViewSchedules = hasPermission(P.SCHEDULES_VIEW)
   const canDbOperate = hasPermission(P.DATABASE_OPERATE)
   const canDbView = hasPermission(P.DATABASE_VIEW)
   const { t } = useTranslation()
@@ -213,6 +214,8 @@ export default function ContainersPage() {
   }
 
   function loadContainerSchedules() {
+    // the schedules list requires SCHEDULES_VIEW; without it the schedule chips just stay hidden
+    if (!canViewSchedules) return
     listSchedules().then((all) => {
       const map = new Map<string, ContainerSchedule[]>()
       for (const s of all) {
