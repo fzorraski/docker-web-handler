@@ -88,7 +88,7 @@ public class ManageRolesUseCase {
         }
         guardSystemConfig(role.getPermissions());
         boolean inUse = userRepository.findAll().stream()
-                .anyMatch(user -> role.getId().equals(user.getRoleId()));
+                .anyMatch(user -> user.hasRole(role.getId()));
         if (inUse) {
             throw new InvalidInputException(
                     "Role '" + role.getName() + "' is assigned to one or more users and cannot be deleted.");

@@ -154,7 +154,7 @@ class AuthenticationFilterTest {
         when(rbacSettings.isRbacEnabled()).thenReturn(true);
         when(sessionManager.getUserIdIfValid("valid")).thenReturn(java.util.Optional.of("user-1"));
         var resolved = new br.com.fzdevx.infrastructure.config.AuthorizationService.ResolvedUser(
-                "user-1", "alice", "role-1", "VIEWER", true,
+                "user-1", "alice", java.util.List.of("role-1"), java.util.List.of("VIEWER"), true,
                 java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_VIEW));
         when(authorizationService.resolve("user-1")).thenReturn(java.util.Optional.of(resolved));
 
@@ -187,7 +187,7 @@ class AuthenticationFilterTest {
         when(rbacSettings.isRbacEnabled()).thenReturn(true);
         when(sessionManager.getUserIdIfValid("valid")).thenReturn(java.util.Optional.of("user-1"));
         var resolved = new br.com.fzdevx.infrastructure.config.AuthorizationService.ResolvedUser(
-                "user-1", "alice", "role-1", "VIEWER", false, java.util.Set.of());
+                "user-1", "alice", java.util.List.of("role-1"), java.util.List.of("VIEWER"), false, java.util.Set.of());
         when(authorizationService.resolve("user-1")).thenReturn(java.util.Optional.of(resolved));
 
         filter.filter(requestContext);

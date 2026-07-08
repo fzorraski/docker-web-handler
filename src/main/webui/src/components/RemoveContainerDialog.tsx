@@ -13,6 +13,8 @@ import {
 } from '@mui/material'
 import { Delete, Warning } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
+import { useAuth } from './AuthProvider'
+import { P } from '../utils/permissions'
 import { getDatabaseConflicts } from '../services/containerService'
 import type { DockerContainer, DatabaseConflict } from '../types'
 
@@ -31,12 +33,14 @@ interface Props {
 
 export default function RemoveContainerDialog({ open, container, dbDeletionEnabled, opsPwRequired, onClose, onConfirm }: Props) {
   const { t } = useTranslation()
+  const { hasPermission } = useAuth()
+  const canDeleteDb = hasPermission(P.DATABASE_DELETE)
   const [deleteDb, setDeleteDb] = useState(false)
   const [password, setPassword] = useState('')
   const [dbConflict, setDbConflict] = useState<DatabaseConflict | null>(null)
   const [error, setError] = useState('')
 
-  const hasDb = !!container?.databaseName && dbDeletionEnabled && !!container?.deleteDatabaseOnExpiration
+  const hasDb = !!container?.databaseName && dbDeletionEnabled && !!container?.deleteDatabaseOnExpiration && canDeleteDb
   const isProtected = dbConflict?.protectedFlag ?? false
   const otherContainers = (dbConflict?.inUseByContainers ?? []).filter(n => n !== container?.names)
 

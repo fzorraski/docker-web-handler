@@ -46,7 +46,7 @@ class AuthorizationServiceTest {
         var resolved = service.resolve(alice.getId()).orElseThrow();
 
         assertEquals("alice", resolved.username());
-        assertEquals("VIEWER", resolved.roleName());
+        assertEquals(java.util.List.of("VIEWER"), resolved.roleNames());
         assertTrue(resolved.enabled());
         assertEquals(Set.of(Permission.CONTAINERS_VIEW, Permission.IMAGES_VIEW,
                 Permission.DATABASE_VIEW, Permission.SCHEDULES_VIEW,
@@ -62,12 +62,25 @@ class AuthorizationServiceTest {
 
     @Test
     void resolve_userWithMissingRole_hasNoPermissions() {
-        alice.setRoleId("deleted-role");
+        alice.setRoleIds(java.util.List.of("deleted-role"));
 
         var resolved = service.resolve(alice.getId()).orElseThrow();
 
         assertTrue(resolved.permissions().isEmpty());
-        assertNull(resolved.roleName());
+        assertTrue(resolved.roleNames().isEmpty());
+    }
+
+    @Test
+    void resolve_multipleRoles_permissionsAreTheUnion() {
+        when(roleRepository.findAll()).thenReturn(List.of(BuiltInRoles.viewer(), BuiltInRoles.admin()));
+        alice.setRoleIds(java.util.List.of(BuiltInRoles.VIEWER_ID, BuiltInRoles.ADMIN_ID));
+        service.invalidateCache();
+
+        var resolved = service.resolve(alice.getId()).orElseThrow();
+
+        assertEquals(java.util.List.of("VIEWER", "ADMIN"), resolved.roleNames());
+        assertTrue(resolved.hasPermission(Permission.USERS_MANAGE), "union must include admin permissions");
+        assertTrue(resolved.hasPermission(Permission.CONTAINERS_VIEW));
     }
 
     @Test

@@ -53,16 +53,16 @@ describe('authService', () => {
       mockFetch.mockReturnValue(jsonResponse({
         rbac: true,
         username: 'alice',
-        roleId: 'builtin-operator',
-        roleName: 'OPERATOR',
+        roleIds: ['builtin-operator'],
+        roleNames: ['OPERATOR'],
         permissions: ['CONTAINERS_VIEW', 'CONTAINERS_RUN'],
       }))
       const user = await getMe()
       expect(mockFetch).toHaveBeenCalledWith('/api/auth/me')
       expect(user).toEqual({
         username: 'alice',
-        roleId: 'builtin-operator',
-        roleName: 'OPERATOR',
+        roleIds: ['builtin-operator'],
+        roleNames: ['OPERATOR'],
         permissions: ['CONTAINERS_VIEW', 'CONTAINERS_RUN'],
       })
     })

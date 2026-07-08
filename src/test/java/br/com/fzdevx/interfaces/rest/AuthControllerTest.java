@@ -264,15 +264,15 @@ class AuthControllerTest {
         Cookie cookie = new Cookie("DWH-SESSION", "valid-id");
         when(sessionManager.getUserIdIfValid("valid-id")).thenReturn(Optional.of("user-1"));
         when(authorizationService.resolve("user-1")).thenReturn(Optional.of(
-                new AuthorizationService.ResolvedUser("user-1", "alice", BuiltInRoles.VIEWER_ID,
-                        "VIEWER", true, java.util.Set.of(Permission.CONTAINERS_VIEW, Permission.LOGS_VIEW))));
+                new AuthorizationService.ResolvedUser("user-1", "alice", java.util.List.of(BuiltInRoles.VIEWER_ID),
+                        java.util.List.of("VIEWER"), true, java.util.Set.of(Permission.CONTAINERS_VIEW, Permission.LOGS_VIEW))));
 
         Response response = controller.getMe(cookie);
 
         assertEquals(200, response.getStatus());
         Map<String, Object> body = (Map<String, Object>) response.getEntity();
         assertEquals("alice", body.get("username"));
-        assertEquals("VIEWER", body.get("roleName"));
+        assertEquals(java.util.List.of("VIEWER"), body.get("roleNames"));
         assertEquals(java.util.List.of("CONTAINERS_VIEW", "LOGS_VIEW"), body.get("permissions"));
     }
 
@@ -289,8 +289,8 @@ class AuthControllerTest {
         Cookie cookie = new Cookie("DWH-SESSION", "valid-id");
         when(sessionManager.getUserIdIfValid("valid-id")).thenReturn(Optional.of("user-1"));
         when(authorizationService.resolve("user-1")).thenReturn(Optional.of(
-                new AuthorizationService.ResolvedUser("user-1", "alice", BuiltInRoles.VIEWER_ID,
-                        "VIEWER", false, java.util.Set.of())));
+                new AuthorizationService.ResolvedUser("user-1", "alice", java.util.List.of(BuiltInRoles.VIEWER_ID),
+                        java.util.List.of("VIEWER"), false, java.util.Set.of())));
 
         assertEquals(401, controller.getMe(cookie).getStatus());
     }

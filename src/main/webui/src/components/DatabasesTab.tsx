@@ -130,6 +130,7 @@ export default function DatabasesTab() {
   const { notify } = useNotification()
   const { rbacEnabled, hasPermission } = useAuth()
   const canDbOperate = hasPermission(P.DATABASE_OPERATE)
+  const canDbDelete = hasPermission(P.DATABASE_DELETE)
   const canRunContainers = hasPermission(P.CONTAINERS_RUN)
   const canViewContainers = hasPermission(P.CONTAINERS_VIEW)
   const { t } = useTranslation()
@@ -873,7 +874,7 @@ export default function DatabasesTab() {
           <MenuItem value="never">{t('database.idleNeverUsed')}</MenuItem>
         </TextField>
         <Box sx={{ flex: 1 }} />
-        {canDbOperate && selected.size > 0 && (
+        {canDbDelete && selected.size > 0 && (
           <Button
             variant="contained"
             color="error"
@@ -893,7 +894,7 @@ export default function DatabasesTab() {
         >
           {t('database.dbHealth.button')}
         </Button>
-        {canDbOperate && (
+        {canDbDelete && (
           <Button
             variant="contained"
             color="warning"
@@ -1139,7 +1140,7 @@ export default function DatabasesTab() {
                     </Tooltip>
                   </TableCell>
                   <TableCell>
-                    {canDbOperate && (
+                    {canDbDelete && (
                       <Tooltip title={db.protectedFlag ? t('database.databaseProtected') : t('common.delete')}>
                         <span>
                           <Button
@@ -1239,8 +1240,8 @@ export default function DatabasesTab() {
               <ListItemText>{menu.target.protectedFlag ? t('database.removeProtection') : t('database.enableProtection')}</ListItemText>
             </MenuItem>
           ),
-          canDbOperate && <Divider key="divider2" />,
-          canDbOperate && (
+          canDbDelete && <Divider key="divider2" />,
+          canDbDelete && (
             <MenuItem
               key="delete"
               disabled={menu.target.protectedFlag}

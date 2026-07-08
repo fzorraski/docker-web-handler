@@ -93,7 +93,7 @@ class ManageUsersUseCaseTest {
         CreateUserRequest request = new CreateUserRequest();
         request.setUsername(username);
         request.setPassword(password);
-        request.setRoleId(roleId);
+        request.setRoleIds(java.util.List.of(roleId));
         return request;
     }
 
@@ -104,7 +104,7 @@ class ManageUsersUseCaseTest {
         UserResponse created = useCase.create(createRequest("alice", "secret1", BuiltInRoles.OPERATOR_ID));
 
         assertEquals("alice", created.username());
-        assertEquals("OPERATOR", created.roleName());
+        assertEquals(java.util.List.of("OPERATOR"), created.roleNames());
         User stored = userRepository.findByUsername("alice").orElseThrow();
         assertNotEquals("secret1", stored.getPasswordHash());
         assertTrue(PasswordHasher.verify("secret1", stored.getPasswordHash()));
@@ -148,12 +148,12 @@ class ManageUsersUseCaseTest {
         userRepository.save(viewer);
 
         UpdateUserRequest request = new UpdateUserRequest();
-        request.setRoleId(BuiltInRoles.OPERATOR_ID);
+        request.setRoleIds(java.util.List.of(BuiltInRoles.OPERATOR_ID));
         request.setEnabled(false);
         useCase.update(viewer.getId(), request);
 
         User updated = userRepository.findById(viewer.getId()).orElseThrow();
-        assertEquals(BuiltInRoles.OPERATOR_ID, updated.getRoleId());
+        assertEquals(java.util.List.of(BuiltInRoles.OPERATOR_ID), updated.getRoleIds());
         assertFalse(updated.isEnabled());
         verify(sessionManager).invalidateSessionsForUser(viewer.getId());
     }
@@ -181,7 +181,7 @@ class ManageUsersUseCaseTest {
         userRepository.save(other);
 
         UpdateUserRequest request = new UpdateUserRequest();
-        request.setRoleId(BuiltInRoles.ADMIN_ID);
+        request.setRoleIds(java.util.List.of(BuiltInRoles.ADMIN_ID));
         assertThrows(InvalidInputException.class, () -> useCase.update(superAdmin.getId(), request));
     }
 
@@ -191,11 +191,11 @@ class ManageUsersUseCaseTest {
         userRepository.save(second);
 
         UpdateUserRequest request = new UpdateUserRequest();
-        request.setRoleId(BuiltInRoles.ADMIN_ID);
+        request.setRoleIds(java.util.List.of(BuiltInRoles.ADMIN_ID));
         useCase.update(second.getId(), request);
 
-        assertEquals(BuiltInRoles.ADMIN_ID,
-                userRepository.findById(second.getId()).orElseThrow().getRoleId());
+        assertEquals(java.util.List.of(BuiltInRoles.ADMIN_ID),
+                userRepository.findById(second.getId()).orElseThrow().getRoleIds());
     }
 
     // ---- resetPassword ----
@@ -268,6 +268,6 @@ class ManageUsersUseCaseTest {
     void list_neverExposesPasswordHashes() {
         var users = useCase.list();
         assertEquals(2, users.size());
-        assertTrue(users.stream().anyMatch(u -> "SUPER_ADMIN".equals(u.roleName())));
+        assertTrue(users.stream().anyMatch(u -> u.roleNames().contains("SUPER_ADMIN")));
     }
 }

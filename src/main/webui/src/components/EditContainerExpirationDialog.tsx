@@ -16,6 +16,8 @@ import {
 import { Timer, Warning, PlayArrow } from '@mui/icons-material'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useTranslation } from 'react-i18next'
+import { useAuth } from './AuthProvider'
+import { P } from '../utils/permissions'
 import ExpirationPicker from './ExpirationPicker'
 import type { DockerContainer, DatabaseConflict } from '../types'
 import { getDatabaseConflicts, validateOperationsPassword, type UpdateExpirationRequest } from '../services/containerService'
@@ -38,6 +40,8 @@ export default function EditContainerExpirationDialog({
   onSave,
 }: Props) {
   const { t } = useTranslation()
+  const { hasPermission } = useAuth()
+  const canDeleteDb = hasPermission(P.DATABASE_DELETE)
   const [enabled, setEnabled] = useState(false)
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(dayjs().add(8, 'hour'))
   const [deleteDbOnExpiration, setDeleteDbOnExpiration] = useState(false)
@@ -51,7 +55,7 @@ export default function EditContainerExpirationDialog({
   const otherContainersUsingDb = (dbConflict?.inUseByContainers ?? []).filter(name => name !== container?.names)
   const hasDbUsageConflict = otherContainersUsingDb.length > 0
   const isAdding = !container?.expiresAt
-  const showDbDeletion = dbDeletionEnabled && !!container?.databaseName && enabled
+  const showDbDeletion = dbDeletionEnabled && !!container?.databaseName && enabled && canDeleteDb
   // DB deletion is being newly enabled (wasn't on before)
   const isEnablingDbDeletion = deleteDbOnExpiration && enabled && !(container?.deleteDatabaseOnExpiration)
 

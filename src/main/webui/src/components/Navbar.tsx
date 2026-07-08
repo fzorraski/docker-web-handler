@@ -278,8 +278,8 @@ export default function Navbar() {
           <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
             {currentUser?.username}
           </Typography>
-          {currentUser?.roleName && (
-            <Typography variant="caption" color="text.secondary">{currentUser.roleName}</Typography>
+          {currentUser && currentUser.roleNames.length > 0 && (
+            <Typography variant="caption" color="text.secondary">{currentUser.roleNames.join(', ')}</Typography>
           )}
         </Box>
         <Divider />

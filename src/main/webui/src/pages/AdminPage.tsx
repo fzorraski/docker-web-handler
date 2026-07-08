@@ -61,13 +61,19 @@ export default function AdminPage() {
     getPermissionCatalog().then(setCatalog).catch(() => setCatalog([]))
   }, [])
 
-  function roleOf(user: AppUser): AppRole | undefined {
-    return roles.find(r => r.id === user.roleId)
+  function rolesOf(user: AppUser): AppRole[] {
+    return user.roleIds
+      .map(id => roles.find(r => r.id === id))
+      .filter((r): r is AppRole => r !== undefined)
+  }
+
+  function holdsSystemConfig(user: AppUser): boolean {
+    return rolesOf(user).some(r => r.permissions.includes(P.SYSTEM_CONFIG))
   }
 
   // acting on a user (or role) that holds SYSTEM_CONFIG requires SYSTEM_CONFIG
   function canActOnUser(user: AppUser): boolean {
-    return canSystemConfig || roleOf(user)?.permissions.includes(P.SYSTEM_CONFIG) !== true
+    return canSystemConfig || !holdsSystemConfig(user)
   }
 
   function canActOnRole(role: AppRole): boolean {
@@ -153,7 +159,7 @@ export default function AdminPage() {
                 <Table aria-label="Users">
                   <TableHead>
                     <TableRow>
-                      {[t('users.username'), t('users.role'), t('users.enabled'), t('users.createdAt'), t('users.lastLogin'), ''].map((label, i) => (
+                      {[t('users.username'), t('users.roles'), t('users.enabled'), t('users.createdAt'), t('users.lastLogin'), ''].map((label, i) => (
                         <TableCell key={i} sx={{ bgcolor: theadBg, color: theadColor, fontWeight: 600 }}>{label}</TableCell>
                       ))}
                     </TableRow>
@@ -165,9 +171,8 @@ export default function AdminPage() {
                       </TableRow>
                     )}
                     {!loading && users.map((u) => {
-                      const role = roleOf(u)
                       const actionable = canActOnUser(u)
-                      const superAdmin = role?.permissions.includes(P.SYSTEM_CONFIG) === true
+                      const superAdmin = holdsSystemConfig(u)
                       return (
                         <TableRow key={u.id} hover>
                           <TableCell sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
@@ -182,7 +187,17 @@ export default function AdminPage() {
                             </Box>
                           </TableCell>
                           <TableCell>
-                            <Chip label={u.roleName ?? u.roleId} size="small" variant="outlined" color={superAdmin ? 'warning' : 'default'} />
+                            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                              {rolesOf(u).map((r) => (
+                                <Chip
+                                  key={r.id}
+                                  label={r.name}
+                                  size="small"
+                                  variant="outlined"
+                                  color={r.permissions.includes(P.SYSTEM_CONFIG) ? 'warning' : 'default'}
+                                />
+                              ))}
+                            </Box>
                           </TableCell>
                           <TableCell>
                             <Switch
@@ -262,7 +277,7 @@ export default function AdminPage() {
                       </TableRow>
                     )}
                     {!loading && roles.map((r) => {
-                      const usedBy = users.filter(u => u.roleId === r.id).length
+                      const usedBy = users.filter(u => u.roleIds.includes(r.id)).length
                       const editable = canActOnRole(r)
                       return (
                         <TableRow key={r.id} hover>

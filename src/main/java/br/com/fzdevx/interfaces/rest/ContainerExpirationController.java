@@ -39,6 +39,9 @@ public class ContainerExpirationController {
     DockerClient dockerClient;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.CurrentUser currentUser;
+
+    @Inject
     ContainerExpirationService expirationService;
 
     @Inject
@@ -180,6 +183,12 @@ public class ContainerExpirationController {
         }
 
         if (request.deleteDatabaseOnExpiration) {
+            // scheduling a database drop needs the dedicated delete permission
+            if (!currentUser.hasPermission(Permission.DATABASE_DELETE)) {
+                return Response.status(Response.Status.FORBIDDEN)
+                        .entity(Map.of("code", "FORBIDDEN",
+                                "message", "You do not have permission to perform this action.")).build();
+            }
             if (expiresInstant == null) {
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", "Cannot enable database deletion without expiration.")).build();

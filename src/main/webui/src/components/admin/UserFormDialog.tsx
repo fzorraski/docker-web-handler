@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField,
-  MenuItem, FormControlLabel, Switch, Alert, CircularProgress,
+  MenuItem, FormControlLabel, Switch, Alert, CircularProgress, Checkbox,
+  ListItemText, Chip, Box,
 } from '@mui/material'
 import { PersonAdd, Edit } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
@@ -26,7 +27,7 @@ export default function UserFormDialog({ open, onClose, onSaved, roles, user, ca
   const isEdit = user !== null
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [roleId, setRoleId] = useState('')
+  const [roleIds, setRoleIds] = useState<string[]>([])
   const [enabled, setEnabled] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -41,25 +42,27 @@ export default function UserFormDialog({ open, onClose, onSaved, roles, user, ca
     if (open) {
       setUsername(user?.username ?? '')
       setPassword('')
-      setRoleId(user?.roleId ?? '')
+      setRoleIds(user?.roleIds ?? [])
       setEnabled(user?.enabled ?? true)
       setError(null)
     }
   }, [open, user])
 
+  const roleName = (id: string) => roles.find(r => r.id === id)?.name ?? id
+
   const passwordTooShort = !isEdit && password.length > 0 && password.length < MIN_PASSWORD_LENGTH
   const canSave = isEdit
-    ? roleId !== ''
-    : username.trim().length >= 3 && password.length >= MIN_PASSWORD_LENGTH && roleId !== ''
+    ? roleIds.length > 0
+    : username.trim().length >= 3 && password.length >= MIN_PASSWORD_LENGTH && roleIds.length > 0
 
   async function handleSave() {
     setSaving(true)
     setError(null)
     try {
       if (isEdit) {
-        await updateUser(user.id, { roleId, enabled })
+        await updateUser(user.id, { roleIds, enabled })
       } else {
-        await createUser({ username: username.trim(), password, roleId })
+        await createUser({ username: username.trim(), password, roleIds })
       }
       onSaved()
       onClose()
@@ -102,14 +105,33 @@ export default function UserFormDialog({ open, onClose, onSaved, roles, user, ca
         )}
         <TextField
           select
-          label={t('users.role')}
-          value={roleId}
-          onChange={(e) => setRoleId(e.target.value)}
+          label={t('users.roles')}
+          value={roleIds}
+          onChange={(e) => {
+            const value = e.target.value as unknown
+            setRoleIds(Array.isArray(value) ? value : [String(value)])
+          }}
           size="small"
           fullWidth
+          helperText={t('users.rolesHint')}
+          slotProps={{
+            select: {
+              multiple: true,
+              renderValue: (selected) => (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {(selected as string[]).map((id) => (
+                    <Chip key={id} label={roleName(id)} size="small" />
+                  ))}
+                </Box>
+              ),
+            },
+          }}
         >
           {assignableRoles.map((r) => (
-            <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>
+            <MenuItem key={r.id} value={r.id}>
+              <Checkbox size="small" checked={roleIds.includes(r.id)} sx={{ py: 0 }} />
+              <ListItemText primary={r.name} secondary={r.description || undefined} />
+            </MenuItem>
           ))}
         </TextField>
         {isEdit && (

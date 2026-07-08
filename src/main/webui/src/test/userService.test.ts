@@ -18,7 +18,7 @@ beforeEach(() => {
 
 describe('userService', () => {
   it('lists users', async () => {
-    const users = [{ id: 'u1', username: 'alice', roleId: 'builtin-admin', roleName: 'ADMIN', enabled: true, createdAt: null, lastLoginAt: null }]
+    const users = [{ id: 'u1', username: 'alice', roleIds: ['builtin-admin'], roleNames: ['ADMIN'], enabled: true, createdAt: null, lastLoginAt: null }]
     mockFetch.mockReturnValue(jsonResponse(users))
     expect(await listUsers()).toEqual(users)
     expect(mockFetch).toHaveBeenCalledWith('/api/users')
@@ -26,21 +26,21 @@ describe('userService', () => {
 
   it('creates a user with POST', async () => {
     mockFetch.mockReturnValue(jsonResponse({ id: 'u2', username: 'bob' }))
-    await createUser({ username: 'bob', password: 'secret1', roleId: 'builtin-viewer' })
+    await createUser({ username: 'bob', password: 'secret1', roleIds: ['builtin-viewer'] })
     expect(mockFetch).toHaveBeenCalledWith('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'bob', password: 'secret1', roleId: 'builtin-viewer' }),
+      body: JSON.stringify({ username: 'bob', password: 'secret1', roleIds: ['builtin-viewer'] }),
     })
   })
 
   it('updates role and enabled with PUT', async () => {
     mockFetch.mockReturnValue(jsonResponse({ id: 'u1' }))
-    await updateUser('u1', { roleId: 'builtin-operator', enabled: false })
+    await updateUser('u1', { roleIds: ['builtin-operator'], enabled: false })
     expect(mockFetch).toHaveBeenCalledWith('/api/users/u1', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roleId: 'builtin-operator', enabled: false }),
+      body: JSON.stringify({ roleIds: ['builtin-operator'], enabled: false }),
     })
   })
 

@@ -9,8 +9,8 @@ const OPTS = { forbiddenEvent: false }
 export interface AppUser {
   id: string
   username: string
-  roleId: string
-  roleName: string | null
+  roleIds: string[]
+  roleNames: string[]
   enabled: boolean
   createdAt: string | null
   lastLoginAt: string | null
@@ -21,7 +21,7 @@ export async function listUsers(): Promise<AppUser[]> {
   return handleJsonResponse(res)
 }
 
-export async function createUser(request: { username: string; password: string; roleId: string }): Promise<AppUser> {
+export async function createUser(request: { username: string; password: string; roleIds: string[] }): Promise<AppUser> {
   const res = await fetchWithAuth(API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -30,7 +30,7 @@ export async function createUser(request: { username: string; password: string; 
   return handleJsonResponse(res)
 }
 
-export async function updateUser(id: string, request: { roleId?: string; enabled?: boolean }): Promise<AppUser> {
+export async function updateUser(id: string, request: { roleIds?: string[]; enabled?: boolean }): Promise<AppUser> {
   const res = await fetchWithAuth(`${API}/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

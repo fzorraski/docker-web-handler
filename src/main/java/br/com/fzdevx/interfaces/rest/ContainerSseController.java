@@ -39,6 +39,9 @@ public class ContainerSseController {
     RequestStash requestStash;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.CurrentUser currentUser;
+
+    @Inject
     RunContainerUseCase runContainerUseCase;
 
     @Inject
@@ -266,6 +269,12 @@ public class ContainerSseController {
                     .entity(Map.of("error", "Invalid container ID.")).build();
         }
         if (request.isDeleteDatabase()) {
+            // dropping the database alongside the container needs the dedicated delete permission
+            if (!currentUser.hasPermission(Permission.DATABASE_DELETE)) {
+                return jakarta.ws.rs.core.Response.status(403)
+                        .entity(Map.of("code", "FORBIDDEN",
+                                "message", "You do not have permission to perform this action.")).build();
+            }
             if (request.getRepository() == null || InputValidator.validateRepository(request.getRepository()).isPresent()) {
                 return jakarta.ws.rs.core.Response.status(400)
                         .entity(Map.of("error", "Invalid repository.")).build();

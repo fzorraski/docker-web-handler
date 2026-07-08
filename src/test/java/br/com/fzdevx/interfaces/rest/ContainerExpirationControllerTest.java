@@ -47,6 +47,12 @@ class ContainerExpirationControllerTest {
     @InjectMocks
     ContainerExpirationController controller;
 
+    @org.junit.jupiter.api.BeforeEach
+    void injectCurrentUser() {
+        // real instance: outside RBAC it grants everything (legacy behavior)
+        controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+    }
+
     private DockerContainer req(String id) {
         DockerContainer dc = new DockerContainer();
         dc.setContainerId(id);

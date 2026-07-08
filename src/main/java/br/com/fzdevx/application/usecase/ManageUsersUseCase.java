@@ -53,10 +53,9 @@ public class ManageUsersUseCase {
     AuditLogger auditLogger;
 
     public List<UserResponse> list() {
-        Map<String, Role> rolesById = roleRepository.findAll().stream()
-                .collect(Collectors.toMap(Role::getId, Function.identity()));
+        Map<String, Role> rolesById = rolesById();
         return userRepository.findAll().stream()
-                .map(user -> UserResponse.of(user, rolesById.get(user.getRoleId())))
+                .map(user -> UserResponse.of(user, rolesById))
                 .toList();
     }
 
@@ -67,27 +66,30 @@ public class ManageUsersUseCase {
                     "Username must be 3-50 characters (letters, digits, '.', '_' or '-').");
         }
         validatePassword(request.getPassword());
-        Role role = requireRole(request.getRoleId());
-        guardRoleAssignment(role);
+        List<Role> roles = requireRoles(request.getRoleIds());
+        roles.forEach(this::guardRoleAssignment);
         if (userRepository.findByUsername(username).isPresent()) {
             throw new DuplicateEntityException("A user named '" + username + "' already exists.");
         }
 
-        User user = new User(username, PasswordHasher.hash(request.getPassword()), role.getId());
+        User user = new User(username, PasswordHasher.hash(request.getPassword()),
+                roles.stream().map(Role::getId).toList());
         userRepository.save(user);
         authorizationService.invalidateCache();
-        auditLogger.log("USER_CREATE", username, "role=" + role.getName());
-        return UserResponse.of(user, role);
+        auditLogger.log("USER_CREATE", username, "roles=" + roleNames(roles));
+        return UserResponse.of(user, rolesById());
     }
 
     public UserResponse update(String id, UpdateUserRequest request) {
         User user = requireUser(id);
         guardTargetUser(user);
 
-        Role role = requireRole(request.getRoleId() != null ? request.getRoleId() : user.getRoleId());
+        List<Role> newRoles = request.getRoleIds() != null
+                ? requireRoles(request.getRoleIds())
+                : requireRoles(user.getRoleIds());
         boolean disabling = Boolean.FALSE.equals(request.getEnabled()) && user.isEnabled();
-        boolean demoting = !role.hasPermission(Permission.SYSTEM_CONFIG)
-                && roleHoldsSystemConfig(user.getRoleId());
+        boolean demoting = newRoles.stream().noneMatch(r -> r.hasPermission(Permission.SYSTEM_CONFIG))
+                && anyRoleHoldsSystemConfig(user.getRoleIds());
 
         if (disabling && user.getId().equals(currentUser.getUserId())) {
             throw new InvalidInputException("You cannot disable your own account.");
@@ -95,9 +97,9 @@ public class ManageUsersUseCase {
         if ((disabling || demoting) && isLastSuperAdmin(user)) {
             throw new InvalidInputException("Cannot remove the last enabled super admin.");
         }
-        if (request.getRoleId() != null) {
-            guardRoleAssignment(role);
-            user.setRoleId(role.getId());
+        if (request.getRoleIds() != null) {
+            newRoles.forEach(this::guardRoleAssignment);
+            user.setRoleIds(newRoles.stream().map(Role::getId).toList());
         }
         if (request.getEnabled() != null) {
             user.setEnabled(request.getEnabled());
@@ -109,8 +111,8 @@ public class ManageUsersUseCase {
             sessionManager.invalidateSessionsForUser(user.getId());
         }
         auditLogger.log("USER_UPDATE", user.getUsername(),
-                "role=" + role.getName() + " enabled=" + user.isEnabled());
-        return UserResponse.of(user, role);
+                "roles=" + roleNames(newRoles) + " enabled=" + user.isEnabled());
+        return UserResponse.of(user, rolesById());
     }
 
     public void resetPassword(String id, String newPassword) {
@@ -154,17 +156,29 @@ public class ManageUsersUseCase {
                 .orElseThrow(() -> new EntityNotFoundException("User not found."));
     }
 
-    private Role requireRole(String roleId) {
-        if (roleId == null || roleId.isBlank()) {
-            throw new InvalidInputException("A role is required.");
+    private List<Role> requireRoles(List<String> roleIds) {
+        if (roleIds == null || roleIds.isEmpty()) {
+            throw new InvalidInputException("At least one role is required.");
         }
-        return roleRepository.findById(roleId)
-                .orElseThrow(() -> new EntityNotFoundException("Role not found."));
+        return roleIds.stream()
+                .distinct()
+                .map(id -> roleRepository.findById(id)
+                        .orElseThrow(() -> new EntityNotFoundException("Role not found.")))
+                .toList();
+    }
+
+    private Map<String, Role> rolesById() {
+        return roleRepository.findAll().stream()
+                .collect(Collectors.toMap(Role::getId, Function.identity()));
+    }
+
+    private static String roleNames(List<Role> roles) {
+        return roles.stream().map(Role::getName).collect(Collectors.joining(","));
     }
 
     /** Managing a user who holds SYSTEM_CONFIG requires the actor to hold it too. */
     private void guardTargetUser(User target) {
-        if (roleHoldsSystemConfig(target.getRoleId())
+        if (anyRoleHoldsSystemConfig(target.getRoleIds())
                 && !currentUser.hasPermission(Permission.SYSTEM_CONFIG)) {
             throw new AccessDeniedException("Only a super admin can manage super admin accounts.");
         }
@@ -178,10 +192,10 @@ public class ManageUsersUseCase {
         }
     }
 
-    private boolean roleHoldsSystemConfig(String roleId) {
-        return roleRepository.findById(roleId)
+    private boolean anyRoleHoldsSystemConfig(List<String> roleIds) {
+        return roleIds.stream().anyMatch(roleId -> roleRepository.findById(roleId)
                 .map(r -> r.hasPermission(Permission.SYSTEM_CONFIG))
-                .orElse(false);
+                .orElse(false));
     }
 
     /** True if this user is the only enabled user whose role holds SYSTEM_CONFIG. */
@@ -191,12 +205,12 @@ public class ManageUsersUseCase {
                 .filter(r -> r.hasPermission(Permission.SYSTEM_CONFIG))
                 .map(Role::getId)
                 .collect(Collectors.toSet());
-        if (!target.isEnabled() || !superAdminRoleIds.contains(target.getRoleId())) {
+        if (!target.isEnabled() || target.getRoleIds().stream().noneMatch(superAdminRoleIds::contains)) {
             return false;
         }
         return userRepository.findAll().stream()
                 .filter(User::isEnabled)
-                .filter(u -> superAdminRoleIds.contains(u.getRoleId()))
+                .filter(u -> u.getRoleIds().stream().anyMatch(superAdminRoleIds::contains))
                 .allMatch(u -> u.getId().equals(target.getId()));
     }
 }

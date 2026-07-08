@@ -1,12 +1,14 @@
 package br.com.fzdevx.application.dto;
 
+import java.util.List;
+
 public class UpdateUserRequest {
 
-    private String roleId;
+    private List<String> roleIds;
     private Boolean enabled;
 
-    public String getRoleId() { return roleId; }
-    public void setRoleId(String roleId) { this.roleId = roleId; }
+    public List<String> getRoleIds() { return roleIds; }
+    public void setRoleIds(List<String> roleIds) { this.roleIds = roleIds; }
 
     public Boolean getEnabled() { return enabled; }
     public void setEnabled(Boolean enabled) { this.enabled = enabled; }

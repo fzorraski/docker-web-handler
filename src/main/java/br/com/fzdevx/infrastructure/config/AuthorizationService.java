@@ -8,7 +8,9 @@ import br.com.fzdevx.domain.model.auth.User;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -32,7 +34,7 @@ public class AuthorizationService {
     @Inject
     RoleRepository roleRepository;
 
-    public record ResolvedUser(String userId, String username, String roleId, String roleName,
+    public record ResolvedUser(String userId, String username, List<String> roleIds, List<String> roleNames,
                                boolean enabled, Set<Permission> permissions) {
 
         public boolean hasPermission(Permission permission) {
@@ -54,12 +56,19 @@ public class AuthorizationService {
         if (user == null) {
             return Optional.empty();
         }
-        Role role = snap.rolesById().get(user.getRoleId());
-        Set<Permission> permissions = role == null || role.getPermissions().isEmpty()
-                ? Set.of()
-                : EnumSet.copyOf(role.getPermissions());
-        return Optional.of(new ResolvedUser(user.getId(), user.getUsername(), user.getRoleId(),
-                role != null ? role.getName() : null, user.isEnabled(), permissions));
+        // permissions are the union of all assigned roles; deleted roles are skipped
+        Set<Permission> permissions = EnumSet.noneOf(Permission.class);
+        List<String> roleNames = new ArrayList<>();
+        for (String roleId : user.getRoleIds()) {
+            Role role = snap.rolesById().get(roleId);
+            if (role != null) {
+                permissions.addAll(role.getPermissions());
+                roleNames.add(role.getName());
+            }
+        }
+        return Optional.of(new ResolvedUser(user.getId(), user.getUsername(),
+                List.copyOf(user.getRoleIds()), List.copyOf(roleNames),
+                user.isEnabled(), permissions.isEmpty() ? Set.of() : permissions));
     }
 
     public boolean hasPermission(String userId, Permission permission) {

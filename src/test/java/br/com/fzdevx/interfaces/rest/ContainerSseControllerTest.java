@@ -44,7 +44,31 @@ class ContainerSseControllerTest {
     @InjectMocks
     ContainerSseController controller;
 
+    @org.junit.jupiter.api.BeforeEach
+    void injectCurrentUser() {
+        // real instance: outside RBAC it grants everything (legacy behavior)
+        controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+    }
+
     // ---- prepareRemove ----
+
+    @org.junit.jupiter.api.Test
+    void prepareRemove_withDeleteDatabase_withoutDatabaseDeletePermission_returns403() {
+        var rbacUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        rbacUser.set("u1", "alice", java.util.Set.of(
+                br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_RUN));
+        controller.currentUser = rbacUser;
+
+        RemoveContainerRequest req = new RemoveContainerRequest();
+        req.setContainerId("abc123def456");
+        req.setDeleteDatabase(true);
+        req.setRepository("myapp");
+        req.setDatabaseName("mydb");
+
+        Response res = controller.prepareRemove(req);
+
+        assertEquals(403, res.getStatus());
+    }
 
     @Test
     void prepareRemove_invalidContainerId_returns400() {

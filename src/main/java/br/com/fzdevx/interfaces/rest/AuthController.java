@@ -86,8 +86,8 @@ public class AuthController {
                         "rbac", true,
                         "userId", user.userId(),
                         "username", user.username(),
-                        "roleId", user.roleId() != null ? user.roleId() : "",
-                        "roleName", user.roleName() != null ? user.roleName() : "",
+                        "roleIds", user.roleIds(),
+                        "roleNames", user.roleNames(),
                         "permissions", user.permissions().stream().map(Enum::name).sorted().toList()
                 )).build())
                 .orElseGet(() -> Response.status(Response.Status.UNAUTHORIZED)

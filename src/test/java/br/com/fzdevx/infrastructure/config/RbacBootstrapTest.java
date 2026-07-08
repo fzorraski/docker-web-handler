@@ -52,7 +52,7 @@ class RbacBootstrapTest {
         assertTrue(roleRepository.findById(BuiltInRoles.SUPER_ADMIN_ID).isPresent());
 
         User admin = userRepository.findByUsername("admin").orElseThrow();
-        assertEquals(BuiltInRoles.SUPER_ADMIN_ID, admin.getRoleId());
+        assertEquals(java.util.List.of(BuiltInRoles.SUPER_ADMIN_ID), admin.getRoleIds());
         assertTrue(admin.isEnabled());
         assertTrue(PasswordHasher.verify("bootstrap-pw", admin.getPasswordHash()));
     }

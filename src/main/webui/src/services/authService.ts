@@ -9,8 +9,8 @@ export interface AuthStatus {
 
 export interface CurrentUser {
   username: string
-  roleId: string
-  roleName: string
+  roleIds: string[]
+  roleNames: string[]
   permissions: string[]
 }
 
@@ -34,8 +34,8 @@ export async function getMe(): Promise<CurrentUser | null> {
   if (!data.rbac) return null
   return {
     username: data.username ?? '',
-    roleId: data.roleId ?? '',
-    roleName: data.roleName ?? '',
+    roleIds: Array.isArray(data.roleIds) ? data.roleIds : [],
+    roleNames: Array.isArray(data.roleNames) ? data.roleNames : [],
     permissions: Array.isArray(data.permissions) ? data.permissions : [],
   }
 }

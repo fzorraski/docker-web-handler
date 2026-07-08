@@ -15,11 +15,13 @@ import static org.junit.jupiter.api.Assertions.*;
 class JsonFileUserRepositoryTest {
 
     @TempDir Path tempDir;
+    Path file;
     JsonFileUserRepository repo;
 
     @BeforeEach
     void setUp() {
-        repo = new JsonFileUserRepository(tempDir.resolve("users.json").toString());
+        file = tempDir.resolve("users.json");
+        repo = new JsonFileUserRepository(file.toString());
     }
 
     @Test
@@ -34,7 +36,7 @@ class JsonFileUserRepositoryTest {
         User found = reloaded.findById(user.getId()).orElseThrow();
         assertEquals("alice", found.getUsername());
         assertEquals("pbkdf2-sha256$210000$c2FsdA==$aGFzaA==", found.getPasswordHash());
-        assertEquals(BuiltInRoles.ADMIN_ID, found.getRoleId());
+        assertEquals(java.util.List.of(BuiltInRoles.ADMIN_ID), found.getRoleIds());
         assertTrue(found.isEnabled());
         assertNotNull(found.getCreatedAt());
         assertEquals(Instant.parse("2026-07-01T10:00:00Z"), found.getLastLoginAt());
@@ -44,13 +46,13 @@ class JsonFileUserRepositoryTest {
     void save_updatesExistingUserById() {
         User user = new User("alice", "hash1", BuiltInRoles.VIEWER_ID);
         repo.save(user);
-        user.setRoleId(BuiltInRoles.OPERATOR_ID);
+        user.setRoleIds(java.util.List.of(BuiltInRoles.OPERATOR_ID));
         user.setEnabled(false);
         repo.save(user);
 
         assertEquals(1, repo.findAll().size());
         User found = repo.findById(user.getId()).orElseThrow();
-        assertEquals(BuiltInRoles.OPERATOR_ID, found.getRoleId());
+        assertEquals(java.util.List.of(BuiltInRoles.OPERATOR_ID), found.getRoleIds());
         assertFalse(found.isEnabled());
     }
 
@@ -77,5 +79,22 @@ class JsonFileUserRepositoryTest {
         repo.save(new User("alice", "hash", BuiltInRoles.VIEWER_ID));
         repo.save(new User("bob", "hash", BuiltInRoles.VIEWER_ID));
         assertEquals(2, repo.count());
+    }
+
+    @Test
+    void read_legacySingleRoleFile_migratesToRoleIds() throws Exception {
+        // users.json written before roles became a list
+        java.nio.file.Files.writeString(file,
+                "[{\"id\":\"u1\",\"username\":\"legacy\",\"passwordHash\":\"hash\","
+                        + "\"roleId\":\"" + BuiltInRoles.OPERATOR_ID + "\",\"enabled\":true}]");
+
+        User found = repo.findByUsername("legacy").orElseThrow();
+        assertEquals(java.util.List.of(BuiltInRoles.OPERATOR_ID), found.getRoleIds());
+
+        // saving rewrites the file in the new format, without the legacy key
+        repo.save(found);
+        String rewritten = java.nio.file.Files.readString(file);
+        assertTrue(rewritten.contains("roleIds"));
+        assertFalse(rewritten.contains("\"roleId\""));
     }
 }

@@ -1,6 +1,8 @@
 package br.com.fzdevx.domain.model.auth;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -9,7 +11,7 @@ public class User {
     private String id;
     private String username;
     private String passwordHash;
-    private String roleId;
+    private List<String> roleIds = new ArrayList<>();
     private boolean enabled;
     private Instant createdAt;
     private Instant updatedAt;
@@ -19,10 +21,14 @@ public class User {
     }
 
     public User(String username, String passwordHash, String roleId) {
+        this(username, passwordHash, List.of(Objects.requireNonNull(roleId)));
+    }
+
+    public User(String username, String passwordHash, List<String> roleIds) {
         this.id = UUID.randomUUID().toString();
         this.username = Objects.requireNonNull(username);
         this.passwordHash = Objects.requireNonNull(passwordHash);
-        this.roleId = Objects.requireNonNull(roleId);
+        this.roleIds = new ArrayList<>(Objects.requireNonNull(roleIds));
         this.enabled = true;
         this.createdAt = Instant.now();
         this.updatedAt = this.createdAt;
@@ -37,8 +43,21 @@ public class User {
     public String getPasswordHash() { return passwordHash; }
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
 
-    public String getRoleId() { return roleId; }
-    public void setRoleId(String roleId) { this.roleId = roleId; }
+    public List<String> getRoleIds() { return roleIds; }
+    public void setRoleIds(List<String> roleIds) { this.roleIds = roleIds == null ? new ArrayList<>() : new ArrayList<>(roleIds); }
+
+    public boolean hasRole(String roleId) { return roleIds.contains(roleId); }
+
+    /**
+     * Legacy pre-multi-role field, write-only: consumed by JSON-B when reading
+     * a users.json written before roles became a list. Has no getter, so it is
+     * never serialized back - files migrate to "roleIds" on the next save.
+     */
+    public void setRoleId(String roleId) {
+        if (roleId != null && !roleIds.contains(roleId)) {
+            roleIds.add(roleId);
+        }
+    }
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
