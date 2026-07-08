@@ -199,10 +199,12 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
     })
   }, [])
 
-  // SSE connection
   useEffect(() => {
+    // probe lazily on open: the dialog is always mounted, and the status endpoint needs LOGS_VIEW
+    if (!open || !hasPermission(P.LOGS_VIEW)) return
     isLogAnalyzerEnabled().then(setAnalyzerEnabled).catch(() => setAnalyzerEnabled(false))
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   useEffect(() => {
     if (!open || !containerId) return
