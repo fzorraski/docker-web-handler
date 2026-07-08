@@ -44,6 +44,9 @@ public class RuntimeSettingsService {
     @ConfigProperty(name = "app.auth.session-timeout-minutes", defaultValue = "480")
     int sessionTimeoutMinutesDefault;
 
+    @ConfigProperty(name = "audit.retention-days", defaultValue = "0")
+    int auditRetentionDaysDefault;
+
     private volatile RuntimeSettings cached;
 
     public boolean isTerminalEnabled() {
@@ -81,6 +84,12 @@ public class RuntimeSettingsService {
         return override != null ? override : sessionTimeoutMinutesDefault;
     }
 
+    /** Audit entries older than this many days are deleted; 0 keeps them forever. */
+    public int getAuditRetentionDays() {
+        Integer override = overrides().getAuditRetentionDays();
+        return override != null ? override : auditRetentionDaysDefault;
+    }
+
     /** Effective settings with metadata, for the admin Settings UI. */
     public List<Map<String, Object>> describe() {
         RuntimeSettings overrides = overrides();
@@ -99,6 +108,8 @@ public class RuntimeSettingsService {
                 logAnalyzerEnabledDefault, overrides.getLogAnalyzerEnabled() != null));
         settings.add(entry("sessionTimeoutMinutes", "integer", getSessionTimeoutMinutes(),
                 sessionTimeoutMinutesDefault, overrides.getSessionTimeoutMinutes() != null));
+        settings.add(entry("auditRetentionDays", "integer", getAuditRetentionDays(),
+                auditRetentionDaysDefault, overrides.getAuditRetentionDays() != null));
         return settings;
     }
 

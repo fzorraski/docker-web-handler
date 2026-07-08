@@ -5,6 +5,7 @@ import br.com.fzdevx.application.port.SettingsRepository;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.RuntimeSettings;
 import br.com.fzdevx.infrastructure.config.RuntimeSettingsService;
+import br.com.fzdevx.infrastructure.persistence.AuditRetentionService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -26,6 +27,9 @@ public class ManageSettingsUseCase {
     @Inject
     AuditLogger auditLogger;
 
+    @Inject
+    AuditRetentionService auditRetentionService;
+
     public List<Map<String, Object>> describe() {
         return runtimeSettingsService.describe();
     }
@@ -42,6 +46,9 @@ public class ManageSettingsUseCase {
         settingsRepository.save(settings);
         runtimeSettingsService.invalidate();
         auditLogger.log("SETTINGS_UPDATE", String.join(",", changes.keySet()), null);
+        if (changes.containsKey("auditRetentionDays")) {
+            auditRetentionService.cleanupNow();
+        }
         return runtimeSettingsService.describe();
     }
 
@@ -64,6 +71,8 @@ public class ManageSettingsUseCase {
             case "terminalUploadMaxSizeMb" -> settings.setTerminalUploadMaxSizeMb(asInteger(key, value));
             case "logAnalyzerEnabled" -> settings.setLogAnalyzerEnabled(asBoolean(key, value));
             case "sessionTimeoutMinutes" -> settings.setSessionTimeoutMinutes(asInteger(key, value));
+            // 0 = keep audit entries forever
+            case "auditRetentionDays" -> settings.setAuditRetentionDays(asInteger(key, value, 0));
             default -> throw new InvalidInputException("Unknown setting: " + key);
         }
     }
@@ -75,13 +84,17 @@ public class ManageSettingsUseCase {
     }
 
     private Integer asInteger(String key, Object value) {
+        return asInteger(key, value, MIN_INT_VALUE);
+    }
+
+    private Integer asInteger(String key, Object value, int minValue) {
         if (value == null) return null;
         if (value instanceof Number number) {
             double raw = number.doubleValue();
             int intValue = number.intValue();
-            if (raw != intValue || intValue < MIN_INT_VALUE || intValue > MAX_INT_VALUE) {
+            if (raw != intValue || intValue < minValue || intValue > MAX_INT_VALUE) {
                 throw new InvalidInputException("Setting '" + key + "' expects an integer between "
-                        + MIN_INT_VALUE + " and " + MAX_INT_VALUE + ".");
+                        + minValue + " and " + MAX_INT_VALUE + ".");
             }
             return intValue;
         }

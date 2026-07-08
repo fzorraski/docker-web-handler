@@ -1151,6 +1151,7 @@ const es: typeof en = {
       terminalUploadMaxSizeMb: 'Tamaño máximo de subida del terminal (MB)',
       logAnalyzerEnabled: 'Analizador de logs habilitado',
       sessionTimeoutMinutes: 'Tiempo de expiración de sesión (minutos)',
+      auditRetentionDays: 'Retención del log de auditoría (días, 0 = conservar siempre)',
     },
   },
   logAnalyzer: {

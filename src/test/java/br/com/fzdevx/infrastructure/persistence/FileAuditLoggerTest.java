@@ -90,6 +90,31 @@ class FileAuditLoggerTest {
     }
 
     @Test
+    void removeEntriesOlderThan_dropsOldKeepsRecentAndUnparsable() throws Exception {
+        Files.writeString(auditFile, String.join("\n",
+                "{\"timestamp\":\"2020-01-01T00:00:00Z\",\"user\":\"old\",\"action\":\"LOGIN\",\"target\":\"session\"}",
+                "not-a-json-line",
+                "{\"timestamp\":\"2099-01-01T00:00:00Z\",\"user\":\"future\",\"action\":\"LOGIN\",\"target\":\"session\"}") + "\n");
+
+        int removed = auditLogger.removeEntriesOlderThan(java.time.Instant.parse("2021-01-01T00:00:00Z"));
+
+        assertEquals(1, removed);
+        List<String> lines = Files.readAllLines(auditFile);
+        assertEquals(2, lines.size());
+        assertEquals("not-a-json-line", lines.get(0));
+        assertTrue(lines.get(1).contains("\"user\":\"future\""));
+    }
+
+    @Test
+    void removeEntriesOlderThan_missingFileOrNothingToRemove_isNoOp() throws Exception {
+        assertEquals(0, auditLogger.removeEntriesOlderThan(java.time.Instant.now()));
+
+        auditLogger.logAs("alice", "LOGIN", "session", null);
+        assertEquals(0, auditLogger.removeEntriesOlderThan(java.time.Instant.parse("2000-01-01T00:00:00Z")));
+        assertEquals(1, Files.readAllLines(auditFile).size());
+    }
+
+    @Test
     void log_createsParentDirectories() throws Exception {
         auditLogger.file = tempDir.resolve("nested/dir/audit.log").toString();
 

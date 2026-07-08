@@ -1151,6 +1151,7 @@ const ptBR: typeof en = {
       terminalUploadMaxSizeMb: 'Tamanho máximo de envio do terminal (MB)',
       logAnalyzerEnabled: 'Analisador de logs habilitado',
       sessionTimeoutMinutes: 'Tempo de expiração da sessão (minutos)',
+      auditRetentionDays: 'Retenção do log de auditoria (dias, 0 = manter para sempre)',
     },
   },
   logAnalyzer: {

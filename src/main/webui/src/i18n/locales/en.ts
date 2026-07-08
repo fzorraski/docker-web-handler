@@ -1149,6 +1149,7 @@ const en = {
       terminalUploadMaxSizeMb: 'Terminal upload max size (MB)',
       logAnalyzerEnabled: 'Log analyzer enabled',
       sessionTimeoutMinutes: 'Session timeout (minutes)',
+      auditRetentionDays: 'Audit log retention (days, 0 = keep forever)',
     },
   },
 

@@ -15,6 +15,7 @@ public class RuntimeSettings {
     private Integer terminalUploadMaxSizeMb;
     private Boolean logAnalyzerEnabled;
     private Integer sessionTimeoutMinutes;
+    private Integer auditRetentionDays;
 
     public Boolean getTerminalEnabled() { return terminalEnabled; }
     public void setTerminalEnabled(Boolean terminalEnabled) { this.terminalEnabled = terminalEnabled; }
@@ -36,4 +37,7 @@ public class RuntimeSettings {
 
     public Integer getSessionTimeoutMinutes() { return sessionTimeoutMinutes; }
     public void setSessionTimeoutMinutes(Integer sessionTimeoutMinutes) { this.sessionTimeoutMinutes = sessionTimeoutMinutes; }
+
+    public Integer getAuditRetentionDays() { return auditRetentionDays; }
+    public void setAuditRetentionDays(Integer auditRetentionDays) { this.auditRetentionDays = auditRetentionDays; }
 }

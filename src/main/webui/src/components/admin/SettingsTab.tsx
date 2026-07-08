@@ -76,7 +76,8 @@ export default function SettingsTab() {
           const draft = drafts[s.key]
           const draftValue = draft !== undefined ? draft : String(s.value)
           const changed = s.type === 'integer' && draft !== undefined && draft !== String(s.value)
-          const draftValid = /^\d+$/.test(draftValue) && Number(draftValue) > 0
+          // 0 is meaningful for some settings (e.g. audit retention = keep forever); the backend enforces per-key minimums
+          const draftValid = /^\d+$/.test(draftValue) && Number(draftValue) >= 0
           const busy = savingKey === s.key
           return (
             <Box key={s.key}>

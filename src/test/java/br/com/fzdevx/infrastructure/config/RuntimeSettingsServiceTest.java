@@ -40,6 +40,7 @@ class RuntimeSettingsServiceTest {
         service.terminalUploadMaxSizeMbDefault = 100;
         service.logAnalyzerEnabledDefault = false;
         service.sessionTimeoutMinutesDefault = 480;
+        service.auditRetentionDaysDefault = 0;
     }
 
     @Test
@@ -51,6 +52,7 @@ class RuntimeSettingsServiceTest {
         assertEquals(100, service.getTerminalUploadMaxSizeMb());
         assertFalse(service.isLogAnalyzerEnabled());
         assertEquals(480, service.getSessionTimeoutMinutes());
+        assertEquals(0, service.getAuditRetentionDays());
     }
 
     @Test
@@ -87,7 +89,7 @@ class RuntimeSettingsServiceTest {
 
         List<Map<String, Object>> described = service.describe();
 
-        assertEquals(7, described.size());
+        assertEquals(8, described.size());
         Map<String, Object> maxSessions = described.stream()
                 .filter(e -> "terminalMaxSessions".equals(e.get("key")))
                 .findFirst().orElseThrow();

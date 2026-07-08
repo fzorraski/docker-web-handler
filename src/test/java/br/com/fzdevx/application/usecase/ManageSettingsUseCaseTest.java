@@ -4,6 +4,8 @@ import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.RuntimeSettings;
 import br.com.fzdevx.infrastructure.config.RuntimeSettingsService;
+import br.com.fzdevx.infrastructure.persistence.AuditRetentionService;
+import br.com.fzdevx.infrastructure.persistence.FileAuditLogger;
 import br.com.fzdevx.infrastructure.persistence.JsonFileSettingsRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +26,8 @@ class ManageSettingsUseCaseTest {
     ManageSettingsUseCase useCase;
     JsonFileSettingsRepository repository;
     RuntimeSettingsService service;
+    FileAuditLogger fileAuditLogger;
+    Path auditFile;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -38,11 +42,22 @@ class ManageSettingsUseCaseTest {
         setField(service, "terminalUploadMaxSizeMbDefault", 100);
         setField(service, "logAnalyzerEnabledDefault", false);
         setField(service, "sessionTimeoutMinutesDefault", 480);
+        setField(service, "auditRetentionDaysDefault", 0);
+
+        auditFile = tempDir.resolve("audit.log");
+        fileAuditLogger = new FileAuditLogger();
+        setField(fileAuditLogger, "enabled", true);
+        setField(fileAuditLogger, "file", auditFile.toString());
+
+        AuditRetentionService retentionService = new AuditRetentionService();
+        setField(retentionService, "runtimeSettingsService", service);
+        setField(retentionService, "fileAuditLogger", fileAuditLogger);
 
         useCase = new ManageSettingsUseCase();
         useCase.settingsRepository = repository;
         useCase.runtimeSettingsService = service;
         useCase.auditLogger = NO_OP_AUDIT;
+        useCase.auditRetentionService = retentionService;
     }
 
     static final AuditLogger NO_OP_AUDIT = new AuditLogger() {
@@ -121,5 +136,31 @@ class ManageSettingsUseCaseTest {
     @Test
     void reset_unknownKey_throws() {
         assertThrows(InvalidInputException.class, () -> useCase.reset("nope"));
+    }
+
+    @Test
+    void update_auditRetentionDays_acceptsZeroMeaningKeepForever() {
+        useCase.update(Map.of("auditRetentionDays", new BigDecimal("0")));
+
+        assertEquals(0, service.getAuditRetentionDays());
+    }
+
+    @Test
+    void update_auditRetentionDays_rejectsNegative() {
+        assertThrows(InvalidInputException.class,
+                () -> useCase.update(Map.of("auditRetentionDays", new BigDecimal("-1"))));
+    }
+
+    @Test
+    void update_auditRetentionDays_triggersImmediateCleanup() throws Exception {
+        java.nio.file.Files.writeString(auditFile,
+                "{\"timestamp\":\"2020-01-01T00:00:00Z\",\"user\":\"old\",\"action\":\"LOGIN\",\"target\":\"session\"}\n");
+        fileAuditLogger.logAs("recent", "LOGIN", "session", null);
+
+        useCase.update(Map.of("auditRetentionDays", new BigDecimal("90")));
+
+        var lines = java.nio.file.Files.readAllLines(auditFile);
+        assertEquals(1, lines.size());
+        assertTrue(lines.get(0).contains("\"user\":\"recent\""));
     }
 }
