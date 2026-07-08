@@ -41,6 +41,7 @@ export default function SchedulesPage() {
   const { notify, confirm } = useNotification()
   const { hasPermission } = useAuth()
   const canManageSchedules = hasPermission(P.SCHEDULES_MANAGE)
+  const canViewContainers = hasPermission(P.CONTAINERS_VIEW)
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
   const tableRef = useRef<HTMLDivElement>(null)
   useStickyHeader(tableRef)
@@ -73,8 +74,12 @@ export default function SchedulesPage() {
 
   useEffect(() => {
     loadSchedules()
-    getContainers().then(setContainers).catch(() => setContainers([]))
+    // container names feed the create-schedule modal; the list endpoint needs CONTAINERS_VIEW
+    if (canViewContainers) {
+      getContainers().then(setContainers).catch(() => setContainers([]))
+    }
     getFeatures().then(f => setPwRequired(f.schedulingPasswordRequired)).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadSchedules])
 
   const activeCount = useMemo(() => schedules.filter(s => s.enabled).length, [schedules])

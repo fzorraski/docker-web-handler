@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { Box, CircularProgress } from '@mui/material'
+import { Alert, Box, CircularProgress } from '@mui/material'
 import { useTranslation } from 'react-i18next'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
@@ -24,6 +24,32 @@ const PageSpinner = () => (
     <CircularProgress />
   </Box>
 )
+
+/**
+ * Home route resolver: '/' is also where RequirePermission sends denied users,
+ * so it must never render a page whose data the user cannot load. Falls through
+ * to the first page the role can view; with no view permission at all it shows
+ * a friendly notice instead of a broken page firing 403s.
+ */
+function HomeRoute() {
+  const { hasPermission } = useAuth()
+  const { t } = useTranslation()
+
+  if (hasPermission(P.CONTAINERS_VIEW)) return <ContainersPage />
+  const fallback = [
+    { permission: P.IMAGES_VIEW, path: '/images' },
+    { permission: P.DATABASE_VIEW, path: '/database' },
+    { permission: P.SCHEDULES_VIEW, path: '/schedules' },
+    { permission: P.LOGS_VIEW, path: '/logs' },
+    { permission: P.USERS_MANAGE, path: '/admin' },
+  ].find(({ permission }) => hasPermission(permission))
+  if (fallback) return <Navigate to={fallback.path} replace />
+  return (
+    <Box sx={{ maxWidth: 480, mx: 'auto', mt: 10 }}>
+      <Alert severity="warning">{t('errors.noPagePermissions')}</Alert>
+    </Box>
+  )
+}
 
 export default function App() {
   const { authEnabled, authenticated, loading, refreshUser } = useAuth()
@@ -64,12 +90,12 @@ export default function App() {
         <ErrorBoundary>
           <Suspense fallback={<PageSpinner />}>
             <Routes>
-              <Route path="/" element={<ContainersPage />} />
+              <Route path="/" element={<HomeRoute />} />
               <Route path="/images" element={<RequirePermission permission={P.IMAGES_VIEW}><ImagesPage /></RequirePermission>} />
               <Route path="/database" element={<RequirePermission permission={P.DATABASE_VIEW}><DatabasePage /></RequirePermission>} />
               <Route path="/schedules" element={<RequirePermission permission={P.SCHEDULES_VIEW}><SchedulesPage /></RequirePermission>} />
               <Route path="/logs" element={<RequirePermission permission={P.LOGS_VIEW}><LogAnalyzerPage /></RequirePermission>} />
-              <Route path="/compare" element={<StatsComparisonPage />} />
+              <Route path="/compare" element={<RequirePermission permission={P.LOGS_VIEW}><StatsComparisonPage /></RequirePermission>} />
               <Route path="/admin" element={<RequirePermission permission={P.USERS_MANAGE}><AdminPage /></RequirePermission>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

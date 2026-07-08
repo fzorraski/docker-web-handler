@@ -1044,6 +1044,7 @@ const en = {
 
   errors: {
     forbidden: 'You do not have permission to perform this action.',
+    noPagePermissions: 'Your role has no view permissions. Ask an administrator to grant you access.',
   },
 
   admin: {

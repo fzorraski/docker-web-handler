@@ -131,6 +131,7 @@ export default function DatabasesTab() {
   const { rbacEnabled, hasPermission } = useAuth()
   const canDbOperate = hasPermission(P.DATABASE_OPERATE)
   const canRunContainers = hasPermission(P.CONTAINERS_RUN)
+  const canViewContainers = hasPermission(P.CONTAINERS_VIEW)
   const { t } = useTranslation()
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
   const tableRef = useRef<HTMLDivElement>(null)
@@ -247,8 +248,12 @@ export default function DatabasesTab() {
     if (!currentRepo) return
     loadDatabases()
     isMigrationEnabled().then(setMigrationEnabled).catch(() => setMigrationEnabled(false))
-    getMigratedDatabases().then(setMigratedDatabases).catch(() => setMigratedDatabases([]))
+    // migration badges come from a CONTAINERS_VIEW endpoint; skip them for database-only roles
+    if (canViewContainers) {
+      getMigratedDatabases().then(setMigratedDatabases).catch(() => setMigratedDatabases([]))
+    }
     isQueryEnabled(currentRepo).then(r => { setQueryFeatureEnabled(r.enabled); setQueryWriteEnabled(r.writeEnabled); setQueryStatsResetEnabled(r.queryStatsResetEnabled) }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentRepo, loadDatabases])
 
   // Auto-refresh every 60s

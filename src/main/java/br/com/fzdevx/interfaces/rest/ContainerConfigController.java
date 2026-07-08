@@ -166,6 +166,8 @@ public class ContainerConfigController {
         return result;
     }
 
+    /** Also used by the dump upload/restore flows, which only hold DATABASE permissions. */
+    @RequiresPermission({Permission.CONTAINERS_VIEW, Permission.DATABASE_VIEW})
     @GET
     @Path("/default-expiration-minutes")
     @Produces(MediaType.APPLICATION_JSON)
@@ -242,6 +244,8 @@ public class ContainerConfigController {
         return databaseService.isDeletionOnExpirationEnabled();
     }
 
+    /** Also used by the dump restore/snapshot flows, which only hold DATABASE permissions. */
+    @RequiresPermission({Permission.CONTAINERS_VIEW, Permission.DATABASE_VIEW})
     @GET
     @Path("/repository-has-databases")
     @Produces(MediaType.APPLICATION_JSON)
@@ -256,6 +260,8 @@ public class ContainerConfigController {
         return databaseService.hasDatabaseConfig(repository);
     }
 
+    /** Feature-flag probe used by container and database flows alike. */
+    @RequiresPermission({})
     @GET
     @Path("/migration-enabled")
     @Produces(MediaType.APPLICATION_JSON)
@@ -263,6 +269,8 @@ public class ContainerConfigController {
         return migrationService.isEnabled();
     }
 
+    /** Feature-flag probe used by container and database flows alike. */
+    @RequiresPermission({})
     @GET
     @Path("/webhook-enabled")
     @Produces(MediaType.APPLICATION_JSON)
@@ -326,6 +334,8 @@ public class ContainerConfigController {
         return jakarta.ws.rs.core.Response.ok(Map.of("ticket", ticket)).build();
     }
 
+    /** Validates a capability password; used by container and database flows, so any authenticated user may call it. */
+    @RequiresPermission({})
     @POST
     @Path("/validate-operations-password")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -395,6 +405,8 @@ public class ContainerConfigController {
         return migrationService.getMigratedDatabases();
     }
 
+    /** Also used by the dump restore flow, which only holds DATABASE permissions. */
+    @RequiresPermission({Permission.CONTAINERS_VIEW, Permission.DATABASE_VIEW})
     @GET
     @Path("/migration-api-available")
     @Produces(MediaType.APPLICATION_JSON)
@@ -409,6 +421,8 @@ public class ContainerConfigController {
         return migrationService.isApiAvailable(repository);
     }
 
+    /** Also used by the restore/snapshot target pickers, which only hold DATABASE permissions. */
+    @RequiresPermission({Permission.CONTAINERS_VIEW, Permission.DATABASE_VIEW})
     @GET
     @Path("/repository-databases")
     @Produces(MediaType.APPLICATION_JSON)

@@ -53,6 +53,8 @@ public class ContainerExpirationController {
     @Inject
     DatabaseService databaseService;
 
+    /** Also used by the dump restore flow, which only holds DATABASE permissions. */
+    @RequiresPermission({Permission.CONTAINERS_VIEW, Permission.DATABASE_VIEW})
     @GET
     @Path("/database-conflicts")
     @Produces(MediaType.APPLICATION_JSON)

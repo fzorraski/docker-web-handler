@@ -48,7 +48,7 @@ export default function Navbar() {
   }, [])
 
   const navItems = [
-    { label: t('navbar.containers'), path: '/' },
+    ...(hasPermission(P.CONTAINERS_VIEW) ? [{ label: t('navbar.containers'), path: '/' }] : []),
     ...(hasPermission(P.IMAGES_VIEW) ? [{ label: t('navbar.images'), path: '/images' }] : []),
     ...(dumpEnabled && hasPermission(P.DATABASE_VIEW) ? [{ label: t('navbar.database'), path: '/database' }] : []),
     ...(schedulingEnabled && hasPermission(P.SCHEDULES_VIEW) ? [{ label: t('navbar.schedules'), path: '/schedules' }] : []),

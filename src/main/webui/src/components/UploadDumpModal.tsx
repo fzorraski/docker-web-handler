@@ -67,10 +67,12 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
   ]
 
   useEffect(() => {
+    // fetch lazily on open: the modal component is always mounted by DatabasePage
+    if (!open) return
     getDefaultExpirationMinutes()
       .then(setDefaultExpMinutes)
       .catch(() => {})
-  }, [])
+  }, [open])
 
   function resetForm() {
     setPassword('')

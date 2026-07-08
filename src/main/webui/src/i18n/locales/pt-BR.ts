@@ -1046,6 +1046,7 @@ const ptBR: typeof en = {
 
   errors: {
     forbidden: 'Você não tem permissão para executar esta ação.',
+    noPagePermissions: 'Seu papel não possui permissões de visualização. Solicite acesso a um administrador.',
   },
 
   admin: {

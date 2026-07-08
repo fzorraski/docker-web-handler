@@ -31,6 +31,8 @@ import {
   Analytics,
 } from '@mui/icons-material'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from './AuthProvider'
+import { P } from '../utils/permissions'
 import { isLogAnalyzerEnabled, analyzeContainerLogs } from '../services/logAnalyzerService'
 import { List, useListRef, type RowComponentProps } from 'react-window'
 import { useTranslation } from 'react-i18next'
@@ -149,6 +151,8 @@ function VirtualRow({ index, style, logs, search, highlightedIndex, theme: lt }:
 
 export default function ContainerLogsDialog({ open, containerId, containerName, onClose }: Props) {
   const { t } = useTranslation()
+  const { hasPermission } = useAuth()
+  const canAnalyze = hasPermission(P.LOGS_ANALYZE)
   const muiTheme = useTheme()
   const isDark = muiTheme.palette.mode === 'dark'
   const lt = useMemo(() => getLogTheme(isDark), [isDark])
@@ -841,7 +845,7 @@ export default function ContainerLogsDialog({ open, containerId, containerName, 
       </DialogContent>
 
       <DialogActions sx={{ px: 3, py: 2 }}>
-        {analyzerEnabled && (
+        {analyzerEnabled && canAnalyze && (
           <Tooltip title={t('containers.logs.deepAnalysisTooltip')} arrow>
             <span>
               <Button

@@ -1046,6 +1046,7 @@ const es: typeof en = {
 
   errors: {
     forbidden: 'No tiene permiso para realizar esta acción.',
+    noPagePermissions: 'Su rol no tiene permisos de visualización. Solicite acceso a un administrador.',
   },
 
   admin: {

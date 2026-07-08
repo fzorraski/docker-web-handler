@@ -15,6 +15,8 @@ import {
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
 import { useNotification } from '../components/NotificationProvider'
+import { useAuth } from '../components/AuthProvider'
+import { P } from '../utils/permissions'
 import { useSseOperation } from '../hooks/useSseOperation'
 import OperationProgress, { LOG_ANALYSIS_STEPS, LOG_COMPOSE_STEPS } from '../components/OperationProgress'
 import { prepareLogAnalysis, streamLogAnalysis, cancelLogAnalysis, prepareComposeAnalysis, streamComposeAnalysis, cancelComposeAnalysis, subscribeLogAnalysisUpdates, setLogAnalysisViewing } from '../services/sseService'
@@ -73,6 +75,8 @@ function formatTimeRange(start: string, end: string): string {
 export default function LogAnalyzerPage() {
   const { t } = useTranslation()
   const { notify } = useNotification()
+  const { hasPermission } = useAuth()
+  const canAnalyze = hasPermission(P.LOGS_ANALYZE)
   const theme = useTheme()
   const clientTokenRef = useRef(
     typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function'
@@ -567,8 +571,9 @@ export default function LogAnalyzerPage() {
       )}
 
       {/* ================================================================
-          UPLOAD ZONE — simple drag & drop target
+          UPLOAD ZONE — simple drag & drop target (requires LOGS_ANALYZE)
           ================================================================ */}
+      {canAnalyze && (
       <Paper
         elevation={0}
         onDragEnter={handleDragEnter}
@@ -636,6 +641,7 @@ export default function LogAnalyzerPage() {
           </Stack>
         )}
       </Paper>
+      )}
 
       {/* Upload progress dialog */}
       <Dialog open={uploadProgress >= 0} maxWidth="xs" fullWidth>
@@ -787,10 +793,12 @@ export default function LogAnalyzerPage() {
                             sx={{ height: 22, '& .MuiChip-label': { px: 0.5, fontSize: '0.7rem' } }} />
                         </Tooltip>
                       )}
-                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteClick(a.id, filenames) }}
-                        sx={{ p: 0.3 }}>
-                        <DeleteForever sx={{ fontSize: 18 }} color="error" />
-                      </IconButton>
+                      {canAnalyze && (
+                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleDeleteClick(a.id, filenames) }}
+                          sx={{ p: 0.3 }}>
+                          <DeleteForever sx={{ fontSize: 18 }} color="error" />
+                        </IconButton>
+                      )}
                     </Stack>
                   </Stack>
 
