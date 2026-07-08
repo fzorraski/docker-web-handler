@@ -12,6 +12,8 @@ import {
 } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useNotification } from '../components/NotificationProvider'
+import { useAuth } from '../components/AuthProvider'
+import { P } from '../utils/permissions'
 import HeroBanner from '../components/HeroBanner'
 import CreateScheduleModal from '../components/CreateScheduleModal'
 import PasswordConfirmDialog from '../components/PasswordConfirmDialog'
@@ -37,6 +39,8 @@ type PendingAction =
 export default function SchedulesPage() {
   const { t } = useTranslation()
   const { notify, confirm } = useNotification()
+  const { hasPermission } = useAuth()
+  const canManageSchedules = hasPermission(P.SCHEDULES_MANAGE)
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
   const tableRef = useRef<HTMLDivElement>(null)
   useStickyHeader(tableRef)
@@ -255,14 +259,16 @@ export default function SchedulesPage() {
       <Box sx={{ maxWidth: { xs: '95%', md: '90%', lg: '85%' }, mx: 'auto', mt: 5, mb: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h4" fontWeight="bold">{t('schedules.title')}</Typography>
-          <Button
-            variant="contained"
-            color="success"
-            startIcon={<AddCircleOutline />}
-            onClick={() => setModalOpen(true)}
-          >
-            {t('schedules.newSchedule')}
-          </Button>
+          {canManageSchedules && (
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<AddCircleOutline />}
+              onClick={() => setModalOpen(true)}
+            >
+              {t('schedules.newSchedule')}
+            </Button>
+          )}
         </Box>
 
         <Alert severity="info" icon={<Science />} variant="outlined" sx={{ mb: 3 }}>
@@ -318,7 +324,7 @@ export default function SchedulesPage() {
               },
             }}
           />
-          {selected.size > 0 && (
+          {canManageSchedules && selected.size > 0 && (
             <Button
               variant="contained"
               color="error"
@@ -557,7 +563,7 @@ export default function SchedulesPage() {
                           checked={s.enabled}
                           size="small"
                           onChange={() => handleToggleClick(s.id, s.name)}
-                          disabled={!s.enabled && s.scheduleType === 'ONE_TIME' && !!s.lastExecutedAt}
+                          disabled={!canManageSchedules || (!s.enabled && s.scheduleType === 'ONE_TIME' && !!s.lastExecutedAt)}
                         />
                       </span>
                     </Tooltip>
@@ -585,18 +591,20 @@ export default function SchedulesPage() {
                   </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', gap: 0.25 }}>
-                      {s.enabled && (
+                      {canManageSchedules && s.enabled && (
                         <Tooltip title={t('schedules.executeNow')}>
                           <IconButton size="small" color="primary" onClick={() => handleExecuteNowClick(s.id, s.name)}>
                             <PlayArrow />
                           </IconButton>
                         </Tooltip>
                       )}
-                      <Tooltip title={t('common.delete')}>
-                        <IconButton size="small" color="error" onClick={() => handleDeleteClick(s.id, s.name)}>
-                          <Delete />
-                        </IconButton>
-                      </Tooltip>
+                      {canManageSchedules && (
+                        <Tooltip title={t('common.delete')}>
+                          <IconButton size="small" color="error" onClick={() => handleDeleteClick(s.id, s.name)}>
+                            <Delete />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                     </Box>
                   </TableCell>
                 </TableRow>
@@ -628,7 +636,7 @@ export default function SchedulesPage() {
         }}
       >
         {contextSchedule && [
-          contextSchedule.enabled && (
+          canManageSchedules && contextSchedule.enabled && (
             <MenuItem
               key="execute"
               onClick={() => {
@@ -640,18 +648,20 @@ export default function SchedulesPage() {
               <ListItemText>{t('schedules.executeNow')}</ListItemText>
             </MenuItem>
           ),
-          contextSchedule.enabled && <Divider key="divider" />,
-          <MenuItem
-            key="delete"
-            onClick={() => {
-              handleDeleteClick(contextSchedule.id, contextSchedule.name)
-              setContextMenuPos(null); setContextSchedule(null)
-            }}
-            sx={{ color: 'error.main' }}
-          >
-            <ListItemIcon><Delete fontSize="small" color="error" /></ListItemIcon>
-            <ListItemText>{t('common.delete')}</ListItemText>
-          </MenuItem>,
+          canManageSchedules && contextSchedule.enabled && <Divider key="divider" />,
+          canManageSchedules && (
+            <MenuItem
+              key="delete"
+              onClick={() => {
+                handleDeleteClick(contextSchedule.id, contextSchedule.name)
+                setContextMenuPos(null); setContextSchedule(null)
+              }}
+              sx={{ color: 'error.main' }}
+            >
+              <ListItemIcon><Delete fontSize="small" color="error" /></ListItemIcon>
+              <ListItemText>{t('common.delete')}</ListItemText>
+            </MenuItem>
+          ),
         ]}
       </Menu>
 

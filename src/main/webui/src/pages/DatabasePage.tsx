@@ -5,6 +5,7 @@ import { listSnapshots, deleteSnapshot, deleteSnapshotsBulk, getSnapshotStorageI
 import { isManagedDatabasesEnabled } from '../services/managedDatabaseService'
 import { useNotification } from '../components/NotificationProvider'
 import { useAuth } from '../components/AuthProvider'
+import { P } from '../utils/permissions'
 import HeroBanner from '../components/HeroBanner'
 
 const DatabasesTab = lazy(() => import('../components/DatabasesTab'))
@@ -75,7 +76,9 @@ type PendingDelete =
 
 export default function DatabasePage() {
   const { notify } = useNotification()
-  const { rbacEnabled } = useAuth()
+  const { rbacEnabled, hasPermission } = useAuth()
+  const canDbOperate = hasPermission(P.DATABASE_OPERATE)
+  const canDbUpload = hasPermission(P.DATABASE_UPLOAD)
   const { t } = useTranslation()
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
   const dumpTableRef = useRef<HTMLDivElement>(null)
@@ -570,19 +573,23 @@ export default function DatabasePage() {
                 control={<Switch checked={showNeverUsedDumps} onChange={(e) => setShowNeverUsedDumps(e.target.checked)} size="small" />}
                 label={<Typography variant="body2">{t('database.showNeverUsed')}</Typography>}
               />
-              {selected.size > 0 && (
+              {canDbOperate && selected.size > 0 && (
                 <Button variant="contained" color="error" startIcon={<Delete />} onClick={handleBulkDeleteClick} size="small">
                   {t('common.delete')} ({selected.size})
                 </Button>
               )}
-              <Tooltip title={t('database.cleanUpByIdleDesc')}>
-                <Button variant="contained" color="warning" startIcon={<CleaningServices />} onClick={() => cleanup.open('dump')} disabled={dumps.length === 0} size="small">
-                  {t('database.cleanUpByIdle')}
+              {canDbOperate && (
+                <Tooltip title={t('database.cleanUpByIdleDesc')}>
+                  <Button variant="contained" color="warning" startIcon={<CleaningServices />} onClick={() => cleanup.open('dump')} disabled={dumps.length === 0} size="small">
+                    {t('database.cleanUpByIdle')}
+                  </Button>
+                </Tooltip>
+              )}
+              {canDbUpload && (
+                <Button variant="contained" color="primary" startIcon={<CloudUpload />} onClick={() => setUploadOpen(true)} size="small">
+                  {t('database.uploadDump')}
                 </Button>
-              </Tooltip>
-              <Button variant="contained" color="primary" startIcon={<CloudUpload />} onClick={() => setUploadOpen(true)} size="small">
-                {t('database.uploadDump')}
-              </Button>
+              )}
             </Box>
             <Paper elevation={2} sx={{ borderRadius: 2 }}>
               <TableContainer ref={dumpTableRef}>
@@ -703,7 +710,7 @@ export default function DatabasePage() {
                           />
                         ) : (
                           <Box
-                            onClick={() => dumpEdit.startEdit(dump)}
+                            onClick={canDbOperate ? () => dumpEdit.startEdit(dump) : undefined}
                             sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 0.5, '&:hover .edit-icon': { opacity: 1 } }}
                           >
                             {dump.version || '-'}
@@ -732,7 +739,7 @@ export default function DatabasePage() {
                           </Box>
                         ) : (
                           <Box
-                            onClick={() => dumpEdit.startEdit(dump)}
+                            onClick={canDbOperate ? () => dumpEdit.startEdit(dump) : undefined}
                             sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 0.5, '&:hover .edit-icon': { opacity: 1 } }}
                           >
                             {dump.databaseName || '-'}
@@ -757,8 +764,8 @@ export default function DatabasePage() {
                           size="small"
                           color={dump.expiresAt && new Date(dump.expiresAt) < new Date() ? 'error' : 'default'}
                           variant="outlined"
-                          onClick={() => handleEditDumpExpiration(dump)}
-                          sx={{ cursor: 'pointer' }}
+                          onClick={canDbOperate ? () => handleEditDumpExpiration(dump) : undefined}
+                          sx={canDbOperate ? { cursor: 'pointer' } : undefined}
                         />
                       </TableCell>
                       <TableCell>
@@ -776,16 +783,20 @@ export default function DatabasePage() {
                               <Download />
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title={t('common.restore')}>
-                            <IconButton size="small" color="success" onClick={() => handleRestoreClick(dump)}>
-                              <Restore />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title={t('common.delete')}>
-                            <IconButton size="small" color="error" onClick={() => handleDeleteClick(dump)}>
-                              <Delete />
-                            </IconButton>
-                          </Tooltip>
+                          {canDbOperate && (
+                            <Tooltip title={t('common.restore')}>
+                              <IconButton size="small" color="success" onClick={() => handleRestoreClick(dump)}>
+                                <Restore />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          {canDbOperate && (
+                            <Tooltip title={t('common.delete')}>
+                              <IconButton size="small" color="error" onClick={() => handleDeleteClick(dump)}>
+                                <Delete />
+                              </IconButton>
+                            </Tooltip>
+                          )}
                         </Box>
                       </TableCell>
                     </TableRow>
@@ -824,19 +835,23 @@ export default function DatabasePage() {
                 control={<Switch checked={showNeverUsedSnaps} onChange={(e) => setShowNeverUsedSnaps(e.target.checked)} size="small" />}
                 label={<Typography variant="body2">{t('database.showNeverUsed')}</Typography>}
               />
-              {snapSelected.size > 0 && (
+              {canDbOperate && snapSelected.size > 0 && (
                 <Button variant="contained" color="error" startIcon={<Delete />} onClick={handleSnapBulkDeleteClick} size="small">
                   {t('common.delete')} ({snapSelected.size})
                 </Button>
               )}
-              <Tooltip title={t('database.cleanUpByIdleDesc')}>
-                <Button variant="contained" color="warning" startIcon={<CleaningServices />} onClick={() => cleanup.open('snapshot')} disabled={snapshots.length === 0} size="small">
-                  {t('database.cleanUpByIdle')}
+              {canDbOperate && (
+                <Tooltip title={t('database.cleanUpByIdleDesc')}>
+                  <Button variant="contained" color="warning" startIcon={<CleaningServices />} onClick={() => cleanup.open('snapshot')} disabled={snapshots.length === 0} size="small">
+                    {t('database.cleanUpByIdle')}
+                  </Button>
+                </Tooltip>
+              )}
+              {canDbOperate && (
+                <Button variant="contained" color="primary" startIcon={<CameraAlt />} onClick={() => setSnapshotOpen(true)} size="small">
+                  {t('database.createSnapshot')}
                 </Button>
-              </Tooltip>
-              <Button variant="contained" color="primary" startIcon={<CameraAlt />} onClick={() => setSnapshotOpen(true)} size="small">
-                {t('database.createSnapshot')}
-              </Button>
+              )}
             </Box>
             <Paper elevation={2} sx={{ borderRadius: 2 }}>
               <TableContainer ref={snapTableRef}>
@@ -958,7 +973,7 @@ export default function DatabasePage() {
                           </Box>
                         ) : (
                           <Box
-                            onClick={() => snapEdit.startEdit(snap)}
+                            onClick={canDbOperate ? () => snapEdit.startEdit(snap) : undefined}
                             sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', '&:hover .edit-icon': { opacity: 1 } }}
                           >
                             {snap.label || '-'}
@@ -987,8 +1002,8 @@ export default function DatabasePage() {
                           size="small"
                           color={snap.expiresAt && new Date(snap.expiresAt) < new Date() ? 'error' : 'default'}
                           variant="outlined"
-                          onClick={() => handleEditSnapExpiration(snap)}
-                          sx={{ cursor: 'pointer' }}
+                          onClick={canDbOperate ? () => handleEditSnapExpiration(snap) : undefined}
+                          sx={canDbOperate ? { cursor: 'pointer' } : undefined}
                         />
                       </TableCell>
                       <TableCell>
@@ -1006,16 +1021,20 @@ export default function DatabasePage() {
                               <Download />
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title={t('common.restore')}>
-                            <IconButton size="small" color="success" onClick={() => { setRestoreSnapshot(snap); setRestoreSnapOpen(true) }}>
-                              <Restore />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title={t('common.delete')}>
-                            <IconButton size="small" color="error" onClick={() => handleSnapDeleteClick(snap)}>
-                              <Delete />
-                            </IconButton>
-                          </Tooltip>
+                          {canDbOperate && (
+                            <Tooltip title={t('common.restore')}>
+                              <IconButton size="small" color="success" onClick={() => { setRestoreSnapshot(snap); setRestoreSnapOpen(true) }}>
+                                <Restore />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          {canDbOperate && (
+                            <Tooltip title={t('common.delete')}>
+                              <IconButton size="small" color="error" onClick={() => handleSnapDeleteClick(snap)}>
+                                <Delete />
+                              </IconButton>
+                            </Tooltip>
+                          )}
                         </Box>
                       </TableCell>
                     </TableRow>
@@ -1064,30 +1083,34 @@ export default function DatabasePage() {
             <ListItemIcon><Download fontSize="small" color="primary" /></ListItemIcon>
             <ListItemText>{t('common.download')}</ListItemText>
           </MenuItem>,
-          <MenuItem
-            key="restore"
-            onClick={() => {
-              if (!dumpMenu.target) return
-              handleRestoreClick(dumpMenu.target)
-              dumpMenu.close()
-            }}
-          >
-            <ListItemIcon><Restore fontSize="small" color="success" /></ListItemIcon>
-            <ListItemText>{t('common.restore')}</ListItemText>
-          </MenuItem>,
-          <Divider key="divider" />,
-          <MenuItem
-            key="delete"
-            onClick={() => {
-              if (!dumpMenu.target) return
-              handleDeleteClick(dumpMenu.target)
-              dumpMenu.close()
-            }}
-            sx={{ color: 'error.main' }}
-          >
-            <ListItemIcon><Delete fontSize="small" color="error" /></ListItemIcon>
-            <ListItemText>{t('common.delete')}</ListItemText>
-          </MenuItem>,
+          canDbOperate && (
+            <MenuItem
+              key="restore"
+              onClick={() => {
+                if (!dumpMenu.target) return
+                handleRestoreClick(dumpMenu.target)
+                dumpMenu.close()
+              }}
+            >
+              <ListItemIcon><Restore fontSize="small" color="success" /></ListItemIcon>
+              <ListItemText>{t('common.restore')}</ListItemText>
+            </MenuItem>
+          ),
+          canDbOperate && <Divider key="divider" />,
+          canDbOperate && (
+            <MenuItem
+              key="delete"
+              onClick={() => {
+                if (!dumpMenu.target) return
+                handleDeleteClick(dumpMenu.target)
+                dumpMenu.close()
+              }}
+              sx={{ color: 'error.main' }}
+            >
+              <ListItemIcon><Delete fontSize="small" color="error" /></ListItemIcon>
+              <ListItemText>{t('common.delete')}</ListItemText>
+            </MenuItem>
+          ),
         ]}
       </Menu>
 
@@ -1109,30 +1132,34 @@ export default function DatabasePage() {
             <ListItemIcon><Download fontSize="small" color="primary" /></ListItemIcon>
             <ListItemText>{t('common.download')}</ListItemText>
           </MenuItem>,
-          <MenuItem
-            key="restore"
-            onClick={() => {
-              setRestoreSnapshot(snapMenu.target)
-              setRestoreSnapOpen(true)
-              snapMenu.close()
-            }}
-          >
-            <ListItemIcon><Restore fontSize="small" color="success" /></ListItemIcon>
-            <ListItemText>{t('common.restore')}</ListItemText>
-          </MenuItem>,
-          <Divider key="divider" />,
-          <MenuItem
-            key="delete"
-            onClick={() => {
-              if (!snapMenu.target) return
-              handleSnapDeleteClick(snapMenu.target)
-              snapMenu.close()
-            }}
-            sx={{ color: 'error.main' }}
-          >
-            <ListItemIcon><Delete fontSize="small" color="error" /></ListItemIcon>
-            <ListItemText>{t('common.delete')}</ListItemText>
-          </MenuItem>,
+          canDbOperate && (
+            <MenuItem
+              key="restore"
+              onClick={() => {
+                setRestoreSnapshot(snapMenu.target)
+                setRestoreSnapOpen(true)
+                snapMenu.close()
+              }}
+            >
+              <ListItemIcon><Restore fontSize="small" color="success" /></ListItemIcon>
+              <ListItemText>{t('common.restore')}</ListItemText>
+            </MenuItem>
+          ),
+          canDbOperate && <Divider key="divider" />,
+          canDbOperate && (
+            <MenuItem
+              key="delete"
+              onClick={() => {
+                if (!snapMenu.target) return
+                handleSnapDeleteClick(snapMenu.target)
+                snapMenu.close()
+              }}
+              sx={{ color: 'error.main' }}
+            >
+              <ListItemIcon><Delete fontSize="small" color="error" /></ListItemIcon>
+              <ListItemText>{t('common.delete')}</ListItemText>
+            </MenuItem>
+          ),
         ]}
       </Menu>
 

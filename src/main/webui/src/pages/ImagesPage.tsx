@@ -5,6 +5,7 @@ import { streamRemoveImage } from '../services/sseService'
 import OperationProgress, { REMOVE_IMAGE_STEPS, PRUNE_IMAGES_STEPS } from '../components/OperationProgress'
 import { useNotification } from '../components/NotificationProvider'
 import { useAuth } from '../components/AuthProvider'
+import { P } from '../utils/permissions'
 import HeroBanner from '../components/HeroBanner'
 import { useTranslation } from 'react-i18next'
 import { formatBackendDate } from '../utils/format'
@@ -71,7 +72,8 @@ export default function ImagesPage() {
   const tableRef = useRef<HTMLDivElement>(null)
   useStickyHeader(tableRef)
   const { notify, confirm } = useNotification()
-  const { rbacEnabled } = useAuth()
+  const { rbacEnabled, hasPermission } = useAuth()
+  const canManageImages = hasPermission(P.IMAGES_MANAGE)
   const { t } = useTranslation()
   const [images, setImages] = useState<DockerImage[]>([])
   const [loading, setLoading] = useState(true)
@@ -242,30 +244,34 @@ export default function ImagesPage() {
               </Typography>
             }
           />
-          <Tooltip title={t('images.cleanUpByIdleDesc')}>
-            <Button
-              variant="contained"
-              color="warning"
-              startIcon={<CleaningServices />}
-              onClick={() => prune.open('byDate')}
-              disabled={unusedCount === 0}
-              size="small"
-            >
-              {t('images.cleanUpByIdle')}
-            </Button>
-          </Tooltip>
-          <Tooltip title={t('images.removeAllUnusedDesc')}>
-            <Button
-              variant="contained"
-              color="error"
-              startIcon={<DeleteSweep />}
-              onClick={() => prune.open('all')}
-              disabled={unusedCount === 0}
-              size="small"
-            >
-              {t('images.removeAllUnused')}
-            </Button>
-          </Tooltip>
+          {canManageImages && (
+            <Tooltip title={t('images.cleanUpByIdleDesc')}>
+              <Button
+                variant="contained"
+                color="warning"
+                startIcon={<CleaningServices />}
+                onClick={() => prune.open('byDate')}
+                disabled={unusedCount === 0}
+                size="small"
+              >
+                {t('images.cleanUpByIdle')}
+              </Button>
+            </Tooltip>
+          )}
+          {canManageImages && (
+            <Tooltip title={t('images.removeAllUnusedDesc')}>
+              <Button
+                variant="contained"
+                color="error"
+                startIcon={<DeleteSweep />}
+                onClick={() => prune.open('all')}
+                disabled={unusedCount === 0}
+                size="small"
+              >
+                {t('images.removeAllUnused')}
+              </Button>
+            </Tooltip>
+          )}
         </Box>
 
         <Paper elevation={2} sx={{ borderRadius: 2 }}>
@@ -352,15 +358,17 @@ export default function ImagesPage() {
                     />
                   </TableCell>
                   <TableCell>
-                    <Tooltip title={t('common.remove')}>
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => handleRemove(img.imageId)}
-                      >
-                        <Delete />
-                      </IconButton>
-                    </Tooltip>
+                    {canManageImages && (
+                      <Tooltip title={t('common.remove')}>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleRemove(img.imageId)}
+                        >
+                          <Delete />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -387,7 +395,7 @@ export default function ImagesPage() {
         anchorPosition={imageMenu.contextMenuPos ?? undefined}
         slotProps={{ ...imageMenu.menuSlotProps, paper: { sx: { minWidth: 200 } } }}
       >
-        {imageMenu.target && (
+        {imageMenu.target && canManageImages && (
           <MenuItem
             onClick={() => {
               handleRemove(imageMenu.target!.imageId)

@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 
 interface Props {
   expiresAt: string
-  onCancel: () => void
+  onCancel?: () => void
   onExpired: () => void
   onClick?: () => void
 }

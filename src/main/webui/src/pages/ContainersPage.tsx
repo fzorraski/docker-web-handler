@@ -29,6 +29,8 @@ import EditContainerExpirationDialog from '../components/EditContainerExpiration
 import OperationProgress, { REMOVE_STEPS, REMOVE_WITH_DB_STEPS } from '../components/OperationProgress'
 import RemoveContainerDialog from '../components/RemoveContainerDialog'
 import { useNotification } from '../components/NotificationProvider'
+import { useAuth } from '../components/AuthProvider'
+import { P } from '../utils/permissions'
 import HeroBanner from '../components/HeroBanner'
 import { useTranslation } from 'react-i18next'
 import { formatBackendDate, formatDate } from '../utils/format'
@@ -105,6 +107,13 @@ function loadVisibility(columns: ColumnDef[]): Record<string, boolean> {
 
 export default function ContainersPage() {
   const { notify, confirm } = useNotification()
+  const { hasPermission } = useAuth()
+  const canOperate = hasPermission(P.CONTAINERS_OPERATE)
+  const canRun = hasPermission(P.CONTAINERS_RUN)
+  const canTerminal = hasPermission(P.TERMINAL_ACCESS)
+  const canViewLogs = hasPermission(P.LOGS_VIEW)
+  const canManageSchedules = hasPermission(P.SCHEDULES_MANAGE)
+  const canDbOperate = hasPermission(P.DATABASE_OPERATE)
   const { t } = useTranslation()
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
   const tableRef = useRef<HTMLDivElement>(null)
@@ -376,7 +385,7 @@ export default function ContainersPage() {
       <Box sx={{ maxWidth: { xs: '95%', md: '90%', lg: '85%' }, mx: 'auto', mt: 5, mb: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h4" fontWeight="bold">{t('containers.title')}</Typography>
-          {hasRepos && (
+          {hasRepos && canRun && (
             <Button
               variant="contained"
               color="success"
@@ -481,52 +490,60 @@ export default function ContainersPage() {
           />
           {selected.size > 0 && (
             <>
-              <Button
-                variant="contained"
-                color="success"
-                startIcon={<PlayArrow />}
-                onClick={() => actions.handleBulkStart(selectedContainers)}
-                disabled={!!actions.bulkProgress || selectedContainers.every(c => isUp(c.status))}
-                size="small"
-              >
-                {t('containers.start')} ({selectedContainers.filter(c => !isUp(c.status)).length})
-              </Button>
-              <Button
-                variant="contained"
-                color="warning"
-                startIcon={<Stop />}
-                onClick={() => actions.handleBulkStop(selectedContainers)}
-                disabled={!!actions.bulkProgress || selectedContainers.every(c => !isUp(c.status))}
-                size="small"
-              >
-                {t('containers.stop')} ({selectedContainers.filter(c => isUp(c.status)).length})
-              </Button>
-              <Button
-                variant="contained"
-                color="error"
-                startIcon={<Delete />}
-                onClick={() => actions.handleBulkRemove(selectedContainers)}
-                disabled={!!actions.bulkProgress}
-                size="small"
-              >
-                {t('common.delete')} ({selected.size})
-              </Button>
+              {canOperate && (
+                <Button
+                  variant="contained"
+                  color="success"
+                  startIcon={<PlayArrow />}
+                  onClick={() => actions.handleBulkStart(selectedContainers)}
+                  disabled={!!actions.bulkProgress || selectedContainers.every(c => isUp(c.status))}
+                  size="small"
+                >
+                  {t('containers.start')} ({selectedContainers.filter(c => !isUp(c.status)).length})
+                </Button>
+              )}
+              {canOperate && (
+                <Button
+                  variant="contained"
+                  color="warning"
+                  startIcon={<Stop />}
+                  onClick={() => actions.handleBulkStop(selectedContainers)}
+                  disabled={!!actions.bulkProgress || selectedContainers.every(c => !isUp(c.status))}
+                  size="small"
+                >
+                  {t('containers.stop')} ({selectedContainers.filter(c => isUp(c.status)).length})
+                </Button>
+              )}
+              {canRun && (
+                <Button
+                  variant="contained"
+                  color="error"
+                  startIcon={<Delete />}
+                  onClick={() => actions.handleBulkRemove(selectedContainers)}
+                  disabled={!!actions.bulkProgress}
+                  size="small"
+                >
+                  {t('common.delete')} ({selected.size})
+                </Button>
+              )}
             </>
           )}
-          <Tooltip title={t('containers.cleanup.description')}>
-            <span>
-              <Button
-                variant="contained"
-                color="warning"
-                startIcon={<CleaningServices />}
-                onClick={dialogs.openCleanup}
-                disabled={stoppedCount === 0}
-                size="small"
-              >
-                {t('containers.cleanup.button')}
-              </Button>
-            </span>
-          </Tooltip>
+          {canRun && (
+            <Tooltip title={t('containers.cleanup.description')}>
+              <span>
+                <Button
+                  variant="contained"
+                  color="warning"
+                  startIcon={<CleaningServices />}
+                  onClick={dialogs.openCleanup}
+                  disabled={stoppedCount === 0}
+                  size="small"
+                >
+                  {t('containers.cleanup.button')}
+                </Button>
+              </span>
+            </Tooltip>
+          )}
           <Tooltip title={t('containers.toggleColumns')}>
             <IconButton onClick={(e) => setColumnMenuAnchor(e.currentTarget)} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
               <ViewColumn />
@@ -742,7 +759,7 @@ export default function ContainersPage() {
                       {c.protectedFlag ? (
                         c.expiresAt ? (
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <ExpirationChip expiresAt={c.expiresAt} onCancel={() => actions.handleCancelExpiration(c.containerId, c.names)} onExpired={loadContainers} />
+                            <ExpirationChip expiresAt={c.expiresAt} onCancel={canOperate ? () => actions.handleCancelExpiration(c.containerId, c.names) : undefined} onExpired={loadContainers} />
                             <Tooltip title={t('containers.protectedNoExpiration')}>
                               <Lock fontSize="small" color="disabled" />
                             </Tooltip>
@@ -755,12 +772,14 @@ export default function ContainersPage() {
                       ) : c.expiresAt ? (
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <ExpirationChip expiresAt={c.expiresAt} onCancel={() => actions.handleCancelExpiration(c.containerId, c.names)} onExpired={loadContainers} onClick={() => dialogs.openEditExpiration(c)} />
-                            <Tooltip title={t('containers.extendBy10')}>
-                              <IconButton size="small" onClick={() => actions.handleExtendExpiration(c.containerId)} sx={{ p: 0.25 }}>
-                                <MoreTime fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
+                            <ExpirationChip expiresAt={c.expiresAt} onCancel={canOperate ? () => actions.handleCancelExpiration(c.containerId, c.names) : undefined} onExpired={loadContainers} onClick={canOperate ? () => dialogs.openEditExpiration(c) : undefined} />
+                            {canOperate && (
+                              <Tooltip title={t('containers.extendBy10')}>
+                                <IconButton size="small" onClick={() => actions.handleExtendExpiration(c.containerId)} sx={{ p: 0.25 }}>
+                                  <MoreTime fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            )}
                           </Box>
                           {c.databaseName && c.deleteDatabaseOnExpiration && (
                             <Tooltip title={t('containers.dbWillBeDeleted', { database: c.databaseName })}>
@@ -770,7 +789,7 @@ export default function ContainersPage() {
                                 color="warning"
                                 icon={<Warning />}
                                 variant="filled"
-                                onDelete={() => actions.handleCancelDbDeletion(c.containerId, c.names)}
+                                onDelete={canOperate ? () => actions.handleCancelDbDeletion(c.containerId, c.names) : undefined}
                               />
                             </Tooltip>
                           )}
@@ -786,7 +805,7 @@ export default function ContainersPage() {
                             </Tooltip>
                           )}
                         </Box>
-                      ) : (
+                      ) : canOperate ? (
                         <Tooltip title={t('containers.addExpiration')}>
                           <Chip
                             icon={<Timer />}
@@ -797,6 +816,8 @@ export default function ContainersPage() {
                             clickable
                           />
                         </Tooltip>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">-</Typography>
                       )}
                     </TableCell>
                   )}
@@ -818,7 +839,7 @@ export default function ContainersPage() {
                               <Lock fontSize="small" color="disabled" sx={{ mr: 0.25 }} />
                             </Tooltip>
                           )}
-                          {isUp(c.status) ? (
+                          {!canOperate ? null : isUp(c.status) ? (
                             c.protectedFlag ? null : (
                             <Tooltip title={actions.stoppingId === c.containerId ? t('containers.stopping') : t('containers.stop')}>
                               <span>
@@ -886,7 +907,7 @@ export default function ContainersPage() {
           slotProps={{ ...actionMenu.menuSlotProps, paper: { sx: { minWidth: 200 } } }}
         >
           {actionMenu.target && [
-            isUp(actionMenu.target.status) ? (
+            !canOperate ? null : isUp(actionMenu.target.status) ? (
               actionMenu.target.protectedFlag ? null : (
                 <MenuItem
                   key="stop"
@@ -915,19 +936,21 @@ export default function ContainersPage() {
               </MenuItem>
             ),
 
-            (isUp(actionMenu.target.status) && actionMenu.target.protectedFlag) ? null : <Divider key="action-divider" />,
+            (!canOperate || (isUp(actionMenu.target.status) && actionMenu.target.protectedFlag)) ? null : <Divider key="action-divider" />,
 
-            <MenuItem
-              key="logs"
-              onClick={() => {
-                if (!actionMenu.target) return
-                dialogs.openLogs(actionMenu.target)
-                actionMenu.close()
-              }}
-            >
-              <ListItemIcon><Terminal fontSize="small" /></ListItemIcon>
-              <ListItemText>{t('containers.logs.viewLogs')}</ListItemText>
-            </MenuItem>,
+            canViewLogs && (
+              <MenuItem
+                key="logs"
+                onClick={() => {
+                  if (!actionMenu.target) return
+                  dialogs.openLogs(actionMenu.target)
+                  actionMenu.close()
+                }}
+              >
+                <ListItemIcon><Terminal fontSize="small" /></ListItemIcon>
+                <ListItemText>{t('containers.logs.viewLogs')}</ListItemText>
+              </MenuItem>
+            ),
 
             isUp(actionMenu.target.status) && (
               <MenuItem
@@ -942,7 +965,7 @@ export default function ContainersPage() {
               </MenuItem>
             ),
 
-            terminalFeatureEnabled && isUp(actionMenu.target.status) && (
+            terminalFeatureEnabled && canTerminal && isUp(actionMenu.target.status) && (
               <MenuItem
                 key="terminal"
                 onClick={() => {
@@ -957,11 +980,11 @@ export default function ContainersPage() {
               </MenuItem>
             ),
 
-            (dumpEnabled && actionMenu.target.repository && actionMenu.target.databaseName) || (migrationFeatureEnabled && actionMenu.target.repository && actionMenu.target.databaseName)
+            (dumpEnabled && canDbOperate && actionMenu.target.repository && actionMenu.target.databaseName) || (migrationFeatureEnabled && canRun && actionMenu.target.repository && actionMenu.target.databaseName)
               ? <Divider key="db-divider" />
               : null,
 
-            dumpEnabled && actionMenu.target.repository && actionMenu.target.databaseName && (
+            dumpEnabled && canDbOperate && actionMenu.target.repository && actionMenu.target.databaseName && (
               <Tooltip title={t('containers.snapshotDatabase', { database: actionMenu.target.databaseName })} placement="left" arrow>
                 <MenuItem
                   key="snapshot"
@@ -977,7 +1000,7 @@ export default function ContainersPage() {
               </Tooltip>
             ),
 
-            !actionMenu.target.protectedFlag && (actionMenu.target.upgradeEnabled || (migrationFeatureEnabled && actionMenu.target.databaseName)) && actionMenu.target.repository && (
+            canRun && !actionMenu.target.protectedFlag && (actionMenu.target.upgradeEnabled || (migrationFeatureEnabled && actionMenu.target.databaseName)) && actionMenu.target.repository && (
               <MenuItem
                 key="upgrade"
                 onClick={() => {
@@ -990,7 +1013,7 @@ export default function ContainersPage() {
               </MenuItem>
             ),
 
-            schedulingFeatureEnabled && (
+            schedulingFeatureEnabled && canManageSchedules && (
               <MenuItem
                 key="schedule"
                 onClick={() => {
@@ -1003,9 +1026,9 @@ export default function ContainersPage() {
               </MenuItem>
             ),
 
-            actionMenu.target.protectedFlag ? null : <Divider key="exp-divider" />,
+            (!canOperate || actionMenu.target.protectedFlag) ? null : <Divider key="exp-divider" />,
 
-            actionMenu.target.protectedFlag ? null : (
+            (!canOperate || actionMenu.target.protectedFlag) ? null : (
               <MenuItem
                 key="edit-expiration"
                 onClick={() => {
@@ -1018,9 +1041,9 @@ export default function ContainersPage() {
               </MenuItem>
             ),
 
-            actionMenu.target.protectedFlag ? null : <Divider key="delete-divider" />,
+            (!canRun || actionMenu.target.protectedFlag) ? null : <Divider key="delete-divider" />,
 
-            actionMenu.target.protectedFlag ? null : (
+            (!canRun || actionMenu.target.protectedFlag) ? null : (
               <MenuItem
                 key="delete"
                 onClick={() => {

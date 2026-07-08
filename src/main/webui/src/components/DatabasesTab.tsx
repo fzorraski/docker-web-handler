@@ -20,6 +20,7 @@ import {
 } from '../services/managedDatabaseService'
 import { useNotification } from './NotificationProvider'
 import { useAuth } from './AuthProvider'
+import { P } from '../utils/permissions'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
 import FullscreenToggleButton from './FullscreenToggleButton'
 import CreateSnapshotModal from './CreateSnapshotModal'
@@ -127,7 +128,9 @@ const DB_COLUMNS: { key: string; label: string }[] = [
 
 export default function DatabasesTab() {
   const { notify } = useNotification()
-  const { rbacEnabled } = useAuth()
+  const { rbacEnabled, hasPermission } = useAuth()
+  const canDbOperate = hasPermission(P.DATABASE_OPERATE)
+  const canRunContainers = hasPermission(P.CONTAINERS_RUN)
   const { t } = useTranslation()
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
   const tableRef = useRef<HTMLDivElement>(null)
@@ -865,7 +868,7 @@ export default function DatabasesTab() {
           <MenuItem value="never">{t('database.idleNeverUsed')}</MenuItem>
         </TextField>
         <Box sx={{ flex: 1 }} />
-        {selected.size > 0 && (
+        {canDbOperate && selected.size > 0 && (
           <Button
             variant="contained"
             color="error"
@@ -885,15 +888,17 @@ export default function DatabasesTab() {
         >
           {t('database.dbHealth.button')}
         </Button>
-        <Button
-          variant="contained"
-          color="warning"
-          size="small"
-          startIcon={<CleaningServices />}
-          onClick={() => cleanup.open(currentRepo)}
-        >
-          {t('database.cleanUpByIdle')}
-        </Button>
+        {canDbOperate && (
+          <Button
+            variant="contained"
+            color="warning"
+            size="small"
+            startIcon={<CleaningServices />}
+            onClick={() => cleanup.open(currentRepo)}
+          >
+            {t('database.cleanUpByIdle')}
+          </Button>
+        )}
       </Stack>
 
       {/* Table */}
@@ -1008,7 +1013,7 @@ export default function DatabasesTab() {
                         }}
                       >
                         <Box
-                          onClick={() => startEditDesc(db)}
+                          onClick={canDbOperate ? () => startEditDesc(db) : undefined}
                           sx={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 0.5, '&:hover .edit-icon': { opacity: 1 } }}
                         >
                           <Typography sx={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, fontSize: '0.875rem' }}>
@@ -1116,32 +1121,34 @@ export default function DatabasesTab() {
                     />
                   </TableCell>
                   <TableCell>
-                    <Tooltip title={t('database.toggleProtected')}>
+                    <Tooltip title={canDbOperate ? t('database.toggleProtected') : ''}>
                       <Chip
                         icon={db.protectedFlag ? <Shield sx={{ fontSize: 16 }} /> : <ShieldOutlined sx={{ fontSize: 16 }} />}
                         label={db.protectedFlag ? 'Yes' : 'No'}
                         size="small"
                         color={db.protectedFlag ? 'success' : 'default'}
                         variant={db.protectedFlag ? 'filled' : 'outlined'}
-                        onClick={() => setPendingProtect({ db })}
-                        sx={{ cursor: 'pointer' }}
+                        onClick={canDbOperate ? () => setPendingProtect({ db }) : undefined}
+                        sx={canDbOperate ? { cursor: 'pointer' } : undefined}
                       />
                     </Tooltip>
                   </TableCell>
                   <TableCell>
-                    <Tooltip title={db.protectedFlag ? t('database.databaseProtected') : t('common.delete')}>
-                      <span>
-                        <Button
-                          size="small"
-                          color="error"
-                          disabled={db.protectedFlag}
-                          onClick={() => setPendingDelete({ kind: 'single', db })}
-                          sx={{ minWidth: 'auto', p: 0.5 }}
-                        >
-                          <Delete fontSize="small" />
-                        </Button>
-                      </span>
-                    </Tooltip>
+                    {canDbOperate && (
+                      <Tooltip title={db.protectedFlag ? t('database.databaseProtected') : t('common.delete')}>
+                        <span>
+                          <Button
+                            size="small"
+                            color="error"
+                            disabled={db.protectedFlag}
+                            onClick={() => setPendingDelete({ kind: 'single', db })}
+                            sx={{ minWidth: 'auto', p: 0.5 }}
+                          >
+                            <Delete fontSize="small" />
+                          </Button>
+                        </span>
+                      </Tooltip>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -1176,22 +1183,26 @@ export default function DatabasesTab() {
             <ListItemIcon><MonitorHeart fontSize="small" color="info" /></ListItemIcon>
             <ListItemText>{t('database.dbHealth.button')}</ListItemText>
           </MenuItem>,
-          <Divider key="divider0" />,
-          <MenuItem
-            key="snapshot"
-            onClick={() => { setSnapshotTarget(menu.target!); menu.close() }}
-          >
-            <ListItemIcon><CameraAlt fontSize="small" color="primary" /></ListItemIcon>
-            <ListItemText>{t('database.createSnapshot')}</ListItemText>
-          </MenuItem>,
-          <MenuItem
-            key="restore"
-            onClick={() => { openRestorePassword(menu.target!); menu.close() }}
-          >
-            <ListItemIcon><Restore fontSize="small" color="success" /></ListItemIcon>
-            <ListItemText>{t('common.restore')}</ListItemText>
-          </MenuItem>,
-          ...(migrationEnabled ? [
+          canDbOperate && <Divider key="divider0" />,
+          canDbOperate && (
+            <MenuItem
+              key="snapshot"
+              onClick={() => { setSnapshotTarget(menu.target!); menu.close() }}
+            >
+              <ListItemIcon><CameraAlt fontSize="small" color="primary" /></ListItemIcon>
+              <ListItemText>{t('database.createSnapshot')}</ListItemText>
+            </MenuItem>
+          ),
+          canDbOperate && (
+            <MenuItem
+              key="restore"
+              onClick={() => { openRestorePassword(menu.target!); menu.close() }}
+            >
+              <ListItemIcon><Restore fontSize="small" color="success" /></ListItemIcon>
+              <ListItemText>{t('common.restore')}</ListItemText>
+            </MenuItem>
+          ),
+          ...(migrationEnabled && canRunContainers ? [
             <MenuItem
               key="migration"
               onClick={() => { setMigrationTarget(menu.target!); menu.close() }}
@@ -1200,7 +1211,7 @@ export default function DatabasesTab() {
               <ListItemText>{t('database.runMigration')}</ListItemText>
             </MenuItem>,
           ] : []),
-          ...(queryFeatureEnabled ? [
+          ...(queryFeatureEnabled && canDbOperate ? [
             <MenuItem
               key="query"
               onClick={() => { setQueryTarget(menu.target!); menu.close() }}
@@ -1209,28 +1220,32 @@ export default function DatabasesTab() {
               <ListItemText>{t('database.query.runQuery')}</ListItemText>
             </MenuItem>,
           ] : []),
-          <Divider key="divider1" />,
-          <MenuItem
-            key="protect"
-            onClick={() => { setPendingProtect({ db: menu.target! }); menu.close() }}
-          >
-            <ListItemIcon>
-              {menu.target.protectedFlag
-                ? <ShieldOutlined fontSize="small" color="warning" />
-                : <Shield fontSize="small" color="success" />}
-            </ListItemIcon>
-            <ListItemText>{menu.target.protectedFlag ? t('database.removeProtection') : t('database.enableProtection')}</ListItemText>
-          </MenuItem>,
-          <Divider key="divider2" />,
-          <MenuItem
-            key="delete"
-            disabled={menu.target.protectedFlag}
-            onClick={() => { setPendingDelete({ kind: 'single', db: menu.target! }); menu.close() }}
-            sx={{ color: menu.target.protectedFlag ? undefined : 'error.main' }}
-          >
-            <ListItemIcon><Delete fontSize="small" color={menu.target.protectedFlag ? 'disabled' : 'error'} /></ListItemIcon>
-            <ListItemText>{t('common.delete')}</ListItemText>
-          </MenuItem>,
+          canDbOperate && <Divider key="divider1" />,
+          canDbOperate && (
+            <MenuItem
+              key="protect"
+              onClick={() => { setPendingProtect({ db: menu.target! }); menu.close() }}
+            >
+              <ListItemIcon>
+                {menu.target.protectedFlag
+                  ? <ShieldOutlined fontSize="small" color="warning" />
+                  : <Shield fontSize="small" color="success" />}
+              </ListItemIcon>
+              <ListItemText>{menu.target.protectedFlag ? t('database.removeProtection') : t('database.enableProtection')}</ListItemText>
+            </MenuItem>
+          ),
+          canDbOperate && <Divider key="divider2" />,
+          canDbOperate && (
+            <MenuItem
+              key="delete"
+              disabled={menu.target.protectedFlag}
+              onClick={() => { setPendingDelete({ kind: 'single', db: menu.target! }); menu.close() }}
+              sx={{ color: menu.target.protectedFlag ? undefined : 'error.main' }}
+            >
+              <ListItemIcon><Delete fontSize="small" color={menu.target.protectedFlag ? 'disabled' : 'error'} /></ListItemIcon>
+              <ListItemText>{t('common.delete')}</ListItemText>
+            </MenuItem>
+          ),
         ]}
       </Menu>
 
@@ -1827,7 +1842,7 @@ export default function DatabasesTab() {
                     )
                   })()}
 
-                  {dbActivity && dbActivity.pgStatStatementsAvailable && queryStatsResetEnabled && (
+                  {dbActivity && dbActivity.pgStatStatementsAvailable && queryStatsResetEnabled && canDbOperate && (
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                       <Tooltip title={t('database.dbHealth.resetQueryStatsTooltip')}>
                         <Button
@@ -2006,11 +2021,11 @@ export default function DatabasesTab() {
                       severity="info"
                       variant="outlined"
                       sx={{ fontSize: '0.8rem' }}
-                      action={
+                      action={canDbOperate ? (
                         <Button color="info" size="small" variant="outlined" onClick={() => setPgssConfirmOpen(true)}>
                           {t('database.dbHealth.startMonitoring')}
                         </Button>
-                      }
+                      ) : undefined}
                     >
                       {t('database.dbHealth.pgssNotAvailable')}
                     </Alert>
@@ -2060,7 +2075,7 @@ export default function DatabasesTab() {
                                     </Tooltip>
                                   </Box>
                                 </TableCell>
-                                {queryStatsResetEnabled && (
+                                {queryStatsResetEnabled && canDbOperate && (
                                   <TableCell sx={{ fontWeight: 600, fontSize: '0.7rem', py: 0.5, width: 40 }} />
                                 )}
                               </TableRow>
@@ -2137,7 +2152,7 @@ export default function DatabasesTab() {
                                     <TableCell sx={{ fontSize: '0.7rem', py: 0.5, color: 'text.secondary', whiteSpace: 'nowrap' }}>
                                       {lastVac ? lastVac.substring(0, 16).replace('T', ' ') : '-'}
                                     </TableCell>
-                                    {queryStatsResetEnabled && (
+                                    {queryStatsResetEnabled && canDbOperate && (
                                       <TableCell sx={{ py: 0.5, px: 0.5 }}>
                                         <Tooltip title={t('database.dbHealth.resetSingleTableStats')}>
                                           <IconButton
@@ -2168,7 +2183,7 @@ export default function DatabasesTab() {
                     )
                   })()}
 
-                  {dbTableStats && queryStatsResetEnabled && (
+                  {dbTableStats && queryStatsResetEnabled && canDbOperate && (
                     <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                       <Tooltip title={t('database.dbHealth.resetTableStatsTooltip')}>
                         <Button
