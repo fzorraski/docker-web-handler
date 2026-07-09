@@ -8,6 +8,7 @@ import { PersonAdd, Edit } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { createUser, updateUser, type AppUser } from '../../services/userService'
 import type { AppRole } from '../../services/roleService'
+import type { TenantSummary } from '../../services/tenantService'
 import { P } from '../../utils/permissions'
 import { MIN_PASSWORD_LENGTH } from '../../utils/validation'
 
@@ -16,18 +17,20 @@ interface Props {
   onClose: () => void
   onSaved: () => void
   roles: AppRole[]
+  tenants: TenantSummary[]
   /** null = create mode */
   user: AppUser | null
   /** whether the acting user holds SYSTEM_CONFIG (may assign super-admin roles) */
   canSystemConfig: boolean
 }
 
-export default function UserFormDialog({ open, onClose, onSaved, roles, user, canSystemConfig }: Props) {
+export default function UserFormDialog({ open, onClose, onSaved, roles, tenants, user, canSystemConfig }: Props) {
   const { t } = useTranslation()
   const isEdit = user !== null
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [roleIds, setRoleIds] = useState<string[]>([])
+  const [tenantIds, setTenantIds] = useState<string[]>([])
   const [enabled, setEnabled] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -43,12 +46,14 @@ export default function UserFormDialog({ open, onClose, onSaved, roles, user, ca
       setUsername(user?.username ?? '')
       setPassword('')
       setRoleIds(user?.roleIds ?? [])
+      setTenantIds(user?.tenantIds ?? [])
       setEnabled(user?.enabled ?? true)
       setError(null)
     }
   }, [open, user])
 
   const roleName = (id: string) => roles.find(r => r.id === id)?.name ?? id
+  const tenantName = (id: string) => tenants.find(tn => tn.id === id)?.name ?? id
 
   const passwordTooShort = !isEdit && password.length > 0 && password.length < MIN_PASSWORD_LENGTH
   const canSave = isEdit
@@ -60,9 +65,9 @@ export default function UserFormDialog({ open, onClose, onSaved, roles, user, ca
     setError(null)
     try {
       if (isEdit) {
-        await updateUser(user.id, { roleIds, enabled })
+        await updateUser(user.id, { roleIds, tenantIds, enabled })
       } else {
-        await createUser({ username: username.trim(), password, roleIds })
+        await createUser({ username: username.trim(), password, roleIds, tenantIds })
       }
       onSaved()
       onClose()
@@ -134,6 +139,39 @@ export default function UserFormDialog({ open, onClose, onSaved, roles, user, ca
             </MenuItem>
           ))}
         </TextField>
+        {tenants.length > 0 && (
+          <TextField
+            select
+            label={t('users.tenants')}
+            value={tenantIds}
+            onChange={(e) => {
+              const value = e.target.value as unknown
+              setTenantIds(Array.isArray(value) ? value : [String(value)])
+            }}
+            size="small"
+            fullWidth
+            helperText={t('users.tenantsHint')}
+            slotProps={{
+              select: {
+                multiple: true,
+                renderValue: (selected) => (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {(selected as string[]).map((id) => (
+                      <Chip key={id} label={tenantName(id)} size="small" />
+                    ))}
+                  </Box>
+                ),
+              },
+            }}
+          >
+            {tenants.map((tn) => (
+              <MenuItem key={tn.id} value={tn.id}>
+                <Checkbox size="small" checked={tenantIds.includes(tn.id)} sx={{ py: 0 }} />
+                <ListItemText primary={tn.name} />
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
         {isEdit && (
           <FormControlLabel
             control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} size="small" />}

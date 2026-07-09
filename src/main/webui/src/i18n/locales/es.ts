@@ -1059,6 +1059,7 @@ const es: typeof en = {
     tabs: {
       users: 'Usuarios',
       roles: 'Roles',
+      tenants: 'Tenants',
       settings: 'Configuración',
     },
   },
@@ -1087,6 +1088,34 @@ const es: typeof en = {
     updated: 'Usuario actualizado.',
     deleted: 'Usuario eliminado.',
     passwordReset: 'Contraseña actualizada.',
+    tenants: 'Tenants',
+    tenantsHint: 'El usuario ve los recursos de todos los tenants asignados. Sin tenant = solo recursos compartidos.',
+    noTenant: 'Sin tenant',
+  },
+
+  tenants: {
+    newTenant: 'Nuevo Tenant',
+    editTenant: 'Editar Tenant',
+    name: 'Nombre',
+    description: 'Descripción',
+    members: 'Miembros',
+    createdAt: 'Creado',
+    confirmDelete: '¿Eliminar el tenant "{{name}}"?',
+    created: 'Tenant creado.',
+    updated: 'Tenant actualizado.',
+    deleted: 'Tenant eliminado.',
+    hint: 'Los tenants aíslan los recursos por equipo: los contenedores, dumps, snapshots, agendamientos y bases de datos creados por un miembro solo son visibles para ese tenant (y para los usuarios que pueden ver todos los tenants). Los dumps y snapshots también pueden compartirse con otros tenants.',
+    membersCount: '{{count}} miembros',
+    tenant: 'Tenant',
+    sharedWith: 'Compartido Con',
+    noneOption: 'Ninguno (visible para todos)',
+    selectorHint: 'El nuevo recurso pertenecerá a este tenant.',
+    sharing: {
+      title: 'Compartir',
+      description: 'Selecciona qué otros tenants pueden ver este recurso.',
+      owner: 'Tenant propietario',
+      updated: 'Compartición actualizada.',
+    },
   },
 
   roles: {
@@ -1126,6 +1155,7 @@ const es: typeof en = {
     LOGS_ANALYZE: 'Ejecutar análisis de logs',
     USERS_MANAGE: 'Gestionar usuarios y roles',
     AUDIT_VIEW: 'Ver quién creó los recursos',
+    TENANTS_VIEW_ALL: 'Ver los recursos de todos los tenants',
     SYSTEM_CONFIG: 'Editar configuración del sistema y gestionar súper admins',
     categories: {
       CONTAINERS: 'Contenedores',

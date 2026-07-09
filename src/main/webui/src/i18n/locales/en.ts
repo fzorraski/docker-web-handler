@@ -1057,6 +1057,7 @@ const en = {
     tabs: {
       users: 'Users',
       roles: 'Roles',
+      tenants: 'Tenants',
       settings: 'Settings',
     },
   },
@@ -1085,6 +1086,34 @@ const en = {
     updated: 'User updated.',
     deleted: 'User deleted.',
     passwordReset: 'Password updated.',
+    tenants: 'Tenants',
+    tenantsHint: 'The user sees resources from all assigned tenants. No tenant = only shared resources.',
+    noTenant: 'No tenant',
+  },
+
+  tenants: {
+    newTenant: 'New Tenant',
+    editTenant: 'Edit Tenant',
+    name: 'Name',
+    description: 'Description',
+    members: 'Members',
+    createdAt: 'Created',
+    confirmDelete: 'Delete tenant "{{name}}"?',
+    created: 'Tenant created.',
+    updated: 'Tenant updated.',
+    deleted: 'Tenant deleted.',
+    hint: 'Tenants isolate resources per team: containers, dumps, snapshots, schedules and databases created by a member are only visible to that tenant (and to users who can view all tenants). Dumps and snapshots can additionally be shared with other tenants.',
+    membersCount: '{{count}} members',
+    tenant: 'Tenant',
+    sharedWith: 'Shared With',
+    noneOption: 'None (visible to everyone)',
+    selectorHint: 'The new resource will belong to this tenant.',
+    sharing: {
+      title: 'Sharing',
+      description: 'Select which other tenants can see this resource.',
+      owner: 'Owning tenant',
+      updated: 'Sharing updated.',
+    },
   },
 
   roles: {
@@ -1124,6 +1153,7 @@ const en = {
     LOGS_ANALYZE: 'Run log analysis',
     USERS_MANAGE: 'Manage users and roles',
     AUDIT_VIEW: 'See who created resources',
+    TENANTS_VIEW_ALL: 'See resources of all tenants',
     SYSTEM_CONFIG: 'Edit system settings and manage super admins',
     categories: {
       CONTAINERS: 'Containers',

@@ -55,6 +55,7 @@ describe('authService', () => {
         username: 'alice',
         roleIds: ['builtin-operator'],
         roleNames: ['OPERATOR'],
+        tenants: [{ id: 't1', name: 'Support' }],
         permissions: ['CONTAINERS_VIEW', 'CONTAINERS_RUN'],
       }))
       const user = await getMe()
@@ -63,6 +64,7 @@ describe('authService', () => {
         username: 'alice',
         roleIds: ['builtin-operator'],
         roleNames: ['OPERATOR'],
+        tenants: [{ id: 't1', name: 'Support' }],
         permissions: ['CONTAINERS_VIEW', 'CONTAINERS_RUN'],
       })
     })

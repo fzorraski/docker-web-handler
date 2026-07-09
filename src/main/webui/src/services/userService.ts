@@ -11,6 +11,8 @@ export interface AppUser {
   username: string
   roleIds: string[]
   roleNames: string[]
+  tenantIds: string[]
+  tenantNames: string[]
   enabled: boolean
   createdAt: string | null
   lastLoginAt: string | null
@@ -21,7 +23,7 @@ export async function listUsers(): Promise<AppUser[]> {
   return handleJsonResponse(res)
 }
 
-export async function createUser(request: { username: string; password: string; roleIds: string[] }): Promise<AppUser> {
+export async function createUser(request: { username: string; password: string; roleIds: string[]; tenantIds?: string[] }): Promise<AppUser> {
   const res = await fetchWithAuth(API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -30,7 +32,7 @@ export async function createUser(request: { username: string; password: string; 
   return handleJsonResponse(res)
 }
 
-export async function updateUser(id: string, request: { roleIds?: string[]; enabled?: boolean }): Promise<AppUser> {
+export async function updateUser(id: string, request: { roleIds?: string[]; tenantIds?: string[]; enabled?: boolean }): Promise<AppUser> {
   const res = await fetchWithAuth(`${API}/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

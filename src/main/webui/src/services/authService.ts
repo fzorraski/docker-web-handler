@@ -11,6 +11,7 @@ export interface CurrentUser {
   username: string
   roleIds: string[]
   roleNames: string[]
+  tenants: { id: string; name: string }[]
   permissions: string[]
 }
 
@@ -36,6 +37,7 @@ export async function getMe(): Promise<CurrentUser | null> {
     username: data.username ?? '',
     roleIds: Array.isArray(data.roleIds) ? data.roleIds : [],
     roleNames: Array.isArray(data.roleNames) ? data.roleNames : [],
+    tenants: Array.isArray(data.tenants) ? data.tenants : [],
     permissions: Array.isArray(data.permissions) ? data.permissions : [],
   }
 }

@@ -6,7 +6,7 @@ import {
 } from '@mui/material'
 import {
   PersonAdd, Edit, Delete, LockReset, AddCircleOutline, Visibility,
-  Group, AdminPanelSettings, Tune, Shield,
+  Group, AdminPanelSettings, Tune, Shield, Workspaces, GroupAdd,
 } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import HeroBanner from '../components/HeroBanner'
@@ -17,9 +17,11 @@ import { P } from '../utils/permissions'
 import { formatDate } from '../utils/format'
 import { listUsers, updateUser, deleteUser, type AppUser } from '../services/userService'
 import { listRoles, deleteRole, getPermissionCatalog, type AppRole, type PermissionInfo } from '../services/roleService'
+import { listTenantsManage, deleteTenant, type Tenant } from '../services/tenantService'
 import UserFormDialog from '../components/admin/UserFormDialog'
 import ResetPasswordDialog from '../components/admin/ResetPasswordDialog'
 import RoleFormDialog from '../components/admin/RoleFormDialog'
+import TenantFormDialog from '../components/admin/TenantFormDialog'
 
 const SettingsTab = lazy(() => import('../components/admin/SettingsTab'))
 
@@ -33,6 +35,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState(0)
   const [users, setUsers] = useState<AppUser[]>([])
   const [roles, setRoles] = useState<AppRole[]>([])
+  const [tenants, setTenants] = useState<Tenant[]>([])
   const [catalog, setCatalog] = useState<PermissionInfo[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -41,12 +44,15 @@ export default function AdminPage() {
   const [resetTarget, setResetTarget] = useState<AppUser | null>(null)
   const [roleDialogOpen, setRoleDialogOpen] = useState(false)
   const [editingRole, setEditingRole] = useState<AppRole | null>(null)
+  const [tenantDialogOpen, setTenantDialogOpen] = useState(false)
+  const [editingTenant, setEditingTenant] = useState<Tenant | null>(null)
 
   const load = useCallback(async () => {
     try {
-      const [userList, roleList] = await Promise.all([listUsers(), listRoles()])
+      const [userList, roleList, tenantList] = await Promise.all([listUsers(), listRoles(), listTenantsManage()])
       setUsers(userList)
       setRoles(roleList)
+      setTenants(tenantList)
     } catch (e) {
       notify(e instanceof Error ? e.message : t('common.unexpectedError'), 'error')
     } finally {
@@ -114,6 +120,24 @@ export default function AdminPage() {
     }
   }
 
+  async function handleDeleteTenant(tenant: Tenant) {
+    if (!(await confirm(t('tenants.confirmDelete', { name: tenant.name })))) return
+    try {
+      await deleteTenant(tenant.id)
+      notify(t('tenants.deleted'), 'success')
+      await load()
+    } catch (e) {
+      // e.g. blocked while users still reference the tenant
+      notify(e instanceof Error ? e.message : t('common.unexpectedError'), 'error')
+    }
+  }
+
+  async function afterTenantSaved() {
+    notify(editingTenant ? t('tenants.updated') : t('tenants.created'), 'success')
+    await load()
+    await refreshUser()
+  }
+
   async function afterUserSaved() {
     notify(editingUser ? t('users.updated') : t('users.created'), 'success')
     await load()
@@ -137,6 +161,7 @@ export default function AdminPage() {
         <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 3 }}>
           <Tab icon={<Group fontSize="small" />} iconPosition="start" label={t('admin.tabs.users')} />
           <Tab icon={<AdminPanelSettings fontSize="small" />} iconPosition="start" label={t('admin.tabs.roles')} />
+          <Tab icon={<Workspaces fontSize="small" />} iconPosition="start" label={t('admin.tabs.tenants')} />
           {canSystemConfig && <Tab icon={<Tune fontSize="small" />} iconPosition="start" label={t('admin.tabs.settings')} />}
         </Tabs>
 
@@ -159,7 +184,7 @@ export default function AdminPage() {
                 <Table aria-label="Users">
                   <TableHead>
                     <TableRow>
-                      {[t('users.username'), t('users.roles'), t('users.enabled'), t('users.createdAt'), t('users.lastLogin'), ''].map((label, i) => (
+                      {[t('users.username'), t('users.roles'), t('users.tenants'), t('users.enabled'), t('users.createdAt'), t('users.lastLogin'), ''].map((label, i) => (
                         <TableCell key={i} sx={{ bgcolor: theadBg, color: theadColor, fontWeight: 600 }}>{label}</TableCell>
                       ))}
                     </TableRow>
@@ -167,7 +192,7 @@ export default function AdminPage() {
                   <TableBody>
                     {loading && (
                       <TableRow>
-                        <TableCell colSpan={6} align="center" sx={{ py: 4 }}><CircularProgress size={28} /></TableCell>
+                        <TableCell colSpan={7} align="center" sx={{ py: 4 }}><CircularProgress size={28} /></TableCell>
                       </TableRow>
                     )}
                     {!loading && users.map((u) => {
@@ -197,6 +222,15 @@ export default function AdminPage() {
                                   color={r.permissions.includes(P.SYSTEM_CONFIG) ? 'warning' : 'default'}
                                 />
                               ))}
+                            </Box>
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                              {u.tenantNames.length === 0
+                                ? <Typography variant="caption" color="text.secondary">{t('users.noTenant')}</Typography>
+                                : u.tenantNames.map((name) => (
+                                    <Chip key={name} label={name} size="small" variant="outlined" color="secondary" />
+                                  ))}
                             </Box>
                           </TableCell>
                           <TableCell>
@@ -342,8 +376,74 @@ export default function AdminPage() {
           </>
         )}
 
+        {/* ==================== TENANTS TAB ==================== */}
+        {activeTab === 2 && (
+          <>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, mb: 2 }}>
+              <Typography variant="body2" color="text.secondary">{t('tenants.hint')}</Typography>
+              <Button
+                variant="contained"
+                color="success"
+                startIcon={<GroupAdd />}
+                size="small"
+                sx={{ flexShrink: 0 }}
+                onClick={() => { setEditingTenant(null); setTenantDialogOpen(true) }}
+              >
+                {t('tenants.newTenant')}
+              </Button>
+            </Box>
+            <Paper elevation={2} sx={{ borderRadius: 2 }}>
+              <TableContainer>
+                <Table aria-label="Tenants">
+                  <TableHead>
+                    <TableRow>
+                      {[t('tenants.name'), t('tenants.description'), t('tenants.members'), t('tenants.createdAt'), ''].map((label, i) => (
+                        <TableCell key={i} sx={{ bgcolor: theadBg, color: theadColor, fontWeight: 600 }}>{label}</TableCell>
+                      ))}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {loading && (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center" sx={{ py: 4 }}><CircularProgress size={28} /></TableCell>
+                      </TableRow>
+                    )}
+                    {!loading && tenants.map((tn) => (
+                      <TableRow key={tn.id} hover>
+                        <TableCell sx={{ fontWeight: 600 }}>{tn.name}</TableCell>
+                        <TableCell sx={{ fontSize: '0.85rem', color: 'text.secondary' }}>{tn.description || '-'}</TableCell>
+                        <TableCell>
+                          <Chip label={t('tenants.membersCount', { count: tn.memberCount })} size="small" variant="outlined"
+                                color={tn.memberCount > 0 ? 'info' : 'default'} />
+                        </TableCell>
+                        <TableCell sx={{ fontSize: '0.85rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>
+                          {tn.createdAt ? formatDate(tn.createdAt) : '-'}
+                        </TableCell>
+                        <TableCell align="right">
+                          <Box sx={{ display: 'flex', gap: 0.25, justifyContent: 'flex-end' }}>
+                            <Tooltip title={t('tenants.editTenant')}>
+                              <IconButton size="small" onClick={() => { setEditingTenant(tn); setTenantDialogOpen(true) }}>
+                                <Edit fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title={t('common.delete')}>
+                              <IconButton size="small" color="error" onClick={() => handleDeleteTenant(tn)}>
+                                <Delete fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          </>
+        )}
+
         {/* ==================== SETTINGS TAB ==================== */}
-        {canSystemConfig && activeTab === 2 && (
+        {canSystemConfig && activeTab === 3 && (
           <Suspense fallback={<CircularProgress size={28} sx={{ display: 'block', mx: 'auto', my: 4 }} />}>
             <SettingsTab />
           </Suspense>
@@ -355,6 +455,7 @@ export default function AdminPage() {
         onClose={() => setUserDialogOpen(false)}
         onSaved={afterUserSaved}
         roles={roles}
+        tenants={tenants}
         user={editingUser}
         canSystemConfig={canSystemConfig}
       />
@@ -374,6 +475,13 @@ export default function AdminPage() {
         catalog={catalog}
         canSystemConfig={canSystemConfig}
         readOnly={editingRole !== null && !canActOnRole(editingRole)}
+      />
+
+      <TenantFormDialog
+        open={tenantDialogOpen}
+        onClose={() => setTenantDialogOpen(false)}
+        onSaved={afterTenantSaved}
+        tenant={editingTenant}
       />
     </>
   )
