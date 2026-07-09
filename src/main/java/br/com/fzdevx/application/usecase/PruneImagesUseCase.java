@@ -53,6 +53,8 @@ public class PruneImagesUseCase {
             Instant cutoff = pruneAll ? null : Instant.now().minus(minDays, ChronoUnit.DAYS);
 
             List<Image> toRemove = new ArrayList<>();
+            // one bulk read instead of a per-image lookup inside the loop
+            java.util.Map<String, Instant> lastUsedByImage = imageUsageTracker.getAllLastUsed();
             for (Image img : allImages) {
                 if (img.getRepoTags() != null && img.getRepoTags().length > 0) {
                     String repo = img.getRepoTags()[0].split(":")[0];
@@ -67,7 +69,7 @@ public class PruneImagesUseCase {
                     toRemove.add(img);
                 } else {
                     // Check last-used timestamp from tracker
-                    Optional<Instant> lastUsed = imageUsageTracker.getLastUsed(img.getId());
+                    Optional<Instant> lastUsed = Optional.ofNullable(lastUsedByImage.get(img.getId()));
 
                     if (lastUsed.isPresent()) {
                         if (lastUsed.get().isBefore(cutoff)) {

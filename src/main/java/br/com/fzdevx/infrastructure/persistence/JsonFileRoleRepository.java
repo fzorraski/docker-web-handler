@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 @ApplicationScoped
+@jakarta.enterprise.inject.Typed(JsonFileRoleRepository.class)
 public class JsonFileRoleRepository
         extends AbstractJsonFileRepository<Role>
         implements RoleRepository {
@@ -26,6 +27,11 @@ public class JsonFileRoleRepository
     @Override
     public void save(Role role) {
         saveEntity(role, r -> r.getId().equals(role.getId()));
+    }
+
+    @Override
+    public boolean update(String id, java.util.function.Consumer<Role> mutator) {
+        return updateEntity(r -> r.getId().equals(id), mutator);
     }
 
     @Override

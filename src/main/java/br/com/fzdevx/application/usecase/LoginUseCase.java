@@ -101,8 +101,9 @@ public class LoginUseCase {
         rateLimitPort.recordSuccess(userKey);
 
         User found = user.get();
-        found.setLastLoginAt(Instant.now());
-        userRepository.save(found);
+        // targeted mutation: a full-object save here could resurrect a concurrent
+        // admin edit (e.g. silently re-enable an account disabled mid-login)
+        userRepository.update(found.getId(), u -> u.setLastLoginAt(Instant.now()));
         auditLogger.logAs(found.getUsername(), "LOGIN", "session", "ip=" + clientIp);
         return LoginResult.success(found.getId());
     }

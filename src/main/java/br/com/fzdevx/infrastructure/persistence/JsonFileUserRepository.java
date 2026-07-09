@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 @ApplicationScoped
+@jakarta.enterprise.inject.Typed(JsonFileUserRepository.class)
 public class JsonFileUserRepository
         extends AbstractJsonFileRepository<User>
         implements UserRepository {

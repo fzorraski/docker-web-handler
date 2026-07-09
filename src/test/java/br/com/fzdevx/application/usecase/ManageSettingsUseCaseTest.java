@@ -51,7 +51,7 @@ class ManageSettingsUseCaseTest {
 
         AuditRetentionService retentionService = new AuditRetentionService();
         setField(retentionService, "runtimeSettingsService", service);
-        setField(retentionService, "fileAuditLogger", fileAuditLogger);
+        setField(retentionService, "auditLogger", fileAuditLogger);
 
         useCase = new ManageSettingsUseCase();
         useCase.settingsRepository = repository;
@@ -63,6 +63,7 @@ class ManageSettingsUseCaseTest {
     static final AuditLogger NO_OP_AUDIT = new AuditLogger() {
         @Override public void log(String action, String target, String detail) { }
         @Override public void logAs(String actor, String action, String target, String detail) { }
+        @Override public int removeEntriesOlderThan(java.time.Instant cutoff) { return 0; }
     };
 
     private static void setField(Object target, String name, Object value) throws Exception {

@@ -44,7 +44,7 @@ class AuditRetentionServiceTest {
 
         retentionService = new AuditRetentionService();
         retentionService.runtimeSettingsService = settingsService;
-        retentionService.fileAuditLogger = fileAuditLogger;
+        retentionService.auditLogger = fileAuditLogger;
     }
 
     private void writeOldAndRecentEntries() throws Exception {

@@ -254,9 +254,17 @@ public class ManageScheduleUseCase {
     }
 
     public ContainerSchedule update(String id, UpdateScheduleRequest request) {
-        ContainerSchedule schedule = scheduleRepository.findById(id)
+        // atomic mutation: an admin edit must not write back stale execution
+        // fields over a concurrently finishing run (and vice versa)
+        boolean found = scheduleRepository.update(id, schedule -> applyUpdate(schedule, request));
+        if (!found) {
+            throw new EntityNotFoundException("Schedule not found: " + id);
+        }
+        return scheduleRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Schedule not found: " + id));
+    }
 
+    private void applyUpdate(ContainerSchedule schedule, UpdateScheduleRequest request) {
         if (request.getName() != null) {
             Optional<String> nameError = InputValidator.validateScheduleName(request.getName());
             if (nameError.isPresent()) {
@@ -317,9 +325,6 @@ public class ManageScheduleUseCase {
             request.getCreateConfig().setTenantId(schedule.getTenantId());
             schedule.setCreateConfig(request.getCreateConfig());
         }
-
-        scheduleRepository.save(schedule);
-        return schedule;
     }
 
     public void delete(String id) {
@@ -330,31 +335,34 @@ public class ManageScheduleUseCase {
     }
 
     public ContainerSchedule toggleEnabled(String id) {
-        ContainerSchedule schedule = scheduleRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Schedule not found: " + id));
-
-        // Block re-enabling a one-time schedule that already executed
-        if (!schedule.isEnabled()
-                && schedule.getScheduleType() == ScheduleType.ONE_TIME
-                && schedule.getLastExecutedAt() != null) {
-            throw new InvalidInputException(
-                    "Cannot re-enable a one-time schedule that has already been executed. Create a new schedule instead.");
-        }
-
-        schedule.setEnabled(!schedule.isEnabled());
-
-        if (schedule.isEnabled()) {
-            // Recompute next execution
-            if (schedule.getScheduleType() == ScheduleType.RECURRING) {
-                Instant next = CronParser.nextExecution(schedule.getCronExpression(), Instant.now());
-                schedule.setNextExecutionAt(next);
-            } else if (schedule.getScheduleType() == ScheduleType.ONE_TIME) {
-                schedule.setNextExecutionAt(schedule.getScheduledAt());
+        // atomic mutation: the guard evaluates against the freshest state, so a
+        // stale read can never re-arm an executed one-time schedule
+        boolean found = scheduleRepository.update(id, schedule -> {
+            // Block re-enabling a one-time schedule that already executed
+            if (!schedule.isEnabled()
+                    && schedule.getScheduleType() == ScheduleType.ONE_TIME
+                    && schedule.getLastExecutedAt() != null) {
+                throw new InvalidInputException(
+                        "Cannot re-enable a one-time schedule that has already been executed. Create a new schedule instead.");
             }
-        }
 
-        scheduleRepository.save(schedule);
-        return schedule;
+            schedule.setEnabled(!schedule.isEnabled());
+
+            if (schedule.isEnabled()) {
+                // Recompute next execution
+                if (schedule.getScheduleType() == ScheduleType.RECURRING) {
+                    Instant next = CronParser.nextExecution(schedule.getCronExpression(), Instant.now());
+                    schedule.setNextExecutionAt(next);
+                } else if (schedule.getScheduleType() == ScheduleType.ONE_TIME) {
+                    schedule.setNextExecutionAt(schedule.getScheduledAt());
+                }
+            }
+        });
+        if (!found) {
+            throw new EntityNotFoundException("Schedule not found: " + id);
+        }
+        return scheduleRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Schedule not found: " + id));
     }
 
     public Optional<ContainerSchedule> findById(String id) {

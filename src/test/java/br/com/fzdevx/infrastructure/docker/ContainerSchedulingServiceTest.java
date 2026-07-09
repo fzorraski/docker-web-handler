@@ -81,7 +81,10 @@ class ContainerSchedulingServiceTest {
         assertEquals("FAILED", schedule.getLastExecutionStatus());
         assertEquals("Insufficient host memory. Available: 500 MB, required: 2048 MB.", schedule.getLastExecutionMessage());
         verify(dockerClient, never()).startContainerCmd(any());
-        verify(scheduleRepository).save(schedule);
+        // execution results are written through the targeted update, never a full save
+        verify(scheduleRepository).recordExecution(eq(schedule.getId()), eq("FAILED"),
+                eq("Insufficient host memory. Available: 500 MB, required: 2048 MB."), any());
+        verify(scheduleRepository, never()).save(any());
     }
 
     @Test

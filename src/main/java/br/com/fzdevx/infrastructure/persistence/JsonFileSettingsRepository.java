@@ -21,6 +21,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * (atomic tmp-file move) write strategy as {@link AbstractJsonFileRepository}.
  */
 @ApplicationScoped
+@jakarta.enterprise.inject.Typed(JsonFileSettingsRepository.class)
 public class JsonFileSettingsRepository implements SettingsRepository {
 
     private final Jsonb jsonb = JsonbBuilder.create();

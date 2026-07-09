@@ -28,7 +28,7 @@ public class AuditRetentionService {
     RuntimeSettingsService runtimeSettingsService;
 
     @Inject
-    FileAuditLogger fileAuditLogger;
+    br.com.fzdevx.application.port.AuditLogger auditLogger;
 
     private ScheduledExecutorService scheduler;
 
@@ -49,7 +49,7 @@ public class AuditRetentionService {
                 return;
             }
             Instant cutoff = Instant.now().minus(Duration.ofDays(retentionDays));
-            int removed = fileAuditLogger.removeEntriesOlderThan(cutoff);
+            int removed = auditLogger.removeEntriesOlderThan(cutoff);
             if (removed > 0) {
                 Log.infof("Audit retention: removed %d entr%s older than %d day(s).",
                         removed, removed == 1 ? "y" : "ies", retentionDays);

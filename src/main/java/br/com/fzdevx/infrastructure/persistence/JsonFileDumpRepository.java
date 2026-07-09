@@ -11,6 +11,7 @@ import java.util.Optional;
 
 
 @ApplicationScoped
+@jakarta.enterprise.inject.Typed(JsonFileDumpRepository.class)
 public class JsonFileDumpRepository
         extends AbstractJsonFileRepository<DatabaseDump>
         implements DumpRepository {

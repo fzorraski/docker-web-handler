@@ -199,7 +199,9 @@ class LoginUseCaseTest {
 
         useCase.execute("1.2.3.4", "alice", "pw123");
 
-        verify(userRepository).save(argThat(saved -> saved.getLastLoginAt() != null));
+        // targeted mutation, never a full save (a stale save could clobber concurrent admin edits)
+        verify(userRepository).update(eq(user.getId()), any());
+        verify(userRepository, never()).save(any());
     }
 
     @Test

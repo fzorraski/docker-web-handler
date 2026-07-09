@@ -14,6 +14,7 @@ import java.util.Optional;
 
 
 @ApplicationScoped
+@jakarta.enterprise.inject.Typed(JsonFileManagedDatabaseRepository.class)
 public class JsonFileManagedDatabaseRepository
         extends AbstractJsonFileRepository<ManagedDatabase>
         implements ManagedDatabaseRepository {

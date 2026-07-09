@@ -121,7 +121,7 @@ class PruneImagesUseCaseTest {
         Image img = mockImage(IMAGE_ID, "postgres:16", oldEpoch);
         when(dockerImagePort.listImages()).thenReturn(List.of(img));
         when(dockerContainerPort.listContainers(true)).thenReturn(Collections.emptyList());
-        when(imageUsageTracker.getLastUsed(IMAGE_ID)).thenReturn(Optional.empty());
+        when(imageUsageTracker.getAllLastUsed()).thenReturn(java.util.Map.of());
 
         useCase.execute(30, events::add);
 
@@ -136,7 +136,7 @@ class PruneImagesUseCaseTest {
         Image img = mockImage(IMAGE_ID, "postgres:16", recentEpoch);
         when(dockerImagePort.listImages()).thenReturn(List.of(img));
         when(dockerContainerPort.listContainers(true)).thenReturn(Collections.emptyList());
-        when(imageUsageTracker.getLastUsed(IMAGE_ID)).thenReturn(Optional.empty());
+        when(imageUsageTracker.getAllLastUsed()).thenReturn(java.util.Map.of());
 
         useCase.execute(30, events::add);
 
@@ -151,7 +151,7 @@ class PruneImagesUseCaseTest {
         when(dockerImagePort.listImages()).thenReturn(List.of(img));
         when(dockerContainerPort.listContainers(true)).thenReturn(Collections.emptyList());
         Instant oldUsage = Instant.now().minus(60, ChronoUnit.DAYS);
-        when(imageUsageTracker.getLastUsed(IMAGE_ID)).thenReturn(Optional.of(oldUsage));
+        when(imageUsageTracker.getAllLastUsed()).thenReturn(java.util.Map.of(IMAGE_ID, oldUsage));
 
         useCase.execute(30, events::add);
 
@@ -164,7 +164,7 @@ class PruneImagesUseCaseTest {
         when(dockerImagePort.listImages()).thenReturn(List.of(img));
         when(dockerContainerPort.listContainers(true)).thenReturn(Collections.emptyList());
         Instant recentUsage = Instant.now().minus(5, ChronoUnit.DAYS);
-        when(imageUsageTracker.getLastUsed(IMAGE_ID)).thenReturn(Optional.of(recentUsage));
+        when(imageUsageTracker.getAllLastUsed()).thenReturn(java.util.Map.of(IMAGE_ID, recentUsage));
 
         useCase.execute(30, events::add);
 
@@ -196,7 +196,7 @@ class PruneImagesUseCaseTest {
         Image img2 = mockImage(id2, "redis:7", oldEpoch);
         when(dockerImagePort.listImages()).thenReturn(List.of(img1, img2));
         when(dockerContainerPort.listContainers(true)).thenReturn(Collections.emptyList());
-        when(imageUsageTracker.getLastUsed(any())).thenReturn(Optional.empty());
+        when(imageUsageTracker.getAllLastUsed()).thenReturn(java.util.Map.of());
 
         doNothing().when(dockerImagePort).removeImage(id1);
         doThrow(new RuntimeException("in use")).when(dockerImagePort).removeImage(id2);
@@ -216,7 +216,7 @@ class PruneImagesUseCaseTest {
         Image img = mockImage(IMAGE_ID, "postgres:16", oldEpoch);
         when(dockerImagePort.listImages()).thenReturn(List.of(img));
         when(dockerContainerPort.listContainers(true)).thenReturn(Collections.emptyList());
-        when(imageUsageTracker.getLastUsed(IMAGE_ID)).thenReturn(Optional.empty());
+        when(imageUsageTracker.getAllLastUsed()).thenReturn(java.util.Map.of());
 
         useCase.execute(30, events::add);
 
@@ -244,7 +244,7 @@ class PruneImagesUseCaseTest {
         Image img = mockImage(IMAGE_ID, "postgres:16", oldEpoch);
         when(dockerImagePort.listImages()).thenReturn(List.of(img));
         when(dockerContainerPort.listContainers(true)).thenReturn(Collections.emptyList());
-        when(imageUsageTracker.getLastUsed(IMAGE_ID)).thenReturn(Optional.empty());
+        when(imageUsageTracker.getAllLastUsed()).thenReturn(java.util.Map.of());
 
         useCase.execute(30, events::add);
 

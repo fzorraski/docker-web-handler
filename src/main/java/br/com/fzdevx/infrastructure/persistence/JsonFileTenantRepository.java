@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 @ApplicationScoped
+@jakarta.enterprise.inject.Typed(JsonFileTenantRepository.class)
 public class JsonFileTenantRepository
         extends AbstractJsonFileRepository<Tenant>
         implements TenantRepository {

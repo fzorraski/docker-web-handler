@@ -99,7 +99,14 @@ public class ContainerSchedulingService {
         }
 
         schedule.setNextExecutionAt(nextExec);
-        scheduleRepository.save(schedule);
+        try {
+            scheduleRepository.updateNextExecution(schedule.getId(), nextExec);
+        } catch (RuntimeException e) {
+            // persistence failed but the in-JVM timer below still fires; the
+            // stored nextExecutionAt catches up on the next successful write
+            Log.errorf("Failed to persist next execution of schedule '%s': %s",
+                    schedule.getName(), e.getMessage());
+        }
 
         long delayMs = nextExec.toEpochMilli() - System.currentTimeMillis();
         if (delayMs <= 0) delayMs = 1;
@@ -192,7 +199,18 @@ public class ContainerSchedulingService {
     }
 
     private void executeSchedule(String scheduleId) {
-        ContainerSchedule schedule = scheduleRepository.findById(scheduleId).orElse(null);
+        ContainerSchedule schedule;
+        try {
+            schedule = scheduleRepository.findById(scheduleId).orElse(null);
+        } catch (RuntimeException e) {
+            // Store unreachable (e.g. transient app-DB outage): the action has
+            // not run yet, so retry the whole cycle instead of silently losing
+            // the schedule until the next restart.
+            Log.errorf("Cannot load schedule %s (%s) - retrying in %d minutes.",
+                    scheduleId, e.getMessage(), STORE_RETRY_MINUTES);
+            rearmRetry(scheduleId);
+            return;
+        }
         if (schedule == null) {
             Log.warnf("Schedule %s not found, skipping execution.", scheduleId);
             scheduledTasks.remove(scheduleId);
@@ -215,31 +233,54 @@ public class ContainerSchedulingService {
             scheduledTasks.remove(scheduleId);
         }
 
-        // Post-execution: reschedule or disable
-        // Re-read schedule to get updated status (executeStart/Stop may have written SKIPPED)
-        schedule = scheduleRepository.findById(scheduleId).orElse(schedule);
+        // Post-execution: reschedule or disable. Guarded so a transient store
+        // error can never leave a recurring schedule silently dead - worst
+        // case the in-memory copy drives the reschedule and persistence
+        // catches up on the next cycle.
+        try {
+            // Re-read schedule to get updated status (executeStart/Stop may have written SKIPPED)
+            schedule = scheduleRepository.findById(scheduleId).orElse(schedule);
 
-        if (schedule.getScheduleType() == ScheduleType.RECURRING && schedule.isEnabled()) {
-            // Auto-disable recurring START/STOP schedules if the container no longer exists.
-            // Prevents perpetual SKIPPED noise in the logs.
-            if ((schedule.getAction() == ScheduleAction.START
-                        || schedule.getAction() == ScheduleAction.STOP
-                        || schedule.getAction() == ScheduleAction.REMOVE)
-                    && "SKIPPED".equals(schedule.getLastExecutionStatus())
-                    && schedule.getLastExecutionMessage() != null
-                    && schedule.getLastExecutionMessage().contains("Container not found")) {
+            if (schedule.getScheduleType() == ScheduleType.RECURRING && schedule.isEnabled()) {
+                // Auto-disable recurring START/STOP schedules if the container no longer exists.
+                // Prevents perpetual SKIPPED noise in the logs.
+                if ((schedule.getAction() == ScheduleAction.START
+                            || schedule.getAction() == ScheduleAction.STOP
+                            || schedule.getAction() == ScheduleAction.REMOVE)
+                        && "SKIPPED".equals(schedule.getLastExecutionStatus())
+                        && schedule.getLastExecutionMessage() != null
+                        && schedule.getLastExecutionMessage().contains("Container not found")) {
+                    schedule.setEnabled(false);
+                    schedule.setLastExecutionMessage(
+                            schedule.getLastExecutionMessage() + " — Schedule auto-disabled (container removed).");
+                    scheduleRepository.save(schedule);
+                    Log.warnf("Schedule '%s' auto-disabled: target container no longer exists.", schedule.getName());
+                } else {
+                    scheduleNext(schedule);
+                }
+            } else if (schedule.getScheduleType() == ScheduleType.ONE_TIME) {
                 schedule.setEnabled(false);
-                schedule.setLastExecutionMessage(
-                        schedule.getLastExecutionMessage() + " — Schedule auto-disabled (container removed).");
                 scheduleRepository.save(schedule);
-                Log.warnf("Schedule '%s' auto-disabled: target container no longer exists.", schedule.getName());
-            } else {
+            }
+        } catch (RuntimeException e) {
+            Log.errorf("Post-execution handling of schedule '%s' failed: %s", schedule.getName(), e.getMessage());
+            if (schedule.getScheduleType() == ScheduleType.RECURRING && schedule.isEnabled()) {
                 scheduleNext(schedule);
             }
-        } else if (schedule.getScheduleType() == ScheduleType.ONE_TIME) {
-            schedule.setEnabled(false);
-            scheduleRepository.save(schedule);
         }
+    }
+
+    private static final long STORE_RETRY_MINUTES = 5;
+
+    /** Re-arms an execution attempt after a transient store failure. */
+    private void rearmRetry(String scheduleId) {
+        if (scheduler == null) {
+            scheduledTasks.remove(scheduleId);
+            return;
+        }
+        ScheduledFuture<?> future = scheduler.schedule(
+                () -> executeSchedule(scheduleId), STORE_RETRY_MINUTES, TimeUnit.MINUTES);
+        scheduledTasks.put(scheduleId, future);
     }
 
     private void executeStart(ContainerSchedule schedule) {
@@ -408,10 +449,19 @@ public class ContainerSchedulingService {
     }
 
     private void updateStatus(ContainerSchedule schedule, String status, String message) {
-        schedule.setLastExecutedAt(Instant.now());
+        Instant executedAt = Instant.now();
+        // keep the in-memory copy in sync for the post-execution logic
+        schedule.setLastExecutedAt(executedAt);
         schedule.setLastExecutionStatus(status);
         schedule.setLastExecutionMessage(message);
-        scheduleRepository.save(schedule);
+        try {
+            // targeted write: never clobbers a concurrent admin edit of the definition;
+            // a failed status write must never break the execution/reschedule flow
+            scheduleRepository.recordExecution(schedule.getId(), status, message, executedAt);
+        } catch (RuntimeException e) {
+            Log.errorf("Failed to persist execution status of schedule '%s': %s",
+                    schedule.getName(), e.getMessage());
+        }
         if ("SUCCESS".equals(status)) {
             resourceCounterService.increment(ResourceCounterService.SCHEDULES_EXECUTED);
         }

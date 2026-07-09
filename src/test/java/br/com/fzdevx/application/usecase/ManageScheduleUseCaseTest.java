@@ -49,6 +49,18 @@ class ManageScheduleUseCaseTest {
     @org.junit.jupiter.api.BeforeEach
     void wireTenantVisibility() {
         useCase.tenantVisibility = br.com.fzdevx.infrastructure.config.TestTenantVisibility.passthrough();
+        // mirror the real atomic update: apply the mutator to whatever findById is stubbed with
+        org.mockito.Mockito.lenient()
+                .when(scheduleRepository.update(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(invocation -> {
+                    var stored = scheduleRepository.findById(invocation.getArgument(0));
+                    if (stored.isEmpty()) {
+                        return false;
+                    }
+                    java.util.function.Consumer<ContainerSchedule> mutator = invocation.getArgument(1);
+                    mutator.accept(stored.get());
+                    return true;
+                });
     }
 
     private CreateScheduleRequest validOneTimeStopRequest() {
@@ -325,7 +337,9 @@ class ManageScheduleUseCaseTest {
         ContainerSchedule result = useCase.toggleEnabled(VALID_UUID);
 
         assertFalse(result.isEnabled());
-        verify(scheduleRepository).save(result);
+        // atomic mutation - a full save could clobber concurrent execution writes
+        verify(scheduleRepository).update(eq(VALID_UUID), any());
+        verify(scheduleRepository, never()).save(any());
     }
 
     @Test
@@ -453,7 +467,9 @@ class ManageScheduleUseCaseTest {
         ContainerSchedule result = useCase.update(VALID_UUID, req);
 
         assertEquals("new name", result.getName());
-        verify(scheduleRepository).save(result);
+        // atomic mutation - a full save could clobber concurrent execution writes
+        verify(scheduleRepository).update(eq(VALID_UUID), any());
+        verify(scheduleRepository, never()).save(any());
     }
 
     @Test

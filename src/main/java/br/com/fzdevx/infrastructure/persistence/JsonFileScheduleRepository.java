@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 @ApplicationScoped
+@jakarta.enterprise.inject.Typed(JsonFileScheduleRepository.class)
 public class JsonFileScheduleRepository
         extends AbstractJsonFileRepository<ContainerSchedule>
         implements ScheduleRepository {
@@ -26,6 +27,25 @@ public class JsonFileScheduleRepository
     @Override
     public void save(ContainerSchedule schedule) {
         saveEntity(schedule, s -> s.getId().equals(schedule.getId()));
+    }
+
+    @Override
+    public boolean update(String id, java.util.function.Consumer<ContainerSchedule> mutator) {
+        return updateEntity(s -> s.getId().equals(id), mutator);
+    }
+
+    @Override
+    public void recordExecution(String id, String status, String message, java.time.Instant executedAt) {
+        updateEntity(s -> s.getId().equals(id), s -> {
+            s.setLastExecutionStatus(status);
+            s.setLastExecutionMessage(message);
+            s.setLastExecutedAt(executedAt);
+        });
+    }
+
+    @Override
+    public void updateNextExecution(String id, java.time.Instant nextExecutionAt) {
+        updateEntity(s -> s.getId().equals(id), s -> s.setNextExecutionAt(nextExecutionAt));
     }
 
     @Override

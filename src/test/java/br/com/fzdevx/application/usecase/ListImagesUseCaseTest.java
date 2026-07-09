@@ -209,7 +209,7 @@ class ListImagesUseCaseTest {
         when(dockerImagePort.listImages()).thenReturn(List.of(img));
         when(dockerContainerPort.listContainers(true)).thenReturn(Collections.emptyList());
         Instant lastUsed = Instant.parse("2025-06-15T10:30:00Z");
-        when(imageUsageTracker.getLastUsed(IMAGE_ID)).thenReturn(Optional.of(lastUsed));
+        when(imageUsageTracker.getAllLastUsed()).thenReturn(java.util.Map.of(IMAGE_ID, lastUsed));
 
         List<DockerImage> result = useCase.execute();
 
@@ -221,7 +221,7 @@ class ListImagesUseCaseTest {
         Image img = mockImage(IMAGE_ID, "postgres:16", null);
         when(dockerImagePort.listImages()).thenReturn(List.of(img));
         when(dockerContainerPort.listContainers(true)).thenReturn(Collections.emptyList());
-        when(imageUsageTracker.getLastUsed(IMAGE_ID)).thenReturn(Optional.empty());
+        when(imageUsageTracker.getAllLastUsed()).thenReturn(java.util.Map.of());
 
         List<DockerImage> result = useCase.execute();
 

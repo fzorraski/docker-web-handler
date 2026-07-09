@@ -45,9 +45,13 @@ public class ChangeOwnPasswordUseCase {
                     + ManageUsersUseCase.MIN_PASSWORD_LENGTH + " characters long.");
         }
 
-        user.setPasswordHash(PasswordHasher.hash(newPassword));
-        user.setUpdatedAt(Instant.now());
-        userRepository.save(user);
+        // targeted mutation: a full-object save could clobber a concurrent
+        // admin edit (enabled flag, roles, tenants) with this stale copy
+        String newHash = PasswordHasher.hash(newPassword);
+        userRepository.update(user.getId(), u -> {
+            u.setPasswordHash(newHash);
+            u.setUpdatedAt(Instant.now());
+        });
         authorizationService.invalidateCache();
         sessionManager.invalidateSessionsForUserExcept(userId, currentSessionId);
         auditLogger.log("PASSWORD_CHANGE", user.getUsername(), null);

@@ -74,13 +74,18 @@ public class ManageRolesUseCase {
                     throw new DuplicateEntityException("A role named '" + name + "' already exists.");
                 });
 
-        role.setName(name);
-        role.setDescription(trimmedDescription(request));
-        role.setPermissions(permissions);
-        roleRepository.save(role);
+        String description = trimmedDescription(request);
+        boolean found = roleRepository.update(id, stored -> {
+            stored.setName(name);
+            stored.setDescription(description);
+            stored.setPermissions(permissions);
+        });
+        if (!found) {
+            throw new EntityNotFoundException("Role not found.");
+        }
         authorizationService.invalidateCache();
         auditLogger.log("ROLE_UPDATE", name, permissions.size() + " permission(s)");
-        return role;
+        return requireRole(id);
     }
 
     public void delete(String id) {

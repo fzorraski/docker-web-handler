@@ -12,4 +12,10 @@ public interface AuditLogger {
 
     /** Records an action with an explicit actor, for flows without a request identity (e.g. login). */
     void logAs(String actor, String action, String target, String detail);
+
+    /**
+     * Deletes entries older than the cutoff (retention job).
+     * Returns the number of entries removed.
+     */
+    int removeEntriesOlderThan(java.time.Instant cutoff);
 }

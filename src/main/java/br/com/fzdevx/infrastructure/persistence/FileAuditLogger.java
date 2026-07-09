@@ -4,7 +4,6 @@ import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.infrastructure.config.CurrentUser;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.context.ContextNotActiveException;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
@@ -25,6 +24,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * mode, and "system" outside any request (e.g. scheduled executions).
  */
 @ApplicationScoped
+@jakarta.enterprise.inject.Typed(FileAuditLogger.class)
 public class FileAuditLogger implements AuditLogger {
 
     private final ReentrantLock lock = new ReentrantLock();
@@ -42,7 +42,7 @@ public class FileAuditLogger implements AuditLogger {
 
     @Override
     public void log(String action, String target, String detail) {
-        logAs(resolveActor(), action, target, detail);
+        logAs(br.com.fzdevx.infrastructure.config.AuditActor.resolve(currentUser), action, target, detail);
     }
 
     @Override
@@ -63,6 +63,7 @@ public class FileAuditLogger implements AuditLogger {
      *
      * @return the number of entries removed
      */
+    @Override
     public int removeEntriesOlderThan(Instant cutoff) {
         lock.lock();
         try {
@@ -116,17 +117,6 @@ public class FileAuditLogger implements AuditLogger {
             return Instant.parse(line.substring(TIMESTAMP_PREFIX.length(), end));
         } catch (Exception e) {
             return null;
-        }
-    }
-
-    private String resolveActor() {
-        try {
-            if (currentUser.isRbacActive() && currentUser.getUsername() != null) {
-                return currentUser.getUsername();
-            }
-            return "anonymous";
-        } catch (ContextNotActiveException e) {
-            return "system";
         }
     }
 

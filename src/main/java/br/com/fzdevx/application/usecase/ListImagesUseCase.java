@@ -15,6 +15,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.time.Instant;
+import java.util.Map;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -63,6 +64,9 @@ public class ListImagesUseCase {
                 .collect(Collectors.toSet());
         imageUsageTracker.cleanup(allImageIds);
 
+        // one bulk read instead of a per-image lookup inside the loop below
+        Map<String, Instant> lastUsedByImage = imageUsageTracker.getAllLastUsed();
+
         // Build parent -> children map
         Map<String, List<String>> childrenMap = new HashMap<>();
         for (Image img : allImages) {
@@ -97,7 +101,7 @@ public class ListImagesUseCase {
             List<String> children = childrenMap.getOrDefault(fullId, Collections.emptyList());
 
             // Determine last used display string
-            Optional<Instant> lastUsed = imageUsageTracker.getLastUsed(fullId);
+            Optional<Instant> lastUsed = Optional.ofNullable(lastUsedByImage.get(fullId));
             String lastUsedAt = lastUsed.map(DISPLAY_FORMAT::format).orElse(null);
 
             DockerImage dockerImage = new DockerImage();

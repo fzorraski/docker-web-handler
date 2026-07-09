@@ -11,6 +11,7 @@ import java.util.Optional;
 
 
 @ApplicationScoped
+@jakarta.enterprise.inject.Typed(JsonFileExpirationRepository.class)
 public class JsonFileExpirationRepository
         extends AbstractJsonFileRepository<ContainerExpiration>
         implements ExpirationRepository {

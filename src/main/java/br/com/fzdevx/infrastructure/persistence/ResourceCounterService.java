@@ -1,7 +1,9 @@
 package br.com.fzdevx.infrastructure.persistence;
 
+import br.com.fzdevx.infrastructure.persistence.jdbc.JdbcSupport;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import jakarta.json.bind.Jsonb;
 import jakarta.json.bind.JsonbBuilder;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -19,7 +21,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 /**
  * Persistent lifetime counters for managed resources.
  * Counts only go up -- they represent "total ever managed", not current state.
- * Persisted as JSON: { "containers": 42, "images": 15, ... }
+ * Postgres backend: one row per counter, incremented atomically.
+ * File backend (legacy): JSON map { "containers": 42, ... } rewritten per increment.
  */
 @ApplicationScoped
 public class ResourceCounterService {
@@ -28,6 +31,12 @@ public class ResourceCounterService {
 
     @ConfigProperty(name = "resource.counters.file", defaultValue = "data/resource-counters.json")
     String filePath;
+
+    @Inject
+    PersistenceBackendProducer backendProducer;
+
+    @Inject
+    JdbcSupport jdbc;
 
     private final ConcurrentHashMap<String, AtomicLong> counters = new ConcurrentHashMap<>();
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
@@ -44,10 +53,28 @@ public class ResourceCounterService {
     public static final String MIGRATIONS_EXECUTED = "migrationsExecuted";
     private static final String STARTED_AT_KEY = "_startedAt";
 
+    private static final java.util.List<String> COUNTER_KEYS = java.util.List.of(
+            CONTAINERS, IMAGES_DELETED, DUMPS, SNAPSHOTS, RESTORES,
+            SCHEDULES_EXECUTED, LOGS_ANALYZED, DATABASES_DELETED, MIGRATIONS_EXECUTED);
+
     private volatile String startedAt;
+
+    private boolean postgres() {
+        return backendProducer.isPostgres();
+    }
 
     @PostConstruct
     void init() {
+        if (postgres()) {
+            // must never fail bean creation: counters are a side channel, and
+            // the database may still be coming up - startedAt is retried lazily
+            try {
+                initPostgres();
+            } catch (RuntimeException e) {
+                LOG.warn("Resource counters unavailable at startup (will retry lazily): " + e.getMessage());
+            }
+            return;
+        }
         load();
         // Set startedAt once on first-ever boot, persist it so it survives restarts
         if (startedAt == null) {
@@ -56,31 +83,75 @@ public class ResourceCounterService {
         }
     }
 
+    /** startedAt is stored as epoch millis in its own counter row. */
+    private void initPostgres() {
+        jdbc.update("""
+                INSERT INTO resource_counter (counter_key, counter_value) VALUES (?, ?)
+                ON CONFLICT (counter_key) DO NOTHING
+                """, STARTED_AT_KEY, System.currentTimeMillis());
+        startedAt = jdbc.queryOne(
+                        "SELECT counter_value FROM resource_counter WHERE counter_key = ?",
+                        rs -> rs.getLong(1), STARTED_AT_KEY)
+                .map(millis -> Instant.ofEpochMilli(millis).toString())
+                .orElse(null);
+    }
+
     public String getStartedAt() {
+        if (startedAt == null && postgres()) {
+            try {
+                initPostgres();
+            } catch (RuntimeException e) {
+                LOG.warn("Failed to load startedAt counter: " + e.getMessage());
+            }
+        }
         return startedAt;
     }
 
+    /**
+     * Counters are lifetime statistics - a failed write must never fail the
+     * caller's primary operation (matching the file backend, which only ever
+     * logged IO errors).
+     */
     public void increment(String key) {
+        if (postgres()) {
+            try {
+                jdbc.update("""
+                        INSERT INTO resource_counter (counter_key, counter_value) VALUES (?, 1)
+                        ON CONFLICT (counter_key) DO UPDATE
+                        SET counter_value = resource_counter.counter_value + 1
+                        """, key);
+            } catch (RuntimeException e) {
+                LOG.warn("Failed to increment counter '" + key + "': " + e.getMessage());
+            }
+            return;
+        }
         counters.computeIfAbsent(key, k -> new AtomicLong(0)).incrementAndGet();
         persist();
     }
 
     public long get(String key) {
+        if (postgres()) {
+            return jdbc.queryOne("SELECT counter_value FROM resource_counter WHERE counter_key = ?",
+                    rs -> rs.getLong(1), key).orElse(0L);
+        }
         AtomicLong val = counters.get(key);
         return val != null ? val.get() : 0;
     }
 
     public Map<String, Long> getAll() {
         Map<String, Long> result = new java.util.LinkedHashMap<>();
-        result.put(CONTAINERS, get(CONTAINERS));
-        result.put(IMAGES_DELETED, get(IMAGES_DELETED));
-        result.put(DUMPS, get(DUMPS));
-        result.put(SNAPSHOTS, get(SNAPSHOTS));
-        result.put(RESTORES, get(RESTORES));
-        result.put(SCHEDULES_EXECUTED, get(SCHEDULES_EXECUTED));
-        result.put(LOGS_ANALYZED, get(LOGS_ANALYZED));
-        result.put(DATABASES_DELETED, get(DATABASES_DELETED));
-        result.put(MIGRATIONS_EXECUTED, get(MIGRATIONS_EXECUTED));
+        COUNTER_KEYS.forEach(key -> result.put(key, 0L));
+        if (postgres()) {
+            jdbc.query("SELECT counter_key, counter_value FROM resource_counter",
+                            rs -> Map.entry(rs.getString(1), rs.getLong(2)))
+                    .forEach(entry -> {
+                        if (result.containsKey(entry.getKey())) {
+                            result.put(entry.getKey(), entry.getValue());
+                        }
+                    });
+            return result;
+        }
+        result.replaceAll((key, zero) -> get(key));
         return result;
     }
 
