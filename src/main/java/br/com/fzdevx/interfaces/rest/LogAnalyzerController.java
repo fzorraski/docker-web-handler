@@ -50,6 +50,9 @@ public class LogAnalyzerController {
     AnalyzeContainerLogsUseCase analyzeContainerLogsUseCase;
 
     @Inject
+    br.com.fzdevx.infrastructure.docker.ContainerTenantGuard containerTenantGuard;
+
+    @Inject
     LogPresetProvider logPresetProvider;
 
     @Inject
@@ -210,6 +213,9 @@ public class LogAnalyzerController {
                     .entity(Map.of("error", idError.get()))
                     .build();
         }
+
+        // squad isolation: logs of another tenant's container must stay unreadable
+        containerTenantGuard.requireVisible(containerId);
 
         int requestedLines = Math.clamp(lines != null ? lines : defaultContainerTail, 100, 100_000);
         LogPreset preset = presetName != null ? logPresetProvider.byName(presetName) : logPresetProvider.byName(defaultPresetName);

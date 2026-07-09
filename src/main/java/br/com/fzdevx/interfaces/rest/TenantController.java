@@ -44,8 +44,9 @@ public class TenantController {
     public List<Map<String, Object>> manage() {
         // @RequiresPermission is any-of; the USERS_MANAGE + cross-tenant AND lives here
         manageTenantsUseCase.guardGlobalAdmin();
+        Map<String, Long> memberCounts = manageTenantsUseCase.memberCounts();
         return manageTenantsUseCase.list().stream()
-                .map(this::withMemberCount)
+                .map(tenant -> withMemberCount(tenant, memberCounts.getOrDefault(tenant.getId(), 0L)))
                 .toList();
     }
 
@@ -73,13 +74,13 @@ public class TenantController {
         return Map.of("success", true);
     }
 
-    private Map<String, Object> withMemberCount(Tenant tenant) {
+    private Map<String, Object> withMemberCount(Tenant tenant, long memberCount) {
         Map<String, Object> entry = new LinkedHashMap<>();
         entry.put("id", tenant.getId());
         entry.put("name", tenant.getName());
         entry.put("description", tenant.getDescription());
         entry.put("createdAt", tenant.getCreatedAt());
-        entry.put("memberCount", manageTenantsUseCase.memberCount(tenant.getId()));
+        entry.put("memberCount", memberCount);
         return entry;
     }
 }

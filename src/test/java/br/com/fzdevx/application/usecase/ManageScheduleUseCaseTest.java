@@ -41,6 +41,7 @@ class ManageScheduleUseCaseTest {
     @Mock ContainerProtectionService protectionService;
     @Mock ContainerSchedulingService schedulingService;
     @Mock br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
+    @Mock br.com.fzdevx.infrastructure.docker.ContainerTenantGuard containerTenantGuard;
 
     @InjectMocks
     ManageScheduleUseCase useCase;
@@ -258,6 +259,30 @@ class ManageScheduleUseCaseTest {
         req.setCreateConfig(null);
 
         assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    @Test
+    void create_targetingForeignTenantContainer_denied() {
+        // schedules fire outside any request scope where no tenant check can run,
+        // so the target container must be guarded at create time
+        org.mockito.Mockito.doThrow(new EntityNotFoundException("Container not found."))
+                .when(containerTenantGuard).requireVisible(VALID_CONTAINER_ID);
+
+        assertThrows(EntityNotFoundException.class, () -> useCase.create(validOneTimeStopRequest()));
+        verify(scheduleRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void update_repointingToForeignTenantContainer_denied() {
+        ContainerSchedule s = new ContainerSchedule("test", ScheduleAction.STOP, ScheduleType.ONE_TIME);
+        s.setId(VALID_UUID);
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.of(s));
+        org.mockito.Mockito.doThrow(new EntityNotFoundException("Container not found."))
+                .when(containerTenantGuard).requireVisible("feedfacecafe");
+
+        UpdateScheduleRequest request = new UpdateScheduleRequest();
+        request.setContainerId("feedfacecafe");
+        assertThrows(EntityNotFoundException.class, () -> useCase.update(VALID_UUID, request));
     }
 
     @Test

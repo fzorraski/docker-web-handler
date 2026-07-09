@@ -68,6 +68,55 @@ class DatabaseDumpControllerTest {
     // ---- listDumps ----
 
     @Test
+    void updateSharing_shareRecipient_cannotReshare() {
+        when(dumpStorageService.isEnabled()).thenReturn(true);
+        DatabaseDump dump = new DatabaseDump();
+        dump.setId(VALID_UUID);
+        dump.setTenantId("owner-tenant");
+        dump.setSharedWithTenants(java.util.List.of("recipient-tenant"));
+        when(dumpStorageService.findById(VALID_UUID)).thenReturn(Optional.of(dump));
+
+        var recipient = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        recipient.set("u1", "bob",
+                java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.DATABASE_VIEW,
+                        br.com.fzdevx.domain.model.auth.Permission.DATABASE_OPERATE),
+                java.util.Set.of("recipient-tenant"));
+        controller.currentUser = recipient;
+        controller.tenantVisibility =
+                br.com.fzdevx.infrastructure.config.TestTenantVisibility.forUser(recipient, null);
+
+        // visible via the share, but only the owning tenant may change sharing
+        Response response = controller.updateSharing(VALID_UUID,
+                Map.of("sharedWithTenants", java.util.List.of("third-tenant")));
+
+        assertEquals(403, response.getStatus());
+        verify(dumpStorageService, never()).updateSharing(any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void updateSharing_ownerTenantMember_allowed() {
+        when(dumpStorageService.isEnabled()).thenReturn(true);
+        DatabaseDump dump = new DatabaseDump();
+        dump.setId(VALID_UUID);
+        dump.setTenantId("owner-tenant");
+        when(dumpStorageService.findById(VALID_UUID)).thenReturn(Optional.of(dump));
+        when(dumpStorageService.updateSharing(eq(VALID_UUID), any(), any(), anyBoolean())).thenReturn(true);
+
+        var owner = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        owner.set("u1", "alice",
+                java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.DATABASE_VIEW,
+                        br.com.fzdevx.domain.model.auth.Permission.DATABASE_OPERATE),
+                java.util.Set.of("owner-tenant"));
+        controller.currentUser = owner;
+        controller.tenantVisibility =
+                br.com.fzdevx.infrastructure.config.TestTenantVisibility.forUser(owner, null);
+
+        Response response = controller.updateSharing(VALID_UUID, Map.of("sharedWithTenants", java.util.List.of()));
+
+        assertEquals(200, response.getStatus());
+    }
+
+    @Test
     void listDumps_enabled_returnsList() {
         when(dumpStorageService.isEnabled()).thenReturn(true);
         DatabaseDump dump = new DatabaseDump();
@@ -245,7 +294,9 @@ class DatabaseDumpControllerTest {
     void deleteBulk_valid_deletesAndReturnsCount() {
         when(dumpStorageService.isEnabled()).thenReturn(true);
         when(dumpStorageService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
-        when(dumpStorageService.findById(VALID_UUID)).thenReturn(Optional.of(new DatabaseDump()));
+        DatabaseDump dump = new DatabaseDump();
+        dump.setId(VALID_UUID);
+        when(dumpStorageService.findAll()).thenReturn(List.of(dump));
 
         Response response = controller.deleteBulk(VALID_PASSWORD, List.of(VALID_UUID));
 

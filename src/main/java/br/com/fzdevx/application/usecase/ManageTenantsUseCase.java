@@ -55,6 +55,15 @@ public class ManageTenantsUseCase {
                 .count();
     }
 
+    /** All member counts in one pass - the JSON repo re-reads the file per query. */
+    public java.util.Map<String, Long> memberCounts() {
+        return userRepository.findAll().stream()
+                .flatMap(user -> user.getTenantIds().stream())
+                .collect(java.util.stream.Collectors.groupingBy(
+                        java.util.function.Function.identity(),
+                        java.util.stream.Collectors.counting()));
+    }
+
     public Tenant create(CreateTenantRequest request) {
         guardGlobalAdmin();
         String name = validateName(request.getName());

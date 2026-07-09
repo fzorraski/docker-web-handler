@@ -28,7 +28,11 @@ public class ScheduleController {
     @Inject
     br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
 
-    /** Creator visibility is its own permission (AUDIT_VIEW); strip it for callers without it. */
+    /**
+     * Creator visibility is its own permission (AUDIT_VIEW); strip it for callers
+     * without it. Mutating the elements is safe because the JSON repositories
+     * deserialize fresh objects on every read - nothing here is cached or shared.
+     */
     private <T> java.util.List<T> withCreatorVisibility(java.util.List<T> items, java.util.function.BiConsumer<T, String> setter) {
         if (!currentUser.hasPermission(br.com.fzdevx.domain.model.auth.Permission.AUDIT_VIEW)) {
             items.forEach(item -> setter.accept(item, null));
@@ -73,7 +77,7 @@ public class ScheduleController {
         }
         List<ContainerSchedule> visible = tenantVisibility.visible(
                 manageScheduleUseCase.findAll(), ContainerSchedule::getTenantId);
-        return withCreatorVisibility(new java.util.ArrayList<>(visible), ContainerSchedule::setCreatedBy);
+        return withCreatorVisibility(visible, ContainerSchedule::setCreatedBy);
     }
 
     @GET

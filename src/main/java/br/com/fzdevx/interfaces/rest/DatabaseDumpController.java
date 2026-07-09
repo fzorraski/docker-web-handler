@@ -42,7 +42,11 @@ public class DatabaseDumpController {
     @Inject
     br.com.fzdevx.application.port.TenantRepository tenantRepository;
 
-    /** Creator visibility is its own permission (AUDIT_VIEW); strip it for callers without it. */
+    /**
+     * Creator visibility is its own permission (AUDIT_VIEW); strip it for callers
+     * without it. Mutating the elements is safe because the JSON repositories
+     * deserialize fresh objects on every read - nothing here is cached or shared.
+     */
     private <T> java.util.List<T> withCreatorVisibility(java.util.List<T> items, java.util.function.BiConsumer<T, String> setter) {
         if (!currentUser.hasPermission(br.com.fzdevx.domain.model.auth.Permission.AUDIT_VIEW)) {
             items.forEach(item -> setter.accept(item, null));
@@ -54,6 +58,12 @@ public class DatabaseDumpController {
     private Optional<DatabaseDump> findVisible(String id) {
         return dumpStorageService.findById(id)
                 .filter(d -> tenantVisibility.canSee(d.getTenantId(), d.getSharedWithTenants()));
+    }
+
+    /** Sharing is decided by the owning tenant's members (or global admins). */
+    private boolean canEditSharing(String ownerTenantId) {
+        return tenantVisibility.bypass()
+                || (ownerTenantId != null && currentUser.getTenantIds().contains(ownerTenantId));
     }
 
     private List<String> parseTenantList(String csv) {
@@ -311,11 +321,17 @@ public class DatabaseDumpController {
                     .build();
         }
 
+        // one read of the metadata file instead of one per id - the JSON repo
+        // re-reads and re-parses it on every findById
+        Map<String, DatabaseDump> dumpsById = dumpStorageService.findAll().stream()
+                .collect(java.util.stream.Collectors.toMap(DatabaseDump::getId, d -> d));
+
         int deleted = 0;
         for (String id : ids) {
             if (InputValidator.validateUuid(id).isPresent()) continue;
             // tenant-hidden ids are skipped, matching the single-delete 404 behavior
-            if (findVisible(id).isPresent()) {
+            DatabaseDump dump = dumpsById.get(id);
+            if (dump != null && tenantVisibility.canSee(dump.getTenantId(), dump.getSharedWithTenants())) {
                 dumpStorageService.deleteDump(id);
                 deleted++;
             }
@@ -423,9 +439,16 @@ public class DatabaseDumpController {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", uuidError.get())).build();
         }
-        if (findVisible(id).isEmpty()) {
+        Optional<DatabaseDump> dump = findVisible(id);
+        if (dump.isEmpty()) {
             return Response.status(Response.Status.NOT_FOUND)
                     .entity(Map.of("error", "Dump not found.")).build();
+        }
+        // only the owning tenant decides who sees the dump - a share recipient
+        // must not be able to re-share it onward or revoke the owner's shares
+        if (!canEditSharing(dump.get().getTenantId())) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Only the owning tenant can change sharing.")).build();
         }
 
         List<String> sharedWithTenants = extractTenantIds(body.get("sharedWithTenants"));

@@ -196,7 +196,9 @@ class SnapshotControllerTest {
     void deleteBulk_valid_deletesAndReturnsCount() {
         when(dumpStorageService.isEnabled()).thenReturn(true);
         when(dumpStorageService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
-        when(snapshotStorageService.findById(VALID_UUID)).thenReturn(Optional.of(new DatabaseSnapshot()));
+        DatabaseSnapshot snap = new DatabaseSnapshot();
+        snap.setId(VALID_UUID);
+        when(snapshotStorageService.findAll()).thenReturn(List.of(snap));
 
         Response response = controller.deleteBulk(VALID_PASSWORD, List.of(VALID_UUID));
         assertEquals(200, response.getStatus());

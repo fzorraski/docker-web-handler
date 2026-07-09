@@ -33,6 +33,9 @@ public class ManageScheduleUseCase {
     br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
 
     @Inject
+    br.com.fzdevx.infrastructure.docker.ContainerTenantGuard containerTenantGuard;
+
+    @Inject
     ScheduleRepository scheduleRepository;
 
     @Inject
@@ -147,6 +150,10 @@ public class ManageScheduleUseCase {
             if (containerIdError.isPresent()) {
                 throw new InvalidInputException(containerIdError.get());
             }
+            // the scheduler fires outside any request scope where no tenant check can
+            // run - guard the target here, or a schedule becomes a cross-tenant
+            // stop/remove of another squad's container
+            containerTenantGuard.requireVisible(request.getContainerId());
             if (request.getContainerName() != null && !request.getContainerName().isBlank()) {
                 Optional<String> containerNameError = InputValidator.validateContainerName(request.getContainerName());
                 if (containerNameError.isPresent()) {
@@ -285,6 +292,8 @@ public class ManageScheduleUseCase {
             if (containerIdError.isPresent()) {
                 throw new InvalidInputException(containerIdError.get());
             }
+            // same cross-tenant guard as create - updates can repoint the target
+            containerTenantGuard.requireVisible(request.getContainerId());
             schedule.setContainerId(request.getContainerId());
         }
         if (request.getContainerName() != null && !request.getContainerName().isBlank()) {

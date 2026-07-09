@@ -49,6 +49,9 @@ class LogAnalyzerControllerTest {
     AnalyzeContainerLogsUseCase analyzeContainerLogsUseCase;
 
     @Mock
+    br.com.fzdevx.infrastructure.docker.ContainerTenantGuard containerTenantGuard;
+
+    @Mock
     LogPresetProvider logPresetProvider;
 
     @Mock

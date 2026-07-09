@@ -293,8 +293,7 @@ class ManagedDatabaseControllerTest {
     void deleteBulk_skipsProtected() {
         ManagedDatabase protectedDb = new ManagedDatabase(REPO, "protected_db");
         protectedDb.setProtectedFlag(true);
-        when(managedDatabaseRepository.find(REPO, "protected_db")).thenReturn(Optional.of(protectedDb));
-        when(managedDatabaseRepository.find(REPO, "normal_db")).thenReturn(Optional.empty());
+        when(managedDatabaseRepository.findByRepository(REPO)).thenReturn(List.of(protectedDb));
 
         Response response = controller.deleteBulk(REPO, PASSWORD, List.of("protected_db", "normal_db"));
         assertEquals(200, response.getStatus());

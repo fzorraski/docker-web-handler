@@ -109,11 +109,6 @@ public class ManagedDatabaseController {
                 .ifPresent(db -> tenantVisibility.requireVisible(db.getTenantId()));
     }
 
-    private boolean isDbVisible(String repository, String databaseName) {
-        return managedDatabaseRepository.find(repository, databaseName)
-                .map(db -> tenantVisibility.canSee(db.getTenantId()))
-                .orElse(true);
-    }
 
     @GET
     @Path("/enabled")
@@ -847,6 +842,11 @@ public class ManagedDatabaseController {
 
         Map<String, Integer> activeConnections = null; // lazy-loaded on first valid name
 
+        // one read of the metadata file instead of two per name (the JSON repo
+        // re-reads it on every find) - used for both visibility and protection
+        Map<String, ManagedDatabase> metadataByName = managedDatabaseRepository.findByRepository(repository)
+                .stream().collect(java.util.stream.Collectors.toMap(ManagedDatabase::getName, m -> m));
+
         int deleted = 0;
         int skipped = 0;
         for (String name : names) {
@@ -855,14 +855,15 @@ public class ManagedDatabaseController {
                 continue;
             }
 
+            ManagedDatabase md = metadataByName.get(name);
+
             // tenant-hidden databases are skipped, matching the single-delete 404 behavior
-            if (!isDbVisible(repository, name)) {
+            if (md != null && !tenantVisibility.canSee(md.getTenantId())) {
                 skipped++;
                 continue;
             }
 
-            Optional<ManagedDatabase> md = managedDatabaseRepository.find(repository, name);
-            if (md.isPresent() && md.get().isProtectedFlag()) {
+            if (md != null && md.isProtectedFlag()) {
                 skipped++;
                 continue;
             }
