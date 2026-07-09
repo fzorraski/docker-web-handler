@@ -48,6 +48,7 @@ class DatabaseDumpControllerTest {
     void injectCurrentUser() {
         // real instance: outside RBAC it grants everything (legacy behavior)
         controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        controller.tenantVisibility = br.com.fzdevx.infrastructure.config.TestTenantVisibility.passthrough();
     }
 
     // ---- isEnabled ----
@@ -291,6 +292,7 @@ class DatabaseDumpControllerTest {
     void updateMetadata_invalidDbName_returnsBadRequest() {
         when(dumpStorageService.isEnabled()).thenReturn(true);
         when(dumpStorageService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dumpStorageService.findById(VALID_UUID)).thenReturn(Optional.of(new DatabaseDump()));
 
         Response response = controller.updateMetadata(VALID_UUID, VALID_PASSWORD,
                 Map.of("databaseName", "123bad"));
@@ -313,6 +315,7 @@ class DatabaseDumpControllerTest {
     void updateMetadata_valid_returns200() {
         when(dumpStorageService.isEnabled()).thenReturn(true);
         when(dumpStorageService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dumpStorageService.findById(VALID_UUID)).thenReturn(Optional.of(new DatabaseDump()));
         when(dumpStorageService.updateMetadata(eq(VALID_UUID), any(), any(), any())).thenReturn(true);
 
         Response response = controller.updateMetadata(VALID_UUID, VALID_PASSWORD,
@@ -327,6 +330,7 @@ class DatabaseDumpControllerTest {
     void updateExpiration_valid_returns200() {
         when(dumpStorageService.isEnabled()).thenReturn(true);
         when(dumpStorageService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dumpStorageService.findById(VALID_UUID)).thenReturn(Optional.of(new DatabaseDump()));
         when(dumpStorageService.updateExpiration(eq(VALID_UUID), any())).thenReturn(true);
 
         Response response = controller.updateExpiration(VALID_UUID, VALID_PASSWORD,

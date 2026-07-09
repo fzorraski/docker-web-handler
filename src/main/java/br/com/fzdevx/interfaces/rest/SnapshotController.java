@@ -31,12 +31,24 @@ public class SnapshotController {
     @Inject
     br.com.fzdevx.infrastructure.config.CurrentUser currentUser;
 
+    @Inject
+    br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
+
+    @Inject
+    br.com.fzdevx.application.port.TenantRepository tenantRepository;
+
     /** Creator visibility is its own permission (AUDIT_VIEW); strip it for callers without it. */
     private <T> java.util.List<T> withCreatorVisibility(java.util.List<T> items, java.util.function.BiConsumer<T, String> setter) {
         if (!currentUser.hasPermission(br.com.fzdevx.domain.model.auth.Permission.AUDIT_VIEW)) {
             items.forEach(item -> setter.accept(item, null));
         }
         return items;
+    }
+
+    /** Tenant-hidden snapshots are reported as nonexistent. */
+    private Optional<DatabaseSnapshot> findVisible(String id) {
+        return snapshotStorageService.findById(id)
+                .filter(s -> tenantVisibility.canSee(s.getTenantId(), s.getSharedWithTenants()));
     }
 
     @Inject
@@ -61,9 +73,10 @@ public class SnapshotController {
         if (!dumpStorageService.isEnabled()) {
             return Collections.emptyList();
         }
-        return withCreatorVisibility(new java.util.ArrayList<>(snapshotStorageService.findAll().stream()
-                .filter(s -> !s.isTemporary())
-                .toList()), DatabaseSnapshot::setCreatedBy);
+        List<DatabaseSnapshot> visible = tenantVisibility.visible(
+                snapshotStorageService.findAll().stream().filter(s -> !s.isTemporary()).toList(),
+                DatabaseSnapshot::getTenantId, DatabaseSnapshot::getSharedWithTenants);
+        return withCreatorVisibility(new java.util.ArrayList<>(visible), DatabaseSnapshot::setCreatedBy);
     }
 
     @GET
@@ -79,7 +92,7 @@ public class SnapshotController {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 
-        Optional<DatabaseSnapshot> opt = snapshotStorageService.findById(id);
+        Optional<DatabaseSnapshot> opt = findVisible(id);
         if (opt.isEmpty()) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
@@ -126,7 +139,7 @@ public class SnapshotController {
                     .build();
         }
 
-        if (snapshotStorageService.findById(id).isEmpty()) {
+        if (findVisible(id).isEmpty()) {
             return Response.status(Response.Status.NOT_FOUND)
                     .entity(Map.of("error", "Snapshot not found."))
                     .build();
@@ -163,7 +176,8 @@ public class SnapshotController {
         int deleted = 0;
         for (String id : ids) {
             if (InputValidator.validateUuid(id).isPresent()) continue;
-            if (snapshotStorageService.findById(id).isPresent()) {
+            // tenant-hidden ids are skipped, matching the single-delete 404 behavior
+            if (findVisible(id).isPresent()) {
                 snapshotStorageService.deleteSnapshot(id);
                 deleted++;
             }
@@ -192,6 +206,10 @@ public class SnapshotController {
         if (!dumpStorageService.validateOperationsPassword(password)) {
             return Response.status(Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "Invalid operations password.")).build();
+        }
+        if (findVisible(id).isEmpty()) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", "Snapshot not found.")).build();
         }
         String label = body.get("label");
         String description = body.get("description");
@@ -225,6 +243,10 @@ public class SnapshotController {
                     .entity(Map.of("error", "Invalid operations password.")).build();
         }
 
+        if (findVisible(id).isEmpty()) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", "Snapshot not found.")).build();
+        }
         Instant expiresAt = DateTimeParser.parseExpiresAt(body.get("expiresAt"));
         boolean updated = snapshotStorageService.updateExpiration(id, expiresAt);
         if (!updated) {
@@ -232,6 +254,64 @@ public class SnapshotController {
                     .entity(Map.of("error", "Snapshot not found.")).build();
         }
         return Response.ok(Map.of("success", true)).build();
+    }
+
+    /**
+     * Updates which tenants a snapshot is shared with. The owning tenant can
+     * only be changed by TENANTS_VIEW_ALL holders (lets admins adopt legacy snapshots).
+     */
+    @RequiresPermission(Permission.DATABASE_OPERATE)
+    @PUT
+    @Path("/sharing/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response updateSharing(@PathParam("id") String id, Map<String, Object> body) {
+        if (!dumpStorageService.isEnabled()) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Dump feature is disabled.")).build();
+        }
+        Optional<String> uuidError = InputValidator.validateUuid(id);
+        if (uuidError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", uuidError.get())).build();
+        }
+        if (findVisible(id).isEmpty()) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", "Snapshot not found.")).build();
+        }
+
+        List<String> sharedWithTenants = extractTenantIds(body.get("sharedWithTenants"));
+        for (String tenantId : sharedWithTenants) {
+            if (tenantRepository.findById(tenantId).isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Unknown tenant: " + tenantId)).build();
+            }
+        }
+
+        boolean changeOwner = body.containsKey("tenantId")
+                && tenantVisibility.bypass() && currentUser.isRbacActive();
+        String newTenantId = null;
+        if (changeOwner) {
+            Object raw = body.get("tenantId");
+            newTenantId = raw == null || raw.toString().isBlank() ? null : raw.toString();
+            if (newTenantId != null && tenantRepository.findById(newTenantId).isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Unknown tenant: " + newTenantId)).build();
+            }
+        }
+
+        snapshotStorageService.updateSharing(id, sharedWithTenants, newTenantId, changeOwner);
+        return Response.ok(Map.of("success", true)).build();
+    }
+
+    private List<String> extractTenantIds(Object raw) {
+        if (!(raw instanceof List<?> list)) return List.of();
+        return list.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(item -> item.toString().trim())
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .toList();
     }
 
     @RequiresPermission(Permission.DATABASE_OPERATE)
@@ -259,6 +339,7 @@ public class SnapshotController {
 
         int deleted = 0;
         for (DatabaseSnapshot snap : all) {
+            if (!tenantVisibility.canSee(snap.getTenantId(), snap.getSharedWithTenants())) continue;
             Instant reference = snap.getLastUsedAt() != null ? snap.getLastUsedAt() : snap.getCreatedAt();
             if (reference != null && reference.isBefore(cutoff)) {
                 snapshotStorageService.deleteSnapshot(snap.getId());

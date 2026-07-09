@@ -101,7 +101,8 @@ public class DumpStorageService {
 
     public DatabaseDump storeUpload(InputStream input, String originalFilename,
                                      String databaseName, String version, Instant expiresAt,
-                                     String description) throws IOException {
+                                     String description, String tenantId,
+                                     java.util.List<String> sharedWithTenants) throws IOException {
         Optional<DatabaseDump> existingByName = dumpRepository.findByOriginalFilename(originalFilename);
         if (existingByName.isPresent()) {
             throw new DuplicateDumpException(
@@ -113,6 +114,8 @@ public class DumpStorageService {
 
         DatabaseDump dump = new DatabaseDump(originalFilename, databaseName, version, expiresAt, 0);
         dump.setCreatedBy(actorResolver.usernameOrSystem());
+        dump.setTenantId(tenantId);
+        dump.setSharedWithTenants(sharedWithTenants);
         Path storedPath = dir.resolve(dump.getStoredFilename());
 
         MessageDigest digest;
@@ -195,6 +198,20 @@ public class DumpStorageService {
 
         Log.infof("Updated metadata for dump '%s': version=%s, database=%s",
                 dump.getOriginalFilename(), version, databaseName);
+        return true;
+    }
+
+    /** Updates tenant sharing; owner change is applied only when requested (non-null). */
+    public boolean updateSharing(String id, java.util.List<String> sharedWithTenants, String newTenantId, boolean changeOwner) {
+        Optional<DatabaseDump> opt = dumpRepository.findById(id);
+        if (opt.isEmpty()) return false;
+
+        DatabaseDump dump = opt.get();
+        dump.setSharedWithTenants(sharedWithTenants);
+        if (changeOwner) {
+            dump.setTenantId(newTenantId);
+        }
+        dumpRepository.save(dump);
         return true;
     }
 

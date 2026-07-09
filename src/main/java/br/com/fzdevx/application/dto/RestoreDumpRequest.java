@@ -55,4 +55,10 @@ public class RestoreDumpRequest {
 
     public String getMigrationTargetVersion() { return migrationTargetVersion; }
     public void setMigrationTargetVersion(String migrationTargetVersion) { this.migrationTargetVersion = migrationTargetVersion; }
+
+    /** Owning tenant for a database created by this restore; resolved at prepare time. */
+    private String tenantId;
+
+    public String getTenantId() { return tenantId; }
+    public void setTenantId(String tenantId) { this.tenantId = tenantId; }
 }

@@ -129,6 +129,9 @@ public class CreateSnapshotUseCase {
         DatabaseSnapshot snapshot = new DatabaseSnapshot(
                 request.getRepository(), request.getSourceDatabaseName(), format, request.getLabel());
         snapshot.setCreatedBy(actorResolver.usernameOrSystem());
+        // resolved and validated at prepare time - here we may be off the request thread
+        snapshot.setTenantId(request.getTenantId());
+        snapshot.setSharedWithTenants(request.getSharedWithTenants());
         snapshot.setContainerName(request.getContainerName());
         snapshot.setDescription(request.getDescription());
         snapshot.setTemporary(request.isTemporary());

@@ -33,10 +33,18 @@ public class CreateSnapshotRequest {
 
     private String description;
     private boolean temporary;
+    private String tenantId;
+    private java.util.List<String> sharedWithTenants;
 
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
 
     public boolean isTemporary() { return temporary; }
     public void setTemporary(boolean temporary) { this.temporary = temporary; }
+
+    public String getTenantId() { return tenantId; }
+    public void setTenantId(String tenantId) { this.tenantId = tenantId; }
+
+    public java.util.List<String> getSharedWithTenants() { return sharedWithTenants; }
+    public void setSharedWithTenants(java.util.List<String> sharedWithTenants) { this.sharedWithTenants = sharedWithTenants; }
 }

@@ -36,12 +36,44 @@ public class DatabaseDumpController {
     @Inject
     br.com.fzdevx.infrastructure.config.CurrentUser currentUser;
 
+    @Inject
+    br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
+
+    @Inject
+    br.com.fzdevx.application.port.TenantRepository tenantRepository;
+
     /** Creator visibility is its own permission (AUDIT_VIEW); strip it for callers without it. */
     private <T> java.util.List<T> withCreatorVisibility(java.util.List<T> items, java.util.function.BiConsumer<T, String> setter) {
         if (!currentUser.hasPermission(br.com.fzdevx.domain.model.auth.Permission.AUDIT_VIEW)) {
             items.forEach(item -> setter.accept(item, null));
         }
         return items;
+    }
+
+    /** Tenant-hidden dumps are reported as nonexistent. */
+    private Optional<DatabaseDump> findVisible(String id) {
+        return dumpStorageService.findById(id)
+                .filter(d -> tenantVisibility.canSee(d.getTenantId(), d.getSharedWithTenants()));
+    }
+
+    private List<String> parseTenantList(String csv) {
+        if (csv == null || csv.isBlank()) return List.of();
+        return java.util.Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .toList();
+    }
+
+    /** Every shared-with id must reference an existing tenant. */
+    private Optional<Response> validateShareTargets(List<String> tenantIds) {
+        for (String tenantId : tenantIds) {
+            if (tenantRepository.findById(tenantId).isEmpty()) {
+                return Optional.of(Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Unknown tenant: " + tenantId)).build());
+            }
+        }
+        return Optional.empty();
     }
 
     @Inject
@@ -81,7 +113,9 @@ public class DatabaseDumpController {
         if (!dumpStorageService.isEnabled()) {
             return Collections.emptyList();
         }
-        return withCreatorVisibility(dumpStorageService.findAll(), DatabaseDump::setCreatedBy);
+        List<DatabaseDump> visible = tenantVisibility.visible(dumpStorageService.findAll(),
+                DatabaseDump::getTenantId, DatabaseDump::getSharedWithTenants);
+        return withCreatorVisibility(visible, DatabaseDump::setCreatedBy);
     }
 
     @RequiresPermission(Permission.DATABASE_UPLOAD)
@@ -154,8 +188,16 @@ public class DatabaseDumpController {
 
             Instant expiresAt = DateTimeParser.parseExpiresAt(extractString(form, "expiresAt"));
 
+            String tenantId = tenantVisibility.resolveCreationTenant(extractString(form, "tenantId"));
+            List<String> sharedWithTenants = parseTenantList(extractString(form, "sharedWithTenants"));
+            Optional<Response> shareError = validateShareTargets(sharedWithTenants);
+            if (shareError.isPresent()) {
+                return shareError.get();
+            }
+
             try (InputStream is = filePart.getBody(InputStream.class, null)) {
-                DatabaseDump dump = dumpStorageService.storeUpload(is, filename, databaseName, version, expiresAt, description);
+                DatabaseDump dump = dumpStorageService.storeUpload(is, filename, databaseName, version, expiresAt, description,
+                        tenantId, sharedWithTenants);
                 resourceCounterService.increment(ResourceCounterService.DUMPS);
                 return Response.ok(dump).build();
             }
@@ -185,7 +227,7 @@ public class DatabaseDumpController {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
 
-        Optional<DatabaseDump> opt = dumpStorageService.findById(id);
+        Optional<DatabaseDump> opt = findVisible(id);
         if (opt.isEmpty()) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
@@ -234,7 +276,7 @@ public class DatabaseDumpController {
                     .build();
         }
 
-        if (dumpStorageService.findById(id).isEmpty()) {
+        if (findVisible(id).isEmpty()) {
             return Response.status(Response.Status.NOT_FOUND)
                     .entity(Map.of("error", "Dump not found."))
                     .build();
@@ -272,7 +314,8 @@ public class DatabaseDumpController {
         int deleted = 0;
         for (String id : ids) {
             if (InputValidator.validateUuid(id).isPresent()) continue;
-            if (dumpStorageService.findById(id).isPresent()) {
+            // tenant-hidden ids are skipped, matching the single-delete 404 behavior
+            if (findVisible(id).isPresent()) {
                 dumpStorageService.deleteDump(id);
                 deleted++;
             }
@@ -304,6 +347,10 @@ public class DatabaseDumpController {
         if (!dumpStorageService.validateOperationsPassword(password)) {
             return Response.status(Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "Invalid operations password.")).build();
+        }
+        if (findVisible(id).isEmpty()) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", "Dump not found.")).build();
         }
         String version = body.get("version");
         String databaseName = body.get("databaseName");
@@ -344,6 +391,10 @@ public class DatabaseDumpController {
             return Response.status(Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "Invalid operations password.")).build();
         }
+        if (findVisible(id).isEmpty()) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", "Dump not found.")).build();
+        }
         Instant expiresAt = DateTimeParser.parseExpiresAt(body.get("expiresAt"));
         boolean updated = dumpStorageService.updateExpiration(id, expiresAt);
         if (!updated) {
@@ -351,6 +402,63 @@ public class DatabaseDumpController {
                     .entity(Map.of("error", "Dump not found.")).build();
         }
         return Response.ok(Map.of("success", true)).build();
+    }
+
+    /**
+     * Updates which tenants a dump is shared with. The owning tenant can only
+     * be changed by TENANTS_VIEW_ALL holders (lets admins adopt legacy dumps).
+     */
+    @RequiresPermission(Permission.DATABASE_OPERATE)
+    @PUT
+    @Path("/sharing/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response updateSharing(@PathParam("id") String id, Map<String, Object> body) {
+        if (!dumpStorageService.isEnabled()) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Dump feature is disabled.")).build();
+        }
+        Optional<String> uuidError = InputValidator.validateUuid(id);
+        if (uuidError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", uuidError.get())).build();
+        }
+        if (findVisible(id).isEmpty()) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", "Dump not found.")).build();
+        }
+
+        List<String> sharedWithTenants = extractTenantIds(body.get("sharedWithTenants"));
+        Optional<Response> shareError = validateShareTargets(sharedWithTenants);
+        if (shareError.isPresent()) {
+            return shareError.get();
+        }
+
+        boolean changeOwner = body.containsKey("tenantId")
+                && tenantVisibility.bypass() && currentUser.isRbacActive();
+        String newTenantId = null;
+        if (changeOwner) {
+            Object raw = body.get("tenantId");
+            newTenantId = raw == null || raw.toString().isBlank() ? null : raw.toString();
+            if (newTenantId != null && tenantRepository.findById(newTenantId).isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Unknown tenant: " + newTenantId)).build();
+            }
+        }
+
+        dumpStorageService.updateSharing(id, sharedWithTenants, newTenantId, changeOwner);
+        auditLogger.log("DUMP_SHARING_UPDATE", id, "sharedWith=" + sharedWithTenants.size() + " tenant(s)");
+        return Response.ok(Map.of("success", true)).build();
+    }
+
+    private List<String> extractTenantIds(Object raw) {
+        if (!(raw instanceof List<?> list)) return List.of();
+        return list.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(item -> item.toString().trim())
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .toList();
     }
 
     @RequiresPermission(Permission.DATABASE_OPERATE)
@@ -377,6 +485,7 @@ public class DatabaseDumpController {
 
         int deleted = 0;
         for (DatabaseDump dump : all) {
+            if (!tenantVisibility.canSee(dump.getTenantId(), dump.getSharedWithTenants())) continue;
             java.time.Instant reference = dump.getLastUsedAt() != null ? dump.getLastUsedAt() : dump.getUploadedAt();
             if (reference != null && reference.isBefore(cutoff)) {
                 dumpStorageService.deleteDump(dump.getId());

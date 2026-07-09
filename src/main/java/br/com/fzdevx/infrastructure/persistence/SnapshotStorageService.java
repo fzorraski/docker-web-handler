@@ -124,6 +124,20 @@ public class SnapshotStorageService {
         return true;
     }
 
+    /** Updates tenant sharing; owner change is applied only when requested (non-null). */
+    public boolean updateSharing(String id, java.util.List<String> sharedWithTenants, String newTenantId, boolean changeOwner) {
+        Optional<DatabaseSnapshot> opt = snapshotRepository.findById(id);
+        if (opt.isEmpty()) return false;
+
+        DatabaseSnapshot snapshot = opt.get();
+        snapshot.setSharedWithTenants(sharedWithTenants);
+        if (changeOwner) {
+            snapshot.setTenantId(newTenantId);
+        }
+        snapshotRepository.save(snapshot);
+        return true;
+    }
+
     public boolean updateExpiration(String id, Instant expiresAt) {
         Optional<DatabaseSnapshot> opt = snapshotRepository.findById(id);
         if (opt.isEmpty()) return false;

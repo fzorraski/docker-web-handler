@@ -38,6 +38,12 @@ public class DatabaseDumpSseController {
     @Inject
     WebhookService webhookService;
 
+    @Inject
+    br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
+
+    @Inject
+    br.com.fzdevx.application.port.ManagedDatabaseRepository managedDatabaseRepository;
+
     @POST
     @Path("/restore/prepare")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -54,6 +60,22 @@ public class DatabaseDumpSseController {
                     .entity(Map.of("error", "Invalid operations password."))
                     .build();
         }
+
+        // Tenant guards happen at prepare time (request scope); the SSE stream runs off a ticket.
+        if (request.getDumpId() != null) {
+            dumpStorageService.findById(request.getDumpId()).ifPresent(dump ->
+                    tenantVisibility.requireVisible(dump.getTenantId(), dump.getSharedWithTenants()));
+        }
+        if (request.getSnapshotId() != null) {
+            snapshotStorageService.findById(request.getSnapshotId()).ifPresent(snapshot ->
+                    tenantVisibility.requireVisible(snapshot.getTenantId(), snapshot.getSharedWithTenants()));
+        }
+        if (request.getRepository() != null && request.getTargetDatabase() != null) {
+            managedDatabaseRepository.find(request.getRepository(), request.getTargetDatabase())
+                    .ifPresent(db -> tenantVisibility.requireVisible(db.getTenantId()));
+        }
+        // a restore may create the target database - it belongs to the actor's tenant
+        request.setTenantId(tenantVisibility.resolveCreationTenant(request.getTenantId()));
 
         // Clear password before stashing
         request.setPassword(null);

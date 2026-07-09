@@ -44,6 +44,7 @@ class SnapshotControllerTest {
     void injectCurrentUser() {
         // real instance: outside RBAC it grants everything (legacy behavior)
         controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        controller.tenantVisibility = br.com.fzdevx.infrastructure.config.TestTenantVisibility.passthrough();
     }
 
     // ---- listSnapshots ----
@@ -223,6 +224,7 @@ class SnapshotControllerTest {
     void updateMetadata_valid_returns200() {
         when(dumpStorageService.isEnabled()).thenReturn(true);
         when(dumpStorageService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        when(snapshotStorageService.findById(VALID_UUID)).thenReturn(Optional.of(new DatabaseSnapshot()));
         when(snapshotStorageService.updateMetadata(eq(VALID_UUID), any(), any())).thenReturn(true);
 
         assertEquals(200, controller.updateMetadata(VALID_UUID, VALID_PASSWORD,
@@ -235,6 +237,7 @@ class SnapshotControllerTest {
     void updateExpiration_valid_returns200() {
         when(dumpStorageService.isEnabled()).thenReturn(true);
         when(dumpStorageService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        when(snapshotStorageService.findById(VALID_UUID)).thenReturn(Optional.of(new DatabaseSnapshot()));
         when(snapshotStorageService.updateExpiration(eq(VALID_UUID), any())).thenReturn(true);
 
         assertEquals(200, controller.updateExpiration(VALID_UUID, VALID_PASSWORD,

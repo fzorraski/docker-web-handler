@@ -33,6 +33,15 @@ public class SnapshotSseController {
     @Inject
     SnapshotStorageService snapshotStorageService;
 
+    @Inject
+    br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
+
+    @Inject
+    br.com.fzdevx.application.port.TenantRepository tenantRepository;
+
+    @Inject
+    br.com.fzdevx.application.port.ManagedDatabaseRepository managedDatabaseRepository;
+
     @POST
     @Path("/create/prepare")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -54,6 +63,22 @@ public class SnapshotSseController {
             return jakarta.ws.rs.core.Response.status(507)
                     .entity(Map.of("error", "Snapshot storage quota exceeded. Free up space before creating a new snapshot."))
                     .build();
+        }
+
+        // tenant resolution happens here (request scope); the SSE stream runs off a ticket
+        request.setTenantId(tenantVisibility.resolveCreationTenant(request.getTenantId()));
+        if (request.getSharedWithTenants() != null) {
+            for (String tenantId : request.getSharedWithTenants()) {
+                if (tenantRepository.findById(tenantId).isEmpty()) {
+                    return jakarta.ws.rs.core.Response.status(jakarta.ws.rs.core.Response.Status.BAD_REQUEST)
+                            .entity(Map.of("error", "Unknown tenant: " + tenantId))
+                            .build();
+                }
+            }
+        }
+        if (request.getRepository() != null && request.getSourceDatabaseName() != null) {
+            managedDatabaseRepository.find(request.getRepository(), request.getSourceDatabaseName())
+                    .ifPresent(db -> tenantVisibility.requireVisible(db.getTenantId()));
         }
 
         request.setPassword(null);

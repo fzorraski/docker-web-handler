@@ -327,7 +327,8 @@ public class RestoreDumpUseCase {
                     eventSink.accept(ContainerEvent.info("Creating Database",
                             "Database already exists, skipping creation."));
                 } else {
-                    databaseService.createDatabase(request.getRepository(), request.getTargetDatabase());
+                    databaseService.createDatabase(request.getRepository(), request.getTargetDatabase(),
+                            request.getTenantId());
                     databaseCreated = true;
                     eventSink.accept(ContainerEvent.info("Creating Database", "Database created."));
                 }

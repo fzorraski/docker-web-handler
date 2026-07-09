@@ -23,6 +23,8 @@ public class DatabaseDump {
     private String description;
     private Instant lastUsedAt;
     private String createdBy;
+    private String tenantId;
+    private java.util.List<String> sharedWithTenants = new java.util.ArrayList<>();
 
     public DatabaseDump() {
     }
@@ -105,4 +107,12 @@ public class DatabaseDump {
 
     public String getCreatedBy() { return createdBy; }
     public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
+
+    public String getTenantId() { return tenantId; }
+    public void setTenantId(String tenantId) { this.tenantId = tenantId; }
+
+    public java.util.List<String> getSharedWithTenants() { return sharedWithTenants; }
+    public void setSharedWithTenants(java.util.List<String> sharedWithTenants) {
+        this.sharedWithTenants = sharedWithTenants == null ? new java.util.ArrayList<>() : new java.util.ArrayList<>(sharedWithTenants);
+    }
 }
