@@ -54,6 +54,7 @@ public class UpgradeContainerUseCase {
     @Inject org.eclipse.microprofile.config.Config appConfig;
     @Inject LogRotationResolver logRotationResolver;
     @Inject ManagedDatabaseUsageTracker usageTracker;
+    @Inject br.com.fzdevx.infrastructure.config.TenantEntitlements tenantEntitlements;
 
     private final ConcurrentHashMap<String, AtomicBoolean> activeRuns = new ConcurrentHashMap<>();
 
@@ -115,6 +116,14 @@ public class UpgradeContainerUseCase {
             if (!upgradeAllowed && request.hasTagChange()) {
                 eventSink.accept(ContainerEvent.error("Validating",
                         "Upgrade is not enabled for repository '" + repository + "'."));
+                return;
+            }
+
+            // The repository only becomes known here (from container labels), so the
+            // caller's tenant entitlement is checked at execute time, not at prepare.
+            if (!tenantEntitlements.repositoryAllowed(repository)) {
+                eventSink.accept(ContainerEvent.error("Validating",
+                        "Repository '" + repository + "' is not in the allowed list."));
                 return;
             }
 

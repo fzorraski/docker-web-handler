@@ -10,13 +10,16 @@ import br.com.fzdevx.domain.exception.EntityNotFoundException;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.domain.model.auth.Tenant;
+import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.config.AuthorizationService;
 import br.com.fzdevx.infrastructure.config.CurrentUser;
+import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 @ApplicationScoped
 public class ManageTenantsUseCase {
@@ -35,6 +38,12 @@ public class ManageTenantsUseCase {
 
     @Inject
     CurrentUser currentUser;
+
+    @Inject
+    AllowedRepositoryResolver allowedRepositoryResolver;
+
+    @Inject
+    DatabaseService databaseService;
 
     public List<Tenant> list() {
         return tenantRepository.findAll();
@@ -72,6 +81,10 @@ public class ManageTenantsUseCase {
         }
 
         Tenant tenant = new Tenant(name, trimmedDescription(request));
+        tenant.setEnabledRepositories(validateEntitlementList(
+                request.getEnabledRepositories(), knownRepositories(), "repository"));
+        tenant.setEnabledDatabases(validateEntitlementList(
+                request.getEnabledDatabases(), knownDatabases(), "database connection"));
         tenantRepository.save(tenant);
         authorizationService.invalidateCache();
         auditLogger.log("TENANT_CREATE", name, null);
@@ -80,21 +93,75 @@ public class ManageTenantsUseCase {
 
     public Tenant update(String id, CreateTenantRequest request) {
         guardGlobalAdmin();
-        Tenant tenant = requireTenant(id);
+        requireTenant(id);
         String name = validateName(request.getName());
         tenantRepository.findByName(name)
                 .filter(other -> !other.getId().equals(id))
                 .ifPresent(other -> {
                     throw new DuplicateEntityException("A tenant named '" + name + "' already exists.");
                 });
+        String description = trimmedDescription(request);
+        List<String> enabledRepositories = validateEntitlementList(
+                request.getEnabledRepositories(), knownRepositories(), "repository");
+        List<String> enabledDatabases = validateEntitlementList(
+                request.getEnabledDatabases(), knownDatabases(), "database connection");
 
-        tenant.setName(name);
-        tenant.setDescription(trimmedDescription(request));
-        tenant.setUpdatedAt(Instant.now());
-        tenantRepository.save(tenant);
+        boolean found = tenantRepository.update(id, tenant -> {
+            tenant.setName(name);
+            tenant.setDescription(description);
+            tenant.setEnabledRepositories(enabledRepositories);
+            tenant.setEnabledDatabases(enabledDatabases);
+            tenant.setUpdatedAt(Instant.now());
+        });
+        if (!found) {
+            throw new EntityNotFoundException("Tenant not found.");
+        }
         authorizationService.invalidateCache();
-        auditLogger.log("TENANT_UPDATE", name, null);
-        return tenant;
+        auditLogger.log("TENANT_UPDATE", name, entitlementDetail(enabledRepositories, enabledDatabases));
+        return requireTenant(id);
+    }
+
+    /** Global option lists for the tenant entitlement editor in the admin UI. */
+    public Map<String, List<String>> entitlementOptions() {
+        guardGlobalAdmin();
+        return Map.of("repositories", knownRepositories(),
+                "databases", knownDatabases());
+    }
+
+    private List<String> knownRepositories() {
+        return allowedRepositoryResolver.getAllowed();
+    }
+
+    private List<String> knownDatabases() {
+        return allowedRepositoryResolver.getAllowed().stream()
+                .filter(databaseService::hasDatabaseConfig)
+                .toList();
+    }
+
+    /**
+     * Null (= everything enabled) passes through; explicit lists are trimmed,
+     * deduplicated and must reference globally configured entries.
+     */
+    private List<String> validateEntitlementList(List<String> requested, List<String> knownGlobal, String label) {
+        if (requested == null) {
+            return null;
+        }
+        List<String> cleaned = requested.stream()
+                .filter(entry -> entry != null && !entry.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+        for (String entry : cleaned) {
+            if (!knownGlobal.contains(entry)) {
+                throw new InvalidInputException("Unknown " + label + ": '" + entry + "'.");
+            }
+        }
+        return cleaned;
+    }
+
+    private static String entitlementDetail(List<String> repositories, List<String> databases) {
+        return "repos=" + (repositories == null ? "all" : repositories)
+                + ", dbs=" + (databases == null ? "all" : databases);
     }
 
     public void delete(String id) {

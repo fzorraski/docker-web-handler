@@ -58,6 +58,9 @@ public class ContainerConfigController {
     br.com.fzdevx.infrastructure.docker.ContainerTenantGuard containerTenantGuard;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.TenantEntitlements tenantEntitlements;
+
+    @Inject
     br.com.fzdevx.infrastructure.config.RbacSettings rbacSettings;
 
     @Inject
@@ -104,7 +107,7 @@ public class ContainerConfigController {
     @Path("/allowed-repositories")
     @Produces(MediaType.APPLICATION_JSON)
     public List<String> getAllowedRepositories() {
-        return allowedRepositoryResolver.getAllowed();
+        return tenantEntitlements.filterRepositories(allowedRepositoryResolver.getAllowed());
     }
 
     @GET
@@ -120,7 +123,8 @@ public class ContainerConfigController {
             return response;
         }
 
-        if (!allowedRepositoryResolver.isAllowed(repository)) {
+        if (!allowedRepositoryResolver.isAllowed(repository)
+                || !tenantEntitlements.repositoryAllowed(repository)) {
             response.setState(0);
             response.setMessage("Repository '" + repository + "' is not in the allowed list.");
             return response;
@@ -257,7 +261,8 @@ public class ContainerConfigController {
         if (repoError.isPresent()) {
             return false;
         }
-        if (!allowedRepositoryResolver.isAllowed(repository)) {
+        if (!allowedRepositoryResolver.isAllowed(repository)
+                || !tenantEntitlements.databaseAllowed(repository)) {
             return false;
         }
         return databaseService.hasDatabaseConfig(repository);
@@ -367,7 +372,8 @@ public class ContainerConfigController {
             return jakarta.ws.rs.core.Response.status(400)
                     .entity(Map.of("error", repoError.get())).build();
         }
-        if (!allowedRepositoryResolver.isAllowed(repository)) {
+        if (!allowedRepositoryResolver.isAllowed(repository)
+                || !tenantEntitlements.repositoryAllowed(repository)) {
             return jakarta.ws.rs.core.Response.status(403)
                     .entity(Map.of("error", "Repository '" + repository + "' is not in the allowed list.")).build();
         }
@@ -420,7 +426,8 @@ public class ContainerConfigController {
         if (repoError.isPresent()) {
             return false;
         }
-        if (!allowedRepositoryResolver.isAllowed(repository)) {
+        if (!allowedRepositoryResolver.isAllowed(repository)
+                || !tenantEntitlements.repositoryAllowed(repository)) {
             return false;
         }
         return migrationService.isApiAvailable(repository);
@@ -441,7 +448,8 @@ public class ContainerConfigController {
             return response;
         }
 
-        if (!allowedRepositoryResolver.isAllowed(repository)) {
+        if (!allowedRepositoryResolver.isAllowed(repository)
+                || !tenantEntitlements.databaseAllowed(repository)) {
             response.setState(0);
             response.setMessage("Repository '" + repository + "' is not in the allowed list.");
             return response;

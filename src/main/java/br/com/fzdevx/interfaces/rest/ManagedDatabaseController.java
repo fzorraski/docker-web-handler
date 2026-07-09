@@ -94,6 +94,9 @@ public class ManagedDatabaseController {
     @Inject
     br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
 
+    @Inject
+    br.com.fzdevx.infrastructure.config.TenantEntitlements tenantEntitlements;
+
     private boolean isStatsResetEnabled(String repository) {
         return config.getOptionalValue("database.query-stats.reset-enabled." + repository, Boolean.class)
                 .orElse(false);
@@ -105,6 +108,7 @@ public class ManagedDatabaseController {
      * without a tenant) are visible to everyone.
      */
     private void requireDbVisible(String repository, String databaseName) {
+        tenantEntitlements.requireDatabaseAllowed(repository);
         managedDatabaseRepository.find(repository, databaseName)
                 .ifPresent(db -> tenantVisibility.requireVisible(db.getTenantId()));
     }
@@ -124,7 +128,7 @@ public class ManagedDatabaseController {
         if (!managedEnabled) {
             return Collections.emptyList();
         }
-        return listManagedDatabasesUseCase.getRepositories();
+        return tenantEntitlements.filterDatabases(listManagedDatabasesUseCase.getRepositories());
     }
 
     @GET
@@ -669,6 +673,7 @@ public class ManagedDatabaseController {
         if (!managedEnabled) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
+        tenantEntitlements.requireDatabaseAllowed(repository);
 
         Optional<String> repoError = InputValidator.validateRepository(repository);
         if (repoError.isPresent()) {
@@ -692,6 +697,7 @@ public class ManagedDatabaseController {
         if (!managedEnabled) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
+        tenantEntitlements.requireDatabaseAllowed(repository);
 
         Optional<String> repoError = InputValidator.validateRepository(repository);
         if (repoError.isPresent()) {
@@ -818,6 +824,7 @@ public class ManagedDatabaseController {
         if (!managedEnabled) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
+        tenantEntitlements.requireDatabaseAllowed(repository);
 
         if (names == null || names.isEmpty()) {
             return Response.status(Response.Status.BAD_REQUEST)
@@ -1016,6 +1023,7 @@ public class ManagedDatabaseController {
         if (!managedEnabled) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
+        tenantEntitlements.requireDatabaseAllowed(repository);
 
         Optional<String> repoError = InputValidator.validateRepository(repository);
         if (repoError.isPresent()) {

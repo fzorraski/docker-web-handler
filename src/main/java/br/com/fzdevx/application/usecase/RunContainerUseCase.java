@@ -82,6 +82,9 @@ public class RunContainerUseCase {
     AllowedRepositoryResolver allowedRepositoryResolver;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.TenantEntitlements tenantEntitlements;
+
+    @Inject
     Config config;
 
     @Inject
@@ -223,7 +226,11 @@ public class RunContainerUseCase {
                 return;
             }
 
-            if (!allowed.contains(request.getRepository())) {
+            // Defense in depth: the prepare endpoint already rejects non-entitled
+            // repositories; SSE execution still runs on the request thread, so the
+            // caller's tenant entitlements are re-checked here.
+            if (!allowed.contains(request.getRepository())
+                    || !tenantEntitlements.repositoryAllowed(request.getRepository())) {
                 eventSink.accept(ContainerEvent.error("Validating",
                         "Repository '" + request.getRepository() + "' is not in the allowed list."));
                 return;

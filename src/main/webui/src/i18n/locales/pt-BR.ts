@@ -1119,6 +1119,17 @@ const ptBR: typeof en = {
       owner: 'Tenant proprietário',
       updated: 'Compartilhamento atualizado.',
     },
+    entitlements: {
+      hint: 'Escolha quais repositórios e conexões de banco de dados configurados globalmente este tenant pode usar. Tenants sem restrição podem usar tudo.',
+      restrictRepositories: 'Restringir repositórios',
+      restrictDatabases: 'Restringir conexões de banco de dados',
+      allRepositoriesEnabled: 'Todos os repositórios habilitados.',
+      allDatabasesEnabled: 'Todas as conexões de banco de dados habilitadas.',
+      noRepositoriesSelected: 'Nenhum repositório selecionado — os membros deste tenant não verão nenhum repositório.',
+      noDatabasesSelected: 'Nenhuma conexão de banco de dados selecionada — os membros deste tenant não verão nenhum banco de dados.',
+      staleEntry: '(não está mais configurado)',
+      loadFailed: 'Falha ao carregar as listas de repositórios e bancos de dados.',
+    },
   },
 
   roles: {

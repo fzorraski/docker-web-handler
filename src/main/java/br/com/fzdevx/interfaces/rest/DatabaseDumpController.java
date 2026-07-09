@@ -40,6 +40,9 @@ public class DatabaseDumpController {
     br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.TenantEntitlements tenantEntitlements;
+
+    @Inject
     br.com.fzdevx.application.port.TenantRepository tenantRepository;
 
     /**
@@ -541,9 +544,9 @@ public class DatabaseDumpController {
         if (!dumpStorageService.isEnabled()) {
             return Collections.emptyList();
         }
-        return allowedRepositoryResolver.getAllowed().stream()
+        return tenantEntitlements.filterDatabases(allowedRepositoryResolver.getAllowed().stream()
                 .filter(databaseService::hasDatabaseConfig)
-                .toList();
+                .toList());
     }
 
     @GET

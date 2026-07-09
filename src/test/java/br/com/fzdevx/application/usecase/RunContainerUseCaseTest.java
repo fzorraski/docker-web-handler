@@ -80,6 +80,7 @@ class RunContainerUseCaseTest {
     @BeforeEach
     void setUp() throws Exception {
         events = new ArrayList<>();
+        useCase.tenantEntitlements = br.com.fzdevx.infrastructure.config.TestTenantEntitlements.passthrough();
         java.lang.reflect.Field maxMbField = RunContainerUseCase.class.getDeclaredField("memoryLimitMaxMb");
         maxMbField.setAccessible(true);
         maxMbField.setLong(useCase, 65536L);

@@ -1119,6 +1119,17 @@ const es: typeof en = {
       owner: 'Tenant propietario',
       updated: 'Compartición actualizada.',
     },
+    entitlements: {
+      hint: 'Elige qué repositorios y conexiones de base de datos configurados globalmente puede usar este tenant. Los tenants sin restricción pueden usar todo.',
+      restrictRepositories: 'Restringir repositorios',
+      restrictDatabases: 'Restringir conexiones de base de datos',
+      allRepositoriesEnabled: 'Todos los repositorios habilitados.',
+      allDatabasesEnabled: 'Todas las conexiones de base de datos habilitadas.',
+      noRepositoriesSelected: 'Ningún repositorio seleccionado — los miembros de este tenant no verán ningún repositorio.',
+      noDatabasesSelected: 'Ninguna conexión de base de datos seleccionada — los miembros de este tenant no verán ninguna base de datos.',
+      staleEntry: '(ya no está configurado)',
+      loadFailed: 'Error al cargar las listas de repositorios y bases de datos.',
+    },
   },
 
   roles: {

@@ -37,6 +37,9 @@ public class SnapshotSseController {
     br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.TenantEntitlements tenantEntitlements;
+
+    @Inject
     br.com.fzdevx.application.port.TenantRepository tenantRepository;
 
     @Inject
@@ -76,9 +79,12 @@ public class SnapshotSseController {
                 }
             }
         }
-        if (request.getRepository() != null && request.getSourceDatabaseName() != null) {
-            managedDatabaseRepository.find(request.getRepository(), request.getSourceDatabaseName())
-                    .ifPresent(db -> tenantVisibility.requireVisible(db.getTenantId()));
+        if (request.getRepository() != null) {
+            tenantEntitlements.requireDatabaseAllowed(request.getRepository());
+            if (request.getSourceDatabaseName() != null) {
+                managedDatabaseRepository.find(request.getRepository(), request.getSourceDatabaseName())
+                        .ifPresent(db -> tenantVisibility.requireVisible(db.getTenantId()));
+            }
         }
 
         request.setPassword(null);

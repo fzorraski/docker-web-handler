@@ -1117,6 +1117,17 @@ const en = {
       owner: 'Owning tenant',
       updated: 'Sharing updated.',
     },
+    entitlements: {
+      hint: 'Choose which globally configured repositories and database connections this tenant may use. Unrestricted tenants can use everything.',
+      restrictRepositories: 'Restrict repositories',
+      restrictDatabases: 'Restrict database connections',
+      allRepositoriesEnabled: 'All repositories enabled.',
+      allDatabasesEnabled: 'All database connections enabled.',
+      noRepositoriesSelected: 'No repositories selected — members of this tenant will not see any repository.',
+      noDatabasesSelected: 'No database connections selected — members of this tenant will not see any database.',
+      staleEntry: '(no longer configured)',
+      loadFailed: 'Failed to load the repository and database lists.',
+    },
   },
 
   roles: {

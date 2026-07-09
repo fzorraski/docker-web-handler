@@ -50,6 +50,14 @@ public class TenantController {
                 .toList();
     }
 
+    /** Global repository/database option lists for the tenant entitlement editor. */
+    @GET
+    @Path("/entitlement-options")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Map<String, List<String>> entitlementOptions() {
+        return manageTenantsUseCase.entitlementOptions();
+    }
+
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
@@ -79,6 +87,8 @@ public class TenantController {
         entry.put("id", tenant.getId());
         entry.put("name", tenant.getName());
         entry.put("description", tenant.getDescription());
+        entry.put("enabledRepositories", tenant.getEnabledRepositories());
+        entry.put("enabledDatabases", tenant.getEnabledDatabases());
         entry.put("createdAt", tenant.getCreatedAt());
         entry.put("memberCount", memberCount);
         return entry;

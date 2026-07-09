@@ -42,6 +42,9 @@ public class DatabaseDumpSseController {
     br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.TenantEntitlements tenantEntitlements;
+
+    @Inject
     br.com.fzdevx.application.port.ManagedDatabaseRepository managedDatabaseRepository;
 
     @POST
@@ -70,9 +73,12 @@ public class DatabaseDumpSseController {
             snapshotStorageService.findById(request.getSnapshotId()).ifPresent(snapshot ->
                     tenantVisibility.requireVisible(snapshot.getTenantId(), snapshot.getSharedWithTenants()));
         }
-        if (request.getRepository() != null && request.getTargetDatabase() != null) {
-            managedDatabaseRepository.find(request.getRepository(), request.getTargetDatabase())
-                    .ifPresent(db -> tenantVisibility.requireVisible(db.getTenantId()));
+        if (request.getRepository() != null) {
+            tenantEntitlements.requireDatabaseAllowed(request.getRepository());
+            if (request.getTargetDatabase() != null) {
+                managedDatabaseRepository.find(request.getRepository(), request.getTargetDatabase())
+                        .ifPresent(db -> tenantVisibility.requireVisible(db.getTenantId()));
+            }
         }
         // a restore may create the target database - it belongs to the actor's tenant
         request.setTenantId(tenantVisibility.resolveCreationTenant(request.getTenantId()));

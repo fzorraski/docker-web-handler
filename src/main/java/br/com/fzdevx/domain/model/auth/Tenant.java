@@ -1,6 +1,7 @@
 package br.com.fzdevx.domain.model.auth;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -9,6 +10,10 @@ public class Tenant {
     private String id;
     private String name;
     private String description;
+    /** Repositories members may run containers from; null = all allowed repositories. */
+    private List<String> enabledRepositories;
+    /** Repositories whose database connection members may use; null = all configured. */
+    private List<String> enabledDatabases;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -31,6 +36,12 @@ public class Tenant {
 
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+
+    public List<String> getEnabledRepositories() { return enabledRepositories; }
+    public void setEnabledRepositories(List<String> enabledRepositories) { this.enabledRepositories = enabledRepositories; }
+
+    public List<String> getEnabledDatabases() { return enabledDatabases; }
+    public void setEnabledDatabases(List<String> enabledDatabases) { this.enabledDatabases = enabledDatabases; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

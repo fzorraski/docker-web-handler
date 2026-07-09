@@ -16,8 +16,25 @@ export interface Tenant {
   id: string
   name: string
   description: string | null
+  /** null/undefined = all allowed repositories enabled */
+  enabledRepositories?: string[] | null
+  /** null/undefined = all configured database connections enabled */
+  enabledDatabases?: string[] | null
   createdAt: string | null
   memberCount: number
+}
+
+export interface TenantRequest {
+  name: string
+  description?: string
+  enabledRepositories?: string[] | null
+  enabledDatabases?: string[] | null
+}
+
+/** Global option lists for the tenant entitlement editor (global admins only). */
+export interface EntitlementOptions {
+  repositories: string[]
+  databases: string[]
 }
 
 export async function listTenants(): Promise<TenantSummary[]> {
@@ -30,7 +47,12 @@ export async function listTenantsManage(): Promise<Tenant[]> {
   return handleJsonResponse(res)
 }
 
-export async function createTenant(request: { name: string; description?: string }): Promise<Tenant> {
+export async function getEntitlementOptions(): Promise<EntitlementOptions> {
+  const res = await fetchWithAuth(`${API}/entitlement-options`, undefined, OPTS)
+  return handleJsonResponse(res)
+}
+
+export async function createTenant(request: TenantRequest): Promise<Tenant> {
   const res = await fetchWithAuth(API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -39,7 +61,7 @@ export async function createTenant(request: { name: string; description?: string
   return handleJsonResponse(res)
 }
 
-export async function updateTenant(id: string, request: { name: string; description?: string }): Promise<Tenant> {
+export async function updateTenant(id: string, request: TenantRequest): Promise<Tenant> {
   const res = await fetchWithAuth(`${API}/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

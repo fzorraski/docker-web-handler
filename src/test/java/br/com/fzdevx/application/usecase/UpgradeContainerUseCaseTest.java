@@ -66,6 +66,7 @@ class UpgradeContainerUseCaseTest {
     @BeforeEach
     void setUp() {
         events.clear();
+        useCase.tenantEntitlements = br.com.fzdevx.infrastructure.config.TestTenantEntitlements.passthrough();
         // Default: upgrade enabled for myrepo
         when(appConfig.getOptionalValue("repository.upgrade-enabled.myrepo", Boolean.class))
                 .thenReturn(java.util.Optional.of(true));

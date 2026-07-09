@@ -72,6 +72,9 @@ public class ContainerSseController {
     br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.TenantEntitlements tenantEntitlements;
+
+    @Inject
     br.com.fzdevx.infrastructure.docker.ContainerTenantGuard containerTenantGuard;
 
     @Inject
@@ -130,6 +133,12 @@ public class ContainerSseController {
         }
 
         // Tenant stamping/guards happen here (request scope); the SSE stream runs off a ticket.
+        if (request.getRepository() != null) {
+            tenantEntitlements.requireRepositoryAllowed(request.getRepository());
+            if (request.getDatabaseName() != null) {
+                tenantEntitlements.requireDatabaseAllowed(request.getRepository());
+            }
+        }
         request.setTenantId(tenantVisibility.resolveCreationTenant(request.getTenantId()));
         if (request.getDumpId() != null) {
             dumpStorageService.findById(request.getDumpId()).ifPresent(dump ->
@@ -208,9 +217,12 @@ public class ContainerSseController {
             return jakarta.ws.rs.core.Response.status(403)
                     .entity(Map.of("error", "Invalid operations password.")).build();
         }
-        if (request.getRepository() != null && request.getTargetDatabase() != null) {
-            managedDatabaseRepository.find(request.getRepository(), request.getTargetDatabase())
-                    .ifPresent(db -> tenantVisibility.requireVisible(db.getTenantId()));
+        if (request.getRepository() != null) {
+            tenantEntitlements.requireDatabaseAllowed(request.getRepository());
+            if (request.getTargetDatabase() != null) {
+                managedDatabaseRepository.find(request.getRepository(), request.getTargetDatabase())
+                        .ifPresent(db -> tenantVisibility.requireVisible(db.getTenantId()));
+            }
         }
         request.setPassword(null);
         String ticket = requestStash.stashMigration(request);

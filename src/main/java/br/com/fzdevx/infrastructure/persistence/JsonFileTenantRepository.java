@@ -29,6 +29,11 @@ public class JsonFileTenantRepository
     }
 
     @Override
+    public boolean update(String id, java.util.function.Consumer<Tenant> mutator) {
+        return updateEntity(t -> t.getId().equals(id), mutator);
+    }
+
+    @Override
     public void delete(String id) {
         deleteEntity(t -> t.getId().equals(id));
     }

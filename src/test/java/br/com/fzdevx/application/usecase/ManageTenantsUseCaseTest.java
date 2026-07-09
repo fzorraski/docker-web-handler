@@ -9,7 +9,9 @@ import br.com.fzdevx.domain.exception.EntityNotFoundException;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.auth.Tenant;
 import br.com.fzdevx.domain.model.auth.User;
+import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.config.AuthorizationService;
+import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -33,6 +35,8 @@ class ManageTenantsUseCaseTest {
     @Mock UserRepository userRepository;
     @Mock AuthorizationService authorizationService;
     @Mock AuditLogger auditLogger;
+    @Mock AllowedRepositoryResolver allowedRepositoryResolver;
+    @Mock DatabaseService databaseService;
 
     @InjectMocks
     ManageTenantsUseCase useCase;
@@ -78,15 +82,25 @@ class ManageTenantsUseCaseTest {
         assertThrows(InvalidInputException.class, () -> useCase.create(request("x")));
     }
 
+    /** The mock repo applies the mutator to the given tenant, like the real atomic update. */
+    private void stubAtomicUpdate(Tenant tenant) {
+        when(tenantRepository.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+        when(tenantRepository.update(eq(tenant.getId()), any())).thenAnswer(invocation -> {
+            java.util.function.Consumer<Tenant> mutator = invocation.getArgument(1);
+            mutator.accept(tenant);
+            return true;
+        });
+    }
+
     @Test
     void update_renames() {
         Tenant tenant = new Tenant("Old", null);
-        when(tenantRepository.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+        stubAtomicUpdate(tenant);
 
         Tenant updated = useCase.update(tenant.getId(), request("New name"));
 
         assertEquals("New name", updated.getName());
-        verify(tenantRepository).save(tenant);
+        verify(tenantRepository).update(eq(tenant.getId()), any());
         verify(authorizationService).invalidateCache();
     }
 
@@ -94,6 +108,88 @@ class ManageTenantsUseCaseTest {
     void update_unknownTenant_throws() {
         when(tenantRepository.findById("nope")).thenReturn(Optional.empty());
         assertThrows(EntityNotFoundException.class, () -> useCase.update("nope", request("Name")));
+    }
+
+    // ---- entitlements ----
+
+    @Test
+    void create_validEntitlements_arePersisted() {
+        when(allowedRepositoryResolver.getAllowed()).thenReturn(List.of("repo-a", "repo-b"));
+        when(databaseService.hasDatabaseConfig("repo-a")).thenReturn(true);
+        CreateTenantRequest request = request("Support");
+        request.setEnabledRepositories(List.of(" repo-a ", "repo-a", "repo-b"));
+        request.setEnabledDatabases(List.of("repo-a"));
+
+        Tenant created = useCase.create(request);
+
+        assertEquals(List.of("repo-a", "repo-b"), created.getEnabledRepositories());
+        assertEquals(List.of("repo-a"), created.getEnabledDatabases());
+    }
+
+    @Test
+    void create_nullEntitlements_stayNull() {
+        Tenant created = useCase.create(request("Support"));
+        assertNull(created.getEnabledRepositories());
+        assertNull(created.getEnabledDatabases());
+    }
+
+    @Test
+    void create_emptyEntitlements_persistAsEmpty() {
+        CreateTenantRequest request = request("Support");
+        request.setEnabledRepositories(List.of());
+        Tenant created = useCase.create(request);
+        assertEquals(List.of(), created.getEnabledRepositories());
+        assertNull(created.getEnabledDatabases());
+    }
+
+    @Test
+    void create_unknownRepository_throws() {
+        when(allowedRepositoryResolver.getAllowed()).thenReturn(List.of("repo-a"));
+        CreateTenantRequest request = request("Support");
+        request.setEnabledRepositories(List.of("repo-x"));
+        assertThrows(InvalidInputException.class, () -> useCase.create(request));
+    }
+
+    @Test
+    void create_repositoryWithoutDbConfig_isNotAValidDatabase() {
+        when(allowedRepositoryResolver.getAllowed()).thenReturn(List.of("repo-a"));
+        when(databaseService.hasDatabaseConfig("repo-a")).thenReturn(false);
+        CreateTenantRequest request = request("Support");
+        request.setEnabledDatabases(List.of("repo-a"));
+        assertThrows(InvalidInputException.class, () -> useCase.create(request));
+    }
+
+    @Test
+    void update_appliesEntitlementsThroughAtomicMutator() {
+        when(allowedRepositoryResolver.getAllowed()).thenReturn(List.of("repo-a"));
+        Tenant tenant = new Tenant("Support", null);
+        stubAtomicUpdate(tenant);
+        CreateTenantRequest request = request("Support");
+        request.setEnabledRepositories(List.of("repo-a"));
+
+        Tenant updated = useCase.update(tenant.getId(), request);
+
+        assertEquals(List.of("repo-a"), updated.getEnabledRepositories());
+        assertNull(updated.getEnabledDatabases());
+    }
+
+    @Test
+    void entitlementOptions_exposesGlobalLists() {
+        when(allowedRepositoryResolver.getAllowed()).thenReturn(List.of("repo-a", "repo-b"));
+        when(databaseService.hasDatabaseConfig("repo-a")).thenReturn(true);
+        when(databaseService.hasDatabaseConfig("repo-b")).thenReturn(false);
+
+        var options = useCase.entitlementOptions();
+
+        assertEquals(List.of("repo-a", "repo-b"), options.get("repositories"));
+        assertEquals(List.of("repo-a"), options.get("databases"));
+    }
+
+    @Test
+    void entitlementOptions_deniedForTenantScopedAdmins() {
+        setActorPermissions(java.util.EnumSet.of(br.com.fzdevx.domain.model.auth.Permission.USERS_MANAGE));
+        assertThrows(br.com.fzdevx.domain.exception.AccessDeniedException.class,
+                useCase::entitlementOptions);
     }
 
     @Test

@@ -54,6 +54,7 @@ class ManagedDatabaseControllerTest {
         // real instance: outside RBAC it grants everything (legacy behavior)
         controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
         controller.tenantVisibility = br.com.fzdevx.infrastructure.config.TestTenantVisibility.passthrough();
+        controller.tenantEntitlements = br.com.fzdevx.infrastructure.config.TestTenantEntitlements.passthrough();
     }
 
     @BeforeEach
