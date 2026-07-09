@@ -30,6 +30,8 @@ class AuthSessionManagerTest {
         };
         setField("authEnabled", true);
         setField("runtimeSettings", runtimeSettings);
+        setField("sessionRepository", new br.com.fzdevx.infrastructure.persistence.InMemorySessionRepository());
+        setField("touchIntervalSeconds", 60L);
     }
 
     private void setField(String name, Object value) {
