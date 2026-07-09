@@ -269,7 +269,8 @@ export default function DatabasePage() {
   const filteredDumps = useMemo(() => {
     let data = showNeverUsedDumps ? dumps.filter(d => !d.lastUsedAt) : dumps
     const result = data.filter((d) =>
-      [d.originalFilename, d.databaseName ?? '', d.version ?? '', d.format, formatBytes(d.fileSize), d.description ?? '', d.createdBy ?? '']
+      [d.originalFilename, d.databaseName ?? '', d.version ?? '', d.format, formatBytes(d.fileSize), d.description ?? '', d.createdBy ?? '',
+       d.tenantId ? tenantNames.get(d.tenantId) ?? '' : '']
         .some((v) => v.toLowerCase().includes(filter.toLowerCase())),
     )
     if (!sortKey) return result
@@ -278,12 +279,14 @@ export default function DatabasePage() {
         const cmp = a.fileSize - b.fileSize
         return sortDir === 'asc' ? cmp : -cmp
       }
-      const va = String((a as unknown as Record<string, unknown>)[sortKey] ?? '').toLowerCase()
-      const vb = String((b as unknown as Record<string, unknown>)[sortKey] ?? '').toLowerCase()
-      const cmp = va.localeCompare(vb)
+      // the tenant column displays the resolved name, so sort by it too
+      const sortValue = (d: DatabaseDump) => sortKey === 'tenantId'
+        ? (d.tenantId ? tenantNames.get(d.tenantId) ?? d.tenantId : '')
+        : String((d as unknown as Record<string, unknown>)[sortKey] ?? '')
+      const cmp = sortValue(a).toLowerCase().localeCompare(sortValue(b).toLowerCase())
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [dumps, filter, sortKey, sortDir, showNeverUsedDumps])
+  }, [dumps, filter, sortKey, sortDir, showNeverUsedDumps, tenantNames])
 
   const dumpPagination = useTablePagination(filteredDumps, { storageKey: 'dumps' })
 
@@ -406,7 +409,8 @@ export default function DatabasePage() {
   const filteredSnapshots = useMemo(() => {
     let data = showNeverUsedSnaps ? snapshots.filter(s => !s.lastUsedAt) : snapshots
     const result = data.filter((s) =>
-      [s.label ?? '', s.repository, s.sourceDatabaseName, s.containerName ?? '', s.format, formatBytes(s.fileSize), s.description ?? '', s.createdBy ?? '']
+      [s.label ?? '', s.repository, s.sourceDatabaseName, s.containerName ?? '', s.format, formatBytes(s.fileSize), s.description ?? '', s.createdBy ?? '',
+       s.tenantId ? tenantNames.get(s.tenantId) ?? '' : '']
         .some((v) => v.toLowerCase().includes(snapFilter.toLowerCase())),
     )
     if (!snapSortKey) return result
@@ -415,12 +419,14 @@ export default function DatabasePage() {
         const cmp = a.fileSize - b.fileSize
         return snapSortDir === 'asc' ? cmp : -cmp
       }
-      const va = String((a as unknown as Record<string, unknown>)[snapSortKey] ?? '').toLowerCase()
-      const vb = String((b as unknown as Record<string, unknown>)[snapSortKey] ?? '').toLowerCase()
-      const cmp = va.localeCompare(vb)
+      // the tenant column displays the resolved name, so sort by it too
+      const sortValue = (snap: DatabaseSnapshot) => snapSortKey === 'tenantId'
+        ? (snap.tenantId ? tenantNames.get(snap.tenantId) ?? snap.tenantId : '')
+        : String((snap as unknown as Record<string, unknown>)[snapSortKey] ?? '')
+      const cmp = sortValue(a).toLowerCase().localeCompare(sortValue(b).toLowerCase())
       return snapSortDir === 'asc' ? cmp : -cmp
     })
-  }, [snapshots, snapFilter, snapSortKey, snapSortDir, showNeverUsedSnaps])
+  }, [snapshots, snapFilter, snapSortKey, snapSortDir, showNeverUsedSnaps, tenantNames])
 
   const snapPagination = useTablePagination(filteredSnapshots, { storageKey: 'snapshots' })
 

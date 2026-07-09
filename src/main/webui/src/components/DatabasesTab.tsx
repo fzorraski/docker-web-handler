@@ -295,7 +295,8 @@ export default function DatabasesTab() {
     if (filter) {
       const lc = filter.toLowerCase()
       data = data.filter((db) => db.name.toLowerCase().includes(lc)
-        || (db.createdBy ?? '').toLowerCase().includes(lc))
+        || (db.createdBy ?? '').toLowerCase().includes(lc)
+        || (db.tenantId ? (tenantNames.get(db.tenantId) ?? '').toLowerCase().includes(lc) : false))
     }
 
     // Connections filter
@@ -326,6 +327,11 @@ export default function DatabasesTab() {
         cmp = a.activeConnections - b.activeConnections
       } else if (sortKey === 'protectedFlag') {
         cmp = (a.protectedFlag ? 1 : 0) - (b.protectedFlag ? 1 : 0)
+      } else if (sortKey === 'tenantId') {
+        // the column displays the resolved name, so sort by it too
+        const va = (a.tenantId ? tenantNames.get(a.tenantId) ?? a.tenantId : '').toLowerCase()
+        const vb = (b.tenantId ? tenantNames.get(b.tenantId) ?? b.tenantId : '').toLowerCase()
+        cmp = va.localeCompare(vb)
       } else {
         const va = String((a as unknown as Record<string, unknown>)[sortKey] ?? '').toLowerCase()
         const vb = String((b as unknown as Record<string, unknown>)[sortKey] ?? '').toLowerCase()
@@ -333,7 +339,7 @@ export default function DatabasesTab() {
       }
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [databases, filter, sortKey, sortDir, showWithConnections, idleFilter])
+  }, [databases, filter, sortKey, sortDir, showWithConnections, idleFilter, tenantNames])
 
   const pagination = useTablePagination(filteredDatabases, { storageKey: 'managedDatabases' })
 

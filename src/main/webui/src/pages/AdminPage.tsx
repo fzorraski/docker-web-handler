@@ -191,17 +191,20 @@ export default function AdminPage() {
         {/* ==================== USERS TAB ==================== */}
         {activeTab === 'users' && (
           <>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-              <Button
-                variant="contained"
-                color="success"
-                startIcon={<PersonAdd />}
-                size="small"
-                onClick={() => { setEditingUser(null); setUserDialogOpen(true) }}
-              >
-                {t('users.newUser')}
-              </Button>
-            </Box>
+            {/* a scoped admin without tenants cannot create anyone - hide the dead-end button */}
+            {(canTenantsViewAll || myTenants.length > 0) && (
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                <Button
+                  variant="contained"
+                  color="success"
+                  startIcon={<PersonAdd />}
+                  size="small"
+                  onClick={() => { setEditingUser(null); setUserDialogOpen(true) }}
+                >
+                  {t('users.newUser')}
+                </Button>
+              </Box>
+            )}
             <Paper elevation={2} sx={{ borderRadius: 2 }}>
               <TableContainer>
                 <Table aria-label="Users">

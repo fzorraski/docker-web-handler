@@ -50,12 +50,17 @@ export default function TenantSelect({ value, onChange, disabled }: Props) {
   if (!visible) return null
 
   const options = canViewAll ? allTenants : ownTenants
+  // members must always own the new resource - render the default before the
+  // sync effect fires, so MUI never sees a value without a matching option
+  const effectiveValue = !canViewAll && value === '' && ownTenants.length > 0
+    ? ownTenants[0].id
+    : value
 
   return (
     <TextField
       select
       label={t('tenants.tenant')}
-      value={value}
+      value={effectiveValue}
       onChange={(e) => onChange(e.target.value)}
       size="small"
       fullWidth

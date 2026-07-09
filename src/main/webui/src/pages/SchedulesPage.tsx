@@ -105,7 +105,8 @@ export default function SchedulesPage() {
         s.name.toLowerCase().includes(f) ||
         s.action.toLowerCase().includes(f) ||
         (s.containerName || '').toLowerCase().includes(f) ||
-        (s.createdBy || '').toLowerCase().includes(f)
+        (s.createdBy || '').toLowerCase().includes(f) ||
+        (s.tenantId ? (tenantNames.get(s.tenantId) ?? '').toLowerCase().includes(f) : false)
       )) return false
       if (actionFilter && s.action !== actionFilter) return false
       if (typeFilter && s.scheduleType !== typeFilter) return false
@@ -114,14 +115,18 @@ export default function SchedulesPage() {
       return true
     })
     if (sortKey) {
+      // the tenant column displays the resolved name, so sort by it too
+      const sortValue = (item: (typeof result)[number]) => sortKey === 'tenantId'
+        ? (item.tenantId ? tenantNames.get(item.tenantId) ?? item.tenantId : '')
+        : String((item as unknown as Record<string, unknown>)[sortKey] ?? '')
       result = [...result].sort((a, b) => {
-        const va = String((a as unknown as Record<string, unknown>)[sortKey] ?? '').toLowerCase()
-        const vb = String((b as unknown as Record<string, unknown>)[sortKey] ?? '').toLowerCase()
+        const va = sortValue(a).toLowerCase()
+        const vb = sortValue(b).toLowerCase()
         return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
       })
     }
     return result
-  }, [schedules, filter, actionFilter, typeFilter, enabledFilter, statusFilter, sortKey, sortDir])
+  }, [schedules, filter, actionFilter, typeFilter, enabledFilter, statusFilter, sortKey, sortDir, tenantNames])
 
   const pagination = useTablePagination(filtered, { storageKey: 'schedules' })
 
@@ -512,14 +517,14 @@ export default function SchedulesPage() {
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={11 + (canViewAudit ? 1 : 0) + (rbacEnabled ? 1 : 0)} align="center" sx={{ py: 4 }}>
                     <CircularProgress size={28} />
                   </TableCell>
                 </TableRow>
               )}
               {!loading && filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                  <TableCell colSpan={11 + (canViewAudit ? 1 : 0) + (rbacEnabled ? 1 : 0)} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                     {t('schedules.noSchedules')}
                   </TableCell>
                 </TableRow>

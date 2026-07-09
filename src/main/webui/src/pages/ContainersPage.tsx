@@ -326,6 +326,8 @@ export default function ContainersPage() {
       case 'names': return c.names
       case 'database': return c.databaseName ?? ''
       case 'expires': return c.expiresAt ?? ''
+      // the column displays the resolved tenant name, so sort by it too
+      case 'tenantId': return c.tenantId ? (tenantNames.get(c.tenantId) ?? c.tenantId) : ''
       default: return ''
     }
   }
@@ -354,8 +356,10 @@ export default function ContainersPage() {
   )
 
   const filtered = useMemo(() => {
+    const lc = filter.toLowerCase()
     const result = filteredByStatus.filter((c) =>
-      Object.values(c).some((v) => String(v ?? '').toLowerCase().includes(filter.toLowerCase()))
+      Object.values(c).some((v) => String(v ?? '').toLowerCase().includes(lc))
+        || (c.tenantId ? (tenantNames.get(c.tenantId) ?? '').toLowerCase().includes(lc) : false)
     )
     if (!sortKey) return result
     return [...result].sort((a, b) => {
@@ -364,7 +368,7 @@ export default function ContainersPage() {
       const cmp = va.localeCompare(vb)
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [filteredByStatus, filter, sortKey, sortDir])
+  }, [filteredByStatus, filter, sortKey, sortDir, tenantNames])
 
   const toggleSelectAll = useCallback(() => {
     setSelected(prev =>

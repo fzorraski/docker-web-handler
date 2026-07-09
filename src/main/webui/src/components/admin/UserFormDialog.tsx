@@ -71,7 +71,9 @@ export default function UserFormDialog({ open, onClose, onSaved, roles, tenants,
   // scoped admins must keep every user inside their own tenants
   const tenantsOk = canTenantsViewAll || tenantIds.length > 0
   const canSave = isEdit
-    ? (membershipOnly ? tenantIds.length > 0 : roleIds.length > 0 && tenantsOk)
+    // membershipOnly targets keep their foreign memberships, so removing every
+    // own-tenant selection is a valid "remove from my tenant" operation
+    ? (membershipOnly ? true : roleIds.length > 0 && tenantsOk)
     : username.trim().length >= 3 && password.length >= MIN_PASSWORD_LENGTH && roleIds.length > 0 && tenantsOk
 
   async function handleSave() {
