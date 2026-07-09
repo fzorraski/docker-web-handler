@@ -28,7 +28,7 @@ class UserControllerTest {
     UserController controller;
 
     private UserResponse sample() {
-        return new UserResponse("u1", "alice", java.util.List.of("role-1"), java.util.List.of("OPERATOR"), true, Instant.now(), null);
+        return new UserResponse("u1", "alice", java.util.List.of("role-1"), java.util.List.of("OPERATOR"), java.util.List.of(), java.util.List.of(), true, Instant.now(), null);
     }
 
     @Test

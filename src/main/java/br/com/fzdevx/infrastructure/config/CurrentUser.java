@@ -16,12 +16,18 @@ public class CurrentUser {
     private String userId;
     private String username;
     private Set<Permission> permissions = Set.of();
+    private Set<String> tenantIds = Set.of();
     private boolean rbacActive;
 
     public void set(String userId, String username, Set<Permission> permissions) {
+        set(userId, username, permissions, Set.of());
+    }
+
+    public void set(String userId, String username, Set<Permission> permissions, Set<String> tenantIds) {
         this.userId = userId;
         this.username = username;
         this.permissions = permissions == null ? Set.of() : permissions;
+        this.tenantIds = tenantIds == null ? Set.of() : tenantIds;
         this.rbacActive = true;
     }
 
@@ -43,5 +49,9 @@ public class CurrentUser {
 
     public Set<Permission> getPermissions() {
         return permissions;
+    }
+
+    public Set<String> getTenantIds() {
+        return tenantIds;
     }
 }

@@ -126,7 +126,9 @@ public class AuthenticationFilter implements ContainerRequestFilter, ContainerRe
                 return;
             }
             var user = resolved.get();
-            currentUser.set(user.userId(), user.username(), user.permissions());
+            // LinkedHashSet keeps membership order - the first tenant is the creation default
+            currentUser.set(user.userId(), user.username(), user.permissions(),
+                    new java.util.LinkedHashSet<>(user.tenantIds()));
             MDC.put(MDC_USER_KEY, user.username());
         } else if (!sessionManager.validateAndTouch(sessionCookie.getValue())) {
             abort(requestContext, 401, "UNAUTHORIZED", "Authentication required.");

@@ -12,6 +12,7 @@ public class User {
     private String username;
     private String passwordHash;
     private List<String> roleIds = new ArrayList<>();
+    private List<String> tenantIds = new ArrayList<>();
     private boolean enabled;
     private Instant createdAt;
     private Instant updatedAt;
@@ -45,6 +46,9 @@ public class User {
 
     public List<String> getRoleIds() { return roleIds; }
     public void setRoleIds(List<String> roleIds) { this.roleIds = roleIds == null ? new ArrayList<>() : new ArrayList<>(roleIds); }
+
+    public List<String> getTenantIds() { return tenantIds; }
+    public void setTenantIds(List<String> tenantIds) { this.tenantIds = tenantIds == null ? new ArrayList<>() : new ArrayList<>(tenantIds); }
 
     public boolean hasRole(String roleId) { return roleIds.contains(roleId); }
 

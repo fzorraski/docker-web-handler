@@ -38,7 +38,8 @@ public class AuthorizationFilter implements ContainerRequestFilter {
      * they are hidden entirely unless RBAC is active.
      */
     private static final Set<Class<?>> RBAC_ONLY_RESOURCES =
-            Set.of(UserController.class, RoleController.class, SettingsController.class);
+            Set.of(UserController.class, RoleController.class, SettingsController.class,
+                    TenantController.class);
 
     @Context
     ResourceInfo resourceInfo;

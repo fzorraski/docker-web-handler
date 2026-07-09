@@ -5,6 +5,7 @@ import br.com.fzdevx.application.dto.UpdateUserRequest;
 import br.com.fzdevx.application.dto.UserResponse;
 import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.application.port.RoleRepository;
+import br.com.fzdevx.application.port.TenantRepository;
 import br.com.fzdevx.application.port.UserRepository;
 import br.com.fzdevx.domain.exception.AccessDeniedException;
 import br.com.fzdevx.domain.exception.DuplicateEntityException;
@@ -12,6 +13,7 @@ import br.com.fzdevx.domain.exception.EntityNotFoundException;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.domain.model.auth.Role;
+import br.com.fzdevx.domain.model.auth.Tenant;
 import br.com.fzdevx.domain.model.auth.User;
 import br.com.fzdevx.domain.shared.PasswordHasher;
 import br.com.fzdevx.infrastructure.config.AuthSessionManager;
@@ -41,6 +43,9 @@ public class ManageUsersUseCase {
     RoleRepository roleRepository;
 
     @Inject
+    TenantRepository tenantRepository;
+
+    @Inject
     AuthorizationService authorizationService;
 
     @Inject
@@ -54,8 +59,9 @@ public class ManageUsersUseCase {
 
     public List<UserResponse> list() {
         Map<String, Role> rolesById = rolesById();
+        Map<String, Tenant> tenantsById = tenantsById();
         return userRepository.findAll().stream()
-                .map(user -> UserResponse.of(user, rolesById))
+                .map(user -> UserResponse.of(user, rolesById, tenantsById))
                 .toList();
     }
 
@@ -68,16 +74,18 @@ public class ManageUsersUseCase {
         validatePassword(request.getPassword());
         List<Role> roles = requireRoles(request.getRoleIds());
         roles.forEach(this::guardRoleAssignment);
+        List<String> tenantIds = requireTenants(request.getTenantIds());
         if (userRepository.findByUsername(username).isPresent()) {
             throw new DuplicateEntityException("A user named '" + username + "' already exists.");
         }
 
         User user = new User(username, PasswordHasher.hash(request.getPassword()),
                 roles.stream().map(Role::getId).toList());
+        user.setTenantIds(tenantIds);
         userRepository.save(user);
         authorizationService.invalidateCache();
         auditLogger.log("USER_CREATE", username, "roles=" + roleNames(roles));
-        return UserResponse.of(user, rolesById());
+        return UserResponse.of(user, rolesById(), tenantsById());
     }
 
     public UserResponse update(String id, UpdateUserRequest request) {
@@ -101,6 +109,9 @@ public class ManageUsersUseCase {
             newRoles.forEach(this::guardRoleAssignment);
             user.setRoleIds(newRoles.stream().map(Role::getId).toList());
         }
+        if (request.getTenantIds() != null) {
+            user.setTenantIds(requireTenants(request.getTenantIds()));
+        }
         if (request.getEnabled() != null) {
             user.setEnabled(request.getEnabled());
         }
@@ -112,7 +123,7 @@ public class ManageUsersUseCase {
         }
         auditLogger.log("USER_UPDATE", user.getUsername(),
                 "roles=" + roleNames(newRoles) + " enabled=" + user.isEnabled());
-        return UserResponse.of(user, rolesById());
+        return UserResponse.of(user, rolesById(), tenantsById());
     }
 
     public void resetPassword(String id, String newPassword) {
@@ -170,6 +181,24 @@ public class ManageUsersUseCase {
     private Map<String, Role> rolesById() {
         return roleRepository.findAll().stream()
                 .collect(Collectors.toMap(Role::getId, Function.identity()));
+    }
+
+    private Map<String, Tenant> tenantsById() {
+        return tenantRepository.findAll().stream()
+                .collect(Collectors.toMap(Tenant::getId, Function.identity()));
+    }
+
+    /** Tenants are optional (empty = no tenant), but every submitted id must exist. */
+    private List<String> requireTenants(List<String> tenantIds) {
+        if (tenantIds == null || tenantIds.isEmpty()) {
+            return List.of();
+        }
+        return tenantIds.stream()
+                .distinct()
+                .map(id -> tenantRepository.findById(id)
+                        .orElseThrow(() -> new EntityNotFoundException("Tenant not found."))
+                        .getId())
+                .toList();
     }
 
     private static String roleNames(List<Role> roles) {

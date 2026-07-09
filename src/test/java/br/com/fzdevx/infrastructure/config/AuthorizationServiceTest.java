@@ -1,6 +1,7 @@
 package br.com.fzdevx.infrastructure.config;
 
 import br.com.fzdevx.application.port.RoleRepository;
+import br.com.fzdevx.application.port.TenantRepository;
 import br.com.fzdevx.application.port.UserRepository;
 import br.com.fzdevx.domain.model.auth.BuiltInRoles;
 import br.com.fzdevx.domain.model.auth.Permission;
@@ -28,6 +29,7 @@ class AuthorizationServiceTest {
 
     @Mock UserRepository userRepository;
     @Mock RoleRepository roleRepository;
+    @Mock TenantRepository tenantRepository;
 
     @InjectMocks
     AuthorizationService service;

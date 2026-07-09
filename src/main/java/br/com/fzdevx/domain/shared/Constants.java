@@ -6,6 +6,7 @@ public class Constants {
     public static final String REPOSITORY_LABEL = "docker-web-handler.repository";
     public static final String DATABASE_NAME_LABEL = "docker-web-handler.database-name";
     public static final String CREATED_BY_LABEL = "docker-web-handler.created-by";
+    public static final String TENANT_LABEL = "docker-web-handler.tenant";
     public static final String CI_LABEL = "docker-web-handler.ci-environment";
     public static final String CI_PIPELINE_LABEL = "docker-web-handler.ci-pipeline";
 }

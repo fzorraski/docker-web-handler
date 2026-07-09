@@ -88,11 +88,20 @@ public class AuthController {
                         "username", user.username(),
                         "roleIds", user.roleIds(),
                         "roleNames", user.roleNames(),
+                        "tenants", tenantsOf(user),
                         "permissions", user.permissions().stream().map(Enum::name).sorted().toList()
                 )).build())
                 .orElseGet(() -> Response.status(Response.Status.UNAUTHORIZED)
                         .entity(Map.of("code", "UNAUTHORIZED", "message", "Authentication required."))
                         .build());
+    }
+
+    private static java.util.List<Map<String, String>> tenantsOf(AuthorizationService.ResolvedUser user) {
+        var tenants = new java.util.ArrayList<Map<String, String>>();
+        for (int i = 0; i < user.tenantIds().size(); i++) {
+            tenants.add(Map.of("id", user.tenantIds().get(i), "name", user.tenantNames().get(i)));
+        }
+        return tenants;
     }
 
     @GET

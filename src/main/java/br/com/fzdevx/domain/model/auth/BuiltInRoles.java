@@ -36,6 +36,7 @@ public final class BuiltInRoles {
         Set<Permission> permissions = EnumSet.allOf(Permission.class);
         permissions.remove(Permission.SYSTEM_CONFIG);
         permissions.remove(Permission.USERS_MANAGE);
+        permissions.remove(Permission.TENANTS_VIEW_ALL);
         return builtIn(OPERATOR_ID, "OPERATOR",
                 "Container, database, schedule, terminal and log operations.",
                 permissions);

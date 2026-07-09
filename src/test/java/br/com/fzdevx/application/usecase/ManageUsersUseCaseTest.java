@@ -41,6 +41,7 @@ class ManageUsersUseCaseTest {
     ManageUsersUseCase useCase;
     JsonFileUserRepository userRepository;
     JsonFileRoleRepository roleRepository;
+    br.com.fzdevx.infrastructure.persistence.JsonFileTenantRepository tenantRepository;
     AuthorizationService authorizationService;
     CurrentUser actor;
 
@@ -58,13 +59,18 @@ class ManageUsersUseCaseTest {
         userRepository.save(superAdmin);
         userRepository.save(admin);
 
+        tenantRepository = new br.com.fzdevx.infrastructure.persistence.JsonFileTenantRepository(
+                tempDir.resolve("tenants.json").toString());
+
         authorizationService = new AuthorizationService();
         setField(authorizationService, "userRepository", userRepository);
         setField(authorizationService, "roleRepository", roleRepository);
+        setField(authorizationService, "tenantRepository", tenantRepository);
 
         useCase = new ManageUsersUseCase();
         useCase.userRepository = userRepository;
         useCase.roleRepository = roleRepository;
+        useCase.tenantRepository = tenantRepository;
         useCase.authorizationService = authorizationService;
         useCase.sessionManager = sessionManager;
         useCase.auditLogger = ManageSettingsUseCaseTest.NO_OP_AUDIT;

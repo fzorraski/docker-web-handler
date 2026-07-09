@@ -154,7 +154,8 @@ class AuthenticationFilterTest {
         when(rbacSettings.isRbacEnabled()).thenReturn(true);
         when(sessionManager.getUserIdIfValid("valid")).thenReturn(java.util.Optional.of("user-1"));
         var resolved = new br.com.fzdevx.infrastructure.config.AuthorizationService.ResolvedUser(
-                "user-1", "alice", java.util.List.of("role-1"), java.util.List.of("VIEWER"), true,
+                "user-1", "alice", java.util.List.of("role-1"), java.util.List.of("VIEWER"),
+                java.util.List.of(), java.util.List.of(), true,
                 java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_VIEW));
         when(authorizationService.resolve("user-1")).thenReturn(java.util.Optional.of(resolved));
 
@@ -162,7 +163,8 @@ class AuthenticationFilterTest {
 
         verify(requestContext, never()).abortWith(any());
         verify(currentUser).set("user-1", "alice",
-                java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_VIEW));
+                java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_VIEW),
+                new java.util.LinkedHashSet<>());
     }
 
     @Test
@@ -177,7 +179,7 @@ class AuthenticationFilterTest {
 
         verify(sessionManager).invalidateSession("valid");
         verify(requestContext).abortWith(any());
-        verify(currentUser, never()).set(any(), any(), any());
+        verify(currentUser, never()).set(any(), any(), any(), any());
     }
 
     @Test
@@ -187,7 +189,8 @@ class AuthenticationFilterTest {
         when(rbacSettings.isRbacEnabled()).thenReturn(true);
         when(sessionManager.getUserIdIfValid("valid")).thenReturn(java.util.Optional.of("user-1"));
         var resolved = new br.com.fzdevx.infrastructure.config.AuthorizationService.ResolvedUser(
-                "user-1", "alice", java.util.List.of("role-1"), java.util.List.of("VIEWER"), false, java.util.Set.of());
+                "user-1", "alice", java.util.List.of("role-1"), java.util.List.of("VIEWER"),
+                java.util.List.of(), java.util.List.of(), false, java.util.Set.of());
         when(authorizationService.resolve("user-1")).thenReturn(java.util.Optional.of(resolved));
 
         filter.filter(requestContext);
