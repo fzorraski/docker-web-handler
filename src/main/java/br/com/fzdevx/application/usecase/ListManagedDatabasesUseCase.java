@@ -135,7 +135,8 @@ public class ListManagedDatabasesUseCase {
                     scheduledForDeletion,
                     md.getLastRestoredFrom(),
                     md.getLastRestoredAt(),
-                    md.getCreatedBy()
+                    md.getCreatedBy(),
+                    md.getTenantId()
             ));
         }
 

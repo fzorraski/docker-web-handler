@@ -129,6 +129,10 @@ public class DatabaseService implements DatabasePort {
     }
 
     public void createDatabase(String repository, String databaseName) {
+        createDatabase(repository, databaseName, null);
+    }
+
+    public void createDatabase(String repository, String databaseName, String tenantId) {
         Optional<String> nameError = InputValidator.validateDatabaseName(databaseName);
         if (nameError.isPresent()) {
             throw new IllegalArgumentException(nameError.get());
@@ -148,7 +152,7 @@ public class DatabaseService implements DatabasePort {
                 stmt.execute("CREATE DATABASE " + quoted);
             }
             Log.infof("Database '%s' created successfully for repository '%s'.", databaseName, repository);
-            recordCreator(repository, databaseName);
+            recordCreator(repository, databaseName, tenantId);
         } catch (Exception e) {
             throw new RuntimeException("Failed to create database '" + databaseName + "': " + e.getMessage(), e);
         }
@@ -1151,13 +1155,21 @@ public class DatabaseService implements DatabasePort {
     }
 
 
-    /** Stamps who created the database on its metadata record ("who created this?"). */
-    private void recordCreator(String repository, String databaseName) {
+    /** Stamps who created the database (and its owning tenant) on its metadata record. */
+    private void recordCreator(String repository, String databaseName, String tenantId) {
         try {
             var md = managedDatabaseRepository.find(repository, databaseName)
                     .orElseGet(() -> new br.com.fzdevx.domain.model.ManagedDatabase(repository, databaseName));
+            boolean changed = false;
             if (md.getCreatedBy() == null) {
                 md.setCreatedBy(actorResolver.usernameOrSystem());
+                changed = true;
+            }
+            if (md.getTenantId() == null && tenantId != null && !tenantId.isBlank()) {
+                md.setTenantId(tenantId);
+                changed = true;
+            }
+            if (changed) {
                 managedDatabaseRepository.save(md);
             }
         } catch (Exception e) {

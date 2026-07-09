@@ -28,12 +28,20 @@ public class CleanupIdleDatabasesUseCase {
     @Inject
     ResourceCounterService resourceCounterService;
 
+    @Inject
+    br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
+
     public int cleanup(String repository, int minDays) {
         List<ManagedDatabaseInfo> databases = listManagedDatabasesUseCase.listDatabases(repository);
         Instant cutoff = Instant.now().minus(minDays, ChronoUnit.DAYS);
 
         int deleted = 0;
         for (ManagedDatabaseInfo db : databases) {
+            // never clean up another tenant's databases
+            if (!tenantVisibility.canSee(db.tenantId())) {
+                continue;
+            }
+
             if (db.protectedFlag()) {
                 continue;
             }

@@ -15,6 +15,7 @@ public class ManagedDatabase {
     private String lastRestoredFrom;
     private Instant lastRestoredAt;
     private String createdBy;
+    private String tenantId;
 
     public ManagedDatabase() {
     }
@@ -65,4 +66,7 @@ public class ManagedDatabase {
 
     public String getCreatedBy() { return createdBy; }
     public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
+
+    public String getTenantId() { return tenantId; }
+    public void setTenantId(String tenantId) { this.tenantId = tenantId; }
 }

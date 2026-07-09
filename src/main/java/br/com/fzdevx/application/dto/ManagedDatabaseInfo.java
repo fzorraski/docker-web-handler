@@ -19,7 +19,8 @@ public record ManagedDatabaseInfo(
         boolean scheduledForDeletion,
         String lastRestoredFrom,
         Instant lastRestoredAt,
-        String createdBy
+        String createdBy,
+        String tenantId
 ) {
 
     /** Copy without the creator, for callers lacking the AUDIT_VIEW permission. */
@@ -27,6 +28,6 @@ public record ManagedDatabaseInfo(
         return new ManagedDatabaseInfo(name, repository, sizeBytes, activeConnections,
                 pgLastActivity, appLastUsedAt, effectiveLastUsedAt, protectedFlag, createdAt,
                 description, containerCount, earliestExpiration, scheduledForDeletion,
-                lastRestoredFrom, lastRestoredAt, null);
+                lastRestoredFrom, lastRestoredAt, null, tenantId);
     }
 }

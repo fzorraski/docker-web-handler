@@ -53,6 +53,7 @@ class ManagedDatabaseControllerTest {
     void injectCurrentUser() {
         // real instance: outside RBAC it grants everything (legacy behavior)
         controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        controller.tenantVisibility = br.com.fzdevx.infrastructure.config.TestTenantVisibility.passthrough();
     }
 
     @BeforeEach
@@ -121,7 +122,7 @@ class ManagedDatabaseControllerTest {
     @SuppressWarnings("unchecked")
     void listDatabases_stripsCreatorWithoutAuditView() {
         ManagedDatabaseInfo db = new ManagedDatabaseInfo("mydb", REPO, 1024L, 0, null, null,
-                null, false, Instant.now(), null, 0, null, false, null, null, "alice");
+                null, false, Instant.now(), null, 0, null, false, null, null, "alice", null);
         when(listManagedDatabasesUseCase.listDatabases(REPO)).thenReturn(List.of(db));
         var rbacUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
         rbacUser.set("u1", "bob", java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.DATABASE_VIEW));
@@ -139,7 +140,7 @@ class ManagedDatabaseControllerTest {
     @SuppressWarnings("unchecked")
     void listDatabases_keepsCreatorWithAuditView() {
         ManagedDatabaseInfo db = new ManagedDatabaseInfo("mydb", REPO, 1024L, 0, null, null,
-                null, false, Instant.now(), null, 0, null, false, null, null, "alice");
+                null, false, Instant.now(), null, 0, null, false, null, null, "alice", null);
         when(listManagedDatabasesUseCase.listDatabases(REPO)).thenReturn(List.of(db));
 
         List<ManagedDatabaseInfo> body =
@@ -698,7 +699,7 @@ class ManagedDatabaseControllerTest {
 
     private ManagedDatabaseInfo makeDb(String name) {
         return new ManagedDatabaseInfo(name, REPO, 1024L, 0, null, null,
-                null, false, Instant.now(), null, 0, null, false, null, null, null);
+                null, false, Instant.now(), null, 0, null, false, null, null, null, null);
     }
 
     private void setField(String name, Object value) {

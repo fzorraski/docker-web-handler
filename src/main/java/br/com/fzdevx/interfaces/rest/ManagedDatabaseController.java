@@ -91,9 +91,28 @@ public class ManagedDatabaseController {
     @Inject
     ResourceCounterService resourceCounterService;
 
+    @Inject
+    br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
+
     private boolean isStatsResetEnabled(String repository) {
         return config.getOptionalValue("database.query-stats.reset-enabled." + repository, Boolean.class)
                 .orElse(false);
+    }
+
+    /**
+     * Tenant guard for by-name operations: a database owned by another tenant
+     * 404s like a nonexistent one. Databases without a metadata record (or
+     * without a tenant) are visible to everyone.
+     */
+    private void requireDbVisible(String repository, String databaseName) {
+        managedDatabaseRepository.find(repository, databaseName)
+                .ifPresent(db -> tenantVisibility.requireVisible(db.getTenantId()));
+    }
+
+    private boolean isDbVisible(String repository, String databaseName) {
+        return managedDatabaseRepository.find(repository, databaseName)
+                .map(db -> tenantVisibility.canSee(db.getTenantId()))
+                .orElse(true);
     }
 
     @GET
@@ -134,6 +153,7 @@ public class ManagedDatabaseController {
                     .entity(Map.of("error", nameError.get())).build();
         }
 
+        requireDbVisible(repository, databaseName);
         var activity = databaseService.getDatabaseActivity(repository, databaseName);
         return Response.ok(activity).build();
     }
@@ -161,6 +181,7 @@ public class ManagedDatabaseController {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Invalid table name.")).build();
         }
+        requireDbVisible(repository, databaseName);
         var queries = databaseService.getTopQueriesForTable(repository, databaseName, tableName, queryTimeoutSeconds);
         return Response.ok(queries).build();
     }
@@ -183,6 +204,7 @@ public class ManagedDatabaseController {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", nameError.get())).build();
         }
+        requireDbVisible(repository, databaseName);
         var queries = databaseService.getTopTempFileQueries(repository, databaseName, queryTimeoutSeconds);
         return Response.ok(queries).build();
     }
@@ -207,6 +229,8 @@ public class ManagedDatabaseController {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", nameError.get())).build();
         }
+
+        requireDbVisible(repository, databaseName);
 
         Object health = null;
         Object activity = null;
@@ -259,6 +283,7 @@ public class ManagedDatabaseController {
                     .entity(Map.of("error", nameError.get())).build();
         }
 
+        requireDbVisible(repository, databaseName);
         String html = generateDatabaseReportUseCase.generateReport(repository, databaseName);
         String filename = generateDatabaseReportUseCase.buildReportFilename(repository, databaseName);
         return Response.ok(html, "text/html")
@@ -287,6 +312,7 @@ public class ManagedDatabaseController {
                     .entity(Map.of("error", nameError.get())).build();
         }
 
+        requireDbVisible(repository, databaseName);
         var stats = databaseService.getDatabaseTableStats(repository, databaseName);
         return Response.ok(stats).build();
     }
@@ -319,6 +345,7 @@ public class ManagedDatabaseController {
                     .entity(Map.of("error", "Invalid operations password.")).build();
         }
 
+        requireDbVisible(repository, databaseName);
         var result = databaseService.enablePgStatStatements(repository, databaseName);
         return switch (result) {
             case ENABLED -> Response.ok(Map.of("success", true)).build();
@@ -358,6 +385,8 @@ public class ManagedDatabaseController {
                     .entity(Map.of("error", "Invalid operations password.")).build();
         }
 
+        requireDbVisible(repository, databaseName);
+
         try {
             databaseService.resetQueryStats(repository, databaseName);
             return Response.ok(Map.of("success", true)).build();
@@ -396,6 +425,8 @@ public class ManagedDatabaseController {
             return Response.status(Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "Invalid operations password.")).build();
         }
+
+        requireDbVisible(repository, databaseName);
 
         try {
             databaseService.resetTableStats(repository, databaseName);
@@ -449,6 +480,8 @@ public class ManagedDatabaseController {
             return Response.status(Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "Invalid operations password.")).build();
         }
+
+        requireDbVisible(repository, databaseName);
 
         try {
             databaseService.resetSingleTableStats(repository, databaseName, schemaName, tableName);
@@ -505,6 +538,8 @@ public class ManagedDatabaseController {
         }
 
         boolean analyze = body.get("analyze") instanceof Boolean b && b;
+
+        requireDbVisible(repository, databaseName);
 
         try {
             String jsonPlan = databaseService.executeExplainJson(repository, databaseName, sql, analyze, queryTimeoutSeconds);
@@ -583,6 +618,8 @@ public class ManagedDatabaseController {
             }
         }
 
+        requireDbVisible(repository, databaseName);
+
         int page = 0;
         int pageSize = 100;
         long cachedTotalRows = -1;
@@ -625,6 +662,7 @@ public class ManagedDatabaseController {
                     .entity(Map.of("error", nameError.get())).build();
         }
 
+        requireDbVisible(repository, databaseName);
         var health = databaseService.getDatabaseHealth(repository, databaseName);
         return Response.ok(health).build();
     }
@@ -673,7 +711,9 @@ public class ManagedDatabaseController {
 
         try {
             List<ManagedDatabaseInfo> databases = listManagedDatabasesUseCase.listDatabases(repository);
-            // creator visibility is its own permission (AUDIT_VIEW); the cached list is shared, so copy
+            // the cached list is shared across users - filter/copy, never mutate
+            databases = tenantVisibility.visible(databases, ManagedDatabaseInfo::tenantId);
+            // creator visibility is its own permission (AUDIT_VIEW)
             if (!currentUser.hasPermission(Permission.AUDIT_VIEW)) {
                 databases = databases.stream().map(ManagedDatabaseInfo::withoutCreatedBy).toList();
             }
@@ -721,6 +761,8 @@ public class ManagedDatabaseController {
             return Response.status(Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "Invalid operations password.")).build();
         }
+
+        requireDbVisible(repository, databaseName);
 
         Optional<ManagedDatabase> md = managedDatabaseRepository.find(repository, databaseName);
         if (md.isPresent() && md.get().isProtectedFlag()) {
@@ -813,6 +855,12 @@ public class ManagedDatabaseController {
                 continue;
             }
 
+            // tenant-hidden databases are skipped, matching the single-delete 404 behavior
+            if (!isDbVisible(repository, name)) {
+                skipped++;
+                continue;
+            }
+
             Optional<ManagedDatabase> md = managedDatabaseRepository.find(repository, name);
             if (md.isPresent() && md.get().isProtectedFlag()) {
                 skipped++;
@@ -884,6 +932,8 @@ public class ManagedDatabaseController {
                     .entity(Map.of("error", "Invalid operations password.")).build();
         }
 
+        requireDbVisible(repository, databaseName);
+
         String description = body.get("description");
         if (description != null && description.length() > 500) {
             return Response.status(Response.Status.BAD_REQUEST)
@@ -925,6 +975,8 @@ public class ManagedDatabaseController {
             return Response.status(Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "Invalid operations password.")).build();
         }
+
+        requireDbVisible(repository, databaseName);
 
         ManagedDatabase md = managedDatabaseRepository.find(repository, databaseName)
                 .orElseGet(() -> new ManagedDatabase(repository, databaseName));
