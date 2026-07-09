@@ -25,14 +25,19 @@ import TenantFormDialog from '../components/admin/TenantFormDialog'
 
 const SettingsTab = lazy(() => import('../components/admin/SettingsTab'))
 
+type AdminTab = 'users' | 'roles' | 'tenants' | 'settings'
+
 export default function AdminPage() {
   const { t } = useTranslation()
   const { notify, confirm } = useNotification()
   const { currentUser, hasPermission, refreshUser } = useAuth()
   const { theadBg, theadColor } = useTableHeaderTheme()
   const canSystemConfig = hasPermission(P.SYSTEM_CONFIG)
+  // an admin without cross-tenant reach only manages members of their own tenants
+  const canTenantsViewAll = hasPermission(P.TENANTS_VIEW_ALL) || canSystemConfig
+  const myTenants = currentUser?.tenants ?? []
 
-  const [activeTab, setActiveTab] = useState(0)
+  const [activeTab, setActiveTab] = useState<AdminTab>('users')
   const [users, setUsers] = useState<AppUser[]>([])
   const [roles, setRoles] = useState<AppRole[]>([])
   const [tenants, setTenants] = useState<Tenant[]>([])
@@ -49,7 +54,10 @@ export default function AdminPage() {
 
   const load = useCallback(async () => {
     try {
-      const [userList, roleList, tenantList] = await Promise.all([listUsers(), listRoles(), listTenantsManage()])
+      // tenant management data is global-admin only; scoped admins use their own memberships
+      const [userList, roleList, tenantList] = await Promise.all([
+        listUsers(), listRoles(), canTenantsViewAll ? listTenantsManage() : Promise.resolve([]),
+      ])
       setUsers(userList)
       setRoles(roleList)
       setTenants(tenantList)
@@ -58,7 +66,7 @@ export default function AdminPage() {
     } finally {
       setLoading(false)
     }
-  }, [notify, t])
+  }, [notify, t, canTenantsViewAll])
 
   useEffect(() => { load() }, [load])
 
@@ -77,13 +85,27 @@ export default function AdminPage() {
     return rolesOf(user).some(r => r.permissions.includes(P.SYSTEM_CONFIG))
   }
 
-  // acting on a user (or role) that holds SYSTEM_CONFIG requires SYSTEM_CONFIG
-  function canActOnUser(user: AppUser): boolean {
-    return canSystemConfig || !holdsSystemConfig(user)
+  function holdsTenantsViewAll(user: AppUser): boolean {
+    return rolesOf(user).some(r => r.permissions.includes(P.TENANTS_VIEW_ALL))
   }
 
+  // acting on a user (or role) that holds SYSTEM_CONFIG requires SYSTEM_CONFIG;
+  // global admins (TENANTS_VIEW_ALL) are likewise off-limits to tenant-scoped admins
+  function canActOnUser(user: AppUser): boolean {
+    return (canSystemConfig || !holdsSystemConfig(user))
+      && (canTenantsViewAll || !holdsTenantsViewAll(user))
+  }
+
+  // tenant-scoped admins assign roles but never define them
   function canActOnRole(role: AppRole): boolean {
-    return !role.builtIn && (canSystemConfig || !role.permissions.includes(P.SYSTEM_CONFIG))
+    return canTenantsViewAll && !role.builtIn
+      && (canSystemConfig || !role.permissions.includes(P.SYSTEM_CONFIG))
+  }
+
+  // account-wide actions (roles, enable/disable, password, delete) on a user who
+  // also belongs to a foreign tenant would leak into that tenant - membership only
+  function canFullyManage(user: AppUser): boolean {
+    return canTenantsViewAll || user.tenantIds.every(id => myTenants.some(tn => tn.id === id))
   }
 
   const isSelf = (user: AppUser) => currentUser?.username === user.username
@@ -158,15 +180,16 @@ export default function AdminPage() {
       <Box sx={{ maxWidth: { xs: '95%', md: '90%', lg: '85%' }, mx: 'auto', mt: 5, mb: 4 }}>
         <Typography variant="h4" fontWeight="bold" sx={{ mb: 3 }}>{t('admin.title')}</Typography>
 
+        {/* string values: two tabs are conditional, numeric indices would shift */}
         <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 3 }}>
-          <Tab icon={<Group fontSize="small" />} iconPosition="start" label={t('admin.tabs.users')} />
-          <Tab icon={<AdminPanelSettings fontSize="small" />} iconPosition="start" label={t('admin.tabs.roles')} />
-          <Tab icon={<Workspaces fontSize="small" />} iconPosition="start" label={t('admin.tabs.tenants')} />
-          {canSystemConfig && <Tab icon={<Tune fontSize="small" />} iconPosition="start" label={t('admin.tabs.settings')} />}
+          <Tab value="users" icon={<Group fontSize="small" />} iconPosition="start" label={t('admin.tabs.users')} />
+          <Tab value="roles" icon={<AdminPanelSettings fontSize="small" />} iconPosition="start" label={t('admin.tabs.roles')} />
+          {canTenantsViewAll && <Tab value="tenants" icon={<Workspaces fontSize="small" />} iconPosition="start" label={t('admin.tabs.tenants')} />}
+          {canSystemConfig && <Tab value="settings" icon={<Tune fontSize="small" />} iconPosition="start" label={t('admin.tabs.settings')} />}
         </Tabs>
 
         {/* ==================== USERS TAB ==================== */}
-        {activeTab === 0 && (
+        {activeTab === 'users' && (
           <>
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
               <Button
@@ -195,8 +218,16 @@ export default function AdminPage() {
                         <TableCell colSpan={7} align="center" sx={{ py: 4 }}><CircularProgress size={28} /></TableCell>
                       </TableRow>
                     )}
+                    {!loading && users.length === 0 && !canTenantsViewAll && (
+                      <TableRow>
+                        <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                          {myTenants.length === 0 ? t('users.noTenantAdminHint') : t('users.noUsersInTenant')}
+                        </TableCell>
+                      </TableRow>
+                    )}
                     {!loading && users.map((u) => {
                       const actionable = canActOnUser(u)
+                      const fullyManageable = actionable && canFullyManage(u)
                       const superAdmin = holdsSystemConfig(u)
                       return (
                         <TableRow key={u.id} hover>
@@ -237,7 +268,7 @@ export default function AdminPage() {
                             <Switch
                               checked={u.enabled}
                               size="small"
-                              disabled={!actionable || isSelf(u)}
+                              disabled={!fullyManageable || isSelf(u)}
                               onChange={() => handleToggleEnabled(u)}
                             />
                           </TableCell>
@@ -250,17 +281,19 @@ export default function AdminPage() {
                           <TableCell align="right">
                             {actionable && (
                               <Box sx={{ display: 'flex', gap: 0.25, justifyContent: 'flex-end' }}>
-                                <Tooltip title={t('users.editUser')}>
+                                <Tooltip title={fullyManageable ? t('users.editUser') : t('users.membershipOnlyHint')}>
                                   <IconButton size="small" onClick={() => { setEditingUser(u); setUserDialogOpen(true) }}>
                                     <Edit fontSize="small" />
                                   </IconButton>
                                 </Tooltip>
-                                <Tooltip title={t('users.resetPassword')}>
-                                  <IconButton size="small" color="warning" onClick={() => setResetTarget(u)}>
-                                    <LockReset fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                                {!isSelf(u) && (
+                                {fullyManageable && (
+                                  <Tooltip title={t('users.resetPassword')}>
+                                    <IconButton size="small" color="warning" onClick={() => setResetTarget(u)}>
+                                      <LockReset fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                )}
+                                {fullyManageable && !isSelf(u) && (
                                   <Tooltip title={t('common.delete')}>
                                     <IconButton size="small" color="error" onClick={() => handleDeleteUser(u)}>
                                       <Delete fontSize="small" />
@@ -281,19 +314,21 @@ export default function AdminPage() {
         )}
 
         {/* ==================== ROLES TAB ==================== */}
-        {activeTab === 1 && (
+        {activeTab === 'roles' && (
           <>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-              <Button
-                variant="contained"
-                color="success"
-                startIcon={<AddCircleOutline />}
-                size="small"
-                onClick={() => { setEditingRole(null); setRoleDialogOpen(true) }}
-              >
-                {t('roles.newRole')}
-              </Button>
-            </Box>
+            {canTenantsViewAll && (
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                <Button
+                  variant="contained"
+                  color="success"
+                  startIcon={<AddCircleOutline />}
+                  size="small"
+                  onClick={() => { setEditingRole(null); setRoleDialogOpen(true) }}
+                >
+                  {t('roles.newRole')}
+                </Button>
+              </Box>
+            )}
             <Paper elevation={2} sx={{ borderRadius: 2 }}>
               <TableContainer>
                 <Table aria-label="Roles">
@@ -377,7 +412,7 @@ export default function AdminPage() {
         )}
 
         {/* ==================== TENANTS TAB ==================== */}
-        {activeTab === 2 && (
+        {canTenantsViewAll && activeTab === 'tenants' && (
           <>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, mb: 2 }}>
               <Typography variant="body2" color="text.secondary">{t('tenants.hint')}</Typography>
@@ -443,7 +478,7 @@ export default function AdminPage() {
         )}
 
         {/* ==================== SETTINGS TAB ==================== */}
-        {canSystemConfig && activeTab === 3 && (
+        {canSystemConfig && activeTab === 'settings' && (
           <Suspense fallback={<CircularProgress size={28} sx={{ display: 'block', mx: 'auto', my: 4 }} />}>
             <SettingsTab />
           </Suspense>
@@ -455,9 +490,10 @@ export default function AdminPage() {
         onClose={() => setUserDialogOpen(false)}
         onSaved={afterUserSaved}
         roles={roles}
-        tenants={tenants}
+        tenants={canTenantsViewAll ? tenants : myTenants}
         user={editingUser}
         canSystemConfig={canSystemConfig}
+        canTenantsViewAll={canTenantsViewAll}
       />
 
       <ResetPasswordDialog

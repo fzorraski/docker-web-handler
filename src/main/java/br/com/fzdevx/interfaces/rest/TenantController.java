@@ -42,6 +42,8 @@ public class TenantController {
     @Path("/manage")
     @Produces(MediaType.APPLICATION_JSON)
     public List<Map<String, Object>> manage() {
+        // @RequiresPermission is any-of; the USERS_MANAGE + cross-tenant AND lives here
+        manageTenantsUseCase.guardGlobalAdmin();
         return manageTenantsUseCase.list().stream()
                 .map(this::withMemberCount)
                 .toList();

@@ -61,6 +61,7 @@ public class ManageUsersUseCase {
         Map<String, Role> rolesById = rolesById();
         Map<String, Tenant> tenantsById = tenantsById();
         return userRepository.findAll().stream()
+                .filter(user -> !scoped() || sharesTenant(user))
                 .map(user -> UserResponse.of(user, rolesById, tenantsById))
                 .toList();
     }
@@ -74,7 +75,9 @@ public class ManageUsersUseCase {
         validatePassword(request.getPassword());
         List<Role> roles = requireRoles(request.getRoleIds());
         roles.forEach(this::guardRoleAssignment);
-        List<String> tenantIds = requireTenants(request.getTenantIds());
+        List<String> tenantIds = scoped()
+                ? scopedCreateTenants(request.getTenantIds())
+                : requireTenants(request.getTenantIds());
         if (userRepository.findByUsername(username).isPresent()) {
             throw new DuplicateEntityException("A user named '" + username + "' already exists.");
         }
@@ -90,7 +93,13 @@ public class ManageUsersUseCase {
 
     public UserResponse update(String id, UpdateUserRequest request) {
         User user = requireUser(id);
+        requireVisible(user);
         guardTargetUser(user);
+        // account-wide changes on a target with foreign memberships would leak into
+        // the other tenant - a scoped admin may only edit such a user's memberships
+        if (request.getRoleIds() != null || request.getEnabled() != null) {
+            requireFullyScoped(user);
+        }
 
         List<Role> newRoles = request.getRoleIds() != null
                 ? requireRoles(request.getRoleIds())
@@ -110,7 +119,9 @@ public class ManageUsersUseCase {
             user.setRoleIds(newRoles.stream().map(Role::getId).toList());
         }
         if (request.getTenantIds() != null) {
-            user.setTenantIds(requireTenants(request.getTenantIds()));
+            user.setTenantIds(scoped()
+                    ? mergeTenants(user, request.getTenantIds())
+                    : requireTenants(request.getTenantIds()));
         }
         if (request.getEnabled() != null) {
             user.setEnabled(request.getEnabled());
@@ -128,7 +139,9 @@ public class ManageUsersUseCase {
 
     public void resetPassword(String id, String newPassword) {
         User user = requireUser(id);
+        requireVisible(user);
         guardTargetUser(user);
+        requireFullyScoped(user);
         validatePassword(newPassword);
 
         user.setPasswordHash(PasswordHasher.hash(newPassword));
@@ -141,10 +154,12 @@ public class ManageUsersUseCase {
 
     public void delete(String id) {
         User user = requireUser(id);
+        requireVisible(user);
         if (user.getId().equals(currentUser.getUserId())) {
             throw new InvalidInputException("You cannot delete your own account.");
         }
         guardTargetUser(user);
+        requireFullyScoped(user);
         if (isLastSuperAdmin(user)) {
             throw new InvalidInputException("Cannot delete the last enabled super admin.");
         }
@@ -205,19 +220,35 @@ public class ManageUsersUseCase {
         return roles.stream().map(Role::getName).collect(Collectors.joining(","));
     }
 
-    /** Managing a user who holds SYSTEM_CONFIG requires the actor to hold it too. */
+    /**
+     * Managing a user who holds SYSTEM_CONFIG requires the actor to hold it too,
+     * and touching a user with cross-tenant reach (TENANTS_VIEW_ALL) requires the
+     * actor to have cross-tenant reach - otherwise a tenant-scoped admin could
+     * reset a global admin's password and take over their account.
+     */
     private void guardTargetUser(User target) {
         if (anyRoleHoldsSystemConfig(target.getRoleIds())
                 && !currentUser.hasPermission(Permission.SYSTEM_CONFIG)) {
             throw new AccessDeniedException("Only a super admin can manage super admin accounts.");
         }
+        if (anyRoleHoldsTenantsViewAll(target.getRoleIds()) && !hasGlobalTenantAccess()) {
+            throw new AccessDeniedException("Only a global admin can manage global admin accounts.");
+        }
     }
 
-    /** Assigning a role that holds SYSTEM_CONFIG requires the actor to hold it too. */
+    /**
+     * Assigning a role that holds SYSTEM_CONFIG requires the actor to hold it too;
+     * a role granting TENANTS_VIEW_ALL requires cross-tenant reach - otherwise a
+     * tenant-scoped admin could escalate to global by assigning it to themselves.
+     */
     private void guardRoleAssignment(Role role) {
         if (role.hasPermission(Permission.SYSTEM_CONFIG)
                 && !currentUser.hasPermission(Permission.SYSTEM_CONFIG)) {
             throw new AccessDeniedException("Only a super admin can assign the super admin role.");
+        }
+        if (role.hasPermission(Permission.TENANTS_VIEW_ALL) && !hasGlobalTenantAccess()) {
+            throw new AccessDeniedException(
+                    "Only a global admin can assign roles that see all tenants.");
         }
     }
 
@@ -225,6 +256,79 @@ public class ManageUsersUseCase {
         return roleIds.stream().anyMatch(roleId -> roleRepository.findById(roleId)
                 .map(r -> r.hasPermission(Permission.SYSTEM_CONFIG))
                 .orElse(false));
+    }
+
+    private boolean anyRoleHoldsTenantsViewAll(List<String> roleIds) {
+        return roleIds.stream().anyMatch(roleId -> roleRepository.findById(roleId)
+                .map(r -> r.hasPermission(Permission.TENANTS_VIEW_ALL))
+                .orElse(false));
+    }
+
+    // ---- tenant-scoped administration ----
+    // An actor with USERS_MANAGE but no cross-tenant reach is a "tenant admin":
+    // they only see and manage members of their own tenants.
+
+    private boolean hasGlobalTenantAccess() {
+        return currentUser.hasPermission(Permission.TENANTS_VIEW_ALL)
+                || currentUser.hasPermission(Permission.SYSTEM_CONFIG);
+    }
+
+    private boolean scoped() {
+        return currentUser.isRbacActive() && !hasGlobalTenantAccess();
+    }
+
+    private Set<String> actorTenants() {
+        return currentUser.getTenantIds();
+    }
+
+    private boolean sharesTenant(User user) {
+        return user.getTenantIds().stream().anyMatch(actorTenants()::contains);
+    }
+
+    /** Users outside the actor's tenants are reported as nonexistent, like resources. */
+    private void requireVisible(User user) {
+        if (scoped() && !sharesTenant(user)) {
+            throw new EntityNotFoundException("User not found.");
+        }
+    }
+
+    /** Account-wide mutations need the whole account inside the actor's tenants. */
+    private void requireFullyScoped(User user) {
+        if (scoped() && !actorTenants().containsAll(user.getTenantIds())) {
+            throw new AccessDeniedException(
+                    "This user also belongs to another tenant - only their membership in your tenants can be changed here.");
+        }
+    }
+
+    /** A scoped admin creates users only inside their own tenants (never tenantless). */
+    private List<String> scopedCreateTenants(List<String> requested) {
+        List<String> tenantIds = requireTenants(requested);
+        if (tenantIds.isEmpty()) {
+            throw new InvalidInputException("At least one of your tenants is required.");
+        }
+        if (!actorTenants().containsAll(tenantIds)) {
+            throw new AccessDeniedException("You can only assign your own tenants.");
+        }
+        return tenantIds;
+    }
+
+    /**
+     * A scoped admin only adds/removes their OWN tenants; the target's memberships
+     * in other tenants are preserved untouched. The result may never be empty -
+     * that would turn the user tenantless (globally visible) or lock the acting
+     * admin out of their own account.
+     */
+    private List<String> mergeTenants(User target, List<String> requested) {
+        List<String> validRequested = requireTenants(requested);
+        Set<String> mine = actorTenants();
+        List<String> merged = new java.util.ArrayList<>();
+        target.getTenantIds().stream().filter(id -> !mine.contains(id)).forEach(merged::add);
+        validRequested.stream().filter(mine::contains).filter(id -> !merged.contains(id)).forEach(merged::add);
+        if (merged.isEmpty()) {
+            throw new InvalidInputException(
+                    "The user must keep at least one tenant.");
+        }
+        return merged;
     }
 
     /** True if this user is the only enabled user whose role holds SYSTEM_CONFIG. */

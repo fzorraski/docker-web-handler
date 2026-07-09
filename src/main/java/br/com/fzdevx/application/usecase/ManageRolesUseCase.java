@@ -42,6 +42,7 @@ public class ManageRolesUseCase {
     }
 
     public Role create(CreateRoleRequest request) {
+        guardGlobalAdmin();
         String name = validateName(request.getName());
         Set<Permission> permissions = parsePermissions(request.getPermissions());
         guardSystemConfig(permissions);
@@ -57,6 +58,7 @@ public class ManageRolesUseCase {
     }
 
     public Role update(String id, CreateRoleRequest request) {
+        guardGlobalAdmin();
         Role role = requireRole(id);
         if (role.isBuiltIn()) {
             throw new InvalidInputException("Built-in roles cannot be modified.");
@@ -82,6 +84,7 @@ public class ManageRolesUseCase {
     }
 
     public void delete(String id) {
+        guardGlobalAdmin();
         Role role = requireRole(id);
         if (role.isBuiltIn()) {
             throw new InvalidInputException("Built-in roles cannot be deleted.");
@@ -137,6 +140,19 @@ public class ManageRolesUseCase {
                 && !currentUser.hasPermission(Permission.SYSTEM_CONFIG)) {
             throw new AccessDeniedException(
                     "Only a super admin can manage roles that grant system configuration.");
+        }
+    }
+
+    /**
+     * Tenant-scoped admins (USERS_MANAGE without cross-tenant reach) assign roles
+     * but never define them - editing a role they hold would let them grant
+     * themselves TENANTS_VIEW_ALL and escape their tenant.
+     */
+    private void guardGlobalAdmin() {
+        if (currentUser.isRbacActive()
+                && !currentUser.hasPermission(Permission.TENANTS_VIEW_ALL)
+                && !currentUser.hasPermission(Permission.SYSTEM_CONFIG)) {
+            throw new AccessDeniedException("Only a global admin can manage roles.");
         }
     }
 }

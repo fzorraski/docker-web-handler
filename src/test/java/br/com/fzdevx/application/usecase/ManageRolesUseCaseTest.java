@@ -177,4 +177,33 @@ class ManageRolesUseCaseTest {
         useCase.delete(role.getId());
         assertTrue(roleRepository.findById(role.getId()).isEmpty());
     }
+
+    // ---- tenant-scoped admins assign roles but never define them ----
+
+    private void actAsTenantScopedAdmin() {
+        actWithPermissions(EnumSet.of(Permission.USERS_MANAGE, Permission.CONTAINERS_VIEW));
+    }
+
+    @Test
+    void roleCrud_deniedForTenantScopedAdmins() {
+        Role existing = useCase.create(roleRequest("Harmless", List.of("LOGS_VIEW")));
+
+        actAsTenantScopedAdmin();
+        // editing a role they hold could grant themselves TENANTS_VIEW_ALL
+        assertThrows(AccessDeniedException.class,
+                () -> useCase.create(roleRequest("Sneaky", List.of("TENANTS_VIEW_ALL"))));
+        assertThrows(AccessDeniedException.class,
+                () -> useCase.update(existing.getId(), roleRequest("Harmless", List.of("LOGS_VIEW", "TENANTS_VIEW_ALL"))));
+        assertThrows(AccessDeniedException.class, () -> useCase.delete(existing.getId()));
+
+        // reading stays available (the user form needs role names)
+        assertFalse(useCase.list().isEmpty());
+    }
+
+    @Test
+    void roleCrud_allowedForGlobalAdmins() {
+        actAsAdmin(); // holds TENANTS_VIEW_ALL (all minus SYSTEM_CONFIG)
+        Role role = useCase.create(roleRequest("Fine", List.of("LOGS_VIEW")));
+        useCase.delete(role.getId());
+    }
 }

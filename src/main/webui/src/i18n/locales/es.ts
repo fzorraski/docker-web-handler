@@ -1091,6 +1091,9 @@ const es: typeof en = {
     tenants: 'Tenants',
     tenantsHint: 'El usuario ve los recursos de todos los tenants asignados. Sin tenant = solo recursos compartidos.',
     noTenant: 'Sin tenant',
+    membershipOnlyHint: 'Este usuario también pertenece a otro tenant. Solo puedes cambiar su membresía en tus tenants.',
+    noTenantAdminHint: 'No estás asignado a ningún tenant, por lo que no hay usuarios para administrar. Pide a un administrador global que te agregue a un tenant.',
+    noUsersInTenant: 'Aún no hay usuarios en tus tenants.',
   },
 
   tenants: {

@@ -37,6 +37,19 @@ class ManageTenantsUseCaseTest {
     @InjectMocks
     ManageTenantsUseCase useCase;
 
+    @org.junit.jupiter.api.BeforeEach
+    void actAsGlobalAdmin() {
+        setActorPermissions(java.util.EnumSet.of(
+                br.com.fzdevx.domain.model.auth.Permission.USERS_MANAGE,
+                br.com.fzdevx.domain.model.auth.Permission.TENANTS_VIEW_ALL));
+    }
+
+    private void setActorPermissions(java.util.Set<br.com.fzdevx.domain.model.auth.Permission> permissions) {
+        var actor = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        actor.set("actor-id", "actor", permissions);
+        useCase.currentUser = actor;
+    }
+
     private static CreateTenantRequest request(String name) {
         CreateTenantRequest request = new CreateTenantRequest();
         request.setName(name);
@@ -105,5 +118,32 @@ class ManageTenantsUseCaseTest {
 
         verify(tenantRepository).delete(tenant.getId());
         verify(authorizationService).invalidateCache();
+    }
+
+    @Test
+    void tenantCrud_deniedForTenantScopedAdmins() {
+        // USERS_MANAGE alone is not enough - tenant structure is global-admin territory
+        setActorPermissions(java.util.EnumSet.of(br.com.fzdevx.domain.model.auth.Permission.USERS_MANAGE));
+
+        assertThrows(br.com.fzdevx.domain.exception.AccessDeniedException.class,
+                () -> useCase.create(request("Sneaky")));
+        assertThrows(br.com.fzdevx.domain.exception.AccessDeniedException.class,
+                () -> useCase.update("t1", request("Renamed")));
+        assertThrows(br.com.fzdevx.domain.exception.AccessDeniedException.class,
+                () -> useCase.delete("t1"));
+        assertThrows(br.com.fzdevx.domain.exception.AccessDeniedException.class,
+                useCase::guardGlobalAdmin);
+        verify(tenantRepository, never()).save(any());
+        verify(tenantRepository, never()).delete(any());
+    }
+
+    @Test
+    void tenantCrud_allowedWithSystemConfig() {
+        setActorPermissions(java.util.EnumSet.of(
+                br.com.fzdevx.domain.model.auth.Permission.USERS_MANAGE,
+                br.com.fzdevx.domain.model.auth.Permission.SYSTEM_CONFIG));
+
+        useCase.create(request("Support"));
+        verify(tenantRepository).save(any());
     }
 }

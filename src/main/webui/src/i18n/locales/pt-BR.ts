@@ -1091,6 +1091,9 @@ const ptBR: typeof en = {
     tenants: 'Tenants',
     tenantsHint: 'O usuário vê os recursos de todos os tenants atribuídos. Sem tenant = apenas recursos compartilhados.',
     noTenant: 'Sem tenant',
+    membershipOnlyHint: 'Este usuário também pertence a outro tenant. Você só pode alterar a participação dele nos seus tenants.',
+    noTenantAdminHint: 'Você não está atribuído a nenhum tenant, então não há usuários para administrar. Peça a um administrador global para adicioná-lo a um tenant.',
+    noUsersInTenant: 'Ainda não há usuários nos seus tenants.',
   },
 
   tenants: {

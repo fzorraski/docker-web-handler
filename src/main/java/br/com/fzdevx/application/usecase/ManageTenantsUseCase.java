@@ -4,11 +4,14 @@ import br.com.fzdevx.application.dto.CreateTenantRequest;
 import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.application.port.TenantRepository;
 import br.com.fzdevx.application.port.UserRepository;
+import br.com.fzdevx.domain.exception.AccessDeniedException;
 import br.com.fzdevx.domain.exception.DuplicateEntityException;
 import br.com.fzdevx.domain.exception.EntityNotFoundException;
 import br.com.fzdevx.domain.exception.InvalidInputException;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.domain.model.auth.Tenant;
 import br.com.fzdevx.infrastructure.config.AuthorizationService;
+import br.com.fzdevx.infrastructure.config.CurrentUser;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -30,8 +33,20 @@ public class ManageTenantsUseCase {
     @Inject
     AuditLogger auditLogger;
 
+    @Inject
+    CurrentUser currentUser;
+
     public List<Tenant> list() {
         return tenantRepository.findAll();
+    }
+
+    /** Full tenant management (CRUD + member counts) needs cross-tenant reach. */
+    public void guardGlobalAdmin() {
+        if (currentUser.isRbacActive()
+                && !currentUser.hasPermission(Permission.TENANTS_VIEW_ALL)
+                && !currentUser.hasPermission(Permission.SYSTEM_CONFIG)) {
+            throw new AccessDeniedException("Only a global admin can manage tenants.");
+        }
     }
 
     public long memberCount(String tenantId) {
@@ -41,6 +56,7 @@ public class ManageTenantsUseCase {
     }
 
     public Tenant create(CreateTenantRequest request) {
+        guardGlobalAdmin();
         String name = validateName(request.getName());
         if (tenantRepository.findByName(name).isPresent()) {
             throw new DuplicateEntityException("A tenant named '" + name + "' already exists.");
@@ -54,6 +70,7 @@ public class ManageTenantsUseCase {
     }
 
     public Tenant update(String id, CreateTenantRequest request) {
+        guardGlobalAdmin();
         Tenant tenant = requireTenant(id);
         String name = validateName(request.getName());
         tenantRepository.findByName(name)
@@ -72,6 +89,7 @@ public class ManageTenantsUseCase {
     }
 
     public void delete(String id) {
+        guardGlobalAdmin();
         Tenant tenant = requireTenant(id);
         long members = memberCount(tenant.getId());
         if (members > 0) {

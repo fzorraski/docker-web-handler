@@ -1089,6 +1089,9 @@ const en = {
     tenants: 'Tenants',
     tenantsHint: 'The user sees resources from all assigned tenants. No tenant = only shared resources.',
     noTenant: 'No tenant',
+    membershipOnlyHint: 'This user also belongs to another tenant. You can only change their membership in your tenants.',
+    noTenantAdminHint: 'You are not assigned to any tenant, so there are no users to manage. Ask a global admin to add you to a tenant.',
+    noUsersInTenant: 'No users in your tenants yet.',
   },
 
   tenants: {

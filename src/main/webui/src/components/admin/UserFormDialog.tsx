@@ -17,16 +17,23 @@ interface Props {
   onClose: () => void
   onSaved: () => void
   roles: AppRole[]
+  /** assignable tenants: all of them for global admins, own memberships for scoped admins */
   tenants: TenantSummary[]
   /** null = create mode */
   user: AppUser | null
   /** whether the acting user holds SYSTEM_CONFIG (may assign super-admin roles) */
   canSystemConfig: boolean
+  /** cross-tenant reach; without it the actor is a tenant-scoped admin */
+  canTenantsViewAll: boolean
 }
 
-export default function UserFormDialog({ open, onClose, onSaved, roles, tenants, user, canSystemConfig }: Props) {
+export default function UserFormDialog({ open, onClose, onSaved, roles, tenants, user, canSystemConfig, canTenantsViewAll }: Props) {
   const { t } = useTranslation()
   const isEdit = user !== null
+  // a scoped admin editing a user who also belongs to a foreign tenant may only
+  // change the memberships in their own tenants - roles/enabled would leak
+  const membershipOnly = isEdit && !canTenantsViewAll
+    && !user.tenantIds.every(id => tenants.some(tn => tn.id === id))
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [roleIds, setRoleIds] = useState<string[]>([])
@@ -35,10 +42,13 @@ export default function UserFormDialog({ open, onClose, onSaved, roles, tenants,
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // roles holding SYSTEM_CONFIG can only be assigned by actors who hold it themselves
+  // roles holding SYSTEM_CONFIG (or TENANTS_VIEW_ALL, for scoped admins) can only
+  // be assigned by actors who have that reach themselves
   const assignableRoles = useMemo(
-    () => roles.filter(r => canSystemConfig || !r.permissions.includes(P.SYSTEM_CONFIG)),
-    [roles, canSystemConfig],
+    () => roles
+      .filter(r => canSystemConfig || !r.permissions.includes(P.SYSTEM_CONFIG))
+      .filter(r => canTenantsViewAll || !r.permissions.includes(P.TENANTS_VIEW_ALL)),
+    [roles, canSystemConfig, canTenantsViewAll],
   )
 
   useEffect(() => {
@@ -46,26 +56,31 @@ export default function UserFormDialog({ open, onClose, onSaved, roles, tenants,
       setUsername(user?.username ?? '')
       setPassword('')
       setRoleIds(user?.roleIds ?? [])
-      setTenantIds(user?.tenantIds ?? [])
+      // foreign memberships are not selectable options for a scoped admin; the
+      // backend preserves them regardless of what this form submits
+      setTenantIds((user?.tenantIds ?? []).filter(id => canTenantsViewAll || tenants.some(tn => tn.id === id)))
       setEnabled(user?.enabled ?? true)
       setError(null)
     }
-  }, [open, user])
+  }, [open, user, tenants, canTenantsViewAll])
 
   const roleName = (id: string) => roles.find(r => r.id === id)?.name ?? id
   const tenantName = (id: string) => tenants.find(tn => tn.id === id)?.name ?? id
 
   const passwordTooShort = !isEdit && password.length > 0 && password.length < MIN_PASSWORD_LENGTH
+  // scoped admins must keep every user inside their own tenants
+  const tenantsOk = canTenantsViewAll || tenantIds.length > 0
   const canSave = isEdit
-    ? roleIds.length > 0
-    : username.trim().length >= 3 && password.length >= MIN_PASSWORD_LENGTH && roleIds.length > 0
+    ? (membershipOnly ? tenantIds.length > 0 : roleIds.length > 0 && tenantsOk)
+    : username.trim().length >= 3 && password.length >= MIN_PASSWORD_LENGTH && roleIds.length > 0 && tenantsOk
 
   async function handleSave() {
     setSaving(true)
     setError(null)
     try {
       if (isEdit) {
-        await updateUser(user.id, { roleIds, tenantIds, enabled })
+        // shared users accept membership changes only - sending roles/enabled would be rejected
+        await updateUser(user.id, membershipOnly ? { tenantIds } : { roleIds, tenantIds, enabled })
       } else {
         await createUser({ username: username.trim(), password, roleIds, tenantIds })
       }
@@ -108,10 +123,12 @@ export default function UserFormDialog({ open, onClose, onSaved, roles, tenants,
             helperText={passwordTooShort ? t('users.passwordTooShort') : undefined}
           />
         )}
+        {membershipOnly && <Alert severity="info">{t('users.membershipOnlyHint')}</Alert>}
         <TextField
           select
           label={t('users.roles')}
           value={roleIds}
+          disabled={membershipOnly}
           onChange={(e) => {
             const value = e.target.value as unknown
             setRoleIds(Array.isArray(value) ? value : [String(value)])
@@ -174,7 +191,7 @@ export default function UserFormDialog({ open, onClose, onSaved, roles, tenants,
         )}
         {isEdit && (
           <FormControlLabel
-            control={<Switch checked={enabled} onChange={(e) => setEnabled(e.target.checked)} size="small" />}
+            control={<Switch checked={enabled} disabled={membershipOnly} onChange={(e) => setEnabled(e.target.checked)} size="small" />}
             label={t('users.enabled')}
           />
         )}
