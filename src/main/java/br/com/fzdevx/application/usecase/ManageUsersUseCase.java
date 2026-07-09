@@ -116,25 +116,42 @@ public class ManageUsersUseCase {
         }
         if (request.getRoleIds() != null) {
             newRoles.forEach(this::guardRoleAssignment);
-            user.setRoleIds(newRoles.stream().map(Role::getId).toList());
         }
-        if (request.getTenantIds() != null) {
-            user.setTenantIds(scoped()
-                    ? mergeTenants(user, request.getTenantIds())
-                    : requireTenants(request.getTenantIds()));
+        List<String> newRoleIds = request.getRoleIds() != null
+                ? newRoles.stream().map(Role::getId).toList()
+                : null;
+        List<String> validTenants = request.getTenantIds() != null
+                ? requireTenants(request.getTenantIds())
+                : null;
+
+        // field-level atomic write: a concurrent edit of this user's other fields
+        // must not be overwritten with the stale copy validated above (the tenant
+        // merge is recomputed against the freshly-read memberships)
+        boolean updated = userRepository.update(user.getId(), stored -> {
+            if (newRoleIds != null) {
+                stored.setRoleIds(newRoleIds);
+            }
+            if (validTenants != null) {
+                stored.setTenantIds(scoped()
+                        ? mergeTenants(stored.getTenantIds(), validTenants)
+                        : validTenants);
+            }
+            if (request.getEnabled() != null) {
+                stored.setEnabled(request.getEnabled());
+            }
+            stored.setUpdatedAt(Instant.now());
+        });
+        if (!updated) {
+            throw new EntityNotFoundException("User not found.");
         }
-        if (request.getEnabled() != null) {
-            user.setEnabled(request.getEnabled());
-        }
-        user.setUpdatedAt(Instant.now());
-        userRepository.save(user);
         authorizationService.invalidateCache();
         if (disabling) {
             sessionManager.invalidateSessionsForUser(user.getId());
         }
-        auditLogger.log("USER_UPDATE", user.getUsername(),
-                "roles=" + roleNames(newRoles) + " enabled=" + user.isEnabled());
-        return UserResponse.of(user, rolesById(), tenantsById());
+        User saved = requireUser(id);
+        auditLogger.log("USER_UPDATE", saved.getUsername(),
+                "roles=" + roleNames(newRoles) + " enabled=" + saved.isEnabled());
+        return UserResponse.of(saved, rolesById(), tenantsById());
     }
 
     public void resetPassword(String id, String newPassword) {
@@ -144,9 +161,12 @@ public class ManageUsersUseCase {
         requireFullyScoped(user);
         validatePassword(newPassword);
 
-        user.setPasswordHash(PasswordHasher.hash(newPassword));
-        user.setUpdatedAt(Instant.now());
-        userRepository.save(user);
+        String passwordHash = PasswordHasher.hash(newPassword);
+        // atomic - must not roll back a concurrent role/tenant edit of the same user
+        userRepository.update(user.getId(), stored -> {
+            stored.setPasswordHash(passwordHash);
+            stored.setUpdatedAt(Instant.now());
+        });
         authorizationService.invalidateCache();
         sessionManager.invalidateSessionsForUser(user.getId());
         auditLogger.log("USER_PASSWORD_RESET", user.getUsername(), null);
@@ -316,13 +336,13 @@ public class ManageUsersUseCase {
      * A scoped admin only adds/removes their OWN tenants; the target's memberships
      * in other tenants are preserved untouched. The result may never be empty -
      * that would turn the user tenantless (globally visible) or lock the acting
-     * admin out of their own account.
+     * admin out of their own account. Pure set logic (requested ids are validated
+     * by the caller), so it can safely run inside the repository's write lock.
      */
-    private List<String> mergeTenants(User target, List<String> requested) {
-        List<String> validRequested = requireTenants(requested);
+    private List<String> mergeTenants(List<String> currentTenants, List<String> validRequested) {
         Set<String> mine = actorTenants();
         List<String> merged = new java.util.ArrayList<>();
-        target.getTenantIds().stream().filter(id -> !mine.contains(id)).forEach(merged::add);
+        currentTenants.stream().filter(id -> !mine.contains(id)).forEach(merged::add);
         validRequested.stream().filter(mine::contains).filter(id -> !merged.contains(id)).forEach(merged::add);
         if (merged.isEmpty()) {
             throw new InvalidInputException(

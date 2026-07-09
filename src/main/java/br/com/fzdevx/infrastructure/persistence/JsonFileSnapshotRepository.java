@@ -30,6 +30,11 @@ public class JsonFileSnapshotRepository
     }
 
     @Override
+    public boolean update(String id, java.util.function.Consumer<DatabaseSnapshot> mutator) {
+        return updateEntity(s -> s.getId().equals(id), mutator);
+    }
+
+    @Override
     public void delete(String id) {
         deleteEntity(s -> s.getId().equals(id));
     }

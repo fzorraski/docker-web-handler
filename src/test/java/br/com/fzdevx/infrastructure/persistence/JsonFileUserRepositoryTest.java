@@ -97,4 +97,25 @@ class JsonFileUserRepositoryTest {
         assertTrue(rewritten.contains("roleIds"));
         assertFalse(rewritten.contains("\"roleId\""));
     }
+
+    @Test
+    void update_appliesFieldChangeToFreshState() {
+        User user = new User("alice", "hash", BuiltInRoles.OPERATOR_ID);
+        repo.save(user);
+
+        // two admins edit different fields; each atomic update re-reads the
+        // stored state, so neither change rolls the other one back
+        assertTrue(repo.update(user.getId(), u -> u.setTenantIds(java.util.List.of("tenant-1"))));
+        assertTrue(repo.update(user.getId(), u -> u.setEnabled(false)));
+
+        User result = repo.findById(user.getId()).orElseThrow();
+        assertFalse(result.isEnabled());
+        assertEquals(java.util.List.of("tenant-1"), result.getTenantIds());
+    }
+
+    @Test
+    void update_unknownUser_returnsFalseAndWritesNothing() {
+        assertFalse(repo.update("no-such-id", u -> u.setEnabled(false)));
+        assertFalse(java.nio.file.Files.exists(file));
+    }
 }

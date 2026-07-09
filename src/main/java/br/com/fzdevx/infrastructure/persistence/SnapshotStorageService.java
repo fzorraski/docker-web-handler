@@ -112,45 +112,41 @@ public class SnapshotStorageService {
                 snapshot.getFileSize(), snapshot.getMd5Hash());
     }
 
-    public boolean updateMetadata(String id, String label, String description) {
-        Optional<DatabaseSnapshot> opt = snapshotRepository.findById(id);
-        if (opt.isEmpty()) return false;
+    // Field edits go through the repository's atomic update: two admins editing
+    // different aspects of the same snapshot (metadata vs sharing vs expiration)
+    // must not overwrite each other with a stale full-object save.
 
-        DatabaseSnapshot snapshot = opt.get();
-        snapshot.setLabel(label);
-        snapshot.setDescription(description);
-        snapshotRepository.save(snapshot);
-        Log.infof("Updated metadata for snapshot '%s': label=%s", id, label);
-        return true;
+    public boolean updateMetadata(String id, String label, String description) {
+        boolean updated = snapshotRepository.update(id, snapshot -> {
+            snapshot.setLabel(label);
+            snapshot.setDescription(description);
+        });
+        if (updated) {
+            Log.infof("Updated metadata for snapshot '%s': label=%s", id, label);
+        }
+        return updated;
     }
 
     /** Updates tenant sharing; owner change is applied only when requested (non-null). */
     public boolean updateSharing(String id, java.util.List<String> sharedWithTenants, String newTenantId, boolean changeOwner) {
-        Optional<DatabaseSnapshot> opt = snapshotRepository.findById(id);
-        if (opt.isEmpty()) return false;
-
-        DatabaseSnapshot snapshot = opt.get();
-        snapshot.setSharedWithTenants(sharedWithTenants);
-        if (changeOwner) {
-            snapshot.setTenantId(newTenantId);
-        }
-        snapshotRepository.save(snapshot);
-        return true;
+        return snapshotRepository.update(id, snapshot -> {
+            snapshot.setSharedWithTenants(sharedWithTenants);
+            if (changeOwner) {
+                snapshot.setTenantId(newTenantId);
+            }
+        });
     }
 
     public boolean updateExpiration(String id, Instant expiresAt) {
-        Optional<DatabaseSnapshot> opt = snapshotRepository.findById(id);
-        if (opt.isEmpty()) return false;
-
-        DatabaseSnapshot snapshot = opt.get();
-        snapshot.setExpiresAt(expiresAt);
-        snapshotRepository.save(snapshot);
+        if (!snapshotRepository.update(id, snapshot -> snapshot.setExpiresAt(expiresAt))) {
+            return false;
+        }
 
         ScheduledFuture<?> existing = scheduledExpirations.remove(id);
         if (existing != null) existing.cancel(false);
 
         if (expiresAt != null) {
-            scheduleExpiration(snapshot);
+            snapshotRepository.findById(id).ifPresent(this::scheduleExpiration);
         }
 
         Log.infof("Updated expiration for snapshot '%s' to %s", id, expiresAt);
@@ -205,10 +201,9 @@ public class SnapshotStorageService {
     }
 
     public void markUsed(String id) {
-        snapshotRepository.findById(id).ifPresent(snap -> {
-            snap.setLastUsedAt(java.time.Instant.now());
-            snapshotRepository.save(snap);
-        });
+        // atomic - a download racing an admin's metadata/sharing edit must not
+        // roll that edit back with a stale full-object save
+        snapshotRepository.update(id, snap -> snap.setLastUsedAt(java.time.Instant.now()));
     }
 
     public Optional<DatabaseSnapshot> findById(String id) {

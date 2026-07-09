@@ -186,42 +186,36 @@ public class DumpStorageService {
         scheduledExpirations.put(dump.getId(), future);
     }
 
+    // Field edits go through the repository's atomic update: two admins editing
+    // different aspects of the same dump (metadata vs sharing vs expiration)
+    // must not overwrite each other with a stale full-object save.
+
     public boolean updateMetadata(String id, String version, String databaseName, String description) {
-        Optional<DatabaseDump> opt = dumpRepository.findById(id);
-        if (opt.isEmpty()) return false;
-
-        DatabaseDump dump = opt.get();
-        dump.setVersion(version);
-        dump.setDatabaseName(databaseName);
-        dump.setDescription(description);
-        dumpRepository.save(dump);
-
-        Log.infof("Updated metadata for dump '%s': version=%s, database=%s",
-                dump.getOriginalFilename(), version, databaseName);
-        return true;
+        boolean updated = dumpRepository.update(id, dump -> {
+            dump.setVersion(version);
+            dump.setDatabaseName(databaseName);
+            dump.setDescription(description);
+        });
+        if (updated) {
+            Log.infof("Updated metadata for dump '%s': version=%s, database=%s", id, version, databaseName);
+        }
+        return updated;
     }
 
     /** Updates tenant sharing; owner change is applied only when requested (non-null). */
     public boolean updateSharing(String id, java.util.List<String> sharedWithTenants, String newTenantId, boolean changeOwner) {
-        Optional<DatabaseDump> opt = dumpRepository.findById(id);
-        if (opt.isEmpty()) return false;
-
-        DatabaseDump dump = opt.get();
-        dump.setSharedWithTenants(sharedWithTenants);
-        if (changeOwner) {
-            dump.setTenantId(newTenantId);
-        }
-        dumpRepository.save(dump);
-        return true;
+        return dumpRepository.update(id, dump -> {
+            dump.setSharedWithTenants(sharedWithTenants);
+            if (changeOwner) {
+                dump.setTenantId(newTenantId);
+            }
+        });
     }
 
     public boolean updateExpiration(String id, Instant expiresAt) {
-        Optional<DatabaseDump> opt = dumpRepository.findById(id);
-        if (opt.isEmpty()) return false;
-
-        DatabaseDump dump = opt.get();
-        dump.setExpiresAt(expiresAt);
-        dumpRepository.save(dump);
+        if (!dumpRepository.update(id, dump -> dump.setExpiresAt(expiresAt))) {
+            return false;
+        }
 
         // Cancel existing schedule
         ScheduledFuture<?> existing = scheduledExpirations.remove(id);
@@ -229,10 +223,10 @@ public class DumpStorageService {
 
         // Reschedule or leave unscheduled
         if (expiresAt != null) {
-            scheduleExpiration(dump);
+            dumpRepository.findById(id).ifPresent(this::scheduleExpiration);
         }
 
-        Log.infof("Updated expiration for dump '%s' to %s", dump.getOriginalFilename(), expiresAt);
+        Log.infof("Updated expiration for dump '%s' to %s", id, expiresAt);
         return true;
     }
 
@@ -310,10 +304,9 @@ public class DumpStorageService {
     }
 
     public void markUsed(String id) {
-        dumpRepository.findById(id).ifPresent(dump -> {
-            dump.setLastUsedAt(java.time.Instant.now());
-            dumpRepository.save(dump);
-        });
+        // atomic - a download racing an admin's metadata/sharing edit must not
+        // roll that edit back with a stale full-object save
+        dumpRepository.update(id, dump -> dump.setLastUsedAt(java.time.Instant.now()));
     }
 
     public Optional<DatabaseDump> findById(String id) {

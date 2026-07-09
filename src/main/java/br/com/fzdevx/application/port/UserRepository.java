@@ -9,6 +9,13 @@ public interface UserRepository {
 
     void save(User user);
 
+    /**
+     * Atomically mutates the stored user - concurrent edits of other fields
+     * are not clobbered by a stale full-object save. Returns false when the
+     * user no longer exists.
+     */
+    boolean update(String id, java.util.function.Consumer<User> mutator);
+
     void delete(String id);
 
     Optional<User> findById(String id);

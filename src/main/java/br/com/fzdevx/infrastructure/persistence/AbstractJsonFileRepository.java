@@ -63,6 +63,30 @@ public abstract class AbstractJsonFileRepository<T> {
         }
     }
 
+    /**
+     * Atomically applies a field-level change to one entity: the current state
+     * is re-read, mutated and written back under a single write lock. Unlike
+     * read-then-{@link #saveEntity} in the caller, a concurrent edit of OTHER
+     * fields of the same entity cannot be silently overwritten with stale data.
+     * If the mutator throws, nothing is written. Returns false when no entity
+     * matches.
+     */
+    protected boolean updateEntity(Predicate<T> idMatcher, java.util.function.Consumer<T> mutator) {
+        lock.writeLock().lock();
+        try {
+            List<T> all = readFromFile();
+            Optional<T> match = all.stream().filter(idMatcher).findFirst();
+            if (match.isEmpty()) {
+                return false;
+            }
+            mutator.accept(match.get());
+            writeToFile(all);
+            return true;
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
     protected boolean deleteEntity(Predicate<T> idMatcher) {
         lock.writeLock().lock();
         try {

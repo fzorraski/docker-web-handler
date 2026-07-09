@@ -9,6 +9,13 @@ public interface DumpRepository {
 
     void save(DatabaseDump dump);
 
+    /**
+     * Atomically mutates the stored dump - concurrent edits of other fields
+     * are not clobbered by a stale full-object save. Returns false when the
+     * dump no longer exists.
+     */
+    boolean update(String id, java.util.function.Consumer<DatabaseDump> mutator);
+
     void delete(String id);
 
     Optional<DatabaseDump> findById(String id);

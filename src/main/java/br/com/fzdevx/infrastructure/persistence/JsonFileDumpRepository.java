@@ -29,6 +29,11 @@ public class JsonFileDumpRepository
     }
 
     @Override
+    public boolean update(String id, java.util.function.Consumer<DatabaseDump> mutator) {
+        return updateEntity(d -> d.getId().equals(id), mutator);
+    }
+
+    @Override
     public void delete(String id) {
         deleteEntity(d -> d.getId().equals(id));
     }
