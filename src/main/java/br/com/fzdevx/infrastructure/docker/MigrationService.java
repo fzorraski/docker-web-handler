@@ -3,7 +3,6 @@ package br.com.fzdevx.infrastructure.docker;
 import br.com.fzdevx.application.port.DatabasePort;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.model.DatabaseMigrationRecord;
-import br.com.fzdevx.infrastructure.persistence.JsonFileMigrationRepository;
 import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.CreateContainerResponse;
@@ -53,7 +52,7 @@ public class MigrationService {
     private static final HttpClient HTTP_CLIENT = HttpClient.newHttpClient();
 
     @Inject
-    JsonFileMigrationRepository migrationRepository;
+    br.com.fzdevx.application.port.MigrationRecordRepository migrationRepository;
 
     @Inject
     ResourceCounterService resourceCounterService;

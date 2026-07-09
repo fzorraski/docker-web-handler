@@ -9,7 +9,10 @@ import java.util.List;
 import java.util.Optional;
 
 @ApplicationScoped
-public class JsonFileMigrationRepository extends AbstractJsonFileRepository<DatabaseMigrationRecord> {
+@jakarta.enterprise.inject.Typed(JsonFileMigrationRepository.class)
+public class JsonFileMigrationRepository
+        extends AbstractJsonFileRepository<DatabaseMigrationRecord>
+        implements br.com.fzdevx.application.port.MigrationRecordRepository {
 
     private static final java.lang.reflect.Type LIST_TYPE =
             new ArrayList<DatabaseMigrationRecord>() {}.getClass().getGenericSuperclass();
