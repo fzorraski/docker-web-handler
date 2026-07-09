@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react'
 import {
   AppBar, Toolbar, Typography, Button, Box, IconButton, Tooltip,
   Drawer, List, ListItem, ListItemButton, ListItemText, ListItemIcon, Divider,
-  Menu, MenuItem, useMediaQuery, useTheme,
+  Menu, MenuItem, Chip, useMediaQuery, useTheme,
 } from '@mui/material'
 import { Link, useLocation } from 'react-router-dom'
 import { DarkMode, LightMode, Logout, Menu as MenuIcon, AccountCircle, Password } from '@mui/icons-material'
@@ -280,6 +280,13 @@ export default function Navbar() {
           </Typography>
           {currentUser && currentUser.roleNames.length > 0 && (
             <Typography variant="caption" color="text.secondary">{currentUser.roleNames.join(', ')}</Typography>
+          )}
+          {currentUser && currentUser.tenants.length > 0 && (
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.75 }}>
+              {currentUser.tenants.map((tn) => (
+                <Chip key={tn.id} label={tn.name} size="small" variant="outlined" color="secondary" sx={{ height: 20, fontSize: '0.7rem' }} />
+              ))}
+            </Box>
           )}
         </Box>
         <Divider />
