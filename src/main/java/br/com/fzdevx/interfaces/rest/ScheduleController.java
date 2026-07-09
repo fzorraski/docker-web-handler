@@ -25,12 +25,25 @@ public class ScheduleController {
     @Inject
     br.com.fzdevx.infrastructure.config.CurrentUser currentUser;
 
+    @Inject
+    br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
+
     /** Creator visibility is its own permission (AUDIT_VIEW); strip it for callers without it. */
     private <T> java.util.List<T> withCreatorVisibility(java.util.List<T> items, java.util.function.BiConsumer<T, String> setter) {
         if (!currentUser.hasPermission(br.com.fzdevx.domain.model.auth.Permission.AUDIT_VIEW)) {
             items.forEach(item -> setter.accept(item, null));
         }
         return items;
+    }
+
+    /** Tenant-hidden schedules 404 like nonexistent ones; null means visible. */
+    private Response guardVisible(String id) {
+        Optional<ContainerSchedule> schedule = manageScheduleUseCase.findById(id);
+        if (schedule.isPresent() && !tenantVisibility.canSee(schedule.get().getTenantId())) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", "Schedule not found.")).build();
+        }
+        return null;
     }
 
     @Inject
@@ -58,7 +71,9 @@ public class ScheduleController {
         if (!schedulingService.isEnabled()) {
             return Collections.emptyList();
         }
-        return withCreatorVisibility(manageScheduleUseCase.findAll(), ContainerSchedule::setCreatedBy);
+        List<ContainerSchedule> visible = tenantVisibility.visible(
+                manageScheduleUseCase.findAll(), ContainerSchedule::getTenantId);
+        return withCreatorVisibility(new java.util.ArrayList<>(visible), ContainerSchedule::setCreatedBy);
     }
 
     @GET
@@ -76,7 +91,8 @@ public class ScheduleController {
                     .entity(Map.of("error", uuidError.get())).build();
         }
 
-        Optional<ContainerSchedule> schedule = manageScheduleUseCase.findById(id);
+        Optional<ContainerSchedule> schedule = manageScheduleUseCase.findById(id)
+                .filter(s -> tenantVisibility.canSee(s.getTenantId()));
         if (schedule.isEmpty()) {
             return Response.status(Response.Status.NOT_FOUND)
                     .entity(Map.of("error", "Schedule not found.")).build();
@@ -91,7 +107,8 @@ public class ScheduleController {
         if (!schedulingService.isEnabled()) {
             return Collections.emptyList();
         }
-        return manageScheduleUseCase.findByContainerId(containerId);
+        return tenantVisibility.visible(manageScheduleUseCase.findByContainerId(containerId),
+                ContainerSchedule::getTenantId);
     }
 
     @RequiresPermission(Permission.SCHEDULES_MANAGE)
@@ -138,6 +155,9 @@ public class ScheduleController {
                     .entity(Map.of("error", uuidError.get())).build();
         }
 
+        Response hidden = guardVisible(id);
+        if (hidden != null) return hidden;
+
         ContainerSchedule schedule = manageScheduleUseCase.updateAndReschedule(id, request);
         return Response.ok(schedule).build();
     }
@@ -163,6 +183,9 @@ public class ScheduleController {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", uuidError.get())).build();
         }
+
+        Response hidden = guardVisible(id);
+        if (hidden != null) return hidden;
 
         ContainerSchedule schedule = manageScheduleUseCase.toggleAndReschedule(id);
         return Response.ok(schedule).build();
@@ -190,6 +213,9 @@ public class ScheduleController {
                     .entity(Map.of("error", uuidError.get())).build();
         }
 
+        Response hidden = guardVisible(id);
+        if (hidden != null) return hidden;
+
         manageScheduleUseCase.deleteAndCancel(id);
         return Response.ok(Map.of("success", true)).build();
     }
@@ -215,6 +241,9 @@ public class ScheduleController {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", uuidError.get())).build();
         }
+
+        Response hidden = guardVisible(id);
+        if (hidden != null) return hidden;
 
         manageScheduleUseCase.executeNow(id);
         return Response.status(Response.Status.ACCEPTED)

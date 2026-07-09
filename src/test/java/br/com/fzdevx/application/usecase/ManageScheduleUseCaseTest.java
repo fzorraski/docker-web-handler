@@ -45,6 +45,11 @@ class ManageScheduleUseCaseTest {
     @InjectMocks
     ManageScheduleUseCase useCase;
 
+    @org.junit.jupiter.api.BeforeEach
+    void wireTenantVisibility() {
+        useCase.tenantVisibility = br.com.fzdevx.infrastructure.config.TestTenantVisibility.passthrough();
+    }
+
     private CreateScheduleRequest validOneTimeStopRequest() {
         CreateScheduleRequest req = new CreateScheduleRequest();
         req.setName("Stop nightly");
@@ -253,6 +258,29 @@ class ManageScheduleUseCaseTest {
         req.setCreateConfig(null);
 
         assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    @Test
+    void create_createAction_copiesTenantIntoPersistedConfig() {
+        // scheduled creates run outside a request scope, so the container's
+        // tenant must travel with the schedule's config, not the actor
+        var rbacUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        rbacUser.set("u1", "alice", java.util.Set.of(),
+                new java.util.LinkedHashSet<>(java.util.List.of("tenant-1")));
+        useCase.tenantVisibility =
+                br.com.fzdevx.infrastructure.config.TestTenantVisibility.forUser(rbacUser, null);
+
+        CreateScheduleRequest req = new CreateScheduleRequest();
+        req.setName("Auto create");
+        req.setAction("CREATE");
+        req.setScheduleType("ONE_TIME");
+        req.setScheduledAt(Instant.now().plus(1, ChronoUnit.HOURS).toString());
+        req.setCreateConfig(new br.com.fzdevx.application.dto.RunContainerRequest());
+
+        ContainerSchedule schedule = useCase.create(req);
+
+        assertEquals("tenant-1", schedule.getTenantId());
+        assertEquals("tenant-1", schedule.getCreateConfig().getTenantId());
     }
 
     // ---- toggleEnabled ----

@@ -59,6 +59,7 @@ class ContainerConfigControllerTest {
         setField("logRotationMaxSize", "10m");
         setField("logRotationMaxFiles", "3");
         setField("uiLocale", Optional.of("en"));
+        controller.containerTenantGuard = br.com.fzdevx.infrastructure.docker.TestContainerTenantGuard.passthrough();
         when(runtimeSettings.isTerminalEnabled()).thenReturn(false);
     }
 

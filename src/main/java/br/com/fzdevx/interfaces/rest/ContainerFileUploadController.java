@@ -30,6 +30,9 @@ public class ContainerFileUploadController {
     @Inject
     br.com.fzdevx.infrastructure.config.RuntimeSettingsService runtimeSettings;
 
+    @Inject
+    br.com.fzdevx.infrastructure.docker.ContainerTenantGuard containerTenantGuard;
+
     @POST
     @Path("/{containerId}/upload")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
@@ -47,6 +50,8 @@ public class ContainerFileUploadController {
                     .entity(Map.of("error", idError.get()))
                     .build();
         }
+
+        containerTenantGuard.requireVisible(containerId);
 
         java.nio.file.Path tempDir = null;
         java.nio.file.Path tempFile = null;

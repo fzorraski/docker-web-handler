@@ -40,6 +40,8 @@ class ContainerSseControllerTest {
     @Mock StreamContainerStatsUseCase streamContainerStatsUseCase;
     @Mock WebhookService webhookService;
     @Mock ContainerListBroadcaster broadcaster;
+    @Mock br.com.fzdevx.application.port.ManagedDatabaseRepository managedDatabaseRepository;
+    @Mock br.com.fzdevx.infrastructure.persistence.SnapshotStorageService snapshotStorageService;
 
     @InjectMocks
     ContainerSseController controller;
@@ -48,6 +50,8 @@ class ContainerSseControllerTest {
     void injectCurrentUser() {
         // real instance: outside RBAC it grants everything (legacy behavior)
         controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        controller.tenantVisibility = br.com.fzdevx.infrastructure.config.TestTenantVisibility.passthrough();
+        controller.containerTenantGuard = br.com.fzdevx.infrastructure.docker.TestContainerTenantGuard.passthrough();
     }
 
     // ---- prepareRemove ----

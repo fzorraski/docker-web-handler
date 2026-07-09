@@ -68,6 +68,18 @@ public class ContainerSseController {
     @Inject
     ContainerListBroadcaster broadcaster;
 
+    @Inject
+    br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
+
+    @Inject
+    br.com.fzdevx.infrastructure.docker.ContainerTenantGuard containerTenantGuard;
+
+    @Inject
+    br.com.fzdevx.application.port.ManagedDatabaseRepository managedDatabaseRepository;
+
+    @Inject
+    br.com.fzdevx.infrastructure.persistence.SnapshotStorageService snapshotStorageService;
+
     @GET
     @Path("/updates")
     @Produces(MediaType.SERVER_SENT_EVENTS)
@@ -116,6 +128,22 @@ public class ContainerSseController {
             request.setOperationsPasswordValidated(true);
             request.setOperationsPassword(null);
         }
+
+        // Tenant stamping/guards happen here (request scope); the SSE stream runs off a ticket.
+        request.setTenantId(tenantVisibility.resolveCreationTenant(request.getTenantId()));
+        if (request.getDumpId() != null) {
+            dumpStorageService.findById(request.getDumpId()).ifPresent(dump ->
+                    tenantVisibility.requireVisible(dump.getTenantId(), dump.getSharedWithTenants()));
+        }
+        if (request.getSnapshotId() != null) {
+            snapshotStorageService.findById(request.getSnapshotId()).ifPresent(snapshot ->
+                    tenantVisibility.requireVisible(snapshot.getTenantId(), snapshot.getSharedWithTenants()));
+        }
+        if (request.getRepository() != null && request.getDatabaseName() != null) {
+            managedDatabaseRepository.find(request.getRepository(), request.getDatabaseName())
+                    .ifPresent(db -> tenantVisibility.requireVisible(db.getTenantId()));
+        }
+
         String ticket = requestStash.stash(request);
         return jakarta.ws.rs.core.Response.ok(Map.of("ticket", ticket)).build();
     }
@@ -180,6 +208,10 @@ public class ContainerSseController {
             return jakarta.ws.rs.core.Response.status(403)
                     .entity(Map.of("error", "Invalid operations password.")).build();
         }
+        if (request.getRepository() != null && request.getTargetDatabase() != null) {
+            managedDatabaseRepository.find(request.getRepository(), request.getTargetDatabase())
+                    .ifPresent(db -> tenantVisibility.requireVisible(db.getTenantId()));
+        }
         request.setPassword(null);
         String ticket = requestStash.stashMigration(request);
         return jakarta.ws.rs.core.Response.ok(Map.of("ticket", ticket)).build();
@@ -224,6 +256,7 @@ public class ContainerSseController {
             return jakarta.ws.rs.core.Response.status(403)
                     .entity(Map.of("error", "Invalid operations password.")).build();
         }
+        containerTenantGuard.requireVisible(request.getContainerId());
         request.setPassword(null);
         String ticket = requestStash.stashUpgrade(request);
         return jakarta.ws.rs.core.Response.ok(Map.of("ticket", ticket)).build();
@@ -268,6 +301,7 @@ public class ContainerSseController {
             return jakarta.ws.rs.core.Response.status(400)
                     .entity(Map.of("error", "Invalid container ID.")).build();
         }
+        containerTenantGuard.requireVisible(request.getContainerId());
         if (request.isDeleteDatabase()) {
             // dropping the database alongside the container needs the dedicated delete permission
             if (!currentUser.hasPermission(Permission.DATABASE_DELETE)) {
@@ -330,7 +364,8 @@ public class ContainerSseController {
     public void streamRemove(@PathParam("containerId") String containerId,
                              @Context SseEventSink sink,
                              @Context Sse sse) {
-        if (InputValidator.validateContainerId(containerId).isPresent()) {
+        if (InputValidator.validateContainerId(containerId).isPresent()
+                || !containerTenantGuard.canSee(containerId)) {
             SseHelper.sendEvent(sink, sse, ContainerEvent.error("Error", "Invalid container ID."));
             SseHelper.closeSink(sink);
             return;
@@ -354,7 +389,8 @@ public class ContainerSseController {
     public void streamLogs(@PathParam("containerId") String containerId,
                            @Context SseEventSink sink,
                            @Context Sse sse) {
-        if (InputValidator.validateContainerId(containerId).isPresent()) {
+        if (InputValidator.validateContainerId(containerId).isPresent()
+                || !containerTenantGuard.canSee(containerId)) {
             SseHelper.sendEvent(sink, sse, ContainerEvent.error("Error", "Invalid container ID."));
             SseHelper.closeSink(sink);
             return;
@@ -374,7 +410,8 @@ public class ContainerSseController {
     public void streamStats(@PathParam("containerId") String containerId,
                             @Context SseEventSink sink,
                             @Context Sse sse) {
-        if (InputValidator.validateContainerId(containerId).isPresent()) {
+        if (InputValidator.validateContainerId(containerId).isPresent()
+                || !containerTenantGuard.canSee(containerId)) {
             SseHelper.closeSink(sink);
             return;
         }

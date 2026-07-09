@@ -159,6 +159,12 @@ public class RunContainerConfig {
     public Map<String, String> getExtraLabels() { return extraLabels; }
     public void setExtraLabels(Map<String, String> extraLabels) { this.extraLabels = extraLabels; }
 
+    /** Owning tenant, resolved at prepare/create time; scheduled creates reuse the persisted value. */
+    private String tenantId;
+
+    public String getTenantId() { return tenantId; }
+    public void setTenantId(String tenantId) { this.tenantId = tenantId; }
+
     public RunContainerConfig copy() {
         RunContainerConfig c = new RunContainerConfig();
         c.repository = this.repository;
@@ -181,6 +187,7 @@ public class RunContainerConfig {
         c.migrationSourceVersion = this.migrationSourceVersion;
         c.migrationTargetVersion = this.migrationTargetVersion;
         c.extraLabels = this.extraLabels != null ? Map.copyOf(this.extraLabels) : null;
+        c.tenantId = this.tenantId;
         return c;
     }
 }

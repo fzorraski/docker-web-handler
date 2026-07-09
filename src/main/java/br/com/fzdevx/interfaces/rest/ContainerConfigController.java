@@ -55,6 +55,9 @@ public class ContainerConfigController {
     PasswordValidationService passwordValidationService;
 
     @Inject
+    br.com.fzdevx.infrastructure.docker.ContainerTenantGuard containerTenantGuard;
+
+    @Inject
     br.com.fzdevx.infrastructure.config.RbacSettings rbacSettings;
 
     @Inject
@@ -330,6 +333,8 @@ public class ContainerConfigController {
             return jakarta.ws.rs.core.Response.status(jakarta.ws.rs.core.Response.Status.FORBIDDEN)
                     .entity(Map.of("error", "Invalid terminal password.")).build();
         }
+        // squad isolation: the WebSocket endpoint runs off this user-bound ticket
+        containerTenantGuard.requireVisible(containerId);
         String ticket = requestStash.stashTerminal(containerId);
         return jakarta.ws.rs.core.Response.ok(Map.of("ticket", ticket)).build();
     }

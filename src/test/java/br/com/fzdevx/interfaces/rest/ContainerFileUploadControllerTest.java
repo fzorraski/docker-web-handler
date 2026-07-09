@@ -45,6 +45,7 @@ class ContainerFileUploadControllerTest {
 
     @BeforeEach
     void setUp() {
+        controller.containerTenantGuard = br.com.fzdevx.infrastructure.docker.TestContainerTenantGuard.passthrough();
         when(runtimeSettings.isTerminalUploadEnabled()).thenReturn(true);
         when(runtimeSettings.getTerminalUploadMaxSizeMb()).thenReturn(100);
     }

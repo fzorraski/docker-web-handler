@@ -51,6 +51,7 @@ class ContainerExpirationControllerTest {
     void injectCurrentUser() {
         // real instance: outside RBAC it grants everything (legacy behavior)
         controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        controller.containerTenantGuard = br.com.fzdevx.infrastructure.docker.TestContainerTenantGuard.passthrough();
     }
 
     private DockerContainer req(String id) {

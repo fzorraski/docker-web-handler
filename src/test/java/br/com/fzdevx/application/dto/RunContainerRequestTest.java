@@ -31,6 +31,7 @@ class RunContainerRequestTest {
         req.setMigrationSql("ALTER TABLE...");
         req.setMigrationSourceVersion("1.0");
         req.setMigrationTargetVersion("2.0");
+        req.setTenantId("tenant-1");
 
         RunContainerConfig copy = req.copy();
 
@@ -53,6 +54,8 @@ class RunContainerRequestTest {
         assertEquals("ALTER TABLE...", copy.getMigrationSql());
         assertEquals("1.0", copy.getMigrationSourceVersion());
         assertEquals("2.0", copy.getMigrationTargetVersion());
+        // forgetting this silently drops tenancy for scheduled creates
+        assertEquals("tenant-1", copy.getTenantId());
     }
 
     @Test

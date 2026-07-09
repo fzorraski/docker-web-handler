@@ -45,6 +45,9 @@ public class ContainerExpirationController {
     ContainerExpirationService expirationService;
 
     @Inject
+    br.com.fzdevx.infrastructure.docker.ContainerTenantGuard containerTenantGuard;
+
+    @Inject
     ManagedDatabaseRepository managedDatabaseRepository;
 
     @Inject
@@ -116,6 +119,9 @@ public class ContainerExpirationController {
         if (InputValidator.validateContainerId(dockerContainer.getContainerId()).isPresent()) {
             return false;
         }
+        if (!containerTenantGuard.canSee(dockerContainer.getContainerId())) {
+            return false;
+        }
         if (minutes < 1 || minutes > 1440) {
             return false;
         }
@@ -134,6 +140,9 @@ public class ContainerExpirationController {
         if (InputValidator.validateContainerId(dockerContainer.getContainerId()).isPresent()) {
             return false;
         }
+        if (!containerTenantGuard.canSee(dockerContainer.getContainerId())) {
+            return false;
+        }
         return expirationService.disableDatabaseDeletion(dockerContainer.getContainerId());
     }
 
@@ -144,6 +153,9 @@ public class ContainerExpirationController {
     @Path("/cancel-expiration")
     public boolean cancelExpiration(DockerContainer dockerContainer) {
         if (InputValidator.validateContainerId(dockerContainer.getContainerId()).isPresent()) {
+            return false;
+        }
+        if (!containerTenantGuard.canSee(dockerContainer.getContainerId())) {
             return false;
         }
         expirationService.cancel(dockerContainer.getContainerId());
@@ -160,6 +172,7 @@ public class ContainerExpirationController {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Invalid container ID.")).build();
         }
+        containerTenantGuard.requireVisible(request.containerId);
 
         Instant expiresInstant = null;
         if (request.expiresAt != null && !request.expiresAt.isBlank()) {

@@ -30,6 +30,9 @@ public class ManageScheduleUseCase {
     br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
+
+    @Inject
     ScheduleRepository scheduleRepository;
 
     @Inject
@@ -106,6 +109,7 @@ public class ManageScheduleUseCase {
 
         ContainerSchedule schedule = new ContainerSchedule(request.getName(), action, type);
         schedule.setCreatedBy(actorResolver.usernameOrSystem());
+        schedule.setTenantId(tenantVisibility.resolveCreationTenant(request.getTenantId()));
 
         if (type == ScheduleType.RECURRING) {
             Optional<String> cronError = InputValidator.validateCronExpression(request.getCronExpression());
@@ -232,6 +236,9 @@ public class ManageScheduleUseCase {
                 request.getCreateConfig().setExpiresAt(null);
             }
 
+            // scheduled creates run outside a request scope - the container inherits
+            // the schedule's tenant through the persisted config, not the actor
+            request.getCreateConfig().setTenantId(schedule.getTenantId());
             schedule.setCreateConfig(request.getCreateConfig());
         }
 
@@ -297,6 +304,8 @@ public class ManageScheduleUseCase {
                 }
                 request.getCreateConfig().setExpiresAt(null);
             }
+            // the schedule's tenant is fixed at creation and survives config edits
+            request.getCreateConfig().setTenantId(schedule.getTenantId());
             schedule.setCreateConfig(request.getCreateConfig());
         }
 

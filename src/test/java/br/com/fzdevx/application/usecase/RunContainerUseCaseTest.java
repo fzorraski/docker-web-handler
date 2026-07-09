@@ -460,6 +460,32 @@ class RunContainerUseCaseTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void execute_happyPath_labelsContainerWithTenant() {
+        stubHappyPath();
+        var request = validRequest();
+        request.setTenantId("tenant-1");
+
+        useCase.execute(request, events::add);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(java.util.Map.class);
+        verify(dockerClient.createContainerCmd(IMAGE_REF)).withLabels(captor.capture());
+        assertEquals("tenant-1", captor.getValue().get(br.com.fzdevx.domain.shared.Constants.TENANT_LABEL));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void execute_happyPath_noTenant_skipsTenantLabel() {
+        stubHappyPath();
+
+        useCase.execute(validRequest(), events::add);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(java.util.Map.class);
+        verify(dockerClient.createContainerCmd(IMAGE_REF)).withLabels(captor.capture());
+        assertFalse(captor.getValue().containsKey(br.com.fzdevx.domain.shared.Constants.TENANT_LABEL));
+    }
+
+    @Test
     void execute_happyPathWithTicket_cleansUpTicket() {
         stubHappyPath();
         String ticket = "test-ticket";

@@ -37,6 +37,7 @@ public class DockerContainer {
     private String ipAddress;
 
     private String createdBy;
+    private String tenantId;
 
     private boolean upgradeEnabled;
 
@@ -168,6 +169,14 @@ public class DockerContainer {
 
     public void setCreatedBy(String createdBy) {
         this.createdBy = createdBy;
+    }
+
+    public String getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(String tenantId) {
+        this.tenantId = tenantId;
     }
 
     public String getIpAddress() {

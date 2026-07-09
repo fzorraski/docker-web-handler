@@ -53,6 +53,9 @@ public class ContainerController {
     br.com.fzdevx.infrastructure.config.CurrentUser currentUser;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
+
+    @Inject
     ContainerExpirationService expirationService;
 
     @Inject
@@ -63,6 +66,9 @@ public class ContainerController {
 
     @Inject
     ContainerListBroadcaster broadcaster;
+
+    @Inject
+    br.com.fzdevx.infrastructure.docker.ContainerTenantGuard containerTenantGuard;
 
     @Inject
     Config config;
@@ -79,6 +85,9 @@ public class ContainerController {
             if (isDockerWebHandlerImage(dc.getImage())) continue;
             if (dc.getId().equals(selfId)) continue;
             if (dc.getLabels() != null && dc.getLabels().containsKey(RestoreDumpUseCase.EPHEMERAL_LABEL)) continue;
+            // squad isolation: containers of other tenants are invisible
+            if (dc.getLabels() != null
+                    && !tenantVisibility.canSee(dc.getLabels().get(Constants.TENANT_LABEL))) continue;
 
             DockerContainer dockerContainer = new DockerContainer();
             dockerContainer.setContainerId(dc.getId().substring(0, 10));
@@ -113,6 +122,10 @@ public class ContainerController {
             // creator visibility is its own permission (AUDIT_VIEW)
             if (dc.getLabels() != null && currentUser.hasPermission(Permission.AUDIT_VIEW)) {
                 dockerContainer.setCreatedBy(dc.getLabels().get(Constants.CREATED_BY_LABEL));
+            }
+
+            if (dc.getLabels() != null) {
+                dockerContainer.setTenantId(dc.getLabels().get(Constants.TENANT_LABEL));
             }
 
             Instant expiresAt = expirationService.getExpiresAt(dockerContainer.getContainerId());
@@ -154,6 +167,7 @@ public class ContainerController {
         if (InputValidator.validateContainerId(dockerContainer.getContainerId()).isPresent()) {
             return false;
         }
+        containerTenantGuard.requireVisible(dockerContainer.getContainerId());
         if (protectionService.isProtectedContainer(dockerContainer.getContainerId())) {
             Log.warnf("Refusing to stop protected container %s.", dockerContainer.getContainerId());
             return false;
@@ -178,6 +192,7 @@ public class ContainerController {
         if (InputValidator.validateContainerId(dockerContainer.getContainerId()).isPresent()) {
             return false;
         }
+        containerTenantGuard.requireVisible(dockerContainer.getContainerId());
         if (protectionService.isProtectedContainer(dockerContainer.getContainerId())) {
             Log.warnf("Refusing to remove protected container %s.", dockerContainer.getContainerId());
             return false;
@@ -207,6 +222,7 @@ public class ContainerController {
         if (InputValidator.validateContainerId(dockerContainer.getContainerId()).isPresent()) {
             return Response.status(Response.Status.BAD_REQUEST).build();
         }
+        containerTenantGuard.requireVisible(dockerContainer.getContainerId());
         String memoryError = memoryGuardService.checkMemoryFor(null);
         if (memoryError != null) {
             HostMemoryStatus status = memoryGuardService.getStatus();

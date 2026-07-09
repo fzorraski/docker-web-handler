@@ -32,6 +32,7 @@ public class ContainerSchedule {
     private String lastExecutionStatus; // SUCCESS, FAILED, SKIPPED
     private String lastExecutionMessage;
     private String createdBy;
+    private String tenantId;
 
     public ContainerSchedule() {
     }
@@ -105,4 +106,7 @@ public class ContainerSchedule {
 
     public String getCreatedBy() { return createdBy; }
     public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
+
+    public String getTenantId() { return tenantId; }
+    public void setTenantId(String tenantId) { this.tenantId = tenantId; }
 }

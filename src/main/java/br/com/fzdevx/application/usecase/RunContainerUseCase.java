@@ -303,6 +303,7 @@ public class RunContainerUseCase {
                 restoreReq.setRepository(request.getRepository());
                 restoreReq.setTargetDatabase(request.getDatabaseName());
                 restoreReq.setCreateDatabase(request.isCreateDatabase());
+                restoreReq.setTenantId(request.getTenantId());
                 restoreReq.setSelectedOptionalScripts(request.getSelectedOptionalScripts());
                 restoreReq.setMigrationMode(request.getMigrationMode());
                 restoreReq.setMigrationSql(request.getMigrationSql());
@@ -447,6 +448,11 @@ public class RunContainerUseCase {
         String creator = actorResolver.usernameOrSystem();
         if (creator != null) {
             labels.put(Constants.CREATED_BY_LABEL, creator);
+        }
+        // Owning tenant (squad isolation) - resolved at prepare time or carried
+        // by a schedule's persisted config; absent means visible to everyone.
+        if (request.getTenantId() != null && !request.getTenantId().isBlank()) {
+            labels.put(Constants.TENANT_LABEL, request.getTenantId());
         }
         if (request.getExtraLabels() != null) {
             labels.putAll(request.getExtraLabels());

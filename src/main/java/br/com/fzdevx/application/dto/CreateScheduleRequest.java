@@ -38,4 +38,9 @@ public class CreateScheduleRequest {
 
     public String getOperationsPassword() { return operationsPassword; }
     public void setOperationsPassword(String operationsPassword) { this.operationsPassword = operationsPassword; }
+
+    private String tenantId;
+
+    public String getTenantId() { return tenantId; }
+    public void setTenantId(String tenantId) { this.tenantId = tenantId; }
 }
