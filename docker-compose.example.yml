@@ -1,0 +1,48 @@
+# Example compose file showing the app with its PostgreSQL persistence store.
+# Copy the relevant parts into your local docker-compose.yml (which is not
+# version-controlled). Full env var reference: docs/postgres-setup.md
+services:
+  docker-web-handler:
+    image: fabriciozrk/docker-web-handler:latest
+    container_name: docker-web-handler
+    restart: unless-stopped
+    ports:
+      - "8085:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - dwh-data:/deployments/data   # dump/snapshot binaries + legacy JSON files (imported on first boot)
+    environment:
+      DOCKER_HOST: unix:///var/run/docker.sock
+
+      # --- Application database (the app's own store) ---
+      PERSISTENCE_BACKEND: postgres
+      APP_DB_HOST: app-db
+      APP_DB_PORT: "5432"
+      APP_DB_NAME: dockerwebhandler
+      APP_DB_USER: dockerwebhandler
+      APP_DB_PASSWORD: change-me
+
+      # ... the rest of your existing configuration ...
+    depends_on:
+      app-db:
+        condition: service_healthy
+
+  app-db:
+    image: postgres:17-alpine
+    container_name: docker-web-handler-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: dockerwebhandler
+      POSTGRES_USER: dockerwebhandler
+      POSTGRES_PASSWORD: change-me
+    volumes:
+      - dwh-appdb:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dockerwebhandler -d dockerwebhandler"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  dwh-data:
+  dwh-appdb:

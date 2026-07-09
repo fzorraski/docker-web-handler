@@ -314,6 +314,9 @@ Only works on Linux where `/proc/meminfo` is accessible. When triggered, the con
 
 ## Passwords
 
+> **RBAC note:** when [`app.auth.mode=rbac`](#rbac-mode) is active, these
+> per-feature passwords are ignored — access is governed by role permissions.
+
 The application uses a multi-tier password system:
 
 | Password | Used For | Property |
@@ -330,10 +333,51 @@ The application uses a multi-tier password system:
 | Property | Description | Default |
 |----------|-------------|---------|
 | `app.auth.enabled` | Enable login-based authentication for all API access | `false` |
-| `app.auth.password` | Password for login | — |
+| `app.auth.mode` | `password` (single shared password) or `rbac` (per-user accounts) | `password` |
+| `app.auth.password` | Password for login (`password` mode only) | — |
 | `app.auth.session-timeout-minutes` | Session TTL in minutes | `480` (8 hours) |
+| `app.auth.session.touch-interval-seconds` | Throttle for session last-access writes | `60` |
 
 When disabled, all endpoints are publicly accessible (backward compatible).
+Sessions are stored in the application database and survive restarts.
+
+### RBAC mode
+
+With `app.auth.mode=rbac`, users log in with personal accounts. Users, roles
+(permission sets) and tenants (team scopes, including per-tenant repository and
+database-connection entitlements) are managed in the admin UI. The
+[feature passwords](#passwords) are ignored in this mode — role permissions
+replace them.
+
+| Property | Description | Default |
+|----------|-------------|---------|
+| `rbac.admin.username` | Username of the seeded super admin | `admin` |
+| `rbac.admin.password` | Seed password for the super admin. Used only on first boot while no users exist; required then, ignored afterwards. | — |
+
+---
+
+## Application Database
+
+The app's own state (users, tenants, roles, schedules, dump/snapshot and
+managed-database metadata, expirations, runtime settings, audit trail, login
+sessions, counters) lives in a dedicated PostgreSQL database. The schema is
+created and evolved automatically by Flyway. This database is unrelated to the
+managed PostgreSQL servers configured per repository. See
+[postgres-setup.md](postgres-setup.md) for setup and the one-time migration of
+legacy `data/*.json` files.
+
+| Property / env var | Description | Default |
+|----------|-------------|---------|
+| `APP_DB_HOST` / `APP_DB_PORT` | Database host / port | `localhost` / `5432` |
+| `APP_DB_NAME` | Database name | `dockerwebhandler` |
+| `APP_DB_USER` / `APP_DB_PASSWORD` | Credentials | `dockerwebhandler` |
+| `persistence.backend` | `postgres` or `file` (legacy JSON fallback, one release) | `postgres` |
+| `APP_DB_ACTIVE` | Set `false` (with the file backend) to boot without any PostgreSQL — deactivates the datasource and Flyway together | `true` |
+| `json.import.enabled` | One-time import of legacy `data/*.json` on first boot | `true` |
+| `quarkus.datasource.jdbc.max-size` | Connection pool size | `20` |
+
+In dev and test mode no JDBC URL is set, so Quarkus Dev Services starts a
+disposable PostgreSQL container automatically.
 
 ---
 
