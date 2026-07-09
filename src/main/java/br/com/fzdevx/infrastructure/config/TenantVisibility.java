@@ -1,6 +1,5 @@
 package br.com.fzdevx.infrastructure.config;
 
-import br.com.fzdevx.application.port.TenantRepository;
 import br.com.fzdevx.domain.exception.EntityNotFoundException;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.auth.Permission;
@@ -27,7 +26,7 @@ public class TenantVisibility {
     CurrentUser currentUser;
 
     @Inject
-    TenantRepository tenantRepository;
+    AuthorizationService authorizationService;
 
     /** True when tenant filtering does not apply to the current caller. */
     public boolean bypass() {
@@ -107,7 +106,7 @@ public class TenantVisibility {
             return requested;
         }
         if (currentUser.hasPermission(Permission.TENANTS_VIEW_ALL)
-                && tenantRepository.findById(requested).isPresent()) {
+                && authorizationService.tenantById(requested).isPresent()) {
             return requested;
         }
         throw new InvalidInputException("Invalid tenant.");

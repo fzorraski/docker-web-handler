@@ -21,7 +21,7 @@ public final class TestTenantVisibility {
     public static TenantVisibility forUser(CurrentUser currentUser, TenantRepository tenantRepository) {
         TenantVisibility visibility = new TenantVisibility();
         visibility.currentUser = currentUser;
-        visibility.tenantRepository = tenantRepository;
+        visibility.authorizationService = TestAuthorization.withTenants(tenantRepository);
         return visibility;
     }
 }

@@ -96,6 +96,19 @@ public class AuthorizationService {
                 .orElse(false);
     }
 
+    /** Snapshot-backed tenant lookup for per-request checks (TenantVisibility). */
+    public Optional<Tenant> tenantById(String tenantId) {
+        if (tenantId == null || tenantId.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(loadSnapshot().tenantsById().get(tenantId));
+    }
+
+    /** Snapshot-backed tenant listing for per-request checks (TenantEntitlements). */
+    public java.util.Collection<Tenant> allTenants() {
+        return loadSnapshot().tenantsById().values();
+    }
+
     public void invalidateCache() {
         snapshot = null;
     }

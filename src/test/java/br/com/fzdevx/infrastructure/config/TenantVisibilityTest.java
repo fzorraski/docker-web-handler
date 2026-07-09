@@ -149,13 +149,15 @@ class TenantVisibilityTest {
 
     @Test
     void resolveCreationTenant_viewAllMayPickAnyExistingTenant() {
-        when(tenantRepository.findById("t9")).thenReturn(Optional.of(new Tenant("Nine", null)));
+        Tenant nine = new Tenant("Nine", null);
+        nine.setId("t9");
+        when(tenantRepository.findAll()).thenReturn(List.of(nine));
         assertEquals("t9", rbacUser(Set.of(Permission.TENANTS_VIEW_ALL)).resolveCreationTenant("t9"));
     }
 
     @Test
     void resolveCreationTenant_viewAllRejectsUnknownTenant() {
-        when(tenantRepository.findById("nope")).thenReturn(Optional.empty());
+        when(tenantRepository.findAll()).thenReturn(List.of());
         assertThrows(InvalidInputException.class,
                 () -> rbacUser(Set.of(Permission.TENANTS_VIEW_ALL)).resolveCreationTenant("nope"));
     }

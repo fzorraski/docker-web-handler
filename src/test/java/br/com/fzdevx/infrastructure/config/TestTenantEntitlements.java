@@ -21,7 +21,7 @@ public final class TestTenantEntitlements {
     public static TenantEntitlements forUser(CurrentUser currentUser, TenantRepository tenantRepository) {
         TenantEntitlements entitlements = new TenantEntitlements();
         entitlements.currentUser = currentUser;
-        entitlements.tenantRepository = tenantRepository;
+        entitlements.authorizationService = TestAuthorization.withTenants(tenantRepository);
         return entitlements;
     }
 }

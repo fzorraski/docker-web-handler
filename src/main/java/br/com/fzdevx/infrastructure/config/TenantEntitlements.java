@@ -1,6 +1,5 @@
 package br.com.fzdevx.infrastructure.config;
 
-import br.com.fzdevx.application.port.TenantRepository;
 import br.com.fzdevx.domain.exception.EntityNotFoundException;
 import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.domain.model.auth.Tenant;
@@ -29,7 +28,7 @@ public class TenantEntitlements {
     CurrentUser currentUser;
 
     @Inject
-    TenantRepository tenantRepository;
+    AuthorizationService authorizationService;
 
     /** True when entitlement filtering does not apply to the current caller. */
     public boolean bypass() {
@@ -96,7 +95,7 @@ public class TenantEntitlements {
             return null;
         }
         Set<String> union = new HashSet<>();
-        for (Tenant tenant : tenantRepository.findAll()) {
+        for (Tenant tenant : authorizationService.allTenants()) {
             if (!mine.contains(tenant.getId())) {
                 continue;
             }
