@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next'
 import { useNotification } from '../components/NotificationProvider'
 import { useAuth } from '../components/AuthProvider'
 import { P } from '../utils/permissions'
+import { useTenantNames } from '../hooks/useTenantNames'
 import HeroBanner from '../components/HeroBanner'
 import CreateScheduleModal from '../components/CreateScheduleModal'
 import PasswordConfirmDialog from '../components/PasswordConfirmDialog'
@@ -39,7 +40,8 @@ type PendingAction =
 export default function SchedulesPage() {
   const { t } = useTranslation()
   const { notify, confirm } = useNotification()
-  const { hasPermission } = useAuth()
+  const { rbacEnabled, hasPermission } = useAuth()
+  const tenantNames = useTenantNames()
   const canManageSchedules = hasPermission(P.SCHEDULES_MANAGE)
   const canViewContainers = hasPermission(P.CONTAINERS_VIEW)
   const canViewAudit = hasPermission(P.AUDIT_VIEW)
@@ -489,6 +491,7 @@ export default function SchedulesPage() {
                   { key: 'lastExecutedAt', label: t('schedules.columns.lastRun') },
                   { key: 'status', label: t('schedules.columns.status') },
                   ...(canViewAudit ? [{ key: 'createdBy', label: t('schedules.columns.createdBy') }] : []),
+                  ...(rbacEnabled ? [{ key: 'tenantId', label: t('tenants.tenant') }] : []),
                   { key: 'actions', label: t('schedules.columns.actions') },
                 ].map((col) => (
                   <TableCell key={col.key} sx={{ bgcolor: theadBg, color: theadColor, fontWeight: 600 }}>
@@ -600,6 +603,13 @@ export default function SchedulesPage() {
                   {canViewAudit && (
                     <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
                       {s.createdBy || '-'}
+                    </TableCell>
+                  )}
+                  {rbacEnabled && (
+                    <TableCell>
+                      {s.tenantId
+                        ? <Chip label={tenantNames.get(s.tenantId) ?? s.tenantId} size="small" variant="outlined" color="secondary" />
+                        : '-'}
                     </TableCell>
                   )}
                   <TableCell>

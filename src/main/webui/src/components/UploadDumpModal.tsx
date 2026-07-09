@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import TenantSelect, { useTenantChoice } from './TenantSelect'
 import {
   Dialog,
   DialogTitle,
@@ -51,6 +52,8 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
   const [databaseName, setDatabaseName] = useState('')
   const [version, setVersion] = useState('')
   const [description, setDescription] = useState('')
+  const [tenantId, setTenantId] = useState('')
+  const showTenantSelect = useTenantChoice()
   const [defaultExpMinutes, setDefaultExpMinutes] = useState(480)
   const [expirationEnabled, setExpirationEnabled] = useState(false)
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(null)
@@ -80,6 +83,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
     setDatabaseName('')
     setVersion('')
     setDescription('')
+    setTenantId('')
     setExpirationEnabled(false)
     setExpiresAt(null)
     setUploading(false)
@@ -114,6 +118,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
         version: version || undefined,
         expiresAt: expirationEnabled && expiresAt ? expiresAt.format('YYYY-MM-DDTHH:mm:ss') : undefined,
         description: description || undefined,
+        tenantId: tenantId || undefined,
       },
       (percent) => setUploadProgress(percent),
     )
@@ -270,6 +275,12 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
               slotProps={{ htmlInput: { maxLength: 500 } }}
               sx={{ mb: 3 }}
             />
+
+            {showTenantSelect && (
+              <Box sx={{ mb: 3 }}>
+                <TenantSelect value={tenantId} onChange={setTenantId} disabled={uploading} />
+              </Box>
+            )}
 
             {/* Expiration */}
             <Grid container spacing={2} sx={{ alignItems: 'center' }}>

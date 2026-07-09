@@ -13,6 +13,7 @@ export interface DockerContainer {
   repository?: string
   ipAddress?: string
   createdBy?: string
+  tenantId?: string
   upgradeEnabled?: boolean
   protectedFlag?: boolean
 }
@@ -59,6 +60,8 @@ export interface DatabaseDump {
   description?: string
   lastUsedAt?: string
   createdBy?: string
+  tenantId?: string
+  sharedWithTenants?: string[]
 }
 
 export interface ContainerSchedule {
@@ -78,6 +81,7 @@ export interface ContainerSchedule {
   lastExecutionStatus?: string
   lastExecutionMessage?: string
   createdBy?: string
+  tenantId?: string
 }
 
 export interface RunContainerConfig {
@@ -115,6 +119,8 @@ export interface DatabaseSnapshot {
   description?: string
   lastUsedAt?: string
   createdBy?: string
+  tenantId?: string
+  sharedWithTenants?: string[]
 }
 
 export interface ActiveSession {
@@ -256,4 +262,5 @@ export interface ManagedDatabaseInfo {
   lastRestoredFrom?: string
   lastRestoredAt?: string
   createdBy?: string
+  tenantId?: string
 }

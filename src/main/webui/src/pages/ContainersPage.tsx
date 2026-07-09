@@ -31,6 +31,7 @@ import RemoveContainerDialog from '../components/RemoveContainerDialog'
 import { useNotification } from '../components/NotificationProvider'
 import { useAuth } from '../components/AuthProvider'
 import { P } from '../utils/permissions'
+import { useTenantNames } from '../hooks/useTenantNames'
 import HeroBanner from '../components/HeroBanner'
 import { useTranslation } from 'react-i18next'
 import { formatBackendDate, formatDate } from '../utils/format'
@@ -107,7 +108,8 @@ function loadVisibility(columns: ColumnDef[]): Record<string, boolean> {
 
 export default function ContainersPage() {
   const { notify, confirm } = useNotification()
-  const { hasPermission } = useAuth()
+  const { rbacEnabled, hasPermission } = useAuth()
+  const tenantNames = useTenantNames()
   const canOperate = hasPermission(P.CONTAINERS_OPERATE)
   const canRun = hasPermission(P.CONTAINERS_RUN)
   const canTerminal = hasPermission(P.TERMINAL_ACCESS)
@@ -192,6 +194,7 @@ export default function ContainersPage() {
     { key: 'expires', label: t('containers.columns.expires'), defaultVisible: true },
     { key: 'created', label: t('containers.columns.created'), defaultVisible: true },
     { key: 'createdBy', label: t('containers.columns.createdBy'), defaultVisible: true },
+    { key: 'tenantId', label: t('tenants.tenant'), defaultVisible: true },
     { key: 'containerId', label: t('containers.columns.containerId'), defaultVisible: false },
     { key: 'command', label: t('containers.columns.command'), defaultVisible: false },
     { key: 'actions', label: t('containers.columns.actions'), defaultVisible: true },
@@ -202,8 +205,9 @@ export default function ContainersPage() {
     BASE_COLUMNS
       .filter((c) => dbListingEnabled || c.key !== 'database')
       // creator visibility is its own permission (AUDIT_VIEW); backend omits the field without it
-      .filter((c) => canViewAudit || c.key !== 'createdBy'),
-  [dbListingEnabled, canViewAudit, BASE_COLUMNS])
+      .filter((c) => canViewAudit || c.key !== 'createdBy')
+      .filter((c) => rbacEnabled || c.key !== 'tenantId'),
+  [dbListingEnabled, canViewAudit, rbacEnabled, BASE_COLUMNS])
 
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(() => loadVisibility(BASE_COLUMNS))
   const visibleColumns = columns.filter((c) => columnVisibility[c.key])
@@ -834,6 +838,7 @@ export default function ContainersPage() {
                   )}
                   {vis.has('created') &&<TableCell sx={{ fontSize: '0.85rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>{formatBackendDate(c.created)}</TableCell>}
                   {vis.has('createdBy') &&<TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{c.createdBy || '-'}</TableCell>}
+                  {vis.has('tenantId') &&<TableCell>{c.tenantId ? <Chip label={tenantNames.get(c.tenantId) ?? c.tenantId} size="small" variant="outlined" color="secondary" /> : '-'}</TableCell>}
                   {vis.has('containerId') &&<TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem' }}>{c.containerId}</TableCell>}
                   {vis.has('command') &&<TableCell>{c.command}</TableCell>}
                   {vis.has('actions') && (

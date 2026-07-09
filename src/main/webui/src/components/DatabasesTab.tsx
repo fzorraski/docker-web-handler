@@ -21,6 +21,7 @@ import {
 import { useNotification } from './NotificationProvider'
 import { useAuth } from './AuthProvider'
 import { P } from '../utils/permissions'
+import { useTenantNames } from '../hooks/useTenantNames'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
 import FullscreenToggleButton from './FullscreenToggleButton'
 import CreateSnapshotModal from './CreateSnapshotModal'
@@ -124,12 +125,14 @@ const DB_COLUMNS: { key: string; label: string }[] = [
   { key: 'effectiveLastUsedAt', label: '' },
   { key: 'protectedFlag', label: '' },
   { key: 'createdBy', label: '' },
+  { key: 'tenantId', label: '' },
   { key: 'action', label: '' },
 ]
 
 export default function DatabasesTab() {
   const { notify } = useNotification()
   const { rbacEnabled, hasPermission } = useAuth()
+  const tenantNames = useTenantNames()
   const canDbOperate = hasPermission(P.DATABASE_OPERATE)
   const canDbDelete = hasPermission(P.DATABASE_DELETE)
   const canRunContainers = hasPermission(P.CONTAINERS_RUN)
@@ -218,9 +221,11 @@ export default function DatabasesTab() {
       : col.key === 'effectiveLastUsedAt' ? t('database.dbColumns.idleSince')
       : col.key === 'protectedFlag' ? t('database.dbColumns.protected')
       : col.key === 'createdBy' ? t('database.dbColumns.createdBy')
+      : col.key === 'tenantId' ? t('tenants.tenant')
       : col.key === 'action' ? t('database.dbColumns.actions')
       : '',
-  })).filter(col => canViewAudit || col.key !== 'createdBy'), [t, canViewAudit])
+  })).filter(col => canViewAudit || col.key !== 'createdBy')
+     .filter(col => rbacEnabled || col.key !== 'tenantId'), [t, canViewAudit, rbacEnabled])
 
   const safeActiveRepo = activeRepo < repositories.length ? activeRepo : 0
   const currentRepo = repositories[safeActiveRepo] ?? ''
@@ -1146,6 +1151,13 @@ export default function DatabasesTab() {
                   {canViewAudit && (
                     <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
                       {db.createdBy || '-'}
+                    </TableCell>
+                  )}
+                  {rbacEnabled && (
+                    <TableCell>
+                      {db.tenantId
+                        ? <Chip label={tenantNames.get(db.tenantId) ?? db.tenantId} size="small" variant="outlined" color="secondary" />
+                        : '-'}
                     </TableCell>
                   )}
                   <TableCell>

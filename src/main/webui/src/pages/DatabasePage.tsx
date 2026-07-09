@@ -1,15 +1,17 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react'
 import type { DatabaseDump, DatabaseSnapshot } from '../types'
-import { listDumps, deleteDump, deleteDumpsBulk, getStorageInfo, getActiveRestores, updateDumpExpiration, type ActiveRestore } from '../services/dumpService'
-import { listSnapshots, deleteSnapshot, deleteSnapshotsBulk, getSnapshotStorageInfo, getActiveSnapshots, updateSnapshotExpiration, type ActiveSnapshot } from '../services/snapshotService'
+import { listDumps, deleteDump, deleteDumpsBulk, getStorageInfo, getActiveRestores, updateDumpExpiration, updateDumpSharing, type ActiveRestore } from '../services/dumpService'
+import { listSnapshots, deleteSnapshot, deleteSnapshotsBulk, getSnapshotStorageInfo, getActiveSnapshots, updateSnapshotExpiration, updateSnapshotSharing, type ActiveSnapshot } from '../services/snapshotService'
 import { isManagedDatabasesEnabled } from '../services/managedDatabaseService'
 import { useNotification } from '../components/NotificationProvider'
 import { useAuth } from '../components/AuthProvider'
 import { P } from '../utils/permissions'
+import { useTenantNames } from '../hooks/useTenantNames'
 import HeroBanner from '../components/HeroBanner'
 
 const DatabasesTab = lazy(() => import('../components/DatabasesTab'))
 import UploadDumpModal from '../components/UploadDumpModal'
+import ShareResourceDialog from '../components/ShareResourceDialog'
 import RestoreDumpModal from '../components/RestoreDumpModal'
 import CreateSnapshotModal from '../components/CreateSnapshotModal'
 import EditExpirationDialog from '../components/EditExpirationDialog'
@@ -66,7 +68,7 @@ import {
   ListItemText,
   TablePagination,
 } from '@mui/material'
-import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile, CameraAlt, InfoOutlined, HelpOutline, CleaningServices, Warning, Edit, Check, Close, Dns } from '@mui/icons-material'
+import { Search, Delete, CloudUpload, Download, Restore, Timer, Storage, InsertDriveFile, CameraAlt, InfoOutlined, HelpOutline, CleaningServices, Warning, Edit, Check, Close, Dns, Share } from '@mui/icons-material'
 
 type PendingDelete =
   | { kind: 'dump'; dump: DatabaseDump }
@@ -80,6 +82,8 @@ export default function DatabasePage() {
   const canDbOperate = hasPermission(P.DATABASE_OPERATE)
   const canDbUpload = hasPermission(P.DATABASE_UPLOAD)
   const canViewAudit = hasPermission(P.AUDIT_VIEW)
+  const tenantNames = useTenantNames()
+  const [shareTarget, setShareTarget] = useState<{ kind: 'dump' | 'snapshot'; id: string; name: string; tenantId: string | null; sharedWith: string[] } | null>(null)
   const { t } = useTranslation()
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
   const dumpTableRef = useRef<HTMLDivElement>(null)
@@ -148,8 +152,9 @@ export default function DatabasePage() {
     { key: 'expiresAt', label: t('database.dumpColumns.expires') },
     { key: 'lastUsedAt', label: t('database.dumpColumns.lastUsed') },
     ...(canViewAudit ? [{ key: 'createdBy', label: t('database.dumpColumns.createdBy') }] : []),
+    ...(rbacEnabled ? [{ key: 'tenantId', label: t('tenants.tenant') }] : []),
     { key: 'action', label: t('database.dumpColumns.actions') },
-  ], [t, canViewAudit])
+  ], [t, canViewAudit, rbacEnabled])
 
   const SNAP_COLUMNS: { key: string; label: string }[] = useMemo(() => [
     { key: 'label', label: t('database.snapColumns.label') },
@@ -163,8 +168,9 @@ export default function DatabasePage() {
     { key: 'expiresAt', label: t('database.snapColumns.expires') },
     { key: 'lastUsedAt', label: t('database.snapColumns.lastUsed') },
     ...(canViewAudit ? [{ key: 'createdBy', label: t('database.snapColumns.createdBy') }] : []),
+    ...(rbacEnabled ? [{ key: 'tenantId', label: t('tenants.tenant') }] : []),
     { key: 'action', label: t('database.snapColumns.actions') },
-  ], [t, canViewAudit])
+  ], [t, canViewAudit, rbacEnabled])
 
   // --- Dumps logic ---
   function handleSort(key: string) {
@@ -784,6 +790,20 @@ export default function DatabasePage() {
                           {dump.createdBy || '-'}
                         </TableCell>
                       )}
+                      {rbacEnabled && (
+                        <TableCell>
+                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                            {dump.tenantId
+                              ? <Chip label={tenantNames.get(dump.tenantId) ?? dump.tenantId} size="small" variant="outlined" color="secondary" />
+                              : '-'}
+                            {(dump.sharedWithTenants?.length ?? 0) > 0 && (
+                              <Tooltip title={`${t('tenants.sharedWith')}: ${(dump.sharedWithTenants ?? []).map(id => tenantNames.get(id) ?? id).join(', ')}`}>
+                                <Chip icon={<Share sx={{ fontSize: 14 }} />} label={dump.sharedWithTenants!.length} size="small" variant="outlined" color="info" />
+                              </Tooltip>
+                            )}
+                          </Box>
+                        </TableCell>
+                      )}
                       <TableCell>
                         <Box sx={{ display: 'flex', gap: 0.25 }}>
                           <Tooltip title={t('common.download')}>
@@ -791,6 +811,13 @@ export default function DatabasePage() {
                               <Download />
                             </IconButton>
                           </Tooltip>
+                          {canDbOperate && rbacEnabled && (
+                            <Tooltip title={t('tenants.sharing.title')}>
+                              <IconButton size="small" color="info" onClick={() => setShareTarget({ kind: 'dump', id: dump.id, name: dump.originalFilename, tenantId: dump.tenantId ?? null, sharedWith: dump.sharedWithTenants ?? [] })}>
+                                <Share />
+                              </IconButton>
+                            </Tooltip>
+                          )}
                           {canDbOperate && (
                             <Tooltip title={t('common.restore')}>
                               <IconButton size="small" color="success" onClick={() => handleRestoreClick(dump)}>
@@ -1027,6 +1054,20 @@ export default function DatabasePage() {
                           {snap.createdBy || '-'}
                         </TableCell>
                       )}
+                      {rbacEnabled && (
+                        <TableCell>
+                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                            {snap.tenantId
+                              ? <Chip label={tenantNames.get(snap.tenantId) ?? snap.tenantId} size="small" variant="outlined" color="secondary" />
+                              : '-'}
+                            {(snap.sharedWithTenants?.length ?? 0) > 0 && (
+                              <Tooltip title={`${t('tenants.sharedWith')}: ${(snap.sharedWithTenants ?? []).map(id => tenantNames.get(id) ?? id).join(', ')}`}>
+                                <Chip icon={<Share sx={{ fontSize: 14 }} />} label={snap.sharedWithTenants!.length} size="small" variant="outlined" color="info" />
+                              </Tooltip>
+                            )}
+                          </Box>
+                        </TableCell>
+                      )}
                       <TableCell>
                         <Box sx={{ display: 'flex', gap: 0.25 }}>
                           <Tooltip title={t('common.download')}>
@@ -1034,6 +1075,13 @@ export default function DatabasePage() {
                               <Download />
                             </IconButton>
                           </Tooltip>
+                          {canDbOperate && rbacEnabled && (
+                            <Tooltip title={t('tenants.sharing.title')}>
+                              <IconButton size="small" color="info" onClick={() => setShareTarget({ kind: 'snapshot', id: snap.id, name: snap.label || snap.sourceDatabaseName, tenantId: snap.tenantId ?? null, sharedWith: snap.sharedWithTenants ?? [] })}>
+                                <Share />
+                              </IconButton>
+                            </Tooltip>
+                          )}
                           {canDbOperate && (
                             <Tooltip title={t('common.restore')}>
                               <IconButton size="small" color="success" onClick={() => { setRestoreSnapshot(snap); setRestoreSnapOpen(true) }}>
@@ -1077,6 +1125,23 @@ export default function DatabasePage() {
           </Suspense>
         )}
       </Box>
+
+      <ShareResourceDialog
+        open={shareTarget !== null}
+        onClose={() => setShareTarget(null)}
+        resourceName={shareTarget?.name ?? ''}
+        tenantId={shareTarget?.tenantId ?? null}
+        sharedWithTenants={shareTarget?.sharedWith ?? []}
+        onSave={async (sharedWithTenants, tenantId) => {
+          if (!shareTarget) return
+          const result = shareTarget.kind === 'dump'
+            ? await updateDumpSharing(shareTarget.id, sharedWithTenants, tenantId)
+            : await updateSnapshotSharing(shareTarget.id, sharedWithTenants, tenantId)
+          if (!result.success) throw new Error(result.error)
+          notify(t('tenants.sharing.updated'), 'success')
+          if (shareTarget.kind === 'dump') loadDumps(); else loadSnapshots()
+        }}
+      />
 
       {/* Dump context menu */}
       <Menu

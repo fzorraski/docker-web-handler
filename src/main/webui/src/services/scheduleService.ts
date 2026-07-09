@@ -57,6 +57,7 @@ export async function createSchedule(request: {
   containerName?: string
   createConfig?: object
   operationsPassword?: string
+  tenantId?: string
 }): Promise<ContainerSchedule> {
   const res = await postJson(API + 'create', request)
   return handleResponse(res)

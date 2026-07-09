@@ -60,6 +60,7 @@ export async function prepareRunContainer(body: {
   migrationSourceVersion?: string | null
   migrationTargetVersion?: string | null
   webhookNotify?: boolean
+  tenantId?: string
 }): Promise<string> {
   const res = await fetchWithAuth('/api/containers/sse/run/prepare', {
     method: 'POST',
@@ -345,6 +346,8 @@ export async function prepareSnapshot(body: {
   password: string
   containerName?: string
   temporary?: boolean
+  tenantId?: string
+  sharedWithTenants?: string[]
 }): Promise<string> {
   const res = await fetchWithAuth('/api/database/snapshots/sse/create/prepare', {
     method: 'POST',

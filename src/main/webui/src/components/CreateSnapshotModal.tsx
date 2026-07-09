@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import TenantSelect, { useTenantChoice } from './TenantSelect'
 import { useSseOperation } from '../hooks/useSseOperation'
 import {
   Dialog,
@@ -17,6 +18,7 @@ import {
   FormControlLabel,
   Switch,
   Autocomplete,
+  Box,
 } from '@mui/material'
 import { Close, CameraAlt, Download } from '@mui/icons-material'
 import { MobileDateTimePicker } from '@mui/x-date-pickers/MobileDateTimePicker'
@@ -51,6 +53,8 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
   const [format, setFormat] = useState<'CUSTOM' | 'SQL'>('CUSTOM')
   const [label, setLabel] = useState('')
   const [description, setDescription] = useState('')
+  const [tenantId, setTenantId] = useState('')
+  const showTenantSelect = useTenantChoice()
   const [expirationEnabled, setExpirationEnabled] = useState(false)
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(dayjs().add(7, 'day'))
   const [password, setPassword] = useState('')
@@ -101,6 +105,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
     setFormat('CUSTOM')
     setLabel('')
     setDescription('')
+    setTenantId('')
     setExpirationEnabled(false)
     setExpiresAt(dayjs().add(7, 'day'))
     setPassword('')
@@ -145,6 +150,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
         password,
         containerName,
         temporary: download,
+        tenantId: tenantId || undefined,
       })
 
       sse.start(
@@ -311,6 +317,12 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
               slotProps={{ htmlInput: { maxLength: 500 } }}
               sx={{ mb: 3 }}
             />
+
+            {showTenantSelect && (
+              <Box sx={{ mb: 3 }}>
+                <TenantSelect value={tenantId} onChange={setTenantId} />
+              </Box>
+            )}
 
             <Grid container spacing={2} sx={{ mb: 2 }} alignItems="center">
               <Grid size={{ xs: 12, md: 4 }}>

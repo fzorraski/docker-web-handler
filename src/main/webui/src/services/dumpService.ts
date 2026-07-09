@@ -18,7 +18,7 @@ export async function listDumps(): Promise<DatabaseDump[]> {
 export function uploadDump(
   file: File,
   uploadPassword: string,
-  options?: { databaseName?: string; version?: string; expiresAt?: string; description?: string },
+  options?: { databaseName?: string; version?: string; expiresAt?: string; description?: string; tenantId?: string; sharedWithTenants?: string[] },
   onProgress?: (percent: number) => void,
 ): Promise<{ success: boolean; dump?: DatabaseDump; error?: string }> {
   return new Promise((resolve) => {
@@ -29,6 +29,8 @@ export function uploadDump(
     if (options?.version) formData.append('version', options.version)
     if (options?.expiresAt) formData.append('expiresAt', options.expiresAt)
     if (options?.description) formData.append('description', options.description)
+    if (options?.tenantId) formData.append('tenantId', options.tenantId)
+    if (options?.sharedWithTenants?.length) formData.append('sharedWithTenants', options.sharedWithTenants.join(','))
 
     const xhr = new XMLHttpRequest()
 
@@ -183,6 +185,25 @@ export async function updateDumpMetadata(
       'X-Dump-Password': operationsPassword,
     },
     body: JSON.stringify({ version, databaseName, description }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.error || res.statusText }
+  }
+  return { success: true }
+}
+
+export async function updateDumpSharing(
+  id: string,
+  sharedWithTenants: string[],
+  tenantId: string | null | undefined,
+): Promise<{ success: boolean; error?: string }> {
+  const body: Record<string, unknown> = { sharedWithTenants }
+  if (tenantId !== undefined) body.tenantId = tenantId
+  const res = await fetchWithAuth(API + 'sharing/' + encodeURIComponent(id), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))

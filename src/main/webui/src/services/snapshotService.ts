@@ -26,6 +26,25 @@ export async function deleteSnapshot(
   return { success: true }
 }
 
+export async function updateSnapshotSharing(
+  id: string,
+  sharedWithTenants: string[],
+  tenantId: string | null | undefined,
+): Promise<{ success: boolean; error?: string }> {
+  const body: Record<string, unknown> = { sharedWithTenants }
+  if (tenantId !== undefined) body.tenantId = tenantId
+  const res = await fetchWithAuth(API + 'sharing/' + encodeURIComponent(id), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    return { success: false, error: data.error || res.statusText }
+  }
+  return { success: true }
+}
+
 export async function deleteSnapshotsBulk(
   ids: string[],
   operationsPassword: string,
