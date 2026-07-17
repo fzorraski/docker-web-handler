@@ -12,6 +12,14 @@ public interface ManagedDatabaseRepository {
 
     void save(ManagedDatabase db);
 
+    /**
+     * Atomically mutates the stored record (matched case-insensitively) -
+     * concurrent edits of other fields (protection flag, description, tenant)
+     * are not clobbered by a stale full-object save. Returns false when no
+     * record exists yet; callers then create one via {@link #save}.
+     */
+    boolean update(String repository, String name, java.util.function.Consumer<ManagedDatabase> mutator);
+
     void delete(String repository, String name);
 
     Optional<ManagedDatabase> find(String repository, String name);

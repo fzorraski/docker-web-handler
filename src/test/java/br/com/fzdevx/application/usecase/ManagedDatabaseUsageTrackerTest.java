@@ -14,6 +14,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -47,20 +48,24 @@ class ManagedDatabaseUsageTrackerTest {
     void markUsed_existingRecord_updatesTimestampAndInvalidatesCache() {
         ManagedDatabase existing = new ManagedDatabase("myrepo", "mydb");
         existing.setAppLastUsedAt(Instant.parse("2026-01-01T00:00:00Z"));
-        when(repository.find("myrepo", "mydb")).thenReturn(Optional.of(existing));
+        when(repository.update(eq("myrepo"), eq("mydb"), any())).thenAnswer(invocation -> {
+            java.util.function.Consumer<ManagedDatabase> mutator = invocation.getArgument(2);
+            mutator.accept(existing);
+            return true;
+        });
 
         Instant when = Instant.parse("2026-05-29T10:00:00Z");
         tracker.markUsed("myrepo", "mydb", when);
 
-        ArgumentCaptor<ManagedDatabase> captor = ArgumentCaptor.forClass(ManagedDatabase.class);
-        verify(repository).save(captor.capture());
-        assertEquals(when, captor.getValue().getAppLastUsedAt());
+        // targeted mutation, never a stale full-object save
+        assertEquals(when, existing.getAppLastUsedAt());
+        verify(repository, never()).save(any());
         verify(listManagedDatabasesUseCase).invalidateCache("myrepo");
     }
 
     @Test
     void markUsed_missingRecord_createsNewWithTimestamp() {
-        when(repository.find("myrepo", "newdb")).thenReturn(Optional.empty());
+        when(repository.update(eq("myrepo"), eq("newdb"), any())).thenReturn(false);
 
         Instant when = Instant.parse("2026-05-29T10:00:00Z");
         tracker.markUsed("myrepo", "newdb", when);
@@ -75,7 +80,7 @@ class ManagedDatabaseUsageTrackerTest {
 
     @Test
     void markUsed_repositoryFailure_doesNotPropagate() {
-        when(repository.find(anyString(), anyString())).thenThrow(new RuntimeException("io error"));
+        when(repository.update(anyString(), anyString(), any())).thenThrow(new RuntimeException("io error"));
 
         // Must NOT throw — usage tracking is non-critical and must never break
         // the caller's flow (container start, migration, restore, etc.).
@@ -86,7 +91,7 @@ class ManagedDatabaseUsageTrackerTest {
 
     @Test
     void markUsed_saveFailure_doesNotPropagate() {
-        when(repository.find(anyString(), anyString())).thenReturn(Optional.empty());
+        when(repository.update(anyString(), anyString(), any())).thenReturn(false);
         doThrow(new RuntimeException("disk full")).when(repository).save(any());
 
         tracker.markUsed("myrepo", "mydb");

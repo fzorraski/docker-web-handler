@@ -106,19 +106,21 @@ public class ManageTenantsUseCase {
         List<String> enabledDatabases = validateEntitlementList(
                 request.getEnabledDatabases(), knownDatabases(), "database connection");
 
+        Tenant[] result = new Tenant[1];
         boolean found = tenantRepository.update(id, tenant -> {
             tenant.setName(name);
             tenant.setDescription(description);
             tenant.setEnabledRepositories(enabledRepositories);
             tenant.setEnabledDatabases(enabledDatabases);
             tenant.setUpdatedAt(Instant.now());
+            result[0] = tenant;
         });
         if (!found) {
             throw new EntityNotFoundException("Tenant not found.");
         }
         authorizationService.invalidateCache();
         auditLogger.log("TENANT_UPDATE", name, entitlementDetail(enabledRepositories, enabledDatabases));
-        return requireTenant(id);
+        return result[0];
     }
 
     /** Global option lists for the tenant entitlement editor in the admin UI. */

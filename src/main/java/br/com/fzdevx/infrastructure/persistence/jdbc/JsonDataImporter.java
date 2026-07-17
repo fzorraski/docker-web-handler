@@ -167,8 +167,20 @@ public class JsonDataImporter {
         }
         Path path = Path.of(file);
         if (!Files.exists(path)) {
+            if (marker != null) {
+                // A previous import crashed AND the source file is now gone.
+                // Returning silently would let the app run on a half-imported
+                // table for weeks and then wipe it once the file reappears.
+                throw new IllegalStateException(
+                        "Import of '" + store + "' was interrupted on a previous boot and its source file "
+                                + file + " is now missing. Restore the file to retry the import, or delete the "
+                                + "json_import_history row for '" + store + "' to accept the current table contents.");
+            }
             return;
         }
+        // fail loudly on an unreadable/corrupt file BEFORE the store repositories
+        // silently turn it into an empty list ("successful" import of nothing)
+        int sourceEntries = countSourceEntries(store, path);
         if (marker != null) {
             // a previous run crashed mid-import: wipe the partial rows and retry
             Log.warnf("Import of '%s' was interrupted on a previous boot - retrying from scratch.", store);
@@ -196,6 +208,13 @@ public class JsonDataImporter {
         int imported;
         try {
             imported = work.getAsInt();
+            // the repositories swallow binding errors into empty lists; a store
+            // that visibly holds entries but imported none is a failed import
+            if (sourceEntries > 0 && imported == 0) {
+                throw new IllegalStateException(
+                        file + " contains " + sourceEntries + " entr(y/ies) but none could be read - "
+                                + "the file may not match the expected format.");
+            }
         } catch (RuntimeException e) {
             // best-effort cleanup; the in-progress marker makes the next boot retry cleanly
             try {
@@ -210,6 +229,39 @@ public class JsonDataImporter {
                 imported, store);
         Log.infof("Imported %d record(s) from %s into %s.", imported, file, table);
         renameImported(path);
+    }
+
+    /**
+     * Number of top-level entries in the source file. Throws (aborting
+     * startup) when the file cannot be read or is not valid JSON - a corrupt
+     * users.json must never be "imported" as an empty store and renamed away.
+     */
+    private int countSourceEntries(String store, Path path) {
+        String content;
+        try {
+            content = Files.readString(path);
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                    "Cannot read " + path + " for the '" + store + "' import - fix the file "
+                            + "(permissions/corruption) or move it away.", e);
+        }
+        if (content.isBlank()) {
+            return 0;
+        }
+        try {
+            Object parsed = JdbcSupport.JSONB.fromJson(content, Object.class);
+            if (parsed instanceof java.util.Collection<?> collection) {
+                return collection.size();
+            }
+            if (parsed instanceof Map<?, ?> map) {
+                return map.size();
+            }
+            return 1;
+        } catch (RuntimeException e) {
+            throw new IllegalStateException(
+                    path + " is not valid JSON - fix the file or move it away before the '"
+                            + store + "' import can run.", e);
+        }
     }
 
     private void renameImported(Path path) {

@@ -947,10 +947,14 @@ public class ManagedDatabaseController {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Description exceeds maximum length of 500 characters.")).build();
         }
-        ManagedDatabase md = managedDatabaseRepository.find(repository, databaseName)
-                .orElseGet(() -> new ManagedDatabase(repository, databaseName));
-        md.setDescription(description);
-        managedDatabaseRepository.save(md);
+        // targeted mutation - never clobbers concurrent protect/usage writes
+        boolean updated = managedDatabaseRepository.update(repository, databaseName,
+                md -> md.setDescription(description));
+        if (!updated) {
+            ManagedDatabase md = new ManagedDatabase(repository, databaseName);
+            md.setDescription(description);
+            managedDatabaseRepository.save(md);
+        }
         listManagedDatabasesUseCase.invalidateCache(repository);
 
         return Response.ok(Map.of("success", true)).build();
@@ -986,16 +990,24 @@ public class ManagedDatabaseController {
 
         requireDbVisible(repository, databaseName);
 
-        ManagedDatabase md = managedDatabaseRepository.find(repository, databaseName)
-                .orElseGet(() -> new ManagedDatabase(repository, databaseName));
-
-        md.setProtectedFlag(!md.isProtectedFlag());
-        managedDatabaseRepository.save(md);
+        // targeted mutation - the toggle reads the freshest flag under lock,
+        // so it cannot clobber (or be clobbered by) concurrent usage writes
+        boolean[] nowProtected = new boolean[1];
+        boolean updated = managedDatabaseRepository.update(repository, databaseName, stored -> {
+            stored.setProtectedFlag(!stored.isProtectedFlag());
+            nowProtected[0] = stored.isProtectedFlag();
+        });
+        if (!updated) {
+            ManagedDatabase created = new ManagedDatabase(repository, databaseName);
+            created.setProtectedFlag(true);
+            nowProtected[0] = true;
+            managedDatabaseRepository.save(created);
+        }
         listManagedDatabasesUseCase.invalidateCache(repository);
 
         // Auto-disable database deletion on containers when protecting
         int disabledDeletionCount = 0;
-        if (md.isProtectedFlag()) {
+        if (nowProtected[0]) {
             List<ContainerExpiration> expirations = expirationService.findByDatabaseName(databaseName);
             for (ContainerExpiration exp : expirations) {
                 if (exp.isDeleteDatabaseOnExpiration()) {
@@ -1009,7 +1021,7 @@ public class ManagedDatabaseController {
             }
         }
 
-        return Response.ok(Map.of("success", true, "protected", md.isProtectedFlag(),
+        return Response.ok(Map.of("success", true, "protected", nowProtected[0],
                 "disabledDeletionCount", disabledDeletionCount)).build();
     }
 

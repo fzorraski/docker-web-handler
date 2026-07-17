@@ -11,6 +11,7 @@ import br.com.fzdevx.infrastructure.util.DateFormatter;
 import br.com.fzdevx.infrastructure.util.SanitizeHtml;
 import com.github.dockerjava.api.model.Container;
 import com.github.dockerjava.api.model.Image;
+import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -64,8 +65,15 @@ public class ListImagesUseCase {
                 .collect(Collectors.toSet());
         imageUsageTracker.cleanup(allImageIds);
 
-        // one bulk read instead of a per-image lookup inside the loop below
-        Map<String, Instant> lastUsedByImage = imageUsageTracker.getAllLastUsed();
+        // one bulk read instead of a per-image lookup inside the loop below;
+        // listing degrades to "no usage data" on a store blip (prune must not)
+        Map<String, Instant> lastUsedByImage;
+        try {
+            lastUsedByImage = imageUsageTracker.getAllLastUsed();
+        } catch (RuntimeException e) {
+            Log.warnf("Image usage data unavailable, listing without it: %s", e.getMessage());
+            lastUsedByImage = Map.of();
+        }
 
         // Build parent -> children map
         Map<String, List<String>> childrenMap = new HashMap<>();

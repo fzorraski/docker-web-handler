@@ -56,6 +56,29 @@ public class PgManagedDatabaseRepository implements ManagedDatabaseRepository {
     }
 
     @Override
+    public boolean update(String repository, String name, java.util.function.Consumer<ManagedDatabase> mutator) {
+        return jdbc.inTransaction(connection -> {
+            Optional<ManagedDatabase> current = jdbc.queryOne(connection,
+                    SELECT + "WHERE lower(repository) = lower(?) AND lower(name) = lower(?) FOR UPDATE",
+                    PgManagedDatabaseRepository::map, repository, name);
+            if (current.isEmpty()) {
+                return false;
+            }
+            ManagedDatabase db = current.get();
+            mutator.accept(db);
+            jdbc.update(connection, """
+                    UPDATE managed_database SET protected_flag = ?, app_last_used_at = ?, created_at = ?,
+                        description = ?, last_restored_from = ?, last_restored_at = ?, created_by = ?, tenant_id = ?
+                    WHERE repository = ? AND name = ?
+                    """,
+                    db.isProtectedFlag(), db.getAppLastUsedAt(), db.getCreatedAt(), db.getDescription(),
+                    db.getLastRestoredFrom(), db.getLastRestoredAt(), db.getCreatedBy(), db.getTenantId(),
+                    db.getRepository(), db.getName());
+            return true;
+        });
+    }
+
+    @Override
     public void delete(String repository, String name) {
         jdbc.update("DELETE FROM managed_database WHERE lower(repository) = lower(?) AND lower(name) = lower(?)",
                 repository, name);
@@ -87,11 +110,19 @@ public class PgManagedDatabaseRepository implements ManagedDatabaseRepository {
         // per database. The CI-index upsert creates missing records and bumps
         // timestamps; the WHERE clause never lets a timestamp regress.
         // collapse case-variants to one row per CI identity (keeping the max
-        // timestamp) - ON CONFLICT cannot affect the same row twice in one statement
+        // timestamp) - ON CONFLICT cannot affect the same row twice in one
+        // statement; blank names and null timestamps are skipped like the
+        // file backend does
         Map<String, Map.Entry<String, Instant>> byLowerName = new java.util.LinkedHashMap<>();
         for (Map.Entry<String, Instant> entry : updates.entrySet()) {
+            if (entry.getKey() == null || entry.getKey().isBlank() || entry.getValue() == null) {
+                continue;
+            }
             byLowerName.merge(entry.getKey().toLowerCase(), entry,
                     (a, b) -> a.getValue().isAfter(b.getValue()) ? a : b);
+        }
+        if (byLowerName.isEmpty()) {
+            return;
         }
         String[] names = new String[byLowerName.size()];
         java.sql.Timestamp[] timestamps = new java.sql.Timestamp[byLowerName.size()];
@@ -105,8 +136,8 @@ public class PgManagedDatabaseRepository implements ManagedDatabaseRepository {
             java.sql.Array nameArray = connection.createArrayOf("text", names);
             java.sql.Array tsArray = connection.createArrayOf("timestamptz", timestamps);
             jdbc.update(connection, """
-                    INSERT INTO managed_database (repository, name, app_last_used_at)
-                    SELECT ?, v.name, v.used_at
+                    INSERT INTO managed_database (repository, name, app_last_used_at, created_at)
+                    SELECT ?, v.name, v.used_at, now()
                     FROM unnest(?, ?) AS v(name, used_at)
                     ON CONFLICT (lower(repository), lower(name)) DO UPDATE
                     SET app_last_used_at = EXCLUDED.app_last_used_at

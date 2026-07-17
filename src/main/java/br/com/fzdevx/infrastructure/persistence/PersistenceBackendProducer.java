@@ -39,19 +39,46 @@ public class PersistenceBackendProducer {
     public static final String POSTGRES = "postgres";
     public static final String FILE = "file";
 
+    private static final String DEFAULT_DB_PASSWORD = "dockerwebhandler";
+
     @Inject
     @ConfigProperty(name = "persistence.backend", defaultValue = FILE)
     String backend;
+
+    @Inject
+    @ConfigProperty(name = "quarkus.datasource.active", defaultValue = "true")
+    boolean datasourceActive;
+
+    @Inject
+    @ConfigProperty(name = "quarkus.datasource.password", defaultValue = "")
+    String datasourcePassword;
+
+    @Inject
+    @ConfigProperty(name = "quarkus.profile", defaultValue = "prod")
+    String profile;
 
     void validate(@jakarta.enterprise.event.Observes io.quarkus.runtime.StartupEvent event) {
         if (!POSTGRES.equals(backend) && !FILE.equals(backend)) {
             throw new IllegalStateException(
                     "Invalid persistence.backend '" + backend + "' - use 'postgres' or 'file'.");
         }
+        if (POSTGRES.equals(backend) && !datasourceActive) {
+            throw new IllegalStateException(
+                    "persistence.backend=postgres requires the application database: either remove "
+                            + "APP_DB_ACTIVE=false, or also set PERSISTENCE_BACKEND=file for the JSON fallback.");
+        }
         Log.infof("Persistence backend: %s", backend);
         if (FILE.equals(backend)) {
             Log.info("File persistence backend is active. To run without any PostgreSQL, "
                     + "also set APP_DB_ACTIVE=false (deactivates the datasource and Flyway).");
+        }
+        // the app store holds password hashes and session-token hashes -
+        // running production on the publicly-known default credential must
+        // at least be impossible to miss in the logs
+        if (POSTGRES.equals(backend) && "prod".equals(profile)
+                && DEFAULT_DB_PASSWORD.equals(datasourcePassword)) {
+            Log.warn("SECURITY: the application database is using the DEFAULT password. "
+                    + "Set APP_DB_PASSWORD to a strong secret (and update the database role).");
         }
     }
 

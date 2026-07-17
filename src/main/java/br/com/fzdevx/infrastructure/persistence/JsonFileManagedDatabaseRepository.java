@@ -45,6 +45,11 @@ public class JsonFileManagedDatabaseRepository
     }
 
     @Override
+    public boolean update(String repository, String name, java.util.function.Consumer<ManagedDatabase> mutator) {
+        return updateEntity(db -> sameId(db, repository, name), mutator);
+    }
+
+    @Override
     public void delete(String repository, String name) {
         deleteEntity(db -> sameId(db, repository, name));
     }

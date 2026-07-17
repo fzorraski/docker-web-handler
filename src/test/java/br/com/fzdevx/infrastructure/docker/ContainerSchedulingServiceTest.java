@@ -185,7 +185,9 @@ class ContainerSchedulingServiceTest {
         service.transferSchedules("oldId12345", "newId12345");
 
         assertEquals("newId12345", schedule.getContainerId());
-        verify(scheduleRepository).save(schedule);
+        // targeted mutation - a full save could clobber a concurrent admin edit
+        verify(scheduleRepository).update(eq(schedule.getId()), any());
+        verify(scheduleRepository, never()).save(any());
     }
 
     @Test

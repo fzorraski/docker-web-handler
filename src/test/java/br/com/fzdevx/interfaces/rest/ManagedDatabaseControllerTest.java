@@ -62,6 +62,19 @@ class ManagedDatabaseControllerTest {
         setField("managedEnabled", true);
         when(passwordValidationService.validateOperationsPassword(PASSWORD)).thenReturn(true);
         when(databaseService.hasDatabaseConfig(REPO)).thenReturn(true);
+        // mirror the real atomic update: apply the mutator to whatever find() is stubbed with
+        org.mockito.Mockito.lenient()
+                .when(managedDatabaseRepository.update(anyString(), anyString(), any()))
+                .thenAnswer(invocation -> {
+                    var stored = managedDatabaseRepository.find(
+                            invocation.getArgument(0), invocation.getArgument(1));
+                    if (stored.isEmpty()) {
+                        return false;
+                    }
+                    java.util.function.Consumer<ManagedDatabase> mutator = invocation.getArgument(2);
+                    mutator.accept(stored.get());
+                    return true;
+                });
     }
 
     // ---- isEnabled ----
@@ -331,20 +344,26 @@ class ManagedDatabaseControllerTest {
     @Test
     void updateDescription_exactly500_succeeds() {
         String desc = "x".repeat(500);
-        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(new ManagedDatabase(REPO, DB_NAME)));
+        ManagedDatabase existing = new ManagedDatabase(REPO, DB_NAME);
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(existing));
 
         Response response = controller.updateDescription(REPO, DB_NAME, PASSWORD, Map.of("description", desc));
         assertEquals(200, response.getStatus());
-        verify(managedDatabaseRepository).save(argThat(md -> md.getDescription().equals(desc)));
+        // targeted mutation, never a stale full-object save
+        assertEquals(desc, existing.getDescription());
+        verify(managedDatabaseRepository, never()).save(any());
     }
 
     @Test
     void updateDescription_success_savesAndInvalidatesCache() {
-        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(new ManagedDatabase(REPO, DB_NAME)));
+        ManagedDatabase existing = new ManagedDatabase(REPO, DB_NAME);
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(existing));
 
         Response response = controller.updateDescription(REPO, DB_NAME, PASSWORD, Map.of("description", "note"));
         assertEquals(200, response.getStatus());
-        verify(managedDatabaseRepository).save(argThat(md -> "note".equals(md.getDescription())));
+        // targeted mutation, never a stale full-object save
+        assertEquals("note", existing.getDescription());
+        verify(managedDatabaseRepository, never()).save(any());
         verify(listManagedDatabasesUseCase).invalidateCache(REPO);
     }
 

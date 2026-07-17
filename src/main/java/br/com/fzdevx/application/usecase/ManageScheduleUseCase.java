@@ -254,14 +254,29 @@ public class ManageScheduleUseCase {
     }
 
     public ContainerSchedule update(String id, UpdateScheduleRequest request) {
+        // The cross-tenant Docker check runs BEFORE the mutation: it is a
+        // Docker API round trip and must not execute while the mutator holds
+        // the store's row/file lock.
+        if (request.getContainerId() != null) {
+            Optional<String> containerIdError = InputValidator.validateContainerId(request.getContainerId());
+            if (containerIdError.isPresent()) {
+                throw new InvalidInputException(containerIdError.get());
+            }
+            containerTenantGuard.requireVisible(request.getContainerId());
+        }
         // atomic mutation: an admin edit must not write back stale execution
-        // fields over a concurrently finishing run (and vice versa)
-        boolean found = scheduleRepository.update(id, schedule -> applyUpdate(schedule, request));
+        // fields over a concurrently finishing run (and vice versa); the
+        // mutated object is captured so the response reflects exactly what
+        // this request wrote (no non-atomic re-read)
+        ContainerSchedule[] result = new ContainerSchedule[1];
+        boolean found = scheduleRepository.update(id, schedule -> {
+            applyUpdate(schedule, request);
+            result[0] = schedule;
+        });
         if (!found) {
             throw new EntityNotFoundException("Schedule not found: " + id);
         }
-        return scheduleRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Schedule not found: " + id));
+        return result[0];
     }
 
     private void applyUpdate(ContainerSchedule schedule, UpdateScheduleRequest request) {
@@ -296,12 +311,8 @@ public class ManageScheduleUseCase {
         }
 
         if (request.getContainerId() != null) {
-            Optional<String> containerIdError = InputValidator.validateContainerId(request.getContainerId());
-            if (containerIdError.isPresent()) {
-                throw new InvalidInputException(containerIdError.get());
-            }
-            // same cross-tenant guard as create - updates can repoint the target
-            containerTenantGuard.requireVisible(request.getContainerId());
+            // validated and tenant-guarded in update() BEFORE the mutation -
+            // no Docker call may run while the store lock is held
             schedule.setContainerId(request.getContainerId());
         }
         if (request.getContainerName() != null && !request.getContainerName().isBlank()) {
@@ -336,8 +347,12 @@ public class ManageScheduleUseCase {
 
     public ContainerSchedule toggleEnabled(String id) {
         // atomic mutation: the guard evaluates against the freshest state, so a
-        // stale read can never re-arm an executed one-time schedule
+        // stale read can never re-arm an executed one-time schedule; the
+        // mutated object is captured so the response reflects this request's
+        // write without a non-atomic re-read
+        ContainerSchedule[] result = new ContainerSchedule[1];
         boolean found = scheduleRepository.update(id, schedule -> {
+            result[0] = schedule;
             // Block re-enabling a one-time schedule that already executed
             if (!schedule.isEnabled()
                     && schedule.getScheduleType() == ScheduleType.ONE_TIME
@@ -361,8 +376,7 @@ public class ManageScheduleUseCase {
         if (!found) {
             throw new EntityNotFoundException("Schedule not found: " + id);
         }
-        return scheduleRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Schedule not found: " + id));
+        return result[0];
     }
 
     public Optional<ContainerSchedule> findById(String id) {

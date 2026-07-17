@@ -80,6 +80,10 @@ public class ContainerController {
         List<Container> dockerContainers = dockerClient.listContainersCmd().withShowAll(true).exec();
         List<DockerContainer> containers = new ArrayList<>();
 
+        // one store read for all expirations instead of up to four per container
+        Map<String, br.com.fzdevx.domain.model.ContainerExpiration> expirations =
+                expirationService.snapshotByContainerId();
+
         String selfId = SelfContainerDetector.findSelfContainerId(dockerContainers);
         for (Container dc : dockerContainers) {
             if (isDockerWebHandlerImage(dc.getImage())) continue;
@@ -128,22 +132,19 @@ public class ContainerController {
                 dockerContainer.setTenantId(dc.getLabels().get(Constants.TENANT_LABEL));
             }
 
-            Instant expiresAt = expirationService.getExpiresAt(dockerContainer.getContainerId());
-            if (dockerContainer.getRepository() == null) {
-                String repoFromExpiration = expirationService.getRepository(dockerContainer.getContainerId());
-                if (repoFromExpiration != null) {
-                    dockerContainer.setRepository(repoFromExpiration);
+            br.com.fzdevx.domain.model.ContainerExpiration expiration =
+                    expirations.get(dockerContainer.getContainerId());
+            if (expiration != null) {
+                if (dockerContainer.getRepository() == null && expiration.getRepository() != null) {
+                    dockerContainer.setRepository(expiration.getRepository());
                 }
-            }
-            if (expiresAt != null) {
-                dockerContainer.setExpiresAt(expiresAt.toString());
-            }
-
-            String scheduledDbName = expirationService.getDatabaseName(dockerContainer.getContainerId());
-            if (scheduledDbName != null) {
-                dockerContainer.setDatabaseName(scheduledDbName);
-                dockerContainer.setDeleteDatabaseOnExpiration(
-                        expirationService.isDeleteDatabaseOnExpiration(dockerContainer.getContainerId()));
+                if (expiration.getExpiresAt() != null) {
+                    dockerContainer.setExpiresAt(expiration.getExpiresAt().toString());
+                }
+                if (expiration.getDatabaseName() != null) {
+                    dockerContainer.setDatabaseName(expiration.getDatabaseName());
+                    dockerContainer.setDeleteDatabaseOnExpiration(expiration.isDeleteDatabaseOnExpiration());
+                }
             }
 
             if (dockerContainer.getRepository() != null) {

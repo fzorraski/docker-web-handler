@@ -56,10 +56,14 @@ public class AuthSessionManager {
     private final ConcurrentHashMap<String, CachedSession> cache = new ConcurrentHashMap<>();
 
     /**
-     * Bumped BEFORE every invalidation's store delete + cache purge. A cache
-     * refill only lands when the epoch is unchanged since before its store
-     * read, so an in-flight validation can never resurrect a session that was
-     * revoked while it was reading - local revocation stays instant.
+     * Bumped by every invalidation/eviction AFTER its store delete and BEFORE
+     * its cache purge (delete -> bump -> purge). A cache put only lands when
+     * the epoch is unchanged since before the writer's store read: a store
+     * read that still saw the session strictly precedes the delete and hence
+     * the bump, so either the put-time epoch check fails, or the put happens
+     * before the bump and the invalidator's subsequent purge removes it.
+     * Either way a revoked session can never stick in the cache - local
+     * revocation stays instant.
      */
     private final java.util.concurrent.atomic.AtomicLong invalidationEpoch =
             new java.util.concurrent.atomic.AtomicLong();
@@ -92,8 +96,11 @@ public class AuthSessionManager {
         String token = UUID.randomUUID().toString();
         String hash = hash(token);
         Instant now = Instant.now();
+        long epoch = invalidationEpoch.get();
         sessionRepository.save(new AuthSession(hash, userId, now, now));
-        cache.put(hash, new CachedSession(userId, now, now));
+        // epoch-guarded like every other cache write: a concurrent
+        // invalidate-all-for-user must not be defeated by this put
+        putIfNoInvalidationSince(epoch, hash, new CachedSession(userId, now, now));
         return token;
     }
 
@@ -145,18 +152,24 @@ public class AuthSessionManager {
         // were throttled (e.g. timeout 1 min with the default 60s interval).
         long effectiveTouchInterval = Math.min(touchIntervalSeconds, Math.max(1, timeoutSeconds / 2));
         if (cached.lastAccessedAt().isBefore(now.minusSeconds(effectiveTouchInterval))) {
-            sessionRepository.touch(hash, now);
-            cached = new CachedSession(cached.userId(), now, now);
-            putIfNoInvalidationSince(epoch, hash, cached);
+            try {
+                sessionRepository.touch(hash, now);
+                cached = new CachedSession(cached.userId(), now, now);
+                putIfNoInvalidationSince(epoch, hash, cached);
+            } catch (RuntimeException e) {
+                // The touch is best-effort bookkeeping (already throttled and
+                // lossy). The cache just proved the session valid - a store
+                // blip must not fail authentication; the next request retries.
+                Log.warnf("Failed to touch session (store unavailable?): %s", e.getMessage());
+            }
         }
         return cached;
     }
 
     /**
-     * Caches the entry only when no invalidation ran since the caller read the
-     * store. Invalidators bump the epoch BEFORE deleting/purging, so either
-     * this check fails (no put) or the invalidator's purge runs after our put
-     * and removes it - a revoked session can never stick in the cache.
+     * Caches the entry only when no invalidation ran since the caller read
+     * the store (see {@link #invalidationEpoch} for why the delete -> bump ->
+     * purge ordering of the invalidators makes this sufficient).
      */
     private void putIfNoInvalidationSince(long epoch, String hash, CachedSession cached) {
         if (invalidationEpoch.get() == epoch) {
@@ -164,19 +177,21 @@ public class AuthSessionManager {
         }
     }
 
+    // Invalidators follow delete -> bump -> purge; see invalidationEpoch.
+
     public void invalidateSession(String sessionId) {
         if (sessionId != null) {
             String hash = hash(sessionId);
-            invalidationEpoch.incrementAndGet();
             sessionRepository.delete(hash);
+            invalidationEpoch.incrementAndGet();
             cache.remove(hash);
         }
     }
 
     public void invalidateSessionsForUser(String userId) {
         if (userId == null) return;
-        invalidationEpoch.incrementAndGet();
         sessionRepository.deleteForUser(userId);
+        invalidationEpoch.incrementAndGet();
         cache.values().removeIf(session -> userId.equals(session.userId()));
     }
 
@@ -184,8 +199,8 @@ public class AuthSessionManager {
     public void invalidateSessionsForUserExcept(String userId, String sessionIdToKeep) {
         if (userId == null) return;
         String keepHash = sessionIdToKeep == null ? "" : hash(sessionIdToKeep);
-        invalidationEpoch.incrementAndGet();
         sessionRepository.deleteForUserExcept(userId, keepHash);
+        invalidationEpoch.incrementAndGet();
         cache.entrySet().removeIf(entry -> userId.equals(entry.getValue().userId())
                 && !entry.getKey().equals(keepHash));
     }
@@ -202,7 +217,10 @@ public class AuthSessionManager {
         try {
             Instant now = Instant.now();
             Instant cutoff = now.minusSeconds((long) runtimeSettings.getSessionTimeoutMinutes() * 60);
+            // same delete -> bump -> purge ordering as the invalidators, so a
+            // racing validation cannot re-cache a row this sweep just deleted
             int evicted = sessionRepository.deleteIdleSince(cutoff);
+            invalidationEpoch.incrementAndGet();
             cache.entrySet().removeIf(entry ->
                     entry.getValue().cachedAt().isBefore(now.minusSeconds(CACHE_TTL_SECONDS))
                             || entry.getValue().lastAccessedAt().isBefore(cutoff));

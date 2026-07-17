@@ -33,10 +33,15 @@ public class ManagedDatabaseUsageTracker {
             return;
         }
         try {
-            ManagedDatabase md = managedDatabaseRepository.find(repository, databaseName)
-                    .orElseGet(() -> new ManagedDatabase(repository, databaseName));
-            md.setAppLastUsedAt(when);
-            managedDatabaseRepository.save(md);
+            // targeted mutation: a stale full-object save here could revert a
+            // concurrent protect toggle or description edit
+            boolean updated = managedDatabaseRepository.update(repository, databaseName,
+                    md -> md.setAppLastUsedAt(when));
+            if (!updated) {
+                ManagedDatabase md = new ManagedDatabase(repository, databaseName);
+                md.setAppLastUsedAt(when);
+                managedDatabaseRepository.save(md);
+            }
             listManagedDatabasesUseCase.invalidateCache(repository);
         } catch (Exception e) {
             // Non-critical: usage tracking must never break the caller's flow.

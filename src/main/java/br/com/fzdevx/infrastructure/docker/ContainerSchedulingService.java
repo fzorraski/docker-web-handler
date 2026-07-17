@@ -156,7 +156,8 @@ public class ContainerSchedulingService {
         for (ContainerSchedule schedule : schedules) {
             cancel(schedule.getId());
             schedule.setContainerId(newContainerId);
-            scheduleRepository.save(schedule);
+            // targeted mutation: must not clobber a concurrent admin edit
+            scheduleRepository.update(schedule.getId(), stored -> stored.setContainerId(newContainerId));
             if (schedule.isEnabled()) {
                 scheduleNext(schedule);
             }
@@ -250,24 +251,52 @@ public class ContainerSchedulingService {
                         && "SKIPPED".equals(schedule.getLastExecutionStatus())
                         && schedule.getLastExecutionMessage() != null
                         && schedule.getLastExecutionMessage().contains("Container not found")) {
-                    schedule.setEnabled(false);
-                    schedule.setLastExecutionMessage(
-                            schedule.getLastExecutionMessage() + " — Schedule auto-disabled (container removed).");
-                    scheduleRepository.save(schedule);
+                    // targeted mutation: must not clobber a concurrent admin edit
+                    scheduleRepository.update(scheduleId, stored -> {
+                        stored.setEnabled(false);
+                        stored.setLastExecutionMessage(stored.getLastExecutionMessage()
+                                + " — Schedule auto-disabled (container removed).");
+                    });
                     Log.warnf("Schedule '%s' auto-disabled: target container no longer exists.", schedule.getName());
                 } else {
                     scheduleNext(schedule);
                 }
             } else if (schedule.getScheduleType() == ScheduleType.ONE_TIME) {
-                schedule.setEnabled(false);
-                scheduleRepository.save(schedule);
+                disableOneTime(scheduleId, 1);
             }
         } catch (RuntimeException e) {
             Log.errorf("Post-execution handling of schedule '%s' failed: %s", schedule.getName(), e.getMessage());
             if (schedule.getScheduleType() == ScheduleType.RECURRING && schedule.isEnabled()) {
                 scheduleNext(schedule);
+            } else if (schedule.getScheduleType() == ScheduleType.ONE_TIME) {
+                // the disable MUST eventually persist: an executed one-time
+                // schedule left enabled with no lastExecutedAt is re-run as
+                // "missed" by reloadSchedules after a restart
+                retryDisableOneTimeLater(scheduleId, 2);
             }
         }
+    }
+
+    private static final int MAX_DISABLE_RETRIES = 12;
+
+    /** Persists the one-time disable via targeted mutation, retrying on store failures. */
+    private void disableOneTime(String scheduleId, int attempt) {
+        try {
+            scheduleRepository.update(scheduleId, stored -> stored.setEnabled(false));
+        } catch (RuntimeException e) {
+            Log.errorf("Failed to disable executed one-time schedule %s (attempt %d): %s",
+                    scheduleId, attempt, e.getMessage());
+            retryDisableOneTimeLater(scheduleId, attempt + 1);
+        }
+    }
+
+    private void retryDisableOneTimeLater(String scheduleId, int nextAttempt) {
+        if (scheduler == null || nextAttempt > MAX_DISABLE_RETRIES) {
+            Log.errorf("Giving up disabling one-time schedule %s - it may re-execute after a restart.", scheduleId);
+            return;
+        }
+        scheduler.schedule(() -> disableOneTime(scheduleId, nextAttempt),
+                STORE_RETRY_MINUTES, TimeUnit.MINUTES);
     }
 
     private static final long STORE_RETRY_MINUTES = 5;
@@ -280,7 +309,12 @@ public class ContainerSchedulingService {
         }
         ScheduledFuture<?> future = scheduler.schedule(
                 () -> executeSchedule(scheduleId), STORE_RETRY_MINUTES, TimeUnit.MINUTES);
-        scheduledTasks.put(scheduleId, future);
+        // a manual execute-now can land here while the regular timer is still
+        // armed - cancel the displaced future or the action fires twice
+        ScheduledFuture<?> displaced = scheduledTasks.put(scheduleId, future);
+        if (displaced != null && displaced != future) {
+            displaced.cancel(false);
+        }
     }
 
     private void executeStart(ContainerSchedule schedule) {

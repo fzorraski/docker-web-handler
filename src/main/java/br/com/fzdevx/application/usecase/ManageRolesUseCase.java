@@ -75,17 +75,19 @@ public class ManageRolesUseCase {
                 });
 
         String description = trimmedDescription(request);
+        Role[] result = new Role[1];
         boolean found = roleRepository.update(id, stored -> {
             stored.setName(name);
             stored.setDescription(description);
             stored.setPermissions(permissions);
+            result[0] = stored;
         });
         if (!found) {
             throw new EntityNotFoundException("Role not found.");
         }
         authorizationService.invalidateCache();
         auditLogger.log("ROLE_UPDATE", name, permissions.size() + " permission(s)");
-        return requireRole(id);
+        return result[0];
     }
 
     public void delete(String id) {

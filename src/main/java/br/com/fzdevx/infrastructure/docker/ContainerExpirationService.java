@@ -97,6 +97,19 @@ public class ContainerExpirationService {
         expirationRepository.delete(shortId);
     }
 
+    /**
+     * All expirations keyed by container short id, fetched in ONE store read.
+     * List endpoints must use this instead of the per-container getters below
+     * (which each cost a store query on the postgres backend).
+     */
+    public java.util.Map<String, ContainerExpiration> snapshotByContainerId() {
+        java.util.Map<String, ContainerExpiration> byId = new java.util.HashMap<>();
+        for (ContainerExpiration expiration : expirationRepository.findAll()) {
+            byId.put(expiration.getShortId(), expiration);
+        }
+        return byId;
+    }
+
     public Instant getExpiresAt(String shortId) {
         return expirationRepository.findByContainerId(shortId)
                 .map(ContainerExpiration::getExpiresAt)

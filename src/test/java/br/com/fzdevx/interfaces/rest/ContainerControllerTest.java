@@ -218,7 +218,9 @@ class ContainerControllerTest {
         Container c = mockContainer("abcdef1234567890", "pg:16", "pg", "Up", "cmd");
         when(listContainersCmd.exec()).thenReturn(List.of(c));
         java.time.Instant expiry = java.time.Instant.parse("2025-12-31T23:59:00Z");
-        when(expirationService.getExpiresAt("abcdef1234")).thenReturn(expiry);
+        br.com.fzdevx.domain.model.ContainerExpiration expiration =
+                new br.com.fzdevx.domain.model.ContainerExpiration("abcdef1234", "abcdef1234567890", expiry);
+        when(expirationService.snapshotByContainerId()).thenReturn(java.util.Map.of("abcdef1234", expiration));
 
         List<DockerContainer> result = controller.getContainers();
 

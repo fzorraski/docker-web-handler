@@ -20,10 +20,15 @@ public interface ScheduleRepository {
     /**
      * Targeted write of the execution result fields, so a finishing run can
      * never clobber a concurrent admin edit of the schedule definition.
+     * Throws on persistence failure - scheduler execution paths must catch
+     * and log, because a bookkeeping failure must never kill the schedule.
      */
     void recordExecution(String id, String status, String message, java.time.Instant executedAt);
 
-    /** Targeted write of the next planned execution time. */
+    /**
+     * Targeted write of the next planned execution time. Throws on
+     * persistence failure - see {@link #recordExecution}.
+     */
     void updateNextExecution(String id, java.time.Instant nextExecutionAt);
 
     void delete(String id);

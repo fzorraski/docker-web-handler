@@ -427,13 +427,20 @@ public class RestoreDumpUseCase {
 
             // Track app-level usage and restore info for managed databases
             try {
-                ManagedDatabase md = managedDatabaseRepository
-                        .find(request.getRepository(), request.getTargetDatabase())
-                        .orElseGet(() -> new ManagedDatabase(request.getRepository(), request.getTargetDatabase()));
-                md.setAppLastUsedAt(Instant.now());
-                md.setLastRestoredFrom(displayName);
-                md.setLastRestoredAt(Instant.now());
-                managedDatabaseRepository.save(md);
+                Instant restoredAt = Instant.now();
+                // targeted mutation - never clobbers concurrent protect/tenant edits
+                java.util.function.Consumer<ManagedDatabase> stamp = md -> {
+                    md.setAppLastUsedAt(restoredAt);
+                    md.setLastRestoredFrom(displayName);
+                    md.setLastRestoredAt(restoredAt);
+                };
+                boolean updated = managedDatabaseRepository.update(
+                        request.getRepository(), request.getTargetDatabase(), stamp);
+                if (!updated) {
+                    ManagedDatabase md = new ManagedDatabase(request.getRepository(), request.getTargetDatabase());
+                    stamp.accept(md);
+                    managedDatabaseRepository.save(md);
+                }
                 listManagedDatabasesUseCase.invalidateCache(request.getRepository());
             } catch (Exception ignored) {
                 // Non-critical: don't fail the restore if tracking fails

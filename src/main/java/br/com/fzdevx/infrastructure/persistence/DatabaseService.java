@@ -1158,18 +1158,20 @@ public class DatabaseService implements DatabasePort {
     /** Stamps who created the database (and its owning tenant) on its metadata record. */
     private void recordCreator(String repository, String databaseName, String tenantId) {
         try {
-            var md = managedDatabaseRepository.find(repository, databaseName)
-                    .orElseGet(() -> new br.com.fzdevx.domain.model.ManagedDatabase(repository, databaseName));
-            boolean changed = false;
-            if (md.getCreatedBy() == null) {
-                md.setCreatedBy(actorResolver.usernameOrSystem());
-                changed = true;
-            }
-            if (md.getTenantId() == null && tenantId != null && !tenantId.isBlank()) {
-                md.setTenantId(tenantId);
-                changed = true;
-            }
-            if (changed) {
+            String creator = actorResolver.usernameOrSystem();
+            // targeted mutation - never clobbers concurrent protect/description edits
+            java.util.function.Consumer<br.com.fzdevx.domain.model.ManagedDatabase> stamp = md -> {
+                if (md.getCreatedBy() == null) {
+                    md.setCreatedBy(creator);
+                }
+                if (md.getTenantId() == null && tenantId != null && !tenantId.isBlank()) {
+                    md.setTenantId(tenantId);
+                }
+            };
+            boolean updated = managedDatabaseRepository.update(repository, databaseName, stamp);
+            if (!updated) {
+                var md = new br.com.fzdevx.domain.model.ManagedDatabase(repository, databaseName);
+                stamp.accept(md);
                 managedDatabaseRepository.save(md);
             }
         } catch (Exception e) {

@@ -119,19 +119,19 @@ public class ImageUsageTracker {
     /**
      * All last-used timestamps in one read - use this instead of calling
      * {@link #getLastUsed} inside a loop over images.
+     *
+     * THROWS on a store failure (postgres backend): callers that merely
+     * display the data may catch and degrade, but destructive callers
+     * (image prune) must abort rather than treat an outage as "no image
+     * was ever used" and delete recently-used images.
      */
     public Map<String, Instant> getAllLastUsed() {
         if (postgres()) {
-            try {
-                Map<String, Instant> result = new HashMap<>();
-                jdbc.query("SELECT image_id, last_used_at FROM image_usage",
-                                rs -> Map.entry(rs.getString(1), JdbcSupport.instant(rs, "last_used_at")))
-                        .forEach(entry -> result.put(entry.getKey(), entry.getValue()));
-                return result;
-            } catch (RuntimeException e) {
-                LOG.warn("Failed to read image usage data: " + e.getMessage());
-                return Map.of();
-            }
+            Map<String, Instant> result = new HashMap<>();
+            jdbc.query("SELECT image_id, last_used_at FROM image_usage",
+                            rs -> Map.entry(rs.getString(1), JdbcSupport.instant(rs, "last_used_at")))
+                    .forEach(entry -> result.put(entry.getKey(), entry.getValue()));
+            return result;
         }
         lock.readLock().lock();
         try {
