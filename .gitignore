@@ -46,3 +46,7 @@ data/
 # Frontend (Quinoa/React)
 src/main/webui/node_modules/
 src/main/webui/dist/
+
+# Stray npm/vitest artifacts (a second node_modules under src/)
+src/main/webui/src/node_modules/
+node_modules/
