@@ -56,10 +56,11 @@ public class AuditRetentionService {
             // path that is not a timer at all: lowering auditRetentionDays in
             // the admin UI calls this synchronously (ManageSettingsUseCase), so
             // without it a settings change would purge unsummarised days on the
-            // spot. The roll-up is capped at activity.summary.max-days-per-run,
-            // which bounds the added latency on that request thread.
+            // spot. The roll-up runs UNCAPPED here on purpose: the DELETE below
+            // is unbounded, so stopping at the per-run cap would purge everything
+            // older than it without ever summarising it.
             try {
-                activitySummaryService.summariseNow();
+                activitySummaryService.summariseEverything();
             } catch (Exception e) {
                 // deliberately not fatal: a stuck roll-up must not stop retention
                 // and let the audit table grow without bound. Data may be lost.

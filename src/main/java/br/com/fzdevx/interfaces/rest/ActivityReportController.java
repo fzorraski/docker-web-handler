@@ -41,6 +41,7 @@ public class ActivityReportController {
                                       @QueryParam("to") String to,
                                       @QueryParam("actor") String actor,
                                       @QueryParam("action") String action) {
+        requireActive();
         return respond(activityRepository.search(criteria(page, size, from, to, actor, action)),
                 page, size);
     }
@@ -55,6 +56,7 @@ public class ActivityReportController {
                                       @QueryParam("to") String to,
                                       @QueryParam("actor") String actor,
                                       @QueryParam("action") String action) {
+        requireActive();
         return respond(activityRepository.totalsByUser(criteria(page, size, from, to, actor, action)),
                 page, size);
     }
@@ -64,6 +66,9 @@ public class ActivityReportController {
     @Path("/actions")
     @Produces(MediaType.APPLICATION_JSON)
     public List<String> actions() {
+        if (!activitySummaryService.active()) {
+            return List.of();
+        }
         return activityRepository.distinctActions();
     }
 
@@ -76,6 +81,19 @@ public class ActivityReportController {
     @Produces(MediaType.APPLICATION_JSON)
     public Map<String, Object> status() {
         return Map.of("active", activitySummaryService.active());
+    }
+
+    /**
+     * The tables only exist on the PostgreSQL backend; querying them in file
+     * mode would 500 instead of showing the "roll-up not running" notice that
+     * /status drives.
+     */
+    private void requireActive() {
+        if (!activitySummaryService.active()) {
+            throw new InvalidInputException(
+                    "The activity roll-up is not running, so there is nothing to report. "
+                            + "It requires the PostgreSQL persistence backend.");
+        }
     }
 
     private ActivityReportCriteria criteria(int page, int size, String from, String to,

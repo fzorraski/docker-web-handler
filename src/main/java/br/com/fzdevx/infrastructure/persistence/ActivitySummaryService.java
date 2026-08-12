@@ -87,6 +87,21 @@ public class ActivitySummaryService {
      * forever.
      */
     public void summariseNow() {
+        summariseNow(maxDaysPerRun);
+    }
+
+    /**
+     * Catches up without the per-run cap, for the retention path: the cap bounds
+     * one timer tick, but the purge that follows is unbounded, so stopping at 90
+     * days would delete everything older than that unsummarised - the exact loss
+     * the ordering exists to prevent. Bounded instead by the days that actually
+     * exist between the watermark and yesterday.
+     */
+    public void summariseEverything() {
+        summariseNow(Integer.MAX_VALUE);
+    }
+
+    private void summariseNow(int dayLimit) {
         try {
             if (!active()) {
                 return;
@@ -113,7 +128,7 @@ public class ActivitySummaryService {
 
             int days = 0;
             long rows = 0;
-            for (LocalDate day = from; !day.isAfter(lastComplete) && days < maxDaysPerRun;
+            for (LocalDate day = from; !day.isAfter(lastComplete) && days < dayLimit;
                  day = day.plusDays(1)) {
                 rows += activityRepository.rollUpDay(day, startOf(day), startOf(day.plusDays(1)));
                 days++;

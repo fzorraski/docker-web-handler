@@ -77,4 +77,18 @@ class AnalysisSummaryMapperTest {
         Map<String, Object> map = AnalysisSummaryMapper.presetToMap(LogPreset.CUSTOM);
         assertNull(map.get("upstreamDurationField"));
     }
+
+    // ---- uploader attribution ----
+
+    @Test
+    void toSummaryMap_omitsUploaderUnlessAsked() {
+        LogAnalysis analysis = buildAnalysis(List.of());
+        analysis.setUploadedBy("alice");
+
+        // creator attribution is its own permission, as it is for containers,
+        // so the default must not leak the username to every LOGS_VIEW holder
+        assertFalse(AnalysisSummaryMapper.toSummaryMap(analysis).containsKey("uploadedBy"));
+        assertFalse(AnalysisSummaryMapper.toSummaryMap(analysis, false).containsKey("uploadedBy"));
+        assertEquals("alice", AnalysisSummaryMapper.toSummaryMap(analysis, true).get("uploadedBy"));
+    }
 }

@@ -110,6 +110,17 @@ public class LogAnalyzerController {
     br.com.fzdevx.infrastructure.config.RuntimeSettingsService runtimeSettings;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
+
+    @Inject
+    br.com.fzdevx.infrastructure.config.CurrentUser currentUser;
+
+    /** Creator attribution is its own permission, as it is for containers. */
+    private boolean canSeeUploader() {
+        return currentUser.hasPermission(Permission.AUDIT_VIEW);
+    }
+
+    @Inject
     @ConfigProperty(name = "log.analyzer.max-file-size-mb", defaultValue = "500")
     int maxFileSizeMb;
 
@@ -165,6 +176,7 @@ public class LogAnalyzerController {
             var result = analyzeLogFileUseCase.analyze(
                     request.getTempFiles(), request.getFilenames(),
                     request.getPreset(), request.getSlowThresholdMs(), request.getOptions());
+            result.analysis().setUploadedBy(actorResolver.usernameOrSystem());
             if (request.getLabel() != null && !request.getLabel().isBlank()) {
                 String lbl = request.getLabel().trim();
                 result.analysis().setLabel(lbl.length() > 50 ? lbl.substring(0, 50) : lbl);
@@ -172,7 +184,7 @@ public class LogAnalyzerController {
             if (result.evictedId() != null) {
                 logAnalysisBroadcaster.broadcastDeleted(result.evictedId());
             }
-            return Response.ok(AnalysisSummaryMapper.toSummaryMap(result.analysis())).build();
+            return Response.ok(AnalysisSummaryMapper.toSummaryMap(result.analysis(), canSeeUploader())).build();
         } catch (IllegalArgumentException e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", e.getMessage())).build();
@@ -225,7 +237,8 @@ public class LogAnalyzerController {
             LogAnalysis analysis = analyzeContainerLogsUseCase.execute(
                     containerId, containerName, requestedLines, direction, preset, threshold
             );
-            return Response.ok(AnalysisSummaryMapper.toSummaryMap(analysis)).build();
+            analysis.setUploadedBy(actorResolver.usernameOrSystem());
+            return Response.ok(AnalysisSummaryMapper.toSummaryMap(analysis, canSeeUploader())).build();
         } catch (AnalyzeContainerLogsUseCase.ContainerLogException e) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", e.getMessage()))
@@ -273,7 +286,8 @@ public class LogAnalyzerController {
                     .entity(Map.of("error", "No valid analyses found for the given IDs."))
                     .build();
         }
-        return Response.ok(AnalysisSummaryMapper.toSummaryMap(composed)).build();
+        composed.setUploadedBy(actorResolver.usernameOrSystem());
+        return Response.ok(AnalysisSummaryMapper.toSummaryMap(composed, canSeeUploader())).build();
     }
 
     @GET
@@ -283,7 +297,7 @@ public class LogAnalyzerController {
         if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         LogAnalysis analysis = analyzeLogFileUseCase.get(id);
         if (analysis == null) return analysisNotFound();
-        return Response.ok(AnalysisSummaryMapper.toSummaryMap(analysis)).build();
+        return Response.ok(AnalysisSummaryMapper.toSummaryMap(analysis, canSeeUploader())).build();
     }
 
     @RequiresPermission(Permission.LOGS_ANALYZE)
@@ -935,7 +949,7 @@ public class LogAnalyzerController {
     public Response listAnalyses() {
         if (!runtimeSettings.isLogAnalyzerEnabled()) return featureDisabled();
         var summaries = analyzeLogFileUseCase.listAll().stream()
-                .map(AnalysisSummaryMapper::toSummaryMap)
+                .map(a -> AnalysisSummaryMapper.toSummaryMap(a, canSeeUploader()))
                 .toList();
         return Response.ok(summaries).build();
     }

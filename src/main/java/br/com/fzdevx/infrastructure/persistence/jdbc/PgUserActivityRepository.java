@@ -86,7 +86,11 @@ public class PgUserActivityRepository {
                 .filter(java.util.Objects::nonNull);
     }
 
-    /** Day-by-day rows, newest first. */
+    /**
+     * Day-by-day rows, newest first. The ORDER BY carries every column of the
+     * unique index: a partial ordering lets tied rows repeat or vanish between
+     * pages, since LIMIT/OFFSET re-sorts each request independently.
+     */
     public ActivityReportResult search(ActivityReportCriteria criteria) {
         StringBuilder where = new StringBuilder(" WHERE 1=1");
         List<Object> params = new ArrayList<>();
@@ -100,8 +104,8 @@ public class PgUserActivityRepository {
         pageParams.add((long) criteria.page() * criteria.size());
         List<UserActivitySummary> rows = jdbc.query(
                 "SELECT activity_day, actor, action, tenant_id, event_count FROM user_activity_daily"
-                        + where + " ORDER BY activity_day DESC, event_count DESC, actor, action"
-                        + " LIMIT ? OFFSET ?",
+                        + where + " ORDER BY activity_day DESC, event_count DESC, actor, action,"
+                        + " COALESCE(tenant_id, '') LIMIT ? OFFSET ?",
                 PgUserActivityRepository::map, pageParams.toArray());
 
         return new ActivityReportResult(rows, total);

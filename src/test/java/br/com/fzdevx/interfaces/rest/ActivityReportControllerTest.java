@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -37,6 +38,11 @@ class ActivityReportControllerTest {
 
     @InjectMocks
     ActivityReportController controller;
+
+    @org.junit.jupiter.api.BeforeEach
+    void rollUpIsRunning() {
+        when(activitySummaryService.active()).thenReturn(true);
+    }
 
     @Test
     void classRequiresSystemConfigPermission() {
@@ -79,6 +85,19 @@ class ActivityReportControllerTest {
     void malformedDateIsRejected() {
         assertThrows(InvalidInputException.class,
                 () -> controller.search(0, 50, "12/08/2026", null, null, null));
+    }
+
+    @Test
+    void queryingWithTheRollUpInactiveIsRejectedNotA500() {
+        // the summary tables only exist on the postgres backend
+        when(activitySummaryService.active()).thenReturn(false);
+
+        assertThrows(InvalidInputException.class,
+                () -> controller.byUser(0, 50, null, null, null, null));
+        assertThrows(InvalidInputException.class,
+                () -> controller.search(0, 50, null, null, null, null));
+        assertTrue(controller.actions().isEmpty());
+        org.mockito.Mockito.verifyNoInteractions(activityRepository);
     }
 
     @Test

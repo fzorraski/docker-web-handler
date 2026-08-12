@@ -172,4 +172,28 @@ class ActivitySummaryServiceTest {
 
         assertEquals(List.of(LocalDate.now(ZoneId.systemDefault()).minusDays(1)), rolledUpDays());
     }
+
+    @Test
+    void summariseEverything_ignoresThePerRunCap() {
+        // the retention purge that follows is unbounded, so a capped catch-up
+        // would let it delete days that were never summarised
+        service.maxDaysPerRun = 2;
+        when(activityRepository.summarisedThrough()).thenReturn(Optional.of(today().minusDays(10)));
+
+        service.summariseEverything();
+
+        verify(activityRepository, times(9)).rollUpDay(any(), any(), any());
+    }
+
+    @Test
+    void emptyAuditTrailWithNoWatermark_doesNotBlowUpOnTheNullAggregate() {
+        // min(occurred_at) over an empty table returns one NULL row; treating
+        // that as a value would fail on every tick of a fresh install
+        when(activityRepository.summarisedThrough()).thenReturn(Optional.empty());
+        when(activityRepository.oldestAuditEntry()).thenReturn(Optional.empty());
+
+        service.summariseNow();
+
+        verify(activityRepository).setSummarisedThrough(any());
+    }
 }

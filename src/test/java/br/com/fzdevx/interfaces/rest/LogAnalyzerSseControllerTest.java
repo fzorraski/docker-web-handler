@@ -45,6 +45,7 @@ class LogAnalyzerSseControllerTest {
     @Mock OutboundSseEvent.Builder eventBuilder;
     @Mock OutboundSseEvent outboundEvent;
     @Mock br.com.fzdevx.infrastructure.config.RuntimeSettingsService runtimeSettings;
+    @Mock br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
 
     @InjectMocks
     LogAnalyzerSseController controller;

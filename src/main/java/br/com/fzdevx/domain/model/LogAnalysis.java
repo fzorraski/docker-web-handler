@@ -31,6 +31,8 @@ public class LogAnalysis {
     private List<NpeLocationSummary> npeAnalysis;
     private List<ExceptionLocationSummary> exceptionAnalysis;
     private String label;
+    /** Username of whoever uploaded/created this analysis; null in legacy password mode. */
+    private String uploadedBy;
 
     public LogAnalysis(List<SourceFile> sourceFiles, int totalLineCount,
                        LocalDateTime timeRangeStart, LocalDateTime timeRangeEnd,
@@ -118,6 +120,9 @@ public class LogAnalysis {
 
     public String getLabel() { return label; }
     public void setLabel(String label) { this.label = label; }
+
+    public String getUploadedBy() { return uploadedBy; }
+    public void setUploadedBy(String uploadedBy) { this.uploadedBy = uploadedBy; }
 
     public List<ExceptionLocationSummary> getExceptionAnalysis() { return exceptionAnalysis; }
 

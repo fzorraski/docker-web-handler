@@ -15,7 +15,16 @@ public final class AnalysisSummaryMapper {
     private AnalysisSummaryMapper() {
     }
 
+    /**
+     * Summary without the uploader. Creator attribution is its own permission
+     * (AUDIT_VIEW), the same rule containers, dumps and snapshots follow, so
+     * the caller has to ask for it explicitly.
+     */
     public static Map<String, Object> toSummaryMap(LogAnalysis a) {
+        return toSummaryMap(a, false);
+    }
+
+    public static Map<String, Object> toSummaryMap(LogAnalysis a, boolean includeUploader) {
         var customFieldsSummary = a.getCustomFieldResults().stream()
                 .map(cf -> Map.of("fieldName", (Object) cf.fieldName(), "matchCount", (Object) cf.matchCount(),
                         "countOnly", (Object) cf.countOnly()))
@@ -56,6 +65,9 @@ public final class AnalysisSummaryMapper {
         map.put("sourceFiles", a.getSourceFiles());
         map.put("totalLineCount", a.getTotalLineCount());
         map.put("uploadedAt", a.getUploadedAt().toString());
+        if (includeUploader) {
+            map.put("uploadedBy", a.getUploadedBy());
+        }
         map.put("timeRangeStart", a.getTimeRangeStart() != null ? a.getTimeRangeStart().toString() : "");
         map.put("timeRangeEnd", a.getTimeRangeEnd() != null ? a.getTimeRangeEnd().toString() : "");
         map.put("threadCount", a.getThreads().size());

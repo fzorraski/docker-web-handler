@@ -75,9 +75,15 @@ public class JdbcSupport {
         }
     }
 
+    /**
+     * First row, or empty. A row that maps to null counts as empty too: an
+     * aggregate like {@code SELECT min(x) FROM t} always returns one row, and it
+     * is NULL when the table is empty - Optional.of would throw on exactly the
+     * case the caller is asking about.
+     */
     public <T> Optional<T> queryOne(String sql, RowMapper<T> mapper, Object... params) {
         List<T> results = query(sql, mapper, params);
-        return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
+        return results.isEmpty() ? Optional.empty() : Optional.ofNullable(results.get(0));
     }
 
     public int update(String sql, Object... params) {
@@ -134,7 +140,7 @@ public class JdbcSupport {
     public <T> Optional<T> queryOne(Connection connection, String sql, RowMapper<T> mapper, Object... params)
             throws SQLException {
         List<T> results = query(connection, sql, mapper, params);
-        return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
+        return results.isEmpty() ? Optional.empty() : Optional.ofNullable(results.get(0));
     }
 
     public int update(Connection connection, String sql, Object... params) throws SQLException {

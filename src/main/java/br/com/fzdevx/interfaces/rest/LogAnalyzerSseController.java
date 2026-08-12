@@ -48,6 +48,9 @@ public class LogAnalyzerSseController {
     br.com.fzdevx.infrastructure.config.RuntimeSettingsService runtimeSettings;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
+
+    @Inject
     @ConfigProperty(name = "log.analyzer.default-preset", defaultValue = "WILDFLY")
     String defaultPresetName;
 
@@ -130,6 +133,9 @@ public class LogAnalyzerSseController {
         List<String> individualFilenames = request.getFilenames();
         // broadcastStarted already called at prepare time — no duplicate call here
 
+        // resolved on the request thread — the analysis itself runs off-scope on the executor
+        String uploader = actorResolver.usernameOrSystem();
+
         boolean[] succeeded = {false};
         String[] analysisId = {null};
         try {
@@ -148,10 +154,14 @@ public class LogAnalyzerSseController {
                     evictedId -> broadcaster.broadcastDeleted(evictedId));
         } finally {
             if (succeeded[0] && analysisId[0] != null) {
-                if (request.getLabel() != null && !request.getLabel().isBlank()) {
-                    String lbl = request.getLabel().trim();
-                    var analysis = analyzeLogFileUseCase.get(analysisId[0]);
-                    if (analysis != null) analysis.setLabel(lbl.length() > 50 ? lbl.substring(0, 50) : lbl);
+                // stamp before broadcasting — clients refetch the summary on completion
+                var analysis = analyzeLogFileUseCase.get(analysisId[0]);
+                if (analysis != null) {
+                    analysis.setUploadedBy(uploader);
+                    if (request.getLabel() != null && !request.getLabel().isBlank()) {
+                        String lbl = request.getLabel().trim();
+                        analysis.setLabel(lbl.length() > 50 ? lbl.substring(0, 50) : lbl);
+                    }
                 }
                 broadcaster.broadcastCompleted("", filenames, analysisId[0], request.getFilenames());
             } else {
@@ -229,6 +239,8 @@ public class LogAnalyzerSseController {
                 : logPresetProvider.byName(defaultPresetName);
         int slowThreshold = request.slowThresholdMs() > 0 ? request.slowThresholdMs() : defaultSlowThresholdMs;
 
+        String composer = actorResolver.usernameOrSystem();
+
         boolean[] succeeded = {false};
         String[] analysisId = {null};
         try {
@@ -246,6 +258,8 @@ public class LogAnalyzerSseController {
                     evictedId -> broadcaster.broadcastDeleted(evictedId));
         } finally {
             if (succeeded[0] && analysisId[0] != null) {
+                var composed = analyzeLogFileUseCase.get(analysisId[0]);
+                if (composed != null) composed.setUploadedBy(composer);
                 broadcaster.broadcastCompleted("", "Compose", analysisId[0], List.of());
             } else {
                 broadcaster.broadcastCompleted("", "Compose", "", List.of());

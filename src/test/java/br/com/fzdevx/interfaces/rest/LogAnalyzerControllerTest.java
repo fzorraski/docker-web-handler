@@ -72,6 +72,14 @@ class LogAnalyzerControllerTest {
     @Mock
     br.com.fzdevx.infrastructure.config.RuntimeSettingsService runtimeSettings;
 
+    @Mock
+    br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
+
+    // uploader attribution is gated on AUDIT_VIEW; a real CurrentUser with no
+    // RBAC active answers true for every permission, matching legacy mode
+    @Spy
+    br.com.fzdevx.infrastructure.config.CurrentUser currentUser;
+
     // Use cases with no dependencies — @Spy creates real instances
     @Spy QueryApiCallsUseCase queryApiCallsUseCase;
     @Spy ExportApiStatsUseCase exportApiStatsUseCase;

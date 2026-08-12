@@ -195,4 +195,13 @@ class PgUserActivityRepositoryTest {
         assertEquals(2, page.total());
         assertEquals(1, page.rows().size());
     }
+
+    @Test
+    void aggregateOverNoRowsIsEmptyNotAnException() {
+        // an aggregate always returns one row, NULL when there is nothing to
+        // aggregate. On a fresh install audit_log is empty, so this is the very
+        // first thing the summariser asks - it must not blow up.
+        assertTrue(jdbc.queryOne("SELECT NULL::timestamptz AS oldest",
+                rs -> JdbcSupport.instant(rs, "oldest")).isEmpty());
+    }
 }
