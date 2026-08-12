@@ -238,10 +238,17 @@ public class ContainerExpirationService {
         List<ContainerExpiration> persisted = expirationRepository.findAll();
         Log.infof("Reloading %d persisted container expirations.", persisted.size());
 
-        Set<String> existingContainerIds = resolveExistingContainerIds();
+        // empty means "could not tell", not "no containers exist": deleting on a
+        // failed listing would wipe every expiration over one daemon hiccup
+        java.util.Optional<Set<String>> existingContainerIds = resolveExistingContainerIds();
+        if (existingContainerIds.isEmpty()) {
+            Log.warn("Skipping orphaned-expiration cleanup: the container listing is unavailable, "
+                    + "so nothing can be classified as orphaned. Timers are still armed.");
+        }
 
         for (ContainerExpiration expiration : persisted) {
-            if (!existingContainerIds.contains(expiration.getShortId())) {
+            if (existingContainerIds.isPresent()
+                    && !existingContainerIds.get().contains(expiration.getShortId())) {
                 Log.infof("Removing orphaned expiration record for container %s (no longer exists).",
                         expiration.getShortId());
                 expirationRepository.delete(expiration.getShortId());
@@ -259,17 +266,23 @@ public class ContainerExpirationService {
         }
     }
 
-    private Set<String> resolveExistingContainerIds() {
+    /**
+     * Short ids of the containers Docker currently knows about, or empty when
+     * the listing failed. The distinction matters: an empty SET means every
+     * persisted expiration is orphaned, while an empty OPTIONAL means we cannot
+     * tell and must not delete anything.
+     */
+    private java.util.Optional<Set<String>> resolveExistingContainerIds() {
         try {
             Set<String> ids = new java.util.HashSet<>();
             for (com.github.dockerjava.api.model.Container c :
                     dockerClient.listContainersCmd().withShowAll(true).exec()) {
                 ids.add(c.getId().substring(0, 10));
             }
-            return ids;
+            return java.util.Optional.of(ids);
         } catch (Exception e) {
             Log.warnf("Failed to list containers for orphan cleanup: %s", e.getMessage());
-            return Collections.emptySet();
+            return java.util.Optional.empty();
         }
     }
 

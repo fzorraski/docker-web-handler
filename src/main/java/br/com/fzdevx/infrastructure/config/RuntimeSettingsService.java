@@ -113,7 +113,12 @@ public class RuntimeSettingsService {
         return settings;
     }
 
-    public void invalidate() {
+    /**
+     * Synchronised on the same monitor as {@link #overrides()}: clearing the
+     * field outside it is lost when it lands mid-rebuild, leaving the old
+     * settings cached indefinitely.
+     */
+    public synchronized void invalidate() {
         cached = null;
     }
 

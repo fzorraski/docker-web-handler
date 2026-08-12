@@ -109,7 +109,14 @@ public class AuthorizationService {
         return loadSnapshot().tenantsById().values();
     }
 
-    public void invalidateCache() {
+    /**
+     * Synchronised on the same monitor as the rebuild. Clearing the field
+     * outside it loses the invalidation whenever it lands while another thread
+     * is between reading the repositories and publishing its snapshot: that
+     * thread then overwrites the null with data read before the change, and the
+     * stale permissions stay cached until the next unrelated invalidation.
+     */
+    public synchronized void invalidateCache() {
         snapshot = null;
     }
 

@@ -121,4 +121,41 @@ class AuthorizationServiceTest {
 
         assertTrue(service.hasPermission(alice.getId(), Permission.TERMINAL_ACCESS));
     }
+
+    @Test
+    void invalidationDuringARebuildIsNotLost() throws Exception {
+        // The rebuild reads the repositories and only then publishes. An
+        // invalidation landing in that window used to be overwritten by the
+        // in-flight snapshot, so a revoked permission stayed cached forever.
+        java.util.concurrent.CountDownLatch reading = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch invalidated = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicInteger loads = new java.util.concurrent.atomic.AtomicInteger();
+
+        when(userRepository.findAll()).thenAnswer(call -> {
+            if (loads.incrementAndGet() == 1) {
+                reading.countDown();              // the rebuild has read the data
+                invalidated.await(2, java.util.concurrent.TimeUnit.SECONDS);
+            }
+            return List.of(alice);
+        });
+
+        Thread rebuild = new Thread(() -> service.resolve(alice.getId()));
+        rebuild.start();
+        assertTrue(reading.await(2, java.util.concurrent.TimeUnit.SECONDS));
+
+        Thread invalidator = new Thread(() -> {
+            service.invalidateCache();
+            invalidated.countDown();
+        });
+        invalidator.start();
+        // the invalidation must wait for the publish rather than race it
+        Thread.sleep(50);
+        invalidated.countDown();
+        rebuild.join(2000);
+        invalidator.join(2000);
+
+        service.resolve(alice.getId());
+
+        assertEquals(2, loads.get(), "the invalidated snapshot must be rebuilt, not served stale");
+    }
 }

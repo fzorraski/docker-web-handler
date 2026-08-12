@@ -394,4 +394,37 @@ class ContainerExpirationServiceTest {
         verify(removeCmd).exec();
         verify(expirationRepository).delete("norm123456");
     }
+
+    // ---- startup reload ----
+
+    @Test
+    void onStartup_dockerListingFails_keepsExpirationsInsteadOfWipingThem() {
+        // an empty listing and a failed listing are NOT the same thing: treating
+        // a daemon hiccup as "no containers exist" deletes every expiration
+        ContainerExpiration expiration = new ContainerExpiration(
+                "abc123def4", "abc123def4full", Instant.now().plusSeconds(3600),
+                "myapp", "mydb", false);
+        when(expirationRepository.findAll()).thenReturn(java.util.List.of(expiration));
+        when(dockerClient.listContainersCmd()).thenThrow(new RuntimeException("daemon down"));
+
+        service.onStartup(null);
+
+        verify(expirationRepository, never()).delete(anyString());
+    }
+
+    @Test
+    void onStartup_listingSucceeds_stillRemovesRealOrphans() {
+        ContainerExpiration orphan = new ContainerExpiration(
+                "gone123456", "gone123456full", Instant.now().plusSeconds(3600),
+                "myapp", "mydb", false);
+        when(expirationRepository.findAll()).thenReturn(java.util.List.of(orphan));
+        var cmd = mock(com.github.dockerjava.api.command.ListContainersCmd.class);
+        when(dockerClient.listContainersCmd()).thenReturn(cmd);
+        when(cmd.withShowAll(anyBoolean())).thenReturn(cmd);
+        when(cmd.exec()).thenReturn(java.util.List.of());
+
+        service.onStartup(null);
+
+        verify(expirationRepository).delete("gone123456");
+    }
 }
