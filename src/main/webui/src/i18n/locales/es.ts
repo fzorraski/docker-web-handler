@@ -1081,6 +1081,8 @@ const es: typeof en = {
     occurred: 'Ocurrido',
     timestamp: 'Timestamp',
     rawData: 'Datos Sin Procesar',
+    tenant: 'Tenant',
+    systemTenant: 'Sistema',
     previous: 'Registro anterior',
     next: 'Siguiente registro',
   },

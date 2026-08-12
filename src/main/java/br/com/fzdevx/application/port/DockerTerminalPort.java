@@ -23,8 +23,8 @@ public interface DockerTerminalPort {
     void copyFileToContainer(String containerId, Path hostFile, String remotePath);
 
     /** Lightweight snapshot of a container from a single inspect call. */
-    record ContainerRuntimeInfo(boolean running, String image) {
-        public static final ContainerRuntimeInfo NOT_FOUND = new ContainerRuntimeInfo(false, null);
+    record ContainerRuntimeInfo(boolean running, String image, String name) {
+        public static final ContainerRuntimeInfo NOT_FOUND = new ContainerRuntimeInfo(false, null, null);
     }
 
     interface ExecSession extends AutoCloseable {

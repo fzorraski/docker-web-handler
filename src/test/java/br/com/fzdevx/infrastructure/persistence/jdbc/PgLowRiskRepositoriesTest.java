@@ -146,6 +146,61 @@ class PgLowRiskRepositoriesTest {
     @Inject
     PgAuditLogger auditLogger;
 
+    private static final br.com.fzdevx.application.dto.AuditScope SCOPE_ALL =
+            br.com.fzdevx.application.dto.AuditScope.unrestricted();
+
+    private static br.com.fzdevx.application.dto.AuditScope scopeOf(String... tenantIds) {
+        return br.com.fzdevx.application.dto.AuditScope.of(java.util.Set.of(tenantIds));
+    }
+
+    private static br.com.fzdevx.application.dto.AuditSearchCriteria allEntries() {
+        return new br.com.fzdevx.application.dto.AuditSearchCriteria(
+                null, "SCOPE_TEST", null, null, null, 0, 50);
+    }
+
+    @Test
+    void audit_searchAndDistinctActionsHonourTenantScope() {
+        auditLogger.logForTenant("alice", "t1", "SCOPE_TEST", "web-1", null);
+        auditLogger.logForTenant("bob", "t2", "SCOPE_TEST", "web-2", null);
+        auditLogger.logForTenant("system", null, "SCOPE_TEST_SYSTEM", "cleanup", null);
+        try {
+            var scoped = auditLogger.search(allEntries(), scopeOf("t1"));
+            assertEquals(1, scoped.total(), "count(*) must carry the scope predicate too");
+            assertEquals("web-1", scoped.entries().get(0).target());
+            assertEquals("t1", scoped.entries().get(0).tenantId());
+
+            assertEquals(2, auditLogger.search(allEntries(), scopeOf("t1", "t2")).total());
+
+            // tenant_id IN (...) excludes NULL by three-valued logic, so the
+            // untenanted system entry stays visible only to a cross-tenant reader
+            var systemOnly = new br.com.fzdevx.application.dto.AuditSearchCriteria(
+                    null, "SCOPE_TEST_SYSTEM", null, null, null, 0, 50);
+            assertEquals(1, auditLogger.search(systemOnly, SCOPE_ALL).total());
+            assertEquals(0, auditLogger.search(systemOnly, scopeOf("t1", "t2")).total());
+
+            var actions = auditLogger.distinctActions(scopeOf("t1"));
+            assertTrue(actions.contains("SCOPE_TEST"));
+            assertFalse(actions.contains("SCOPE_TEST_SYSTEM"), "the dropdown leaks other tenants otherwise");
+        } finally {
+            jdbc.update("DELETE FROM audit_log WHERE action LIKE 'SCOPE_TEST%'");
+        }
+    }
+
+    @Test
+    void audit_emptyScopeReturnsNothing() {
+        auditLogger.logForTenant("alice", "t1", "SCOPE_TEST", "web-1", null);
+        try {
+            var none = auditLogger.search(allEntries(),
+                    br.com.fzdevx.application.dto.AuditScope.of(java.util.Set.of()));
+            assertEquals(0, none.total());
+            assertTrue(none.entries().isEmpty());
+            assertTrue(auditLogger.distinctActions(
+                    br.com.fzdevx.application.dto.AuditScope.of(java.util.Set.of())).isEmpty());
+        } finally {
+            jdbc.update("DELETE FROM audit_log WHERE action LIKE 'SCOPE_TEST%'");
+        }
+    }
+
     @Test
     void audit_searchFiltersAndPaginates() {
         auditLogger.logAs("search-user", "SEARCH_TEST_CREATE", "container-abc", "detail one");
@@ -153,24 +208,24 @@ class PgLowRiskRepositoriesTest {
         auditLogger.logAs("other-user", "SEARCH_TEST_CREATE", "container-abc", null);
         try {
             var byActor = auditLogger.search(new br.com.fzdevx.application.dto.AuditSearchCriteria(
-                    "SEARCH-USER", null, null, null, null, 0, 10));
+                    "SEARCH-USER", null, null, null, null, 0, 10), SCOPE_ALL);
             assertEquals(2, byActor.total());
 
             var byAction = auditLogger.search(new br.com.fzdevx.application.dto.AuditSearchCriteria(
-                    null, "SEARCH_TEST_DELETE", null, null, null, 0, 10));
+                    null, "SEARCH_TEST_DELETE", null, null, null, 0, 10), SCOPE_ALL);
             assertEquals(1, byAction.total());
             assertEquals("container-xyz", byAction.entries().get(0).target());
 
             var byText = auditLogger.search(new br.com.fzdevx.application.dto.AuditSearchCriteria(
-                    null, null, "detail one", null, null, 0, 10));
+                    null, null, "detail one", null, null, 0, 10), SCOPE_ALL);
             assertEquals(1, byText.total());
 
             var paged = auditLogger.search(new br.com.fzdevx.application.dto.AuditSearchCriteria(
-                    null, "SEARCH_TEST_CREATE", null, null, null, 0, 1));
+                    null, "SEARCH_TEST_CREATE", null, null, null, 0, 1), SCOPE_ALL);
             assertEquals(2, paged.total());
             assertEquals(1, paged.entries().size());
 
-            assertTrue(auditLogger.distinctActions().contains("SEARCH_TEST_CREATE"));
+            assertTrue(auditLogger.distinctActions(SCOPE_ALL).contains("SEARCH_TEST_CREATE"));
         } finally {
             jdbc.update("DELETE FROM audit_log WHERE action LIKE 'SEARCH_TEST%'");
         }

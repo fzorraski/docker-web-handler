@@ -170,7 +170,8 @@ public class DockerTerminalAdapter implements DockerTerminalPort {
             InspectContainerResponse info = dockerClient.inspectContainerCmd(containerId).exec();
             boolean running = info.getState() != null && Boolean.TRUE.equals(info.getState().getRunning());
             String image = info.getConfig() != null ? info.getConfig().getImage() : null;
-            return new ContainerRuntimeInfo(running, image);
+            String name = info.getName() != null ? info.getName().replaceFirst("^/", "") : null;
+            return new ContainerRuntimeInfo(running, image, name);
         } catch (Exception e) {
             return ContainerRuntimeInfo.NOT_FOUND;
         }

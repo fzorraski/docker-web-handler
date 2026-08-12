@@ -92,7 +92,11 @@ public class LoginUseCase {
             if (userKey != null) {
                 rateLimitPort.recordFailure(userKey);
             }
-            auditLogger.logAs(username == null ? "unknown" : username.trim(),
+            // RBAC identity is only established by this call, so the tenant is
+            // passed explicitly - otherwise a tenant's admins would never see
+            // their own users' logins
+            auditLogger.logForTenant(username == null ? "unknown" : username.trim(),
+                    user.map(LoginUseCase::firstTenant).orElse(null),
                     "LOGIN_FAILED", "session", "ip=" + clientIp);
             return LoginResult.invalidPassword();
         }
@@ -104,7 +108,14 @@ public class LoginUseCase {
         // targeted mutation: a full-object save here could resurrect a concurrent
         // admin edit (e.g. silently re-enable an account disabled mid-login)
         userRepository.update(found.getId(), u -> u.setLastLoginAt(Instant.now()));
-        auditLogger.logAs(found.getUsername(), "LOGIN", "session", "ip=" + clientIp);
+        auditLogger.logForTenant(found.getUsername(), firstTenant(found),
+                "LOGIN", "session", "ip=" + clientIp);
         return LoginResult.success(found.getId());
+    }
+
+    /** Same rule TenantVisibility uses for new resources: the first membership. */
+    private static String firstTenant(User user) {
+        return user.getTenantIds() == null || user.getTenantIds().isEmpty()
+                ? null : user.getTenantIds().getFirst();
     }
 }

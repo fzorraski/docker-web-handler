@@ -13,6 +13,9 @@ import { useTranslation } from 'react-i18next'
 import { useNotification } from '../NotificationProvider'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { useTenantNames } from '../../hooks/useTenantNames'
+import { useAuth } from '../AuthProvider'
+import { P } from '../../utils/permissions'
 import { formatDate, formatRelative } from '../../utils/format'
 import { searchAudit, listAuditActions, type AuditEntry } from '../../services/auditService'
 
@@ -96,12 +99,22 @@ export default function AuditTab() {
 
   const selectedEntry = selected !== null ? entries[selected] : null
 
+  // a scoped reader only ever gets their own tenants back, so the column would
+  // be a constant - it is worth showing only to cross-tenant readers
+  const { hasPermission } = useAuth()
+  const tenantNames = useTenantNames()
+  const showTenant = hasPermission(P.TENANTS_VIEW_ALL)
+  const tenantLabel = (id: string | null) =>
+    id === null ? t('audit.systemTenant') : tenantNames.get(id) ?? id
+
+  // hand-built, so a new field has to be added here explicitly
   const rawData = (entry: AuditEntry) => JSON.stringify({
     timestamp: entry.timestamp,
     action: entry.action,
     user: entry.actor,
     target: entry.target,
     detail: entry.detail,
+    ...(showTenant ? { tenant: tenantLabel(entry.tenantId) } : {}),
   }, null, 2)
 
   return (
@@ -179,12 +192,13 @@ export default function AuditTab() {
               <TableCell>{t('audit.actor')}</TableCell>
               <TableCell>{t('audit.target')}</TableCell>
               <TableCell>{t('audit.detail')}</TableCell>
+              {showTenant && <TableCell>{t('audit.tenant')}</TableCell>}
             </TableRow>
           </TableHead>
           <TableBody>
             {entries.length === 0 && !loading && (
               <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                <TableCell colSpan={showTenant ? 6 : 5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                   {t('audit.empty')}
                 </TableCell>
               </TableRow>
@@ -219,6 +233,13 @@ export default function AuditTab() {
                 <TableCell sx={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'text.secondary' }}>
                   {entry.detail ?? '-'}
                 </TableCell>
+                {showTenant && (
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    {entry.tenantId === null
+                      ? <Typography variant="caption" color="text.secondary">{t('audit.systemTenant')}</Typography>
+                      : <Chip label={tenantLabel(entry.tenantId)} size="small" variant="outlined" color="secondary" />}
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>
@@ -287,6 +308,9 @@ export default function AuditTab() {
                 <DetailRow label={t('audit.actor')} mono value={selectedEntry.actor ?? '-'} />
                 <DetailRow label={t('audit.target')} mono value={selectedEntry.target ?? '-'} />
                 <DetailRow label={t('audit.detail')} value={selectedEntry.detail ?? '-'} />
+                {showTenant && (
+                  <DetailRow label={t('audit.tenant')} value={tenantLabel(selectedEntry.tenantId)} />
+                )}
               </Box>
               <Box sx={{ px: 2, pb: 3 }}>
                 <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>

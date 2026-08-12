@@ -1,5 +1,6 @@
 package br.com.fzdevx.interfaces.rest;
 
+import br.com.fzdevx.application.dto.AuditScope;
 import br.com.fzdevx.application.dto.AuditSearchCriteria;
 import br.com.fzdevx.application.dto.AuditSearchResult;
 import br.com.fzdevx.application.port.AuditLogger;
@@ -25,6 +26,9 @@ public class AuditController {
     @Inject
     AuditLogger auditLogger;
 
+    @Inject
+    br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
+
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     public Map<String, Object> search(@QueryParam("page") int page,
@@ -36,7 +40,7 @@ public class AuditController {
                                       @QueryParam("to") String to) {
         AuditSearchCriteria criteria = new AuditSearchCriteria(
                 actor, action, text, parseInstant(from, "from"), parseInstant(to, "to"), page, size);
-        AuditSearchResult result = auditLogger.search(criteria);
+        AuditSearchResult result = auditLogger.search(criteria, scope());
         return Map.of(
                 "entries", result.entries(),
                 "total", result.total(),
@@ -48,7 +52,12 @@ public class AuditController {
     @Path("/actions")
     @Produces(MediaType.APPLICATION_JSON)
     public List<String> actions() {
-        return auditLogger.distinctActions();
+        return auditLogger.distinctActions(scope());
+    }
+
+    /** A reader without cross-tenant reach only ever sees their own tenants' entries. */
+    private AuditScope scope() {
+        return tenantVisibility.auditScope();
     }
 
     private static Instant parseInstant(String value, String field) {

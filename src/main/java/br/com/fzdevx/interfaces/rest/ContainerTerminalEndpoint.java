@@ -94,15 +94,26 @@ public class ContainerTerminalEndpoint {
             return;
         }
 
-        // terminal access is the most privileged operation - always audit who opened it
-        // (WebSocket handshakes have no request scope, so the actor is resolved explicitly)
-        String actor = grant.userId() == null ? "anonymous"
-                : authorizationService.resolve(grant.userId())
-                        .map(br.com.fzdevx.infrastructure.config.AuthorizationService.ResolvedUser::username)
-                        .orElse(grant.userId());
-        auditLogger.logAs(actor, "TERMINAL_OPEN", containerId, null);
-
         DockerTerminalPort.ContainerRuntimeInfo containerInfo = dockerTerminalPort.inspectContainer(containerId);
+
+        // terminal access is the most privileged operation - always audit who opened it,
+        // even when the container turns out to be gone or stopped
+        // (WebSocket handshakes have no request scope, so the actor is resolved explicitly)
+        java.util.Optional<br.com.fzdevx.infrastructure.config.AuthorizationService.ResolvedUser> resolved =
+                grant.userId() == null ? java.util.Optional.empty()
+                        : authorizationService.resolve(grant.userId());
+        String actor = grant.userId() == null ? "anonymous"
+                : resolved.map(br.com.fzdevx.infrastructure.config.AuthorizationService.ResolvedUser::username)
+                        .orElse(grant.userId());
+        // the tenant has to be passed explicitly too, or this entry would carry
+        // none and stay invisible to the admins of the tenant that opened it
+        String tenantId = resolved.map(u -> u.tenantIds().isEmpty() ? null : u.tenantIds().getFirst())
+                .orElse(null);
+        String containerName = containerInfo.name();
+        auditLogger.logForTenant(actor, tenantId, "TERMINAL_OPEN",
+                containerName != null ? containerName : containerId,
+                containerName != null ? "id=" + containerId : null);
+
         if (!containerInfo.running()) {
             sendAndClose(session, errorMsg("Container is not running."));
             return;

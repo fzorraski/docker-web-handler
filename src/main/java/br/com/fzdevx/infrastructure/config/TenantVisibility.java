@@ -1,5 +1,6 @@
 package br.com.fzdevx.infrastructure.config;
 
+import br.com.fzdevx.application.dto.AuditScope;
 import br.com.fzdevx.domain.exception.EntityNotFoundException;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.auth.Permission;
@@ -36,6 +37,23 @@ public class TenantVisibility {
         } catch (ContextNotActiveException e) {
             return true;
         }
+    }
+
+    /**
+     * Which audit entries the caller may read: everything for a cross-tenant
+     * reader, otherwise only their own tenants' entries.
+     *
+     * <p>Not expressible through {@link #canSee}: that method answers true for
+     * a null tenant (an untenanted resource is shared), while an untenanted
+     * audit entry records a system or super-admin action that a tenant-scoped
+     * reader must not see. See {@link AuditScope}.</p>
+     */
+    public AuditScope auditScope() {
+        if (bypass()) {
+            return AuditScope.unrestricted();
+        }
+        // bypass() returning false guarantees an active request scope
+        return AuditScope.of(currentUser.getTenantIds());
     }
 
     public boolean canSee(String tenantId) {

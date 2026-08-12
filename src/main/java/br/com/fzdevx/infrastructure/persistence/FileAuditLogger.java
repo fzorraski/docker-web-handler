@@ -1,7 +1,10 @@
 package br.com.fzdevx.infrastructure.persistence;
 
+import br.com.fzdevx.application.dto.AuditScope;
 import br.com.fzdevx.application.port.AuditLogger;
+import br.com.fzdevx.infrastructure.config.AuditTenant;
 import br.com.fzdevx.infrastructure.config.CurrentUser;
+import br.com.fzdevx.infrastructure.config.TenantVisibility;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -40,6 +43,9 @@ public class FileAuditLogger implements AuditLogger {
     @Inject
     CurrentUser currentUser;
 
+    @Inject
+    TenantVisibility tenantVisibility;
+
     @Override
     public void log(String action, String target, String detail) {
         logAs(br.com.fzdevx.infrastructure.config.AuditActor.resolve(currentUser), action, target, detail);
@@ -50,9 +56,19 @@ public class FileAuditLogger implements AuditLogger {
         if (!enabled) {
             return;
         }
+        // AuditTenant swallows its own failures: append() only guards IO, so a
+        // runtime exception here would propagate and fail the user's action
+        logForTenant(actor, AuditTenant.resolve(tenantVisibility), action, target, detail);
+    }
+
+    @Override
+    public void logForTenant(String actor, String tenantId, String action, String target, String detail) {
+        if (!enabled) {
+            return;
+        }
         Log.infof("AUDIT user=%s action=%s target=%s%s",
                 actor, action, target, detail == null ? "" : " detail=" + detail);
-        append(toJsonLine(Instant.now(), actor, action, target, detail));
+        append(toJsonLine(Instant.now(), actor, action, target, detail, tenantId));
     }
 
     /**
@@ -105,10 +121,10 @@ public class FileAuditLogger implements AuditLogger {
 
     @Override
     public br.com.fzdevx.application.dto.AuditSearchResult search(
-            br.com.fzdevx.application.dto.AuditSearchCriteria criteria) {
+            br.com.fzdevx.application.dto.AuditSearchCriteria criteria, AuditScope scope) {
         java.util.List<br.com.fzdevx.domain.model.AuditEntry> matches = new java.util.ArrayList<>();
         for (br.com.fzdevx.domain.model.AuditEntry entry : readAllEntries()) {
-            if (matches(entry, criteria)) {
+            if (scope.allows(entry.tenantId()) && matches(entry, criteria)) {
                 matches.add(entry);
             }
         }
@@ -121,10 +137,10 @@ public class FileAuditLogger implements AuditLogger {
     }
 
     @Override
-    public java.util.List<String> distinctActions() {
+    public java.util.List<String> distinctActions(AuditScope scope) {
         java.util.TreeSet<String> actions = new java.util.TreeSet<>();
         for (br.com.fzdevx.domain.model.AuditEntry entry : readAllEntries()) {
-            if (entry.action() != null) {
+            if (entry.action() != null && scope.allows(entry.tenantId())) {
                 actions.add(entry.action());
             }
         }
@@ -198,7 +214,9 @@ public class FileAuditLogger implements AuditLogger {
                     stringOrNull(parsed.get("user")),
                     stringOrNull(parsed.get("action")),
                     stringOrNull(parsed.get("target")),
-                    stringOrNull(parsed.get("detail")));
+                    stringOrNull(parsed.get("detail")),
+                    // absent in lines written before the trail became tenant-scoped
+                    stringOrNull(parsed.get("tenant")));
         } catch (Exception e) {
             // unparseable lines are skipped for browsing (retention keeps them)
             return null;
@@ -242,8 +260,14 @@ public class FileAuditLogger implements AuditLogger {
         }
     }
 
+    /**
+     * The timestamp must stay the FIRST key: retention parses it off the raw
+     * line by the literal {@link #TIMESTAMP_PREFIX} rather than parsing JSON,
+     * so moving it would silently stop deleting anything. New keys go last,
+     * which also keeps older builds able to read newer lines.
+     */
     private static String toJsonLine(Instant timestamp, String actor, String action,
-                                     String target, String detail) {
+                                     String target, String detail, String tenantId) {
         StringBuilder sb = new StringBuilder(160);
         sb.append("{\"timestamp\":\"").append(timestamp).append('"');
         sb.append(",\"user\":\"").append(escape(actor)).append('"');
@@ -251,6 +275,9 @@ public class FileAuditLogger implements AuditLogger {
         sb.append(",\"target\":\"").append(escape(target)).append('"');
         if (detail != null) {
             sb.append(",\"detail\":\"").append(escape(detail)).append('"');
+        }
+        if (tenantId != null) {
+            sb.append(",\"tenant\":\"").append(escape(tenantId)).append('"');
         }
         return sb.append('}').toString();
     }

@@ -63,12 +63,16 @@ class ManageSettingsUseCaseTest {
     static final AuditLogger NO_OP_AUDIT = new AuditLogger() {
         @Override public void log(String action, String target, String detail) { }
         @Override public void logAs(String actor, String action, String target, String detail) { }
+        @Override public void logForTenant(String actor, String tenantId, String action,
+                                           String target, String detail) { }
         @Override public int removeEntriesOlderThan(java.time.Instant cutoff) { return 0; }
         @Override public br.com.fzdevx.application.dto.AuditSearchResult search(
-                br.com.fzdevx.application.dto.AuditSearchCriteria criteria) {
+                br.com.fzdevx.application.dto.AuditSearchCriteria criteria,
+                br.com.fzdevx.application.dto.AuditScope scope) {
             return new br.com.fzdevx.application.dto.AuditSearchResult(java.util.List.of(), 0);
         }
-        @Override public java.util.List<String> distinctActions() { return java.util.List.of(); }
+        @Override public java.util.List<String> distinctActions(
+                br.com.fzdevx.application.dto.AuditScope scope) { return java.util.List.of(); }
     };
 
     private static void setField(Object target, String name, Object value) throws Exception {

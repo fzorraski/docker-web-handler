@@ -11,6 +11,8 @@ export interface AuditEntry {
   action: string
   target: string | null
   detail: string | null
+  /** tenant the action belonged to; null = system / cross-tenant action */
+  tenantId: string | null
 }
 
 export interface AuditPage {

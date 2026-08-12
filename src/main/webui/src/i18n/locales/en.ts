@@ -1079,6 +1079,8 @@ const en = {
     occurred: 'Occurred',
     timestamp: 'Timestamp',
     rawData: 'Raw Data',
+    tenant: 'Tenant',
+    systemTenant: 'System',
     previous: 'Previous entry',
     next: 'Next entry',
   },

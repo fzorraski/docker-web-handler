@@ -1081,6 +1081,8 @@ const ptBR: typeof en = {
     occurred: 'Ocorrido',
     timestamp: 'Timestamp',
     rawData: 'Dados Brutos',
+    tenant: 'Tenant',
+    systemTenant: 'Sistema',
     previous: 'Registro anterior',
     next: 'Próximo registro',
   },
