@@ -80,6 +80,8 @@ export default function DatabasePage() {
   const { notify } = useNotification()
   const { rbacEnabled, hasPermission } = useAuth()
   const canDbOperate = hasPermission(P.DATABASE_OPERATE)
+  // deleting dumps/snapshots is destructive and gated separately
+  const canDbDelete = hasPermission(P.DATABASE_DELETE)
   const canDbUpload = hasPermission(P.DATABASE_UPLOAD)
   const canViewAudit = hasPermission(P.AUDIT_VIEW)
   const tenantNames = useTenantNames()
@@ -588,12 +590,12 @@ export default function DatabasePage() {
                 control={<Switch checked={showNeverUsedDumps} onChange={(e) => setShowNeverUsedDumps(e.target.checked)} size="small" />}
                 label={<Typography variant="body2">{t('database.showNeverUsed')}</Typography>}
               />
-              {canDbOperate && selected.size > 0 && (
+              {canDbDelete && selected.size > 0 && (
                 <Button variant="contained" color="error" startIcon={<Delete />} onClick={handleBulkDeleteClick} size="small">
                   {t('common.delete')} ({selected.size})
                 </Button>
               )}
-              {canDbOperate && (
+              {canDbDelete && (
                 <Tooltip title={t('database.cleanUpByIdleDesc')}>
                   <Button variant="contained" color="warning" startIcon={<CleaningServices />} onClick={() => cleanup.open('dump')} disabled={dumps.length === 0} size="small">
                     {t('database.cleanUpByIdle')}
@@ -831,7 +833,7 @@ export default function DatabasePage() {
                               </IconButton>
                             </Tooltip>
                           )}
-                          {canDbOperate && (
+                          {canDbDelete && (
                             <Tooltip title={t('common.delete')}>
                               <IconButton size="small" color="error" onClick={() => handleDeleteClick(dump)}>
                                 <Delete />
@@ -876,12 +878,12 @@ export default function DatabasePage() {
                 control={<Switch checked={showNeverUsedSnaps} onChange={(e) => setShowNeverUsedSnaps(e.target.checked)} size="small" />}
                 label={<Typography variant="body2">{t('database.showNeverUsed')}</Typography>}
               />
-              {canDbOperate && snapSelected.size > 0 && (
+              {canDbDelete && snapSelected.size > 0 && (
                 <Button variant="contained" color="error" startIcon={<Delete />} onClick={handleSnapBulkDeleteClick} size="small">
                   {t('common.delete')} ({snapSelected.size})
                 </Button>
               )}
-              {canDbOperate && (
+              {canDbDelete && (
                 <Tooltip title={t('database.cleanUpByIdleDesc')}>
                   <Button variant="contained" color="warning" startIcon={<CleaningServices />} onClick={() => cleanup.open('snapshot')} disabled={snapshots.length === 0} size="small">
                     {t('database.cleanUpByIdle')}
@@ -1095,7 +1097,7 @@ export default function DatabasePage() {
                               </IconButton>
                             </Tooltip>
                           )}
-                          {canDbOperate && (
+                          {canDbDelete && (
                             <Tooltip title={t('common.delete')}>
                               <IconButton size="small" color="error" onClick={() => handleSnapDeleteClick(snap)}>
                                 <Delete />
@@ -1180,8 +1182,8 @@ export default function DatabasePage() {
               <ListItemText>{t('common.restore')}</ListItemText>
             </MenuItem>
           ),
-          canDbOperate && <Divider key="divider" />,
-          canDbOperate && (
+          (canDbOperate || canDbDelete) && <Divider key="divider" />,
+          canDbDelete && (
             <MenuItem
               key="delete"
               onClick={() => {
@@ -1229,8 +1231,8 @@ export default function DatabasePage() {
               <ListItemText>{t('common.restore')}</ListItemText>
             </MenuItem>
           ),
-          canDbOperate && <Divider key="divider" />,
-          canDbOperate && (
+          (canDbOperate || canDbDelete) && <Divider key="divider" />,
+          canDbDelete && (
             <MenuItem
               key="delete"
               onClick={() => {

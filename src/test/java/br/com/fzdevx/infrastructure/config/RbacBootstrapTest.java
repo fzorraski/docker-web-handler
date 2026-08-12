@@ -105,4 +105,20 @@ class RbacBootstrapTest {
         assertTrue(roleRepository.findById(custom.getId()).isPresent(), "custom roles must survive");
         assertEquals(5, roleRepository.findAll().size());
     }
+
+    @Test
+    void onStartup_leavesCustomizedBuiltInRoleAlone() {
+        // a super admin retuned VIEWER: re-seeding would silently revert it
+        Role edited = new Role(BuiltInRoles.VIEWER_ID, "VIEWER", "tuned",
+                EnumSet.of(Permission.LOGS_VIEW), true);
+        edited.setCustomized(true);
+        roleRepository.save(edited);
+
+        bootstrap.onStartup(null);
+
+        Role viewer = roleRepository.findById(BuiltInRoles.VIEWER_ID).orElseThrow();
+        assertEquals(EnumSet.of(Permission.LOGS_VIEW), viewer.getPermissions());
+        assertFalse(viewer.hasPermission(Permission.CONTAINERS_VIEW), "customized role must not be re-seeded");
+        assertTrue(viewer.isCustomized());
+    }
 }

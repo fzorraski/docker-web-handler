@@ -12,6 +12,8 @@ export interface AppRole {
   description: string | null
   permissions: string[]
   builtIn: boolean
+  /** built-in role a super admin edited — no longer re-seeded on startup */
+  customized?: boolean
   createdAt?: string | null
 }
 

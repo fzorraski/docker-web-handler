@@ -40,8 +40,11 @@ public final class BuiltInRoles {
         // operators keep creator visibility (AUDIT_VIEW) but not the full
         // audit trail, which is an admin-and-above capability
         permissions.remove(Permission.AUDIT_LOG_VIEW);
+        // operators restore and snapshot, but destroying a database, dump or
+        // snapshot is an admin-and-above capability
+        permissions.remove(Permission.DATABASE_DELETE);
         return builtIn(OPERATOR_ID, "OPERATOR",
-                "Container, database, schedule, terminal and log operations.",
+                "Container, database, schedule, terminal and log operations (no deletion of databases, dumps or snapshots).",
                 permissions);
     }
 

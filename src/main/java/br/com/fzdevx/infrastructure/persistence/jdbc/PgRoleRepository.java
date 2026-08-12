@@ -21,18 +21,19 @@ import java.util.function.Consumer;
 public class PgRoleRepository implements RoleRepository {
 
     private static final String SELECT = """
-            SELECT id, name, description, permissions, built_in, created_at
+            SELECT id, name, description, permissions, built_in, customized, created_at
             FROM role
             """;
 
     private static final String UPSERT = """
-            INSERT INTO role (id, name, description, permissions, built_in, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO role (id, name, description, permissions, built_in, customized, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 description = EXCLUDED.description,
                 permissions = EXCLUDED.permissions,
                 built_in = EXCLUDED.built_in,
+                customized = EXCLUDED.customized,
                 created_at = EXCLUDED.created_at
             """;
 
@@ -86,7 +87,8 @@ public class PgRoleRepository implements RoleRepository {
         List<String> permissionNames = role.getPermissions().stream().map(Enum::name).toList();
         return new Object[]{
                 role.getId(), role.getName(), role.getDescription(),
-                JdbcSupport.JsonbValue.of(permissionNames), role.isBuiltIn(), role.getCreatedAt()};
+                JdbcSupport.JsonbValue.of(permissionNames), role.isBuiltIn(), role.isCustomized(),
+                role.getCreatedAt()};
     }
 
     private static Role map(ResultSet rs) throws SQLException {
@@ -107,6 +109,7 @@ public class PgRoleRepository implements RoleRepository {
         }
         role.setPermissions(permissions);
         role.setBuiltIn(rs.getBoolean("built_in"));
+        role.setCustomized(rs.getBoolean("customized"));
         role.setCreatedAt(JdbcSupport.instant(rs, "created_at"));
         return role;
     }

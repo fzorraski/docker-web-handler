@@ -8,6 +8,7 @@ import br.com.fzdevx.domain.exception.AccessDeniedException;
 import br.com.fzdevx.domain.exception.DuplicateEntityException;
 import br.com.fzdevx.domain.exception.EntityNotFoundException;
 import br.com.fzdevx.domain.exception.InvalidInputException;
+import br.com.fzdevx.domain.model.auth.BuiltInRoles;
 import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.domain.model.auth.Role;
 import br.com.fzdevx.infrastructure.config.AuthorizationService;
@@ -61,13 +62,16 @@ public class ManageRolesUseCase {
         guardGlobalAdmin();
         Role role = requireRole(id);
         if (role.isBuiltIn()) {
-            throw new InvalidInputException("Built-in roles cannot be modified.");
+            guardBuiltInEdit(role);
         }
         guardSystemConfig(role.getPermissions());
 
-        String name = validateName(request.getName());
+        // a built-in role keeps its name: it is how the role is recognised in
+        // the UI and in the seeding code, and only its permissions are tunable
+        String name = role.isBuiltIn() ? role.getName() : validateName(request.getName());
         Set<Permission> permissions = parsePermissions(request.getPermissions());
         guardSystemConfig(permissions);
+        guardSuperAdminKeepsSystemConfig(role, permissions);
         roleRepository.findByName(name)
                 .filter(other -> !other.getId().equals(id))
                 .ifPresent(other -> {
@@ -75,11 +79,16 @@ public class ManageRolesUseCase {
                 });
 
         String description = trimmedDescription(request);
+        boolean builtIn = role.isBuiltIn();
         Role[] result = new Role[1];
         boolean found = roleRepository.update(id, stored -> {
             stored.setName(name);
             stored.setDescription(description);
             stored.setPermissions(permissions);
+            if (builtIn) {
+                // stop the startup bootstrap from reverting this edit
+                stored.setCustomized(true);
+            }
             result[0] = stored;
         });
         if (!found) {
@@ -139,6 +148,32 @@ public class ManageRolesUseCase {
             }
         }
         return permissions;
+    }
+
+    /**
+     * Only a super admin (SYSTEM_CONFIG) may retune a built-in role. A global
+     * admin can still create and manage roles of their own, but the defaults
+     * every installation relies on are a system-level concern.
+     */
+    private void guardBuiltInEdit(Role role) {
+        if (!currentUser.hasPermission(Permission.SYSTEM_CONFIG)) {
+            throw new AccessDeniedException(
+                    "Only a super admin can modify the built-in role '" + role.getName() + "'.");
+        }
+    }
+
+    /**
+     * SUPER_ADMIN is the only role that can reach system configuration. Letting
+     * it drop SYSTEM_CONFIG would lock every user out of the admin area for
+     * good, with no way back through the UI.
+     */
+    private void guardSuperAdminKeepsSystemConfig(Role role, Set<Permission> permissions) {
+        if (BuiltInRoles.SUPER_ADMIN_ID.equals(role.getId())
+                && !permissions.contains(Permission.SYSTEM_CONFIG)) {
+            throw new InvalidInputException(
+                    "The SUPER_ADMIN role must keep the SYSTEM_CONFIG permission - "
+                            + "removing it would lock everyone out of system configuration.");
+        }
     }
 
     /** Roles carrying SYSTEM_CONFIG may only be touched by holders of SYSTEM_CONFIG. */

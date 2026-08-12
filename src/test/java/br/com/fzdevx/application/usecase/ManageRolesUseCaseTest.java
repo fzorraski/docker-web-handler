@@ -123,9 +123,51 @@ class ManageRolesUseCaseTest {
     // ---- update ----
 
     @Test
-    void update_builtInRole_blocked() {
+    void update_builtInRole_superAdmin_retunesPermissionsAndMarksCustomized() {
+        useCase.update(BuiltInRoles.VIEWER_ID,
+                roleRequest("VIEWER2", List.of("LOGS_VIEW", "CONTAINERS_VIEW")));
+
+        Role stored = roleRepository.findById(BuiltInRoles.VIEWER_ID).orElseThrow();
+        assertEquals(Set.of(Permission.LOGS_VIEW, Permission.CONTAINERS_VIEW), stored.getPermissions());
+        assertEquals("VIEWER", stored.getName(), "a built-in role keeps its name");
+        assertTrue(stored.isCustomized(), "edit must survive the startup bootstrap");
+        assertTrue(stored.isBuiltIn(), "it stays a built-in role");
+    }
+
+    @Test
+    void update_builtInRole_withoutSystemConfig_denied() {
+        Set<Permission> permissions = EnumSet.allOf(Permission.class);
+        permissions.remove(Permission.SYSTEM_CONFIG);
+        actWithPermissions(permissions);
+
+        assertThrows(AccessDeniedException.class,
+                () -> useCase.update(BuiltInRoles.VIEWER_ID, roleRequest("VIEWER", List.of("LOGS_VIEW"))));
+    }
+
+    @Test
+    void update_superAdminRole_droppingSystemConfig_blocked() {
+        // would lock everyone out of the admin area with no way back
         assertThrows(InvalidInputException.class,
-                () -> useCase.update(BuiltInRoles.VIEWER_ID, roleRequest("VIEWER2", List.of("LOGS_VIEW"))));
+                () -> useCase.update(BuiltInRoles.SUPER_ADMIN_ID,
+                        roleRequest("SUPER_ADMIN", List.of("CONTAINERS_VIEW"))));
+    }
+
+    @Test
+    void update_superAdminRole_keepingSystemConfig_allowed() {
+        useCase.update(BuiltInRoles.SUPER_ADMIN_ID,
+                roleRequest("SUPER_ADMIN", List.of("SYSTEM_CONFIG", "CONTAINERS_VIEW")));
+
+        Role stored = roleRepository.findById(BuiltInRoles.SUPER_ADMIN_ID).orElseThrow();
+        assertTrue(stored.hasPermission(Permission.SYSTEM_CONFIG));
+    }
+
+    @Test
+    void update_customRole_isNotMarkedCustomized() {
+        Role role = useCase.create(roleRequest("DBA", List.of("DATABASE_VIEW")));
+
+        useCase.update(role.getId(), roleRequest("DBA", List.of("DATABASE_VIEW", "DATABASE_UPLOAD")));
+
+        assertFalse(roleRepository.findById(role.getId()).orElseThrow().isCustomized());
     }
 
     @Test

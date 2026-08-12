@@ -46,8 +46,21 @@ public class RbacBootstrap {
         seedInitialAdmin();
     }
 
+    /**
+     * Seeds the built-in roles and keeps them in sync with the permission
+     * catalog, so a permission added in a new release reaches them without
+     * manual work. A built-in role a super admin has edited is left untouched -
+     * re-seeding it would silently revert that edit on every restart. Such a
+     * role therefore does NOT pick up new catalog permissions; grant them in
+     * the admin UI.
+     */
     private void upsertBuiltInRoles() {
         for (Role role : BuiltInRoles.all()) {
+            Optional<Role> stored = roleRepository.findById(role.getId());
+            if (stored.isPresent() && stored.get().isCustomized()) {
+                Log.debugf("Built-in role '%s' was customized - leaving it as configured.", role.getName());
+                continue;
+            }
             roleRepository.save(role);
         }
         Log.debug("Built-in RBAC roles upserted.");

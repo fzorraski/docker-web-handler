@@ -98,9 +98,10 @@ export default function AdminPage() {
       && (canTenantsViewAll || !holdsTenantsViewAll(user))
   }
 
-  // tenant-scoped admins assign roles but never define them
+  // tenant-scoped admins assign roles but never define them; the built-in
+  // defaults are a system-level concern, so only a super admin retunes them
   function canActOnRole(role: AppRole): boolean {
-    return canTenantsViewAll && !role.builtIn
+    return canTenantsViewAll && (canSystemConfig || !role.builtIn)
       && (canSystemConfig || !role.permissions.includes(P.SYSTEM_CONFIG))
   }
 
@@ -380,6 +381,9 @@ export default function AdminPage() {
                               color={r.builtIn ? 'info' : 'default'}
                               variant="outlined"
                             />
+                            {r.builtIn && r.customized && (
+                              <Chip label={t('roles.customized')} size="small" variant="outlined" color="warning" sx={{ ml: 0.5 }} />
+                            )}
                           </TableCell>
                           <TableCell align="right">
                             <Box sx={{ display: 'flex', gap: 0.25, justifyContent: 'flex-end' }}>
@@ -390,9 +394,10 @@ export default function AdminPage() {
                                       <Edit fontSize="small" />
                                     </IconButton>
                                   </Tooltip>
-                                  <Tooltip title={usedBy > 0 ? t('roles.inUse') : t('common.delete')}>
+                                  {/* built-in roles are editable by a super admin but never deletable */}
+                                  <Tooltip title={r.builtIn ? t('roles.builtInUndeletable') : usedBy > 0 ? t('roles.inUse') : t('common.delete')}>
                                     <span>
-                                      <IconButton size="small" color="error" disabled={usedBy > 0} onClick={() => handleDeleteRole(r)}>
+                                      <IconButton size="small" color="error" disabled={r.builtIn || usedBy > 0} onClick={() => handleDeleteRole(r)}>
                                         <Delete fontSize="small" />
                                       </IconButton>
                                     </span>

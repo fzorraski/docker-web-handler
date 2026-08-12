@@ -264,7 +264,7 @@ public class DatabaseDumpController {
                 .build();
     }
 
-    @RequiresPermission(Permission.DATABASE_OPERATE)
+    @RequiresPermission(Permission.DATABASE_DELETE)
     @DELETE
     @Path("/delete/{id}")
     @Produces(MediaType.APPLICATION_JSON)
@@ -300,7 +300,7 @@ public class DatabaseDumpController {
         return Response.ok(Map.of("success", true)).build();
     }
 
-    @RequiresPermission(Permission.DATABASE_OPERATE)
+    @RequiresPermission(Permission.DATABASE_DELETE)
     @DELETE
     @Path("/delete/bulk")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -487,7 +487,7 @@ public class DatabaseDumpController {
                 .toList();
     }
 
-    @RequiresPermission(Permission.DATABASE_OPERATE)
+    @RequiresPermission(Permission.DATABASE_DELETE)
     @POST
     @Path("/cleanup-idle")
     @Consumes(MediaType.APPLICATION_JSON)

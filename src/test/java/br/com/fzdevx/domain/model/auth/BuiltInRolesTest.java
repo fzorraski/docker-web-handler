@@ -34,6 +34,19 @@ class BuiltInRolesTest {
     }
 
     @Test
+    void databaseDelete_isAdminAndAbove_operatorsStillRestoreAndSnapshot() {
+        assertTrue(BuiltInRoles.superAdmin().hasPermission(Permission.DATABASE_DELETE));
+        assertTrue(BuiltInRoles.admin().hasPermission(Permission.DATABASE_DELETE));
+        assertFalse(BuiltInRoles.operator().hasPermission(Permission.DATABASE_DELETE),
+                "operators must not destroy databases, dumps or snapshots");
+        assertFalse(BuiltInRoles.viewer().hasPermission(Permission.DATABASE_DELETE));
+
+        // the rest of the database workflow stays with the operator
+        assertTrue(BuiltInRoles.operator().hasPermission(Permission.DATABASE_OPERATE));
+        assertTrue(BuiltInRoles.operator().hasPermission(Permission.DATABASE_UPLOAD));
+    }
+
+    @Test
     void onlySuperAdmin_holdsSystemConfig() {
         assertTrue(BuiltInRoles.superAdmin().hasPermission(Permission.SYSTEM_CONFIG));
         assertFalse(BuiltInRoles.admin().hasPermission(Permission.SYSTEM_CONFIG));

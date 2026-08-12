@@ -8,6 +8,9 @@ import { useTranslation } from 'react-i18next'
 import { createRole, updateRole, type AppRole, type PermissionInfo } from '../../services/roleService'
 import { P } from '../../utils/permissions'
 
+/** Mirrors BuiltInRoles.SUPER_ADMIN_ID on the backend. */
+const SUPER_ADMIN_ROLE_ID = 'builtin-super-admin'
+
 interface Props {
   open: boolean
   onClose: () => void
@@ -86,15 +89,20 @@ export default function RoleFormDialog({ open, onClose, onSaved, role, catalog, 
         {role?.builtIn && <Chip label={t('roles.builtIn')} size="small" color="info" variant="outlined" sx={{ ml: 1 }} />}
       </DialogTitle>
       <DialogContent dividers sx={{ pt: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {role?.builtIn === true && <Alert severity="info">{t('roles.builtInReadOnly')}</Alert>}
+        {role?.builtIn === true && (
+          <Alert severity="info">
+            {readOnly ? t('roles.builtInReadOnly') : t('roles.builtInEditable')}
+          </Alert>
+        )}
         <TextField
           label={t('roles.name')}
           value={name}
           onChange={(e) => setName(e.target.value)}
           size="small"
           fullWidth
-          disabled={readOnly}
-          autoFocus={!readOnly}
+          // a built-in role keeps its name even when a super admin retunes it
+          disabled={readOnly || role?.builtIn === true}
+          autoFocus={!readOnly && role?.builtIn !== true}
           autoComplete="off"
         />
         <TextField
@@ -122,7 +130,13 @@ export default function RoleFormDialog({ open, onClose, onSaved, role, catalog, 
                       size="small"
                       checked={permissions.has(p.name)}
                       onChange={() => togglePermission(p.name)}
-                      disabled={readOnly || (p.name === P.SYSTEM_CONFIG && !canSystemConfig)}
+                      disabled={
+                        readOnly
+                        || (p.name === P.SYSTEM_CONFIG && !canSystemConfig)
+                        // SUPER_ADMIN without SYSTEM_CONFIG would lock everyone
+                        // out of the admin area, so the box stays checked
+                        || (p.name === P.SYSTEM_CONFIG && role?.id === SUPER_ADMIN_ROLE_ID)
+                      }
                     />
                   }
                   label={

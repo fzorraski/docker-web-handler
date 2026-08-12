@@ -14,6 +14,12 @@ public class Role {
     private String description;
     private Set<Permission> permissions = new LinkedHashSet<>();
     private boolean builtIn;
+    /**
+     * A built-in role a super admin has edited. The startup bootstrap re-seeds
+     * built-in roles so new catalog permissions reach them, which would silently
+     * undo those edits — customized roles are left alone instead.
+     */
+    private boolean customized;
     private Instant createdAt;
 
     public Role() {
@@ -61,6 +67,9 @@ public class Role {
 
     public boolean isBuiltIn() { return builtIn; }
     public void setBuiltIn(boolean builtIn) { this.builtIn = builtIn; }
+
+    public boolean isCustomized() { return customized; }
+    public void setCustomized(boolean customized) { this.customized = customized; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
