@@ -1294,6 +1294,7 @@ const es: typeof en = {
       supported: 'Soporta archivos .log, .txt, .out',
       viewers: '{{count}} otro(s) viendo',
       uploadedAt: 'Subido el',
+      uploadedBy: 'Subido por',
     },
     compose: {
       button: 'Componer',

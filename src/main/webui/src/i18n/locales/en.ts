@@ -1293,6 +1293,7 @@ const en = {
       supported: 'Supports .log, .txt, .out files',
       viewers: '{{count}} other viewer(s)',
       uploadedAt: 'Uploaded at',
+      uploadedBy: 'Uploaded by',
     },
     compose: {
       button: 'Compose',

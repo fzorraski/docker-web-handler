@@ -64,6 +64,8 @@ export interface AnalysisSummary {
   sourceFiles: { filename: string; size: number }[]
   totalLineCount: number
   uploadedAt: string
+  /** omitted entirely for callers without AUDIT_VIEW, not just null */
+  uploadedBy?: string | null
   timeRangeStart: string
   timeRangeEnd: string
   threadCount: number

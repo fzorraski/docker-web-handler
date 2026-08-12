@@ -1294,6 +1294,7 @@ const ptBR: typeof en = {
       supported: 'Suporta arquivos .log, .txt, .out',
       viewers: '{{count}} outro(s) visualizando',
       uploadedAt: 'Enviado em',
+      uploadedBy: 'Enviado por',
     },
     compose: {
       button: 'Compor',

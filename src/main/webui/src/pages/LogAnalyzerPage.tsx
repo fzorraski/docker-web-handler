@@ -8,7 +8,7 @@ import {
 } from '@mui/material'
 import {
   CloudUpload, MergeType, Cancel, DeleteForever, Visibility, Warning, Download, Summarize,
-  Description, CalendarToday,
+  Description, CalendarToday, PersonOutline,
   Article, SyncAlt, Hub, AccountTree, ErrorOutline, BugReport,
   Work, WarningAmber, HelpOutline, Code, Extension,
 } from '@mui/icons-material'
@@ -739,9 +739,14 @@ export default function LogAnalyzerPage() {
               const filenames = a.sourceFiles.map(f => f.filename).join(', ')
               const isComposing = composeIds.has(a.id)
               const uploadDate = a.uploadedAt ? new Date(a.uploadedAt).toLocaleString() : ''
+              const uploader = a.uploadedBy || ''
 
               return (
-                <Tooltip key={a.id} title={[a.label, uploadDate ? `${t('logAnalyzer.upload.uploadedAt')}: ${uploadDate}` : ''].filter(Boolean).join('\n')} arrow placement="top" enterDelay={400}>
+                <Tooltip key={a.id} title={[
+                  a.label,
+                  uploadDate ? `${t('logAnalyzer.upload.uploadedAt')}: ${uploadDate}` : '',
+                  uploader ? `${t('logAnalyzer.upload.uploadedBy')}: ${uploader}` : '',
+                ].filter(Boolean).join('\n')} arrow placement="top" enterDelay={400}>
                 <Paper
                   elevation={0}
                   onClick={() => setSelectedId(a.id)}
@@ -821,6 +826,14 @@ export default function LogAnalyzerPage() {
                       <CalendarToday sx={{ fontSize: 13, color: 'text.disabled' }} />
                       <Typography variant="caption" color="text.disabled">
                         {formatTimeRange(a.timeRangeStart, a.timeRangeEnd)}
+                      </Typography>
+                    </Stack>
+                  )}
+                  {uploader && (
+                    <Stack direction="row" alignItems="center" spacing={0.4} sx={{ mt: 0.5, ml: 3.5 }}>
+                      <PersonOutline sx={{ fontSize: 13, color: 'text.disabled' }} />
+                      <Typography variant="caption" color="text.disabled" noWrap title={uploader}>
+                        {uploader}
                       </Typography>
                     </Stack>
                   )}
