@@ -730,4 +730,56 @@ class ManagedDatabaseControllerTest {
             throw new RuntimeException(e);
         }
     }
+
+    // ---- explain must not become a write channel ----
+
+    @org.junit.jupiter.api.Test
+    void explainQuery_rejectsNonSelectStatements() {
+        // EXPLAIN (ANALYZE) executes: without this a DATABASE_VIEW user could
+        // delete through an endpoint that only claims to show a query plan
+        setField("queryEnabled", true);
+        when(databaseService.detectQueryType(anyString()))
+                .thenReturn(DatabaseService.QueryType.WRITE);
+
+        Response res = controller.explainQuery("myapp", "mydb",
+                java.util.Map.of("sql", "DELETE FROM users", "analyze", true));
+
+        assertEquals(400, res.getStatus());
+        verify(databaseService, never()).executeExplainJson(any(), any(), any(), anyBoolean(), anyInt());
+    }
+
+    @org.junit.jupiter.api.Test
+    void explainQuery_analyzeRequiresDatabaseOperate() {
+        setField("queryEnabled", true);
+        when(databaseService.detectQueryType(anyString()))
+                .thenReturn(DatabaseService.QueryType.SELECT);
+        var viewer = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        viewer.set("u1", "alice",
+                java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.DATABASE_VIEW));
+        controller.currentUser = viewer;
+
+        Response res = controller.explainQuery("myapp", "mydb",
+                java.util.Map.of("sql", "SELECT 1", "analyze", true));
+
+        assertEquals(403, res.getStatus());
+        verify(databaseService, never()).executeExplainJson(any(), any(), any(), anyBoolean(), anyInt());
+    }
+
+    @org.junit.jupiter.api.Test
+    void explainQuery_planOnlySelectStaysOpenToViewers() {
+        setField("queryEnabled", true);
+        when(databaseService.detectQueryType(anyString()))
+                .thenReturn(DatabaseService.QueryType.SELECT);
+        when(databaseService.executeExplainJson(any(), any(), any(), anyBoolean(), anyInt()))
+                .thenReturn("[]");
+        var viewer = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        viewer.set("u1", "alice",
+                java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.DATABASE_VIEW));
+        controller.currentUser = viewer;
+
+        Response res = controller.explainQuery("myapp", "mydb",
+                java.util.Map.of("sql", "SELECT 1"));
+
+        assertEquals(200, res.getStatus());
+    }
 }

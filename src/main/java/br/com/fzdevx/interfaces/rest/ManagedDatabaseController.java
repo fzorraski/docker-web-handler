@@ -538,6 +538,22 @@ public class ManagedDatabaseController {
 
         boolean analyze = body.get("analyze") instanceof Boolean b && b;
 
+        // EXPLAIN plans, but EXPLAIN ANALYZE *executes*: "EXPLAIN (ANALYZE) DELETE
+        // FROM t" deletes. This endpoint takes arbitrary SQL under the class-level
+        // DATABASE_VIEW, while running a statement through /query needs
+        // DATABASE_OPERATE and the operations password - so without these two
+        // guards it is a way for a read-only user to write.
+        if (databaseService.detectQueryType(sql) != DatabaseService.QueryType.SELECT) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Only SELECT statements can be explained.")).build();
+        }
+        if (analyze && !currentUser.hasPermission(Permission.DATABASE_OPERATE)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("code", "FORBIDDEN",
+                            "message", "Running EXPLAIN ANALYZE executes the query and "
+                                    + "requires the database operate permission.")).build();
+        }
+
         requireDbVisible(repository, databaseName);
 
         try {

@@ -123,6 +123,9 @@ public class ContainerSseController {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public jakarta.ws.rs.core.Response prepareRun(RunContainerRequest request) {
+        // the flag lives on the deserialised request, so a client can post it
+        // as true; only this method may grant it, and only against a password
+        request.setOperationsPasswordValidated(false);
         if (request.getOperationsPassword() != null && !request.getOperationsPassword().isBlank()) {
             if (!dumpStorageService.validateOperationsPassword(request.getOperationsPassword())) {
                 return jakarta.ws.rs.core.Response.status(403)
@@ -333,6 +336,12 @@ public class ContainerSseController {
                 return jakarta.ws.rs.core.Response.status(403)
                         .entity(Map.of("error", "Invalid operations password.")).build();
             }
+            // the container being visible says nothing about the database named
+            // alongside it: without these, removing your own container could drop
+            // another tenant's database (prepareRun guards the same way)
+            tenantEntitlements.requireDatabaseAllowed(request.getRepository());
+            managedDatabaseRepository.find(request.getRepository(), request.getDatabaseName())
+                    .ifPresent(db -> tenantVisibility.requireVisible(db.getTenantId()));
         }
         request.setOperationsPassword(null);
         String ticket = requestStash.stashRemove(request);

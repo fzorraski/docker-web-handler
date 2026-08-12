@@ -41,6 +41,8 @@ class ContainerSseControllerTest {
     @Mock WebhookService webhookService;
     @Mock ContainerListBroadcaster broadcaster;
     @Mock br.com.fzdevx.application.port.ManagedDatabaseRepository managedDatabaseRepository;
+    // prepareRun/prepareRemove both check the database entitlement; a mock no-ops
+    @Mock br.com.fzdevx.infrastructure.config.TenantEntitlements tenantEntitlements;
     @Mock br.com.fzdevx.infrastructure.persistence.SnapshotStorageService snapshotStorageService;
 
     @InjectMocks
@@ -189,5 +191,72 @@ class ContainerSseControllerTest {
         Response res = controller.prepareRemove(req);
 
         assertEquals(400, res.getStatus());
+    }
+
+    // ---- guards that close privilege holes ----
+
+    @org.junit.jupiter.api.Test
+    void prepareRun_ignoresAClientSuppliedValidationFlag() {
+        // the flag is a field on the deserialised request with a public setter,
+        // so a caller can post it as true and skip the operations password
+        br.com.fzdevx.application.dto.RunContainerRequest req =
+                new br.com.fzdevx.application.dto.RunContainerRequest();
+        req.setOperationsPasswordValidated(true);
+        when(requestStash.stash(any())).thenReturn("ticket-1");
+
+        controller.prepareRun(req);
+
+        org.mockito.ArgumentCaptor<br.com.fzdevx.application.dto.RunContainerRequest> stashed =
+                org.mockito.ArgumentCaptor.forClass(br.com.fzdevx.application.dto.RunContainerRequest.class);
+        verify(requestStash).stash(stashed.capture());
+        assertFalse(stashed.getValue().isOperationsPasswordValidated(),
+                "only a validated password may set this");
+    }
+
+    @org.junit.jupiter.api.Test
+    void prepareRun_grantsTheFlagOnlyAgainstAValidPassword() {
+        br.com.fzdevx.application.dto.RunContainerRequest req =
+                new br.com.fzdevx.application.dto.RunContainerRequest();
+        req.setOperationsPassword("secret");
+        when(dumpStorageService.validateOperationsPassword("secret")).thenReturn(true);
+        when(requestStash.stash(any())).thenReturn("ticket-1");
+
+        controller.prepareRun(req);
+
+        org.mockito.ArgumentCaptor<br.com.fzdevx.application.dto.RunContainerRequest> stashed =
+                org.mockito.ArgumentCaptor.forClass(br.com.fzdevx.application.dto.RunContainerRequest.class);
+        verify(requestStash).stash(stashed.capture());
+        assertTrue(stashed.getValue().isOperationsPasswordValidated());
+        assertNull(stashed.getValue().getOperationsPassword(), "the password is not stashed");
+    }
+
+    @org.junit.jupiter.api.Test
+    void prepareRemove_checksTheDatabaseIsVisibleNotJustTheContainer() {
+        // the container being visible says nothing about the database named
+        // alongside it in the same request
+        var foreign = new br.com.fzdevx.domain.model.ManagedDatabase();
+        foreign.setTenantId("other-tenant");
+        when(managedDatabaseRepository.find("myapp", "mydb"))
+                .thenReturn(java.util.Optional.of(foreign));
+        var scoped = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        scoped.set("u1", "alice", java.util.Set.of(
+                br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_RUN,
+                br.com.fzdevx.domain.model.auth.Permission.DATABASE_DELETE),
+                java.util.Set.of("my-tenant"));
+        controller.currentUser = scoped;
+        controller.tenantVisibility =
+                br.com.fzdevx.infrastructure.config.TestTenantVisibility.forUser(scoped, null);
+        when(dumpStorageService.validateOperationsPassword(any())).thenReturn(true);
+
+        RemoveContainerRequest req = new RemoveContainerRequest();
+        req.setContainerId("abc123def456");
+        req.setDeleteDatabase(true);
+        req.setRepository("myapp");
+        req.setDatabaseName("mydb");
+        req.setOperationsPassword("secret");
+
+        assertThrows(br.com.fzdevx.domain.exception.EntityNotFoundException.class,
+                () -> controller.prepareRemove(req));
+        verify(requestStash, never()).stashRemove(any());
     }
 }
