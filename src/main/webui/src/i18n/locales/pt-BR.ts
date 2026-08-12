@@ -59,6 +59,7 @@ const ptBR: typeof en = {
     logsAnalyzed: 'Logs analisados',
     databasesDeleted: 'BDs excluídos',
     migrationsExecuted: 'Migrações executadas',
+    terminalsOpened: 'Terminais abertos',
     cpuUsage: 'CPU: {{percent}}% ({{cores}} núcleos)',
     memoryUsage: 'Memória: {{used}} / {{total}} GB',
     diskUsage: 'Disco: {{used}} / {{total}} GB',

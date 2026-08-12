@@ -59,6 +59,7 @@ const es: typeof en = {
     logsAnalyzed: 'Logs analizados',
     databasesDeleted: 'BDs eliminadas',
     migrationsExecuted: 'Migraciones ejecutadas',
+    terminalsOpened: 'Terminales abiertas',
     cpuUsage: 'CPU: {{percent}}% ({{cores}} núcleos)',
     memoryUsage: 'Memoria: {{used}} / {{total}} GB',
     diskUsage: 'Disco: {{used}} / {{total}} GB',

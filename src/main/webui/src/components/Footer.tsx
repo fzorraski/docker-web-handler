@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Box, Typography, Tooltip, useTheme, Dialog, DialogTitle, DialogContent, LinearProgress, IconButton, Table, TableBody, TableCell, TableRow, TableHead } from '@mui/material'
-import { Dns, DeleteSweep, Storage, CameraAlt, SettingsBackupRestore, Schedule, Memory, Speed, SdStorage, Close, Monitor, Assessment, Description, DeleteForever, SwapHoriz } from '@mui/icons-material'
+import { Dns, DeleteSweep, Storage, CameraAlt, SettingsBackupRestore, Schedule, Memory, Speed, SdStorage, Close, Monitor, Assessment, Description, DeleteForever, SwapHoriz, Terminal } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 
 interface Stats {
@@ -16,6 +16,7 @@ interface Stats {
   logsAnalyzed: number
   databasesDeleted: number
   migrationsExecuted: number
+  terminalsOpened: number
   startedAt: string
 }
 
@@ -122,6 +123,9 @@ export default function Footer() {
               )}
               {stats.databasesDeleted > 0 && (
                 <StatItem icon={<DeleteForever />} label={t('footer.databasesDeleted')} value={stats.databasesDeleted} isDark={isDark} />
+              )}
+              {stats.terminalsOpened > 0 && (
+                <StatItem icon={<Terminal />} label={t('footer.terminalsOpened')} value={stats.terminalsOpened} isDark={isDark} />
               )}
             </Box>
           </>
@@ -260,6 +264,9 @@ function StatsModal({ open, onClose, stats, isDark, appVersion }: { open: boolea
   }
   if (stats.migrationsExecuted > 0) {
     rows.push({ icon: <SwapHoriz color="action" />, label: t('footer.migrationsExecuted'), total: stats.migrationsExecuted })
+  }
+  if (stats.terminalsOpened > 0) {
+    rows.push({ icon: <Terminal color="action" />, label: t('footer.terminalsOpened'), total: stats.terminalsOpened })
   }
 
   return (

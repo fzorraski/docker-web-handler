@@ -51,11 +51,13 @@ public class ResourceCounterService {
     public static final String LOGS_ANALYZED = "logsAnalyzed";
     public static final String DATABASES_DELETED = "databasesDeleted";
     public static final String MIGRATIONS_EXECUTED = "migrationsExecuted";
+    public static final String TERMINALS_OPENED = "terminalsOpened";
     private static final String STARTED_AT_KEY = "_startedAt";
 
     private static final java.util.List<String> COUNTER_KEYS = java.util.List.of(
             CONTAINERS, IMAGES_DELETED, DUMPS, SNAPSHOTS, RESTORES,
-            SCHEDULES_EXECUTED, LOGS_ANALYZED, DATABASES_DELETED, MIGRATIONS_EXECUTED);
+            SCHEDULES_EXECUTED, LOGS_ANALYZED, DATABASES_DELETED, MIGRATIONS_EXECUTED,
+            TERMINALS_OPENED);
 
     private volatile String startedAt;
 

@@ -57,6 +57,7 @@ const en = {
     logsAnalyzed: 'Logs analyzed',
     databasesDeleted: 'DBs deleted',
     migrationsExecuted: 'Migrations executed',
+    terminalsOpened: 'Terminals opened',
     cpuUsage: 'CPU: {{percent}}% ({{cores}} cores)',
     memoryUsage: 'Memory: {{used}} / {{total}} GB',
     diskUsage: 'Disk: {{used}} / {{total}} GB',

@@ -49,6 +49,9 @@ public class ContainerTerminalEndpoint {
     br.com.fzdevx.infrastructure.config.AuthorizationService authorizationService;
 
     @Inject
+    br.com.fzdevx.infrastructure.persistence.ResourceCounterService resourceCounterService;
+
+    @Inject
     @ConfigProperty(name = "container.terminal.default-shell", defaultValue = "/bin/bash")
     String defaultShell;
 
@@ -123,6 +126,8 @@ public class ContainerTerminalEndpoint {
             }
 
             TerminalSessionManager.TerminalSession ts = registered.get();
+            resourceCounterService.increment(
+                    br.com.fzdevx.infrastructure.persistence.ResourceCounterService.TERMINALS_OPENED);
             sendMessage(session, "{\"type\":\"connected\"}");
 
             execSession.onOutput(data -> {
