@@ -45,6 +45,7 @@ class ContainerConfigControllerTest {
     @Mock br.com.fzdevx.infrastructure.config.RbacSettings rbacSettings;
     @Mock MemoryGuardService memoryGuardService;
     @Mock RequestStash requestStash;
+    @Mock jakarta.inject.Provider<io.vertx.core.http.HttpServerRequest> requestProvider;
     @Mock Config config;
     @Mock br.com.fzdevx.infrastructure.config.RuntimeSettingsService runtimeSettings;
 
@@ -361,9 +362,37 @@ class ContainerConfigControllerTest {
     void authorizeTerminal_valid_returnsTicket() {
         when(runtimeSettings.isTerminalEnabled()).thenReturn(true);
         when(passwordValidationService.validateTerminalPassword("secret")).thenReturn(true);
-        when(requestStash.stashTerminal("abc123def4")).thenReturn("ticket-123");
+        when(requestStash.stashTerminal(eq("abc123def4"), any())).thenReturn("ticket-123");
         var res = controller.authorizeTerminal(Map.of("containerId", "abc123def4", "password", "secret"));
         assertEquals(200, res.getStatus());
+    }
+
+    @Test
+    void authorizeTerminal_stashesClientIpForTheTerminalAuditEntry() {
+        when(runtimeSettings.isTerminalEnabled()).thenReturn(true);
+        when(passwordValidationService.validateTerminalPassword("secret")).thenReturn(true);
+        when(requestStash.stashTerminal(anyString(), any())).thenReturn("ticket-123");
+
+        var request = mock(io.vertx.core.http.HttpServerRequest.class);
+        when(request.remoteAddress()).thenReturn(io.vertx.core.net.SocketAddress.inetSocketAddress(1234, "192.168.0.154"));
+        when(requestProvider.get()).thenReturn(request);
+
+        controller.authorizeTerminal(Map.of("containerId", "abc123def4", "password", "secret"));
+
+        verify(requestStash).stashTerminal("abc123def4", "192.168.0.154");
+    }
+
+    @Test
+    void authorizeTerminal_unavailableClientIp_stillIssuesTicket() {
+        when(runtimeSettings.isTerminalEnabled()).thenReturn(true);
+        when(passwordValidationService.validateTerminalPassword("secret")).thenReturn(true);
+        when(requestStash.stashTerminal(anyString(), any())).thenReturn("ticket-123");
+        when(requestProvider.get()).thenThrow(new IllegalStateException("no request context"));
+
+        var res = controller.authorizeTerminal(Map.of("containerId", "abc123def4", "password", "secret"));
+
+        assertEquals(200, res.getStatus());
+        verify(requestStash).stashTerminal("abc123def4", null);
     }
 
     // ---- validateOperationsPassword ----

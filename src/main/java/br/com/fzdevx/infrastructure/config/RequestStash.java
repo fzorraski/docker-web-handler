@@ -186,14 +186,21 @@ public class RequestStash {
     // authorizing user. The WebSocket endpoint redeems them outside any REST
     // request scope, so the user match happens there (against the handshake's
     // session user), not in take().
-    public record TerminalGrant(String containerId, String userId) {}
+    // The client IP is captured here because the WebSocket that redeems the ticket
+    // gives the endpoint no usable remote address — the audit entry for the opened
+    // terminal would otherwise say who and what, but not from where.
+    public record TerminalGrant(String containerId, String userId, String clientIp) {}
 
     private final ConcurrentHashMap<String, StashedEntry<TerminalGrant>> terminalStash = new ConcurrentHashMap<>();
 
     public String stashTerminal(String containerId) {
+        return stashTerminal(containerId, null);
+    }
+
+    public String stashTerminal(String containerId, String clientIp) {
         String ticket = UUID.randomUUID().toString();
         terminalStash.put(ticket, new StashedEntry<>(
-                new TerminalGrant(containerId, safeCurrentUserId()), Instant.now(), null));
+                new TerminalGrant(containerId, safeCurrentUserId(), clientIp), Instant.now(), null));
         return ticket;
     }
 

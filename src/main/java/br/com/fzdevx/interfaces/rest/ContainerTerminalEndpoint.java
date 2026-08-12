@@ -110,9 +110,14 @@ public class ContainerTerminalEndpoint {
         String tenantId = resolved.map(u -> u.tenantIds().isEmpty() ? null : u.tenantIds().getFirst())
                 .orElse(null);
         String containerName = containerInfo.name();
+        // the container id is redundant when the target already names the container,
+        // but the IP never is — it is the only trace of where the session came from
+        var details = new java.util.ArrayList<String>(2);
+        if (containerName != null) details.add("id=" + containerId);
+        if (grant.clientIp() != null) details.add("ip=" + grant.clientIp());
         auditLogger.logForTenant(actor, tenantId, "TERMINAL_OPEN",
                 containerName != null ? containerName : containerId,
-                containerName != null ? "id=" + containerId : null);
+                details.isEmpty() ? null : String.join(", ", details));
 
         if (!containerInfo.running()) {
             sendAndClose(session, errorMsg("Container is not running."));

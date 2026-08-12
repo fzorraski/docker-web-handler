@@ -176,6 +176,14 @@ class RequestStashTest {
         assertEquals("u1", grant.userId());
     }
 
+    @Test
+    void stashTerminal_carriesClientIpToTheWebSocketEndpoint() {
+        String ticket = stash.stashTerminal("abc123def4", "192.168.0.154");
+
+        RequestStash.TerminalGrant grant = stash.retrieveTerminal(ticket);
+        assertEquals("192.168.0.154", grant.clientIp());
+    }
+
     // ---- Uniqueness ----
 
     @Test

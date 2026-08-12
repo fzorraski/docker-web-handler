@@ -67,6 +67,13 @@ public class ContainerConfigController {
     RequestStash requestStash;
 
     @Inject
+    jakarta.inject.Provider<io.vertx.core.http.HttpServerRequest> requestProvider;
+
+    @Inject
+    @ConfigProperty(name = "app.rate-limit.trust-forwarded-headers", defaultValue = "false")
+    boolean trustForwardedHeaders;
+
+    @Inject
     @ConfigProperty(name = "container.default-expiration-minutes", defaultValue = "480")
     int defaultExpirationMinutes;
 
@@ -340,8 +347,20 @@ public class ContainerConfigController {
         }
         // squad isolation: the WebSocket endpoint runs off this user-bound ticket
         containerTenantGuard.requireVisible(containerId);
-        String ticket = requestStash.stashTerminal(containerId);
+        // the IP has to be read here: the WebSocket handshake that redeems the ticket
+        // cannot report it, and the audit entry is written there
+        String ticket = requestStash.stashTerminal(containerId, clientIp());
         return jakarta.ws.rs.core.Response.ok(Map.of("ticket", ticket)).build();
+    }
+
+    /** Best-effort client IP; a missing one must never block opening a terminal. */
+    private String clientIp() {
+        try {
+            return AuthController.extractClientIp(requestProvider.get(), trustForwardedHeaders);
+        } catch (Exception e) {
+            Log.debugf("Could not determine client IP for the terminal ticket: %s", e.getMessage());
+            return null;
+        }
     }
 
     /** Validates a capability password; used by container and database flows, so any authenticated user may call it. */
