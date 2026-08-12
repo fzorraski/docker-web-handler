@@ -1060,6 +1060,7 @@ const en = {
       roles: 'Roles',
       tenants: 'Tenants',
       audit: 'Audit',
+      activity: 'Activity',
       settings: 'Settings',
     },
   },
@@ -1083,6 +1084,21 @@ const en = {
     systemTenant: 'System',
     previous: 'Previous entry',
     next: 'Next entry',
+  },
+
+  activity: {
+    byUser: 'By user',
+    byDay: 'By day',
+    from: 'From',
+    to: 'To',
+    actor: 'User',
+    action: 'Action',
+    allActions: 'All actions',
+    day: 'Day',
+    count: 'Count',
+    refresh: 'Refresh',
+    empty: 'No activity recorded for the selected range.',
+    inactive: 'The daily roll-up is not running, so this report will stay empty. It requires the PostgreSQL backend.',
   },
 
   users: {

@@ -1062,6 +1062,7 @@ const es: typeof en = {
       roles: 'Roles',
       tenants: 'Tenants',
       audit: 'Auditoría',
+      activity: 'Actividad',
       settings: 'Configuración',
     },
   },
@@ -1085,6 +1086,21 @@ const es: typeof en = {
     systemTenant: 'Sistema',
     previous: 'Registro anterior',
     next: 'Siguiente registro',
+  },
+
+  activity: {
+    byUser: 'Por usuario',
+    byDay: 'Por día',
+    from: 'Desde',
+    to: 'Hasta',
+    actor: 'Usuario',
+    action: 'Acción',
+    allActions: 'Todas las acciones',
+    day: 'Día',
+    count: 'Total',
+    refresh: 'Actualizar',
+    empty: 'No hay actividad registrada en el rango seleccionado.',
+    inactive: 'La consolidación diaria no se está ejecutando, por lo que este informe permanecerá vacío. Requiere el backend PostgreSQL.',
   },
 
   users: {

@@ -50,6 +50,9 @@ class ManageSettingsUseCaseTest {
         setField(fileAuditLogger, "file", auditFile.toString());
 
         AuditRetentionService retentionService = new AuditRetentionService();
+        // cleanupNow rolls the trail up first; an inactive summariser short-circuits
+        setField(retentionService, "activitySummaryService",
+                new br.com.fzdevx.infrastructure.persistence.ActivitySummaryService());
         setField(retentionService, "runtimeSettingsService", service);
         setField(retentionService, "auditLogger", fileAuditLogger);
 

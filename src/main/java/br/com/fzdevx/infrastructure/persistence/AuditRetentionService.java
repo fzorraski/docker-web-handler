@@ -30,6 +30,9 @@ public class AuditRetentionService {
     @Inject
     br.com.fzdevx.application.port.AuditLogger auditLogger;
 
+    @Inject
+    ActivitySummaryService activitySummaryService;
+
     private ScheduledExecutorService scheduler;
 
     void onStartup(@Observes StartupEvent event) {
@@ -48,6 +51,22 @@ public class AuditRetentionService {
             if (retentionDays <= 0) {
                 return;
             }
+            // Roll the trail up BEFORE deleting any of it, or the counts behind
+            // the reports are lost with the entries. This matters most on the
+            // path that is not a timer at all: lowering auditRetentionDays in
+            // the admin UI calls this synchronously (ManageSettingsUseCase), so
+            // without it a settings change would purge unsummarised days on the
+            // spot. The roll-up is capped at activity.summary.max-days-per-run,
+            // which bounds the added latency on that request thread.
+            try {
+                activitySummaryService.summariseNow();
+            } catch (Exception e) {
+                // deliberately not fatal: a stuck roll-up must not stop retention
+                // and let the audit table grow without bound. Data may be lost.
+                Log.errorf(e, "Activity roll-up before audit retention failed; "
+                        + "entries are about to be deleted without being summarised.");
+            }
+
             Instant cutoff = Instant.now().minus(Duration.ofDays(retentionDays));
             int removed = auditLogger.removeEntriesOlderThan(cutoff);
             if (removed > 0) {

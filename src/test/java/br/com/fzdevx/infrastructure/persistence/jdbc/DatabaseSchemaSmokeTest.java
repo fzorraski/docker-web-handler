@@ -28,7 +28,8 @@ class DatabaseSchemaSmokeTest {
                 "app_user", "tenant", "role", "container_schedule", "managed_database",
                 "database_dump", "database_snapshot", "container_expiration",
                 "database_migration", "runtime_settings", "audit_log", "auth_session",
-                "resource_counter", "image_usage", "json_import_history")) {
+                "resource_counter", "image_usage", "json_import_history",
+                "user_activity_daily", "activity_summary_state")) {
             assertTrue(tables.contains(expected), "missing table: " + expected);
         }
     }

@@ -45,6 +45,9 @@ class AuditRetentionServiceTest {
         retentionService = new AuditRetentionService();
         retentionService.runtimeSettingsService = settingsService;
         retentionService.auditLogger = fileAuditLogger;
+        // cleanupNow rolls the trail up before purging; an inactive summariser
+        // (disabled, as on the file backend these tests use) short-circuits
+        retentionService.activitySummaryService = new ActivitySummaryService();
     }
 
     private void writeOldAndRecentEntries() throws Exception {

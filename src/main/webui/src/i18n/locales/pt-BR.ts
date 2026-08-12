@@ -1062,6 +1062,7 @@ const ptBR: typeof en = {
       roles: 'Papéis',
       tenants: 'Tenants',
       audit: 'Auditoria',
+      activity: 'Atividade',
       settings: 'Configurações',
     },
   },
@@ -1085,6 +1086,21 @@ const ptBR: typeof en = {
     systemTenant: 'Sistema',
     previous: 'Registro anterior',
     next: 'Próximo registro',
+  },
+
+  activity: {
+    byUser: 'Por usuário',
+    byDay: 'Por dia',
+    from: 'De',
+    to: 'Até',
+    actor: 'Usuário',
+    action: 'Ação',
+    allActions: 'Todas as ações',
+    day: 'Dia',
+    count: 'Total',
+    refresh: 'Atualizar',
+    empty: 'Nenhuma atividade registrada no período selecionado.',
+    inactive: 'A consolidação diária não está em execução, então este relatório ficará vazio. Ela exige o backend PostgreSQL.',
   },
 
   users: {

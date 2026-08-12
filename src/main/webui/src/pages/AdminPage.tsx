@@ -6,7 +6,7 @@ import {
 } from '@mui/material'
 import {
   PersonAdd, Edit, Delete, LockReset, AddCircleOutline, Visibility,
-  Group, AdminPanelSettings, Tune, Shield, Workspaces, GroupAdd, History,
+  Group, AdminPanelSettings, Tune, Shield, Workspaces, GroupAdd, History, Insights,
 } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import HeroBanner from '../components/HeroBanner'
@@ -25,8 +25,9 @@ import TenantFormDialog from '../components/admin/TenantFormDialog'
 
 const SettingsTab = lazy(() => import('../components/admin/SettingsTab'))
 const AuditTab = lazy(() => import('../components/admin/AuditTab'))
+const ActivityTab = lazy(() => import('../components/admin/ActivityTab'))
 
-type AdminTab = 'users' | 'roles' | 'tenants' | 'audit' | 'settings'
+type AdminTab = 'users' | 'roles' | 'tenants' | 'audit' | 'activity' | 'settings'
 
 export default function AdminPage() {
   const { t } = useTranslation()
@@ -198,6 +199,7 @@ export default function AdminPage() {
           <Tab value="roles" icon={<AdminPanelSettings fontSize="small" />} iconPosition="start" label={t('admin.tabs.roles')} />
           {canTenantsViewAll && <Tab value="tenants" icon={<Workspaces fontSize="small" />} iconPosition="start" label={t('admin.tabs.tenants')} />}
           {canAuditView && <Tab value="audit" icon={<History fontSize="small" />} iconPosition="start" label={t('admin.tabs.audit')} />}
+          {canSystemConfig && <Tab value="activity" icon={<Insights fontSize="small" />} iconPosition="start" label={t('admin.tabs.activity')} />}
           {canSystemConfig && <Tab value="settings" icon={<Tune fontSize="small" />} iconPosition="start" label={t('admin.tabs.settings')} />}
         </Tabs>
 
@@ -501,6 +503,13 @@ export default function AdminPage() {
         {canAuditView && activeTab === 'audit' && (
           <Suspense fallback={<CircularProgress size={28} sx={{ display: 'block', mx: 'auto', my: 4 }} />}>
             <AuditTab />
+          </Suspense>
+        )}
+
+        {/* ==================== ACTIVITY TAB ==================== */}
+        {canSystemConfig && activeTab === 'activity' && (
+          <Suspense fallback={<CircularProgress size={28} sx={{ display: 'block', mx: 'auto', my: 4 }} />}>
+            <ActivityTab />
           </Suspense>
         )}
 
