@@ -14,8 +14,13 @@ import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Seeds RBAC storage on startup: upserts the built-in roles (so new catalog
@@ -58,10 +63,20 @@ public class RbacBootstrap {
      */
     private void warnAboutTenantlessAdmins() {
         try {
+            // roles are read once for the whole scan: findById re-reads the roles
+            // file per call on the JSON backend, so a per-user lookup would be
+            // O(users x roles) file reads at every boot
+            Map<String, Role> rolesById = roleRepository.findAll().stream()
+                    .collect(Collectors.toMap(Role::getId, Function.identity(), (a, b) -> a));
             List<String> stranded = userRepository.findAll().stream()
                     .filter(User::isEnabled)
                     .filter(user -> user.getTenantIds() == null || user.getTenantIds().isEmpty())
-                    .filter(user -> manages(user) && !hasCrossTenantReach(user))
+                    .filter(user -> {
+                        Set<Permission> permissions = permissionsOf(user, rolesById);
+                        return permissions.contains(Permission.USERS_MANAGE)
+                                && !permissions.contains(Permission.TENANTS_VIEW_ALL)
+                                && !permissions.contains(Permission.SYSTEM_CONFIG);
+                    })
                     .map(User::getUsername)
                     .toList();
             if (!stranded.isEmpty()) {
@@ -74,26 +89,15 @@ public class RbacBootstrap {
         }
     }
 
-    private boolean manages(User user) {
-        return hasAnyPermission(user, Permission.USERS_MANAGE);
-    }
-
-    private boolean hasCrossTenantReach(User user) {
-        return hasAnyPermission(user, Permission.TENANTS_VIEW_ALL, Permission.SYSTEM_CONFIG);
-    }
-
-    private boolean hasAnyPermission(User user, Permission... permissions) {
-        return user.getRoleIds().stream()
-                .map(roleRepository::findById)
-                .flatMap(Optional::stream)
-                .anyMatch(role -> {
-                    for (Permission permission : permissions) {
-                        if (role.hasPermission(permission)) {
-                            return true;
-                        }
-                    }
-                    return false;
-                });
+    private static Set<Permission> permissionsOf(User user, Map<String, Role> rolesById) {
+        Set<Permission> permissions = EnumSet.noneOf(Permission.class);
+        for (String roleId : user.getRoleIds()) {
+            Role role = rolesById.get(roleId);
+            if (role != null) {
+                permissions.addAll(role.getPermissions());
+            }
+        }
+        return permissions;
     }
 
     /**

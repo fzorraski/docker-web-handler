@@ -91,6 +91,19 @@ class AuditControllerTest {
     }
 
     @Test
+    void superAdminWithoutTenantsViewAll_stillSeesEverything() {
+        // a customized SUPER_ADMIN role may not carry TENANTS_VIEW_ALL; without
+        // this they would get an empty trail and nothing explaining why
+        currentUser.set("u4", "root", Set.of(Permission.AUDIT_LOG_VIEW, Permission.SYSTEM_CONFIG),
+                Set.of());
+
+        query();
+
+        assertTrue(auditLogger.searchScope.isUnrestricted());
+        assertTrue(auditLogger.actionsScope.isUnrestricted());
+    }
+
+    @Test
     void tenantlessScopedReader_getsEmptyScope() {
         currentUser.set("u3", "nobody", Set.of(Permission.AUDIT_LOG_VIEW), Set.of());
 

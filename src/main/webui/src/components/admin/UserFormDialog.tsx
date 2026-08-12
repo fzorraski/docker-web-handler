@@ -29,7 +29,7 @@ interface Props {
   canTenantsViewAll: boolean
 }
 
-export default function UserFormDialog({ open, onClose, onSaved, roles, tenants, user, canSystemConfig, canTenantsViewAll }: Props) {
+export default function UserFormDialog({ open, onClose, onSaved, roles, tenants, user, myPermissions, canSystemConfig, canTenantsViewAll }: Props) {
   const { t } = useTranslation()
   const isEdit = user !== null
   // a scoped admin editing a user who also belongs to a foreign tenant may only
@@ -45,12 +45,15 @@ export default function UserFormDialog({ open, onClose, onSaved, roles, tenants,
   const [error, setError] = useState<string | null>(null)
 
   // roles holding SYSTEM_CONFIG (or TENANTS_VIEW_ALL, for scoped admins) can only
-  // be assigned by actors who have that reach themselves
+  // be assigned by actors who have that reach themselves, and - mirroring
+  // ManageUsersUseCase.guardRoleAssignment - never a role granting more than the
+  // actor holds, which would otherwise only surface as a 403 on save
   const assignableRoles = useMemo(
     () => roles
       .filter(r => canSystemConfig || !r.permissions.includes(P.SYSTEM_CONFIG))
-      .filter(r => canTenantsViewAll || !r.permissions.includes(P.TENANTS_VIEW_ALL)),
-    [roles, canSystemConfig, canTenantsViewAll],
+      .filter(r => canTenantsViewAll || !r.permissions.includes(P.TENANTS_VIEW_ALL))
+      .filter(r => canSystemConfig || r.permissions.every(p => myPermissions.includes(p))),
+    [roles, myPermissions, canSystemConfig, canTenantsViewAll],
   )
 
   useEffect(() => {

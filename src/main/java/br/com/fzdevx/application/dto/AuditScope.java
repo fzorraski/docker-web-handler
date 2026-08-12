@@ -17,6 +17,11 @@ import java.util.Set;
  */
 public record AuditScope(Set<String> tenantIds) {
 
+    /** Compact constructor: the defensive copy must hold however it is built. */
+    public AuditScope {
+        tenantIds = tenantIds == null ? null : Set.copyOf(tenantIds);
+    }
+
     private static final AuditScope UNRESTRICTED = new AuditScope(null);
 
     public static AuditScope unrestricted() {
@@ -24,7 +29,7 @@ public record AuditScope(Set<String> tenantIds) {
     }
 
     public static AuditScope of(Set<String> tenantIds) {
-        return new AuditScope(tenantIds == null ? Set.of() : Set.copyOf(tenantIds));
+        return new AuditScope(tenantIds == null ? Set.of() : tenantIds);
     }
 
     public boolean isUnrestricted() {

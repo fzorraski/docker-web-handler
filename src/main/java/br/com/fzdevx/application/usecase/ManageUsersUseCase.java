@@ -248,14 +248,17 @@ public class ManageUsersUseCase {
      * reset a global admin's password and take over their account.
      */
     private void guardTargetUser(User target) {
-        if (anyRoleHoldsSystemConfig(target.getRoleIds())
+        // one pass over the target's roles: findById re-reads the roles file per
+        // call on the JSON backend, and all three checks ask about the same set
+        Set<Permission> targetPermissions = effectivePermissions(target.getRoleIds());
+        if (targetPermissions.contains(Permission.SYSTEM_CONFIG)
                 && !currentUser.hasPermission(Permission.SYSTEM_CONFIG)) {
             throw new AccessDeniedException("Only a super admin can manage super admin accounts.");
         }
-        if (anyRoleHoldsTenantsViewAll(target.getRoleIds()) && !hasGlobalTenantAccess()) {
+        if (targetPermissions.contains(Permission.TENANTS_VIEW_ALL) && !hasGlobalTenantAccess()) {
             throw new AccessDeniedException("Only a global admin can manage global admin accounts.");
         }
-        if (!holdsAllOf(effectivePermissions(target.getRoleIds()))) {
+        if (!holdsAllOf(targetPermissions)) {
             throw new AccessDeniedException(
                     "You can only manage users whose permissions you hold yourself.");
         }
@@ -310,12 +313,6 @@ public class ManageUsersUseCase {
     private boolean anyRoleHoldsSystemConfig(List<String> roleIds) {
         return roleIds.stream().anyMatch(roleId -> roleRepository.findById(roleId)
                 .map(r -> r.hasPermission(Permission.SYSTEM_CONFIG))
-                .orElse(false));
-    }
-
-    private boolean anyRoleHoldsTenantsViewAll(List<String> roleIds) {
-        return roleIds.stream().anyMatch(roleId -> roleRepository.findById(roleId)
-                .map(r -> r.hasPermission(Permission.TENANTS_VIEW_ALL))
                 .orElse(false));
     }
 

@@ -49,7 +49,11 @@ public class TenantVisibility {
      * reader must not see. See {@link AuditScope}.</p>
      */
     public AuditScope auditScope() {
-        if (bypass()) {
+        // SYSTEM_CONFIG counts as cross-tenant reach here, as it does in
+        // ManageUsersUseCase and ManageTenantsUseCase: a super admin whose role
+        // happens not to carry TENANTS_VIEW_ALL would otherwise get an empty
+        // trail and an empty action dropdown with nothing explaining why
+        if (bypass() || currentUser.hasPermission(Permission.SYSTEM_CONFIG)) {
             return AuditScope.unrestricted();
         }
         // bypass() returning false guarantees an active request scope

@@ -101,9 +101,11 @@ export default function AuditTab() {
 
   // a scoped reader only ever gets their own tenants back, so the column would
   // be a constant - it is worth showing only to cross-tenant readers
-  const { hasPermission } = useAuth()
+  const { hasPermission, rbacEnabled } = useAuth()
   const tenantNames = useTenantNames()
-  const showTenant = hasPermission(P.TENANTS_VIEW_ALL)
+  // hasPermission answers true for everything when RBAC is off, and there is no
+  // tenant model at all then - every other tenant column gates the same way
+  const showTenant = rbacEnabled && hasPermission(P.TENANTS_VIEW_ALL)
   const tenantLabel = (id: string | null) =>
     id === null ? t('audit.systemTenant') : tenantNames.get(id) ?? id
 
