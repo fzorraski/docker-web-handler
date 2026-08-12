@@ -91,11 +91,20 @@ export default function AdminPage() {
     return rolesOf(user).some(r => r.permissions.includes(P.TENANTS_VIEW_ALL))
   }
 
+  // mirrors the backend rule: you can only manage permissions you hold yourself,
+  // otherwise taking over the account would be an escalation
+  function holdsOnlyMyPermissions(user: AppUser): boolean {
+    if (canSystemConfig) return true
+    const mine = currentUser?.permissions ?? []
+    return rolesOf(user).every(r => r.permissions.every(p => mine.includes(p)))
+  }
+
   // acting on a user (or role) that holds SYSTEM_CONFIG requires SYSTEM_CONFIG;
   // global admins (TENANTS_VIEW_ALL) are likewise off-limits to tenant-scoped admins
   function canActOnUser(user: AppUser): boolean {
     return (canSystemConfig || !holdsSystemConfig(user))
       && (canTenantsViewAll || !holdsTenantsViewAll(user))
+      && holdsOnlyMyPermissions(user)
   }
 
   // tenant-scoped admins assign roles but never define them; the built-in
@@ -510,6 +519,7 @@ export default function AdminPage() {
         roles={roles}
         tenants={canTenantsViewAll ? tenants : myTenants}
         user={editingUser}
+        myPermissions={currentUser?.permissions ?? []}
         canSystemConfig={canSystemConfig}
         canTenantsViewAll={canTenantsViewAll}
       />

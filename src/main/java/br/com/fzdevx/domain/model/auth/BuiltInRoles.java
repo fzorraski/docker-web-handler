@@ -27,8 +27,12 @@ public final class BuiltInRoles {
     public static Role admin() {
         Set<Permission> permissions = EnumSet.allOf(Permission.class);
         permissions.remove(Permission.SYSTEM_CONFIG);
+        // admins administer the tenants they belong to, not the whole install:
+        // creating tenants, defining roles and reaching another tenant's
+        // resources stay with the super admin
+        permissions.remove(Permission.TENANTS_VIEW_ALL);
         return builtIn(ADMIN_ID, "ADMIN",
-                "Full operational access and user management.",
+                "Full operational access and user management within the assigned tenants.",
                 permissions);
     }
 

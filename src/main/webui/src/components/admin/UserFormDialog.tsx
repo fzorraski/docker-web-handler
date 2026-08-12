@@ -21,6 +21,8 @@ interface Props {
   tenants: TenantSummary[]
   /** null = create mode */
   user: AppUser | null
+  /** the acting user's own permissions; a role may not grant more than these */
+  myPermissions: string[]
   /** whether the acting user holds SYSTEM_CONFIG (may assign super-admin roles) */
   canSystemConfig: boolean
   /** cross-tenant reach; without it the actor is a tenant-scoped admin */

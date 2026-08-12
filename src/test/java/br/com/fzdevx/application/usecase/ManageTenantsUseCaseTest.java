@@ -242,4 +242,17 @@ class ManageTenantsUseCaseTest {
         useCase.create(request("Support"));
         verify(tenantRepository).save(any());
     }
+
+    @Test
+    void tenantCrud_deniedForBuiltInAdmin() {
+        // the built-in ADMIN is tenant-scoped now: only a super admin creates
+        // tenants or hands one to somebody
+        setActorPermissions(br.com.fzdevx.domain.model.auth.BuiltInRoles.admin().getPermissions());
+
+        assertThrows(br.com.fzdevx.domain.exception.AccessDeniedException.class,
+                useCase::guardGlobalAdmin);
+        assertThrows(br.com.fzdevx.domain.exception.AccessDeniedException.class,
+                () -> useCase.create(request("New Squad")));
+        verify(tenantRepository, never()).save(any());
+    }
 }

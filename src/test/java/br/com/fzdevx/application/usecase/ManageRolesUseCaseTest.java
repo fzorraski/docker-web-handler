@@ -248,4 +248,19 @@ class ManageRolesUseCaseTest {
         Role role = useCase.create(roleRequest("Fine", List.of("LOGS_VIEW")));
         useCase.delete(role.getId());
     }
+
+    @Test
+    void roleCrud_deniedForBuiltInAdmin() {
+        // defining roles is a system-level concern once ADMIN is tenant-scoped
+        actWithPermissions(BuiltInRoles.admin().getPermissions());
+
+        assertThrows(AccessDeniedException.class,
+                () -> useCase.create(roleRequest("Whatever", List.of("LOGS_VIEW"))));
+        assertThrows(AccessDeniedException.class,
+                () -> useCase.update(BuiltInRoles.VIEWER_ID, roleRequest("VIEWER", List.of("LOGS_VIEW"))));
+        assertThrows(AccessDeniedException.class, () -> useCase.delete(BuiltInRoles.VIEWER_ID));
+
+        // listing still works - they assign roles, they just do not define them
+        assertFalse(useCase.list().isEmpty());
+    }
 }

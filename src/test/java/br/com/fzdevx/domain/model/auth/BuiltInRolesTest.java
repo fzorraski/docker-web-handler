@@ -2,15 +2,26 @@ package br.com.fzdevx.domain.model.auth;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BuiltInRolesTest {
 
     @Test
-    void superAdminAndAdmin_seeAllTenants() {
+    void onlySuperAdmin_seesAllTenants() {
         assertTrue(BuiltInRoles.superAdmin().hasPermission(Permission.TENANTS_VIEW_ALL));
-        assertTrue(BuiltInRoles.admin().hasPermission(Permission.TENANTS_VIEW_ALL));
+        // admins administer the tenants assigned to them, not the whole install
+        assertFalse(BuiltInRoles.admin().hasPermission(Permission.TENANTS_VIEW_ALL));
+    }
+
+    @Test
+    void admin_isEverythingExceptSystemConfigAndCrossTenantReach() {
+        // an exact set: a permission added later must not land in ADMIN unnoticed
+        assertEquals(
+                java.util.EnumSet.complementOf(java.util.EnumSet.of(
+                        Permission.SYSTEM_CONFIG, Permission.TENANTS_VIEW_ALL)),
+                java.util.EnumSet.copyOf(BuiltInRoles.admin().getPermissions()));
     }
 
     @Test

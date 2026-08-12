@@ -90,10 +90,20 @@ class ManageUsersUseCaseTest {
         useCase.currentUser = actor;
     }
 
-    private void actAsAdmin() {
+    /**
+     * A CUSTOM global admin: everything but SYSTEM_CONFIG, TENANTS_VIEW_ALL
+     * included. Deliberately not built from BuiltInRoles.admin(), which is
+     * tenant-scoped - these cases exercise the cross-tenant tier.
+     */
+    private void actAsGlobalAdmin() {
         Set<Permission> permissions = EnumSet.allOf(Permission.class);
         permissions.remove(Permission.SYSTEM_CONFIG);
         actAs(admin, permissions);
+    }
+
+    /** The real built-in ADMIN role, scoped to the given tenants. */
+    private void actAsBuiltInAdmin(User user, String... tenantIds) {
+        actAsScoped(user, BuiltInRoles.admin().getPermissions(), tenantIds);
     }
 
     private static void setField(Object target, String name, Object value) throws Exception {
@@ -148,7 +158,7 @@ class ManageUsersUseCaseTest {
 
     @Test
     void create_adminAssigningSuperAdminRole_denied() {
-        actAsAdmin();
+        actAsGlobalAdmin();
         assertThrows(AccessDeniedException.class,
                 () -> useCase.create(createRequest("evil", "secret1", BuiltInRoles.SUPER_ADMIN_ID)));
     }
@@ -180,7 +190,7 @@ class ManageUsersUseCaseTest {
 
     @Test
     void update_adminTouchingSuperAdmin_denied() {
-        actAsAdmin();
+        actAsGlobalAdmin();
         UpdateUserRequest request = new UpdateUserRequest();
         request.setEnabled(false);
         assertThrows(AccessDeniedException.class, () -> useCase.update(superAdmin.getId(), request));
@@ -227,7 +237,7 @@ class ManageUsersUseCaseTest {
 
     @Test
     void resetPassword_adminResettingSuperAdmin_denied() {
-        actAsAdmin();
+        actAsGlobalAdmin();
         assertThrows(AccessDeniedException.class,
                 () -> useCase.resetPassword(superAdmin.getId(), "new-secret"));
     }
@@ -260,7 +270,7 @@ class ManageUsersUseCaseTest {
 
     @Test
     void delete_adminDeletingSuperAdmin_denied() {
-        actAsAdmin();
+        actAsGlobalAdmin();
         assertThrows(AccessDeniedException.class, () -> useCase.delete(superAdmin.getId()));
     }
 
@@ -271,7 +281,7 @@ class ManageUsersUseCaseTest {
         User special = new User("special", "hash", customSuper.getId());
         userRepository.save(special);
 
-        actAsAdmin();
+        actAsGlobalAdmin();
         assertThrows(AccessDeniedException.class, () -> useCase.delete(special.getId()));
     }
 
@@ -287,8 +297,15 @@ class ManageUsersUseCaseTest {
     // ---- tenant-scoped admins ----
     // USERS_MANAGE without TENANTS_VIEW_ALL/SYSTEM_CONFIG only reaches the actor's tenants
 
-    private static final Set<Permission> SCOPED_ADMIN_PERMS =
-            EnumSet.of(Permission.USERS_MANAGE, Permission.CONTAINERS_VIEW);
+    /**
+     * A tenant admin: USERS_MANAGE plus at least what the users they administer
+     * can do (VIEWER). Managing someone who holds permissions you lack is
+     * itself an escalation, so a realistic scoped admin has to cover them.
+     */
+    private static final Set<Permission> SCOPED_ADMIN_PERMS = EnumSet.copyOf(
+            java.util.stream.Stream.concat(
+                    java.util.stream.Stream.of(Permission.USERS_MANAGE),
+                    BuiltInRoles.viewer().getPermissions().stream()).toList());
 
     private br.com.fzdevx.domain.model.auth.Tenant support;
     private br.com.fzdevx.domain.model.auth.Tenant development;
@@ -300,7 +317,11 @@ class ManageUsersUseCaseTest {
         tenantRepository.save(support);
         tenantRepository.save(development);
 
-        supportAdmin = new User("supadmin", "hash", BuiltInRoles.OPERATOR_ID);
+        // the actor's stored role must match the permissions they act with, or
+        // they could not even manage their own account under the subset rule
+        Role tenantAdminRole = new Role("Tenant Admin", null, SCOPED_ADMIN_PERMS);
+        roleRepository.save(tenantAdminRole);
+        supportAdmin = new User("supadmin", "hash", tenantAdminRole.getId());
         supportAdmin.setTenantIds(java.util.List.of(support.getId()));
         userRepository.save(supportAdmin);
         actAsScoped(supportAdmin, SCOPED_ADMIN_PERMS, support.getId());
@@ -345,9 +366,10 @@ class ManageUsersUseCaseTest {
     }
 
     @Test
-    void scopedCreate_cannotAssignGlobalAdminRole() {
+    void scopedCreate_cannotAssignStrongerRole() {
         setUpTenantScope();
-        // built-in ADMIN holds TENANTS_VIEW_ALL - assigning it would escape the tenant
+        // the actor holds only USERS_MANAGE + CONTAINERS_VIEW; built-in ADMIN
+        // grants far more, so handing it out would escalate through a new account
         CreateUserRequest request = createRequest("evil", "secret1", BuiltInRoles.ADMIN_ID);
         request.setTenantIds(java.util.List.of(support.getId()));
         assertThrows(AccessDeniedException.class, () -> useCase.create(request));
@@ -367,6 +389,8 @@ class ManageUsersUseCaseTest {
 
     @Test
     void scopedUpdate_selfRoleSwapToBuiltinAdmin_denied() {
+        // self-promotion: the subset rule is what closes this once the built-in
+        // ADMIN role no longer carries TENANTS_VIEW_ALL
         setUpTenantScope();
         // the escalation hole this feature closes: PUT /users/{ownId} roleIds=[builtin-admin]
         UpdateUserRequest request = new UpdateUserRequest();
@@ -446,7 +470,9 @@ class ManageUsersUseCaseTest {
         User member = memberOf("supp-user", support.getId());
 
         UpdateUserRequest request = new UpdateUserRequest();
-        request.setRoleIds(java.util.List.of(BuiltInRoles.OPERATOR_ID));
+        // a role within the actor's own permissions - OPERATOR would be an
+        // escalation, which scopedCreate_cannotAssignStrongerRole covers
+        request.setRoleIds(java.util.List.of(BuiltInRoles.VIEWER_ID));
         request.setEnabled(false);
         useCase.update(member.getId(), request);
         useCase.resetPassword(member.getId(), "newpass1");
@@ -456,9 +482,11 @@ class ManageUsersUseCaseTest {
     }
 
     @Test
-    void scoped_cannotTouchGlobalAdminInOwnTenant() {
+    void scoped_cannotTouchStrongerAdminInOwnTenant() {
+        // peer takeover: resetting a stronger admin's password would hand the
+        // actor an account with permissions they do not hold
         setUpTenantScope();
-        User globalInSupport = new User("global", "hash", BuiltInRoles.ADMIN_ID);
+        User globalInSupport = new User("stronger", "hash", BuiltInRoles.ADMIN_ID);
         globalInSupport.setTenantIds(java.util.List.of(support.getId()));
         userRepository.save(globalInSupport);
 
@@ -482,8 +510,150 @@ class ManageUsersUseCaseTest {
     void globalAdmin_unaffectedByScoping() {
         setUpTenantScope();
         memberOf("dev-user", development.getId());
-        actAsAdmin(); // built-in ADMIN permissions include TENANTS_VIEW_ALL
+        actAsGlobalAdmin(); // a CUSTOM global role: the built-in ADMIN is scoped
 
         assertTrue(useCase.list().stream().anyMatch(u -> u.username().equals("dev-user")));
+    }
+
+    // ---- the built-in ADMIN role is tenant-scoped ----
+
+    /** Registers a built-in ADMIN user in the given tenants and acts as them. */
+    private User builtInAdminIn(String username, String... tenantIds) {
+        User user = new User(username, "hash", BuiltInRoles.ADMIN_ID);
+        user.setTenantIds(java.util.List.of(tenantIds));
+        userRepository.save(user);
+        actAsBuiltInAdmin(user, tenantIds);
+        return user;
+    }
+
+    @Test
+    void builtInAdmin_seesOnlyOwnTenantMembers() {
+        setUpTenantScope();
+        memberOf("supp-user", support.getId());
+        memberOf("dev-user", development.getId());
+        builtInAdminIn("tenant-admin", support.getId());
+
+        var visible = useCase.list().stream().map(UserResponse::username).toList();
+
+        assertTrue(visible.contains("supp-user"));
+        assertFalse(visible.contains("dev-user"), "another tenant's members stay hidden");
+        assertFalse(visible.contains("admin"), "tenantless users are super-admin territory");
+    }
+
+    @Test
+    void builtInAdmin_canCreateAnotherAdminInOwnTenant() {
+        setUpTenantScope();
+        builtInAdminIn("tenant-admin", support.getId());
+
+        CreateUserRequest request = createRequest("deputy", "secret1", BuiltInRoles.ADMIN_ID);
+        request.setTenantIds(java.util.List.of(support.getId()));
+        UserResponse created = useCase.create(request);
+
+        assertEquals(java.util.List.of("Support"), created.tenantNames());
+        assertTrue(userRepository.findByUsername("deputy").orElseThrow()
+                .getRoleIds().contains(BuiltInRoles.ADMIN_ID));
+    }
+
+    @Test
+    void builtInAdmin_cannotCreateInForeignTenantOrTenantless() {
+        setUpTenantScope();
+        builtInAdminIn("tenant-admin", support.getId());
+
+        CreateUserRequest foreign = createRequest("spy", "secret1", BuiltInRoles.VIEWER_ID);
+        foreign.setTenantIds(java.util.List.of(development.getId()));
+        assertThrows(AccessDeniedException.class, () -> useCase.create(foreign));
+
+        CreateUserRequest tenantless = createRequest("ghost", "secret1", BuiltInRoles.VIEWER_ID);
+        tenantless.setTenantIds(java.util.List.of());
+        assertThrows(InvalidInputException.class, () -> useCase.create(tenantless));
+    }
+
+    @Test
+    void builtInAdmin_cannotAssignSuperAdminRole() {
+        setUpTenantScope();
+        builtInAdminIn("tenant-admin", support.getId());
+
+        CreateUserRequest request = createRequest("evil", "secret1", BuiltInRoles.SUPER_ADMIN_ID);
+        request.setTenantIds(java.util.List.of(support.getId()));
+        assertThrows(AccessDeniedException.class, () -> useCase.create(request));
+    }
+
+    @Test
+    void builtInAdmin_cannotAssignRoleWithCrossTenantReach() {
+        setUpTenantScope();
+        builtInAdminIn("tenant-admin", support.getId());
+        Role globalRole = new Role("Global Support",
+                null, EnumSet.of(Permission.USERS_MANAGE, Permission.TENANTS_VIEW_ALL));
+        roleRepository.save(globalRole);
+
+        CreateUserRequest request = createRequest("escapee", "secret1", globalRole.getId());
+        request.setTenantIds(java.util.List.of(support.getId()));
+        assertThrows(AccessDeniedException.class, () -> useCase.create(request));
+    }
+
+    @Test
+    void peerBuiltInAdmins_canManageEachOther() {
+        setUpTenantScope();
+        User peer = new User("peer", "hash", BuiltInRoles.ADMIN_ID);
+        peer.setTenantIds(java.util.List.of(support.getId()));
+        userRepository.save(peer);
+        builtInAdminIn("tenant-admin", support.getId());
+
+        // equal permission sets: the subset rule must not block equals
+        useCase.resetPassword(peer.getId(), "newpass1");
+
+        assertNotEquals("hash", userRepository.findById(peer.getId()).orElseThrow().getPasswordHash());
+    }
+
+    @Test
+    void weakScopedAdmin_cannotSelfPromoteToBuiltInAdmin() {
+        setUpTenantScope(); // actor holds USERS_MANAGE + CONTAINERS_VIEW only
+
+        UpdateUserRequest request = new UpdateUserRequest();
+        request.setRoleIds(java.util.List.of(BuiltInRoles.ADMIN_ID));
+
+        assertThrows(AccessDeniedException.class,
+                () -> useCase.update(supportAdmin.getId(), request));
+    }
+
+    @Test
+    void weakScopedAdmin_cannotTakeOverBuiltInAdminPeer() {
+        setUpTenantScope();
+        User strongPeer = new User("strong", "hash", BuiltInRoles.ADMIN_ID);
+        strongPeer.setTenantIds(java.util.List.of(support.getId()));
+        userRepository.save(strongPeer);
+
+        assertThrows(AccessDeniedException.class,
+                () -> useCase.resetPassword(strongPeer.getId(), "newpass1"));
+    }
+
+    @Test
+    void builtInAdminWithZeroTenants_seesAndCreatesNothing() {
+        setUpTenantScope();
+        memberOf("supp-user", support.getId());
+        // documents the lockout: an admin nobody assigned a tenant to is powerless
+        builtInAdminIn("orphan-admin");
+
+        assertTrue(useCase.list().isEmpty());
+        CreateUserRequest request = createRequest("anyone", "secret1", BuiltInRoles.VIEWER_ID);
+        request.setTenantIds(java.util.List.of(support.getId()));
+        assertThrows(AccessDeniedException.class, () -> useCase.create(request));
+    }
+
+    @Test
+    void newTenant_isNotAutoGrantedToExistingAdmin() {
+        setUpTenantScope();
+        builtInAdminIn("tenant-admin", support.getId());
+        // a super admin adds a tenant afterwards: memberships are explicit ids,
+        // never a wildcard, so it must stay out of reach
+        var marketing = new br.com.fzdevx.domain.model.auth.Tenant("Marketing", null);
+        tenantRepository.save(marketing);
+        memberOf("mkt-user", marketing.getId());
+
+        assertTrue(useCase.list().stream().noneMatch(u -> u.username().equals("mkt-user")));
+
+        CreateUserRequest request = createRequest("mkt-2", "secret1", BuiltInRoles.VIEWER_ID);
+        request.setTenantIds(java.util.List.of(marketing.getId()));
+        assertThrows(AccessDeniedException.class, () -> useCase.create(request));
     }
 }

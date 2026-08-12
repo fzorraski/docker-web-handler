@@ -23,6 +23,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.time.Instant;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -254,6 +255,10 @@ public class ManageUsersUseCase {
         if (anyRoleHoldsTenantsViewAll(target.getRoleIds()) && !hasGlobalTenantAccess()) {
             throw new AccessDeniedException("Only a global admin can manage global admin accounts.");
         }
+        if (!holdsAllOf(effectivePermissions(target.getRoleIds()))) {
+            throw new AccessDeniedException(
+                    "You can only manage users whose permissions you hold yourself.");
+        }
     }
 
     /**
@@ -270,6 +275,36 @@ public class ManageUsersUseCase {
             throw new AccessDeniedException(
                     "Only a global admin can assign roles that see all tenants.");
         }
+        if (!holdsAllOf(role.getPermissions())) {
+            throw new AccessDeniedException(
+                    "You can only assign roles no stronger than your own.");
+        }
+    }
+
+    /**
+     * Whether the actor holds every one of these permissions. The two checks
+     * above only know the SYSTEM_CONFIG and TENANTS_VIEW_ALL tiers, which stops
+     * being the whole hierarchy once a role like the built-in ADMIN carries
+     * neither: without this an actor holding just USERS_MANAGE could assign
+     * themselves that role, or reset the password of someone who holds it.
+     * A super admin is exempt - they hold everything by definition.
+     */
+    private boolean holdsAllOf(Set<Permission> permissions) {
+        // with RBAC off the actor has no permission set at all while
+        // hasPermission() answers true for everything, so there is nothing to compare
+        if (!currentUser.isRbacActive() || currentUser.hasPermission(Permission.SYSTEM_CONFIG)) {
+            return true;
+        }
+        return currentUser.getPermissions().containsAll(permissions);
+    }
+
+    /** Union of the permissions granted by these roles; unknown ids are skipped. */
+    private Set<Permission> effectivePermissions(List<String> roleIds) {
+        Set<Permission> permissions = EnumSet.noneOf(Permission.class);
+        for (String roleId : roleIds) {
+            roleRepository.findById(roleId).ifPresent(role -> permissions.addAll(role.getPermissions()));
+        }
+        return permissions;
     }
 
     private boolean anyRoleHoldsSystemConfig(List<String> roleIds) {

@@ -161,4 +161,11 @@ class TenantVisibilityTest {
         assertThrows(InvalidInputException.class,
                 () -> rbacUser(Set.of(Permission.TENANTS_VIEW_ALL)).resolveCreationTenant("nope"));
     }
+
+    @Test
+    void builtInAdmin_doesNotBypass() {
+        // cheapest guard against TENANTS_VIEW_ALL being put back into ADMIN
+        assertFalse(rbacUser(br.com.fzdevx.domain.model.auth.BuiltInRoles.admin().getPermissions(), "t1")
+                .bypass());
+    }
 }

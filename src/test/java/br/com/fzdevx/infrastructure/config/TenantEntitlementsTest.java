@@ -158,4 +158,11 @@ class TenantEntitlementsTest {
         assertDoesNotThrow(() -> entitlements.requireRepositoryAllowed("repo-a"));
         assertDoesNotThrow(() -> entitlements.requireDatabaseAllowed("repo-a"));
     }
+
+    @Test
+    void builtInAdmin_doesNotBypass() {
+        // cheapest guard against TENANTS_VIEW_ALL being put back into ADMIN
+        assertFalse(rbacUser(br.com.fzdevx.domain.model.auth.BuiltInRoles.admin().getPermissions(), "t1")
+                .bypass());
+    }
 }
