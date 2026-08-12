@@ -23,6 +23,7 @@ import { prepareLogAnalysis, streamLogAnalysis, cancelLogAnalysis, prepareCompos
 import { AnalysisOptionsDialog, applyPreset } from '../components/log-analyzer/AnalysisOptionsDialog'
 import type { AnalysisConfiguration } from '../components/log-analyzer/AnalysisOptionsDialog'
 import { SummaryCard } from '../components/log-analyzer/SummaryCard'
+import { multilineTooltipProps } from '../components/log-analyzer/tooltipStyles'
 import { ApiCallsTab } from '../components/log-analyzer/ApiCallsTab'
 import { EndpointStatsTab } from '../components/log-analyzer/EndpointStatsTab'
 import { RawLogTab } from '../components/log-analyzer/RawLogTab'
@@ -746,7 +747,8 @@ export default function LogAnalyzerPage() {
                   a.label,
                   uploadDate ? `${t('logAnalyzer.upload.uploadedAt')}: ${uploadDate}` : '',
                   uploader ? `${t('logAnalyzer.upload.uploadedBy')}: ${uploader}` : '',
-                ].filter(Boolean).join('\n')} arrow placement="top" enterDelay={400}>
+                ].filter(Boolean).join('\n')} arrow placement="top" enterDelay={400}
+                  slotProps={multilineTooltipProps}>
                 <Paper
                   elevation={0}
                   onClick={() => setSelectedId(a.id)}

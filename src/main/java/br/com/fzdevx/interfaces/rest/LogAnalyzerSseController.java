@@ -133,8 +133,11 @@ public class LogAnalyzerSseController {
         List<String> individualFilenames = request.getFilenames();
         // broadcastStarted already called at prepare time — no duplicate call here
 
-        // resolved on the request thread — the analysis itself runs off-scope on the executor
-        String uploader = actorResolver.usernameOrSystem();
+        // resolved on the request thread — the analysis itself runs off-scope on the executor.
+        // Handed to the use case rather than stamped afterwards: the client refreshes its list
+        // as soon as the SUCCESS event lands, which happens before this method's finally block.
+        var attribution = new AnalyzeLogFileUseCase.Attribution(
+                actorResolver.usernameOrSystem(), request.getLabel());
 
         boolean[] succeeded = {false};
         String[] analysisId = {null};
@@ -151,18 +154,10 @@ public class LogAnalyzerSseController {
                             analysisId[0] = event.getDetail();
                         }
                     }, ticket,
-                    evictedId -> broadcaster.broadcastDeleted(evictedId));
+                    evictedId -> broadcaster.broadcastDeleted(evictedId),
+                    attribution);
         } finally {
             if (succeeded[0] && analysisId[0] != null) {
-                // stamp before broadcasting — clients refetch the summary on completion
-                var analysis = analyzeLogFileUseCase.get(analysisId[0]);
-                if (analysis != null) {
-                    analysis.setUploadedBy(uploader);
-                    if (request.getLabel() != null && !request.getLabel().isBlank()) {
-                        String lbl = request.getLabel().trim();
-                        analysis.setLabel(lbl.length() > 50 ? lbl.substring(0, 50) : lbl);
-                    }
-                }
                 broadcaster.broadcastCompleted("", filenames, analysisId[0], request.getFilenames());
             } else {
                 // Cancelled or failed — still broadcast so all clients clear the "in progress" banner
@@ -239,7 +234,7 @@ public class LogAnalyzerSseController {
                 : logPresetProvider.byName(defaultPresetName);
         int slowThreshold = request.slowThresholdMs() > 0 ? request.slowThresholdMs() : defaultSlowThresholdMs;
 
-        String composer = actorResolver.usernameOrSystem();
+        var attribution = new AnalyzeLogFileUseCase.Attribution(actorResolver.usernameOrSystem(), null);
 
         boolean[] succeeded = {false};
         String[] analysisId = {null};
@@ -255,11 +250,10 @@ public class LogAnalyzerSseController {
                             analysisId[0] = event.getDetail();
                         }
                     }, ticket,
-                    evictedId -> broadcaster.broadcastDeleted(evictedId));
+                    evictedId -> broadcaster.broadcastDeleted(evictedId),
+                    attribution);
         } finally {
             if (succeeded[0] && analysisId[0] != null) {
-                var composed = analyzeLogFileUseCase.get(analysisId[0]);
-                if (composed != null) composed.setUploadedBy(composer);
                 broadcaster.broadcastCompleted("", "Compose", analysisId[0], List.of());
             } else {
                 broadcaster.broadcastCompleted("", "Compose", "", List.of());

@@ -232,6 +232,54 @@ class AnalyzeLogFileUseCaseTest {
         assertEquals(3, useCase.listAll().size());
     }
 
+    // ---- attribution ----
+
+    @Test
+    void attribution_trimsAndTruncatesLabel() {
+        assertEquals("my-label", new AnalyzeLogFileUseCase.Attribution(null, "  my-label  ").label());
+        assertNull(new AnalyzeLogFileUseCase.Attribution(null, "   ").label());
+        assertNull(new AnalyzeLogFileUseCase.Attribution(null, null).label());
+        assertEquals(50, new AnalyzeLogFileUseCase.Attribution(null, "x".repeat(80)).label().length());
+    }
+
+    @Test
+    void analyzeWithProgress_stampsAttributionBeforeSuccessEvent() {
+        LogAnalysis expected = makeAnalysis();
+        stubProgressAnalyze(expected);
+
+        // the client refreshes its list on SUCCESS, so uploader and label must already be
+        // visible on the published analysis by the time the event is emitted
+        List<String[]> stampedAtSuccess = new ArrayList<>();
+        useCase.analyzeWithProgress(
+                List.of(Path.of("/tmp/test.log")), List.of("test.log"),
+                LogPreset.WILDFLY, 1000, AnalysisOptions.all(),
+                event -> {
+                    if (event.getType() == ContainerEvent.EventType.SUCCESS) {
+                        LogAnalysis published = useCase.get(event.getDetail());
+                        stampedAtSuccess.add(new String[]{published.getUploadedBy(), published.getLabel()});
+                    }
+                },
+                "ticket-attr", evicted -> {},
+                new AnalyzeLogFileUseCase.Attribution("alice", "  nightly  "));
+
+        assertEquals(1, stampedAtSuccess.size());
+        assertEquals("alice", stampedAtSuccess.getFirst()[0]);
+        assertEquals("nightly", stampedAtSuccess.getFirst()[1]);
+    }
+
+    @Test
+    void analyze_stampsAttributionOnResult() {
+        LogAnalysis expected = makeAnalysis();
+        when(logAnalysisPort.analyze(anyList(), anyList(), any(), anyInt(), any())).thenReturn(expected);
+
+        var result = useCase.analyze(List.of(Path.of("/tmp/test.log")), List.of("test.log"),
+                LogPreset.WILDFLY, 1000, AnalysisOptions.all(),
+                new AnalyzeLogFileUseCase.Attribution("bob", null));
+
+        assertEquals("bob", result.analysis().getUploadedBy());
+        assertEquals("bob", useCase.get(expected.getId()).getUploadedBy());
+    }
+
     // ---- analyzeWithProgress ----
 
     @Test

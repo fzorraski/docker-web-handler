@@ -30,9 +30,15 @@ public class LogAnalysis {
     private List<CriticalIssueSummary> cachedBursts;
     private List<NpeLocationSummary> npeAnalysis;
     private List<ExceptionLocationSummary> exceptionAnalysis;
-    private String label;
+    /**
+     * Label and uploader are stamped by the creating request and then read by other
+     * users' request threads through the shared analysis cache. Both are volatile so
+     * a reader cannot observe a half-stamped entry — the instances are @ApplicationScoped
+     * and shared across simultaneous users.
+     */
+    private volatile String label;
     /** Username of whoever uploaded/created this analysis; null in legacy password mode. */
-    private String uploadedBy;
+    private volatile String uploadedBy;
 
     public LogAnalysis(List<SourceFile> sourceFiles, int totalLineCount,
                        LocalDateTime timeRangeStart, LocalDateTime timeRangeEnd,

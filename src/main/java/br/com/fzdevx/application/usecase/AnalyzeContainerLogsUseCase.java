@@ -1,5 +1,6 @@
 package br.com.fzdevx.application.usecase;
 
+import br.com.fzdevx.application.dto.AnalysisOptions;
 import br.com.fzdevx.application.port.DockerContainerPort;
 import br.com.fzdevx.domain.model.LogAnalysis;
 import br.com.fzdevx.domain.model.LogPreset;
@@ -39,6 +40,13 @@ public class AnalyzeContainerLogsUseCase {
 
     public LogAnalysis execute(String containerId, String containerName, int requestedLines,
                                String direction, LogPreset preset, int slowThresholdMs) throws IOException {
+        return execute(containerId, containerName, requestedLines, direction, preset, slowThresholdMs,
+                AnalyzeLogFileUseCase.Attribution.NONE);
+    }
+
+    public LogAnalysis execute(String containerId, String containerName, int requestedLines,
+                               String direction, LogPreset preset, int slowThresholdMs,
+                               AnalyzeLogFileUseCase.Attribution attribution) throws IOException {
         Optional<String> idError = InputValidator.validateContainerId(containerId);
         if (idError.isPresent()) {
             throw new ContainerLogException(idError.get());
@@ -83,7 +91,8 @@ public class AnalyzeContainerLogsUseCase {
             }
 
             return analyzeLogFileUseCase.analyze(
-                    List.of(tempFile), List.of(filename), preset, slowThresholdMs
+                    List.of(tempFile), List.of(filename), preset, slowThresholdMs,
+                    AnalysisOptions.all(), attribution
             ).analysis();
         } finally {
             if (tempFile != null) {

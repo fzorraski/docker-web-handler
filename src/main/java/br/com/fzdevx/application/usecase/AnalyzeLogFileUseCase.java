@@ -30,6 +30,31 @@ public class AnalyzeLogFileUseCase {
 
     public record AnalysisResult(LogAnalysis analysis, String evictedId) {}
 
+    /**
+     * Who created an analysis and how it is labelled. Applied before the analysis is
+     * published into the shared cache and before the SUCCESS event is emitted, so the
+     * refresh that event triggers never races a half-stamped entry.
+     */
+    public record Attribution(String uploadedBy, String label) {
+
+        public static final Attribution NONE = new Attribution(null, null);
+
+        private static final int MAX_LABEL_LENGTH = 50;
+
+        public Attribution {
+            if (label != null) {
+                label = label.trim();
+                label = label.isEmpty() ? null
+                        : label.substring(0, Math.min(label.length(), MAX_LABEL_LENGTH));
+            }
+        }
+
+        void applyTo(LogAnalysis analysis) {
+            analysis.setUploadedBy(uploadedBy);
+            if (label != null) analysis.setLabel(label);
+        }
+    }
+
     private final ConcurrentHashMap<String, AnalysisEntry> analyses = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicBoolean> activeRuns = new ConcurrentHashMap<>();
     private ScheduledExecutorService cleanupScheduler;
@@ -88,6 +113,11 @@ public class AnalyzeLogFileUseCase {
 
     public AnalysisResult analyze(List<Path> files, List<String> filenames, LogPreset preset, int slowThresholdMs,
                                AnalysisOptions options) {
+        return analyze(files, filenames, preset, slowThresholdMs, options, Attribution.NONE);
+    }
+
+    public AnalysisResult analyze(List<Path> files, List<String> filenames, LogPreset preset, int slowThresholdMs,
+                               AnalysisOptions options, Attribution attribution) {
         String evictedId = null;
         if (analyses.size() >= maxFiles) {
             evictedId = evictOldest();
@@ -111,6 +141,7 @@ public class AnalyzeLogFileUseCase {
             analysis.setExceptionAnalysis(exceptionAnalyzer.analyze(analysis.getAllLines()));
         }
 
+        attribution.applyTo(analysis);
         analyses.put(analysis.getId(), new AnalysisEntry(analysis, Instant.now()));
         resourceCounterService.increment(br.com.fzdevx.infrastructure.persistence.ResourceCounterService.LOGS_ANALYZED);
         LOG.info(String.format("Log analysis '%s' created: %d lines, %d API calls, %d endpoints from %d file(s)",
@@ -124,6 +155,14 @@ public class AnalyzeLogFileUseCase {
                                      int slowThresholdMs, AnalysisOptions options,
                                      Consumer<ContainerEvent> eventSink, String ticket,
                                      Consumer<String> onEvicted) {
+        analyzeWithProgress(files, filenames, preset, slowThresholdMs, options, eventSink, ticket,
+                onEvicted, Attribution.NONE);
+    }
+
+    public void analyzeWithProgress(List<Path> files, List<String> filenames, LogPreset preset,
+                                     int slowThresholdMs, AnalysisOptions options,
+                                     Consumer<ContainerEvent> eventSink, String ticket,
+                                     Consumer<String> onEvicted, Attribution attribution) {
         AtomicBoolean cancelled = new AtomicBoolean(false);
         activeRuns.put(ticket, cancelled);
         try {
@@ -223,6 +262,7 @@ public class AnalyzeLogFileUseCase {
                 throw e;
             }
 
+            attribution.applyTo(analysis);
             analyses.put(analysis.getId(), new AnalysisEntry(analysis, Instant.now()));
             resourceCounterService.increment(br.com.fzdevx.infrastructure.persistence.ResourceCounterService.LOGS_ANALYZED);
 
@@ -265,6 +305,13 @@ public class AnalyzeLogFileUseCase {
     public void composeWithProgress(List<String> analysisIds, LogPreset preset, int slowThresholdMs,
                                      AnalysisOptions options, Consumer<ContainerEvent> eventSink,
                                      String ticket, Consumer<String> onEvicted) {
+        composeWithProgress(analysisIds, preset, slowThresholdMs, options, eventSink, ticket,
+                onEvicted, Attribution.NONE);
+    }
+
+    public void composeWithProgress(List<String> analysisIds, LogPreset preset, int slowThresholdMs,
+                                     AnalysisOptions options, Consumer<ContainerEvent> eventSink,
+                                     String ticket, Consumer<String> onEvicted, Attribution attribution) {
         AtomicBoolean cancelled = new AtomicBoolean(false);
         activeRuns.put(ticket, cancelled);
         try {
@@ -423,6 +470,7 @@ public class AnalyzeLogFileUseCase {
                 throw e;
             }
 
+            attribution.applyTo(merged);
             analyses.put(merged.getId(), new AnalysisEntry(merged, Instant.now()));
             resourceCounterService.increment(br.com.fzdevx.infrastructure.persistence.ResourceCounterService.LOGS_ANALYZED);
 
@@ -445,6 +493,11 @@ public class AnalyzeLogFileUseCase {
 
     public LogAnalysis compose(List<String> analysisIds, LogPreset preset, int slowThresholdMs,
                                AnalysisOptions options) {
+        return compose(analysisIds, preset, slowThresholdMs, options, Attribution.NONE);
+    }
+
+    public LogAnalysis compose(List<String> analysisIds, LogPreset preset, int slowThresholdMs,
+                               AnalysisOptions options, Attribution attribution) {
         List<LogAnalysis> toCompose = new ArrayList<>();
         for (String id : analysisIds) {
             AnalysisEntry entry = analyses.get(id);
@@ -456,11 +509,11 @@ public class AnalyzeLogFileUseCase {
             return null;
         }
 
-        return mergeAnalyses(toCompose, preset, slowThresholdMs, options);
+        return mergeAnalyses(toCompose, preset, slowThresholdMs, options, attribution);
     }
 
     private LogAnalysis mergeAnalyses(List<LogAnalysis> sources, LogPreset preset, int slowThresholdMs,
-                                      AnalysisOptions options) {
+                                      AnalysisOptions options, Attribution attribution) {
         var mergedLines = new ArrayList<LogLine>();
         var mergedSourceFiles = new ArrayList<LogAnalysis.SourceFile>();
 
@@ -474,14 +527,15 @@ public class AnalyzeLogFileUseCase {
                 Comparator.nullsLast(Comparator.naturalOrder())
         ));
 
-        return buildMergedAnalysis(mergedSourceFiles, mergedLines, sources, preset, slowThresholdMs, options);
+        return buildMergedAnalysis(mergedSourceFiles, mergedLines, sources, preset, slowThresholdMs,
+                options, attribution);
     }
 
     private LogAnalysis buildMergedAnalysis(List<LogAnalysis.SourceFile> sourceFiles,
                                             List<LogLine> allLines,
                                             List<LogAnalysis> sources,
                                             LogPreset preset, int slowThresholdMs,
-                                            AnalysisOptions options) {
+                                            AnalysisOptions options, Attribution attribution) {
         var apiCalls = new ArrayList<ApiCallPair>();
         var jobExecs = new ArrayList<JobExecution>();
         var errors = new ArrayList<LogLine>();
@@ -584,6 +638,7 @@ public class AnalyzeLogFileUseCase {
         if (options.exceptionAnalysis()) {
             merged.setExceptionAnalysis(exceptionAnalyzer.analyze(allLines));
         }
+        attribution.applyTo(merged);
         analyses.put(merged.getId(), new AnalysisEntry(merged, Instant.now()));
         return merged;
     }

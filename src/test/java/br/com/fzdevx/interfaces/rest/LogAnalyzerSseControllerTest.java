@@ -98,7 +98,7 @@ class LogAnalyzerSseControllerTest {
             eventSink.accept(ContainerEvent.success("Complete", "Done", "analysis-123"));
             return null;
         }).when(analyzeLogFileUseCase).analyzeWithProgress(
-                anyList(), anyList(), any(), anyInt(), any(), any(), eq("ticket-ok"), any());
+                anyList(), anyList(), any(), anyInt(), any(), any(), eq("ticket-ok"), any(), any());
 
         when(analyzeLogFileUseCase.get("analysis-123")).thenReturn(
                 new LogAnalysis(List.of(), 0, null, null, List.of(), List.of(),
@@ -123,7 +123,7 @@ class LogAnalyzerSseControllerTest {
             eventSink.accept(ContainerEvent.error("Cancelled", "Analysis cancelled."));
             return null;
         }).when(analyzeLogFileUseCase).analyzeWithProgress(
-                anyList(), anyList(), any(), anyInt(), any(), any(), eq("ticket-cancel"), any());
+                anyList(), anyList(), any(), anyInt(), any(), any(), eq("ticket-cancel"), any(), any());
 
         controller.streamAnalysis("ticket-cancel", sink, sse);
 
@@ -145,7 +145,7 @@ class LogAnalyzerSseControllerTest {
             eventSink.accept(ContainerEvent.error("Error", "Analysis failed: Parse error"));
             return null;
         }).when(analyzeLogFileUseCase).analyzeWithProgress(
-                anyList(), anyList(), any(), anyInt(), any(), any(), eq("ticket-fail"), any());
+                anyList(), anyList(), any(), anyInt(), any(), any(), eq("ticket-fail"), any(), any());
 
         controller.streamAnalysis("ticket-fail", sink, sse);
 
@@ -167,7 +167,7 @@ class LogAnalyzerSseControllerTest {
             eventSink.accept(ContainerEvent.error("Cancelled", "Analysis cancelled."));
             return null;
         }).when(analyzeLogFileUseCase).analyzeWithProgress(
-                anyList(), anyList(), any(), anyInt(), any(), any(), eq("ticket-cancel2"), any());
+                anyList(), anyList(), any(), anyInt(), any(), any(), eq("ticket-cancel2"), any(), any());
 
         controller.streamAnalysis("ticket-cancel2", sink, sse);
 
@@ -177,27 +177,31 @@ class LogAnalyzerSseControllerTest {
         verify(request).cleanupTempFiles();
     }
 
-    // ---- streamAnalysis: success with label ----
+    // ---- streamAnalysis: attribution handed to the use case ----
 
     @Test
-    void streamAnalysis_successWithLabel_setsLabelOnAnalysis() {
+    void streamAnalysis_passesTrimmedLabelAndUploaderAsAttribution() {
         when(request.getLabel()).thenReturn("  my-label  ");
         when(requestStash.retrieveLogAnalysis("ticket-label")).thenReturn(request);
-
-        var analysis = new LogAnalysis(List.of(), 0, null, null, List.of(), List.of(),
-                List.of(), List.of(), Map.of(), List.of(), List.of(), List.of(), List.of());
-        when(analyzeLogFileUseCase.get("analysis-456")).thenReturn(analysis);
+        when(actorResolver.usernameOrSystem()).thenReturn("alice");
 
         doAnswer(inv -> {
             Consumer<ContainerEvent> eventSink = inv.getArgument(5);
             eventSink.accept(ContainerEvent.success("Complete", "Done", "analysis-456"));
             return null;
         }).when(analyzeLogFileUseCase).analyzeWithProgress(
-                anyList(), anyList(), any(), anyInt(), any(), any(), eq("ticket-label"), any());
+                anyList(), anyList(), any(), anyInt(), any(), any(), eq("ticket-label"), any(), any());
 
         controller.streamAnalysis("ticket-label", sink, sse);
 
-        assertEquals("my-label", analysis.getLabel());
+        // stamping happens inside the use case, before the analysis is published and the
+        // SUCCESS event fires — the controller only supplies the values
+        var captor = ArgumentCaptor.forClass(AnalyzeLogFileUseCase.Attribution.class);
+        verify(analyzeLogFileUseCase).analyzeWithProgress(
+                anyList(), anyList(), any(), anyInt(), any(), any(), eq("ticket-label"), any(),
+                captor.capture());
+        assertEquals("my-label", captor.getValue().label());
+        assertEquals("alice", captor.getValue().uploadedBy());
         verify(broadcaster).broadcastCompleted("", "server.log", "analysis-456", List.of("server.log"));
     }
 
@@ -209,7 +213,7 @@ class LogAnalyzerSseControllerTest {
 
         doThrow(new OutOfMemoryError("heap"))
                 .when(analyzeLogFileUseCase).analyzeWithProgress(
-                        anyList(), anyList(), any(), anyInt(), any(), any(), eq("ticket-cleanup"), any());
+                        anyList(), anyList(), any(), anyInt(), any(), any(), eq("ticket-cleanup"), any(), any());
 
         assertThrows(OutOfMemoryError.class, () ->
                 controller.streamAnalysis("ticket-cleanup", sink, sse));

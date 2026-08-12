@@ -175,12 +175,8 @@ public class LogAnalyzerController {
             }
             var result = analyzeLogFileUseCase.analyze(
                     request.getTempFiles(), request.getFilenames(),
-                    request.getPreset(), request.getSlowThresholdMs(), request.getOptions());
-            result.analysis().setUploadedBy(actorResolver.usernameOrSystem());
-            if (request.getLabel() != null && !request.getLabel().isBlank()) {
-                String lbl = request.getLabel().trim();
-                result.analysis().setLabel(lbl.length() > 50 ? lbl.substring(0, 50) : lbl);
-            }
+                    request.getPreset(), request.getSlowThresholdMs(), request.getOptions(),
+                    new AnalyzeLogFileUseCase.Attribution(actorResolver.usernameOrSystem(), request.getLabel()));
             if (result.evictedId() != null) {
                 logAnalysisBroadcaster.broadcastDeleted(result.evictedId());
             }
@@ -235,9 +231,9 @@ public class LogAnalyzerController {
 
         try {
             LogAnalysis analysis = analyzeContainerLogsUseCase.execute(
-                    containerId, containerName, requestedLines, direction, preset, threshold
+                    containerId, containerName, requestedLines, direction, preset, threshold,
+                    new AnalyzeLogFileUseCase.Attribution(actorResolver.usernameOrSystem(), null)
             );
-            analysis.setUploadedBy(actorResolver.usernameOrSystem());
             return Response.ok(AnalysisSummaryMapper.toSummaryMap(analysis, canSeeUploader())).build();
         } catch (AnalyzeContainerLogsUseCase.ContainerLogException e) {
             return Response.status(Response.Status.BAD_REQUEST)
@@ -280,13 +276,13 @@ public class LogAnalyzerController {
 
         var options = UploadFormParser.parseAnalysisOptionsFromMap(body.get("options"));
 
-        LogAnalysis composed = analyzeLogFileUseCase.compose(ids, preset, slowThresholdMsValue, options);
+        LogAnalysis composed = analyzeLogFileUseCase.compose(ids, preset, slowThresholdMsValue, options,
+                new AnalyzeLogFileUseCase.Attribution(actorResolver.usernameOrSystem(), null));
         if (composed == null) {
             return Response.status(Response.Status.NOT_FOUND)
                     .entity(Map.of("error", "No valid analyses found for the given IDs."))
                     .build();
         }
-        composed.setUploadedBy(actorResolver.usernameOrSystem());
         return Response.ok(AnalysisSummaryMapper.toSummaryMap(composed, canSeeUploader())).build();
     }
 

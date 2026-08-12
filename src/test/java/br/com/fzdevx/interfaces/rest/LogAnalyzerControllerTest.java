@@ -1008,7 +1008,7 @@ class LogAnalyzerControllerTest {
     @SuppressWarnings("unchecked")
     void compose_valid_returns200() {
         LogAnalysis composed = buildSampleAnalysis();
-        when(analyzeLogFileUseCase.compose(anyList(), any(LogPreset.class), anyInt(), any())).thenReturn(composed);
+        when(analyzeLogFileUseCase.compose(anyList(), any(LogPreset.class), anyInt(), any(), any())).thenReturn(composed);
 
         Response response = controller.compose(Map.of("ids", List.of("id1", "id2")));
 
@@ -1038,30 +1038,30 @@ class LogAnalyzerControllerTest {
     @Test
     void analyzeContainerLogs_success_returns200() throws Exception {
         LogAnalysis analysis = buildSampleAnalysis();
-        when(analyzeContainerLogsUseCase.execute(anyString(), any(), anyInt(), anyString(), any(), anyInt()))
+        when(analyzeContainerLogsUseCase.execute(anyString(), any(), anyInt(), anyString(), any(), anyInt(), any()))
                 .thenReturn(analysis);
 
         Response response = controller.analyzeContainerLogs("abcdef123456", null, null, null, null, "tail");
 
         assertEquals(200, response.getStatus());
-        verify(analyzeContainerLogsUseCase).execute(eq("abcdef123456"), any(), eq(10000), eq("tail"), any(LogPreset.class), eq(1000));
+        verify(analyzeContainerLogsUseCase).execute(eq("abcdef123456"), any(), eq(10000), eq("tail"), any(LogPreset.class), eq(1000), any());
     }
 
     @Test
     void analyzeContainerLogs_withCustomLines_clampsToRange() throws Exception {
         LogAnalysis analysis = buildSampleAnalysis();
-        when(analyzeContainerLogsUseCase.execute(anyString(), any(), anyInt(), anyString(), any(), anyInt()))
+        when(analyzeContainerLogsUseCase.execute(anyString(), any(), anyInt(), anyString(), any(), anyInt(), any()))
                 .thenReturn(analysis);
 
         Response response = controller.analyzeContainerLogs("abcdef123456", null, null, null, 50, "tail");
 
         assertEquals(200, response.getStatus());
-        verify(analyzeContainerLogsUseCase).execute(eq("abcdef123456"), any(), eq(100), eq("tail"), any(), anyInt());
+        verify(analyzeContainerLogsUseCase).execute(eq("abcdef123456"), any(), eq(100), eq("tail"), any(), anyInt(), any());
     }
 
     @Test
     void analyzeContainerLogs_containerLogException_returnsBadRequest() throws Exception {
-        when(analyzeContainerLogsUseCase.execute(anyString(), any(), anyInt(), anyString(), any(), anyInt()))
+        when(analyzeContainerLogsUseCase.execute(anyString(), any(), anyInt(), anyString(), any(), anyInt(), any()))
                 .thenThrow(new AnalyzeContainerLogsUseCase.ContainerLogException("Logging driver not supported"));
 
         Response response = controller.analyzeContainerLogs("abcdef123456", null, null, null, null, "tail");
@@ -1071,7 +1071,7 @@ class LogAnalyzerControllerTest {
 
     @Test
     void analyzeContainerLogs_unexpectedException_returns500() throws Exception {
-        when(analyzeContainerLogsUseCase.execute(anyString(), any(), anyInt(), anyString(), any(), anyInt()))
+        when(analyzeContainerLogsUseCase.execute(anyString(), any(), anyInt(), anyString(), any(), anyInt(), any()))
                 .thenThrow(new RuntimeException("unexpected"));
 
         Response response = controller.analyzeContainerLogs("abcdef123456", null, null, null, null, "tail");
