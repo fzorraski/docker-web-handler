@@ -43,6 +43,7 @@ class ContainerControllerTest {
     @Mock DockerClient dockerClient;
     @Mock ContainerExpirationService expirationService;
     @Mock ContainerProtectionService protectionService;
+    @Mock br.com.fzdevx.infrastructure.docker.ContainerVisibilityService visibilityService;
     @Mock MemoryGuardService memoryGuardService;
     @Mock ContainerListBroadcaster broadcaster;
     @Mock Config config;

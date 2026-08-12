@@ -37,6 +37,7 @@ class PruneImagesUseCaseTest {
     @Mock DockerContainerPort dockerContainerPort;
     @Mock ImageUsageTracker imageUsageTracker;
     @Mock ResourceCounterService resourceCounterService;
+    @Mock br.com.fzdevx.infrastructure.docker.ContainerVisibilityService visibilityService;
 
     @InjectMocks
     PruneImagesUseCase useCase;

@@ -34,6 +34,9 @@ public class PruneImagesUseCase {
     @Inject
     ResourceCounterService resourceCounterService;
 
+    @Inject
+    br.com.fzdevx.infrastructure.docker.ContainerVisibilityService visibilityService;
+
     public void execute(int minDays, Consumer<ContainerEvent> eventSink) {
         eventSink.accept(ContainerEvent.info("Validating", "Analyzing images..."));
 
@@ -59,6 +62,9 @@ public class PruneImagesUseCase {
                 if (img.getRepoTags() != null && img.getRepoTags().length > 0) {
                     String repo = img.getRepoTags()[0].split(":")[0];
                     if (repo.equals(Constants.DOCKER_WEB_HANDLER_IMAGE)) continue;
+                    // infrastructure images (e.g. the app's own database sidecar) —
+                    // every tag is checked, RepoTags[0] is not a stable "the" tag
+                    if (visibilityService.isHiddenAnyTag(img.getRepoTags())) continue;
                 }
                 if (selfImageId != null && img.getId().equals(selfImageId)) continue;
 

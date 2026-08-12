@@ -34,6 +34,7 @@ class ListImagesUseCaseTest {
     @Mock DockerImagePort dockerImagePort;
     @Mock DockerContainerPort dockerContainerPort;
     @Mock ImageUsageTracker imageUsageTracker;
+    @Mock br.com.fzdevx.infrastructure.docker.ContainerVisibilityService visibilityService;
 
     @InjectMocks
     ListImagesUseCase useCase;

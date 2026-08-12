@@ -25,6 +25,22 @@ concurrency guarantees, importer internals) is in [persistence.md](persistence.m
 
 The schema is created and evolved automatically by Flyway on startup.
 
+### Hiding the database container
+
+The app database runs as a container on the same Docker daemon this tool
+manages, so it would otherwise show up in the container list. Add its image to
+`hidden.images` (`HIDDEN_IMAGES`) to filter it out of the container listing,
+the image listing and prune candidates:
+
+```yaml
+HIDDEN_IMAGES: "postgres:17-alpine"
+```
+
+Hidden images are implicitly **protected** as well, so the container cannot be
+stopped or removed by anyone who knows its id. Use the tagged form: a bare
+`postgres` would also hide managed per-repository PG containers
+(`REPOSITORY_PG_IMAGE_*`).
+
 ## Migrating an existing installation
 
 On the first boot with the postgres backend, the app automatically imports the

@@ -62,6 +62,9 @@ public class ContainerController {
     ContainerProtectionService protectionService;
 
     @Inject
+    br.com.fzdevx.infrastructure.docker.ContainerVisibilityService visibilityService;
+
+    @Inject
     MemoryGuardService memoryGuardService;
 
     @Inject
@@ -88,6 +91,8 @@ public class ContainerController {
         for (Container dc : dockerContainers) {
             if (isDockerWebHandlerImage(dc.getImage())) continue;
             if (dc.getId().equals(selfId)) continue;
+            // infrastructure containers (e.g. the app's own database sidecar)
+            if (visibilityService.isHiddenImage(dc.getImage())) continue;
             if (dc.getLabels() != null && dc.getLabels().containsKey(RestoreDumpUseCase.EPHEMERAL_LABEL)) continue;
             // squad isolation: containers of other tenants are invisible
             if (dc.getLabels() != null

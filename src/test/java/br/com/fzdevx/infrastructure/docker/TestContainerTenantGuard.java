@@ -19,9 +19,29 @@ public final class TestContainerTenantGuard {
     }
 
     public static ContainerTenantGuard with(TenantVisibility tenantVisibility, DockerClient dockerClient) {
+        return with(tenantVisibility, dockerClient, disabledVisibility());
+    }
+
+    public static ContainerTenantGuard with(TenantVisibility tenantVisibility, DockerClient dockerClient,
+                                            ContainerVisibilityService visibilityService) {
         ContainerTenantGuard guard = new ContainerTenantGuard();
         guard.tenantVisibility = tenantVisibility;
         guard.dockerClient = dockerClient;
+        guard.visibilityService = visibilityService;
         return guard;
+    }
+
+    /** No hidden images configured — the feature is off, no extra inspect. */
+    public static ContainerVisibilityService disabledVisibility() {
+        ContainerVisibilityService service = new ContainerVisibilityService();
+        service.hiddenImages = java.util.Optional.empty();
+        return service;
+    }
+
+    /** Hides the given images (same syntax as the {@code hidden.images} property). */
+    public static ContainerVisibilityService hiding(String... images) {
+        ContainerVisibilityService service = new ContainerVisibilityService();
+        service.hiddenImages = java.util.Optional.of(java.util.List.of(images));
+        return service;
     }
 }

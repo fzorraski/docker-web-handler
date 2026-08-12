@@ -1,6 +1,6 @@
 package br.com.fzdevx.infrastructure.docker;
 
-import br.com.fzdevx.domain.shared.ImageReference;
+import br.com.fzdevx.domain.shared.ImageMatcher;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.model.Container;
 import io.quarkus.logging.Log;
@@ -31,39 +31,29 @@ public class ContainerProtectionService {
     @Inject
     DockerClient dockerClient;
 
+    @Inject
+    ContainerVisibilityService visibilityService;
+
     @ConfigProperty(name = "protected.images")
     Optional<List<String>> protectedImages;
 
     /** Whether any protected image is configured. */
     public boolean isEnabled() {
-        return protectedImages
-                .map(list -> list.stream().anyMatch(s -> s != null && !s.isBlank()))
-                .orElse(false);
+        return ImageMatcher.hasEntries(protectedImages.orElse(null)) || visibilityService.isEnabled();
     }
 
-    /** Returns true if the given image name matches a configured protected image. */
+    /**
+     * Returns true if the given image name matches a configured protected
+     * image. Hidden images ({@code hidden.images}) are protected as well: a
+     * container nobody can see must not be stoppable or removable by anyone
+     * who happens to know its id.
+     */
     public boolean isProtectedImage(String image) {
-        if (!isEnabled() || image == null || image.isBlank()) {
+        if (image == null || image.isBlank()) {
             return false;
         }
-        String img = image.trim();
-        String imgRepo = ImageReference.repository(img);
-        String imgShort = ImageReference.shortName(img);
-        for (String raw : protectedImages.orElse(List.of())) {
-            if (raw == null) continue;
-            String entry = raw.trim();
-            if (entry.isEmpty()) continue;
-            if (img.equals(entry)) {
-                return true; // exact match including tag
-            }
-            if (!entry.contains(":")) {
-                // entry has no tag — match any tag of this repository (full or short name)
-                if (imgRepo.equals(entry) || imgShort.equals(entry)) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        return ImageMatcher.matches(protectedImages.orElse(List.of()), image)
+                || visibilityService.isHiddenImage(image);
     }
 
     /**

@@ -37,6 +37,9 @@ public class ListImagesUseCase {
     @Inject
     ImageUsageTracker imageUsageTracker;
 
+    @Inject
+    br.com.fzdevx.infrastructure.docker.ContainerVisibilityService visibilityService;
+
     public List<DockerImage> execute() {
         List<Image> allImages = dockerImagePort.listImages();
         List<Container> allContainers = dockerContainerPort.listContainers(true);
@@ -96,6 +99,9 @@ public class ListImagesUseCase {
 
             if (repo.equals(Constants.DOCKER_WEB_HANDLER_IMAGE)) continue;
             if (selfImageId != null && img.getId().equals(selfImageId)) continue;
+            // infrastructure images (e.g. the app's own database sidecar) — every
+            // tag is checked, RepoTags[0] is not a stable "the" tag
+            if (visibilityService.isHiddenAnyTag(img.getRepoTags())) continue;
 
             String fullId = img.getId();
             boolean inUse = usedImageIds.contains(fullId);

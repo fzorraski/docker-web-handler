@@ -26,16 +26,24 @@ class ContainerProtectionServiceTest {
     @Mock ListContainersCmd listContainersCmd;
 
     private ContainerProtectionService service;
+    private ContainerVisibilityService visibilityService;
 
     @BeforeEach
     void setUp() {
+        visibilityService = new ContainerVisibilityService();
+        visibilityService.hiddenImages = Optional.empty();
         service = new ContainerProtectionService();
         service.dockerClient = dockerClient;
+        service.visibilityService = visibilityService;
         service.protectedImages = Optional.empty();
     }
 
     private void configure(String... images) {
         service.protectedImages = Optional.of(List.of(images));
+    }
+
+    private void configureHidden(String... images) {
+        visibilityService.hiddenImages = Optional.of(List.of(images));
     }
 
     // ---- isEnabled ----
@@ -130,6 +138,29 @@ class ContainerProtectionServiceTest {
     void blankEntriesIgnored_realEntryStillMatches() {
         configure("", "nginx", "  ");
         assertTrue(service.isProtectedImage("nginx:1"));
+    }
+
+    // ---- hidden images are protected too ----
+
+    @Test
+    void hiddenImage_isProtected_evenWithoutProtectedEntry() {
+        configureHidden("postgres:17-alpine");
+        assertTrue(service.isEnabled());
+        assertTrue(service.isProtectedImage("postgres:17-alpine"));
+        assertFalse(service.isProtectedImage("postgres:16"));
+    }
+
+    @Test
+    void hiddenContainer_cannotBeResolvedAsUnprotected() {
+        configureHidden("postgres:17-alpine");
+        Container c = mock(Container.class);
+        when(c.getId()).thenReturn("abcdef1234567890ffff");
+        when(c.getImage()).thenReturn("postgres:17-alpine");
+        when(dockerClient.listContainersCmd()).thenReturn(listContainersCmd);
+        when(listContainersCmd.withShowAll(anyBoolean())).thenReturn(listContainersCmd);
+        when(listContainersCmd.exec()).thenReturn(List.of(c));
+
+        assertTrue(service.isProtectedContainer("abcdef1234"));
     }
 
     // ---- isProtectedContainer ----
