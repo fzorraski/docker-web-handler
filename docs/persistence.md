@@ -21,7 +21,7 @@ architecture for developers.
 | Container expirations | `container_expiration` | `data/expirations.json` |
 | Database migration records | `database_migration` | `data/migrations.json` |
 | Runtime setting overrides | `runtime_settings` (single row) | `data/settings.json` |
-| Audit trail | `audit_log` | `data/audit.log` |
+| Audit trail | `audit_log` (tenant-scoped, see below) | `data/audit.log` |
 | Login sessions | `auth_session` | *(memory only — new)* |
 | Lifetime resource counters | `resource_counter` | `data/resource-counters.json` |
 | Image last-used tracking | `image_usage` | `data/image-usage.json` |
@@ -122,6 +122,28 @@ consume — and rename — a developer's real `data/` files.
 
 `data/audit.log` history is intentionally not imported; the file stays
 readable on disk.
+
+## Tenant-scoped audit trail
+
+`audit_log.tenant_id` (and the `tenant` key in the file backend's JSON lines)
+holds the acting user's tenant, resolved through
+`TenantVisibility.resolveCreationTenant` — the same rule that stamps a tenant on
+a resource the user creates, so none of the `auditLogger.log(...)` call sites
+know about tenants. Login and the terminal websocket have no request identity to
+resolve from, so they pass actor and tenant explicitly via `logForTenant`.
+
+Reads take an explicit `AuditScope` (`search`, `distinctActions`), built by
+`TenantVisibility.auditScope()`. Note the deliberate inversion: `canSee(null)`
+is *true* for a resource (untenanted means shared), but an untenanted audit
+entry records a system or super-admin action and must **not** reach a
+tenant-scoped reader. `tenant_id IN (...)` gives that for free — NULL never
+matches. Filtering lives in the backends because the page query and its
+`count(*)` must carry the same predicate.
+
+Known limitation: a user belonging to several tenants stamps their first
+membership on everything, so their actions on another of their tenants do not
+appear in that tenant's trail — the same trade-off the app already makes for
+resources.
 
 ## Testing
 

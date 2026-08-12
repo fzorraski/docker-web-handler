@@ -354,6 +354,36 @@ replace them.
 | `rbac.admin.username` | Username of the seeded super admin | `admin` |
 | `rbac.admin.password` | Seed password for the super admin. Used only on first boot while no users exist; required then, ignored afterwards. | — |
 
+#### Built-in roles
+
+| Role | Reach |
+|---|---|
+| `SUPER_ADMIN` | Everything, across all tenants. The only role that can create/edit tenants, define roles, and assign a tenant somebody does not already belong to. |
+| `ADMIN` | Everything except system configuration, **limited to the tenants assigned to their own account** — they see and create users there, including other admins. |
+| `OPERATOR` | Container, database, schedule, terminal and log operations in their tenants. Cannot manage users, nor delete databases, dumps or snapshots. |
+| `VIEWER` | Read-only. |
+
+A user's tenants are an explicit list of ids, never a wildcard: a tenant
+created later reaches nobody until a super admin assigns it. An admin with **no**
+tenant therefore sees no users and can create none — the application logs a
+warning at startup naming such accounts.
+
+Only a super admin may edit a built-in role. An edited built-in role stops
+receiving permissions added in later releases (it is marked customized so the
+startup re-seed leaves it alone).
+
+Actors may only assign roles, and manage users, whose permissions they hold
+themselves — otherwise handing out or taking over an account would be a way
+around one's own limits.
+
+#### Audit trail
+
+Entries are stamped with the acting user's tenant. A reader without
+cross-tenant reach sees only their own tenants' entries; entries belonging to no
+tenant (system jobs, super-admin actions, anything recorded while RBAC was off)
+are visible only to cross-tenant readers. Entries written before the trail
+became tenant-scoped carry no tenant and are therefore super-admin-only.
+
 ---
 
 ## Application Database

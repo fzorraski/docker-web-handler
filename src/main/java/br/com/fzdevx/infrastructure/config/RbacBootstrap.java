@@ -3,6 +3,7 @@ package br.com.fzdevx.infrastructure.config;
 import br.com.fzdevx.application.port.RoleRepository;
 import br.com.fzdevx.application.port.UserRepository;
 import br.com.fzdevx.domain.model.auth.BuiltInRoles;
+import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.domain.model.auth.Role;
 import br.com.fzdevx.domain.model.auth.User;
 import br.com.fzdevx.domain.shared.PasswordHasher;
@@ -13,6 +14,7 @@ import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -44,6 +46,54 @@ public class RbacBootstrap {
         }
         upsertBuiltInRoles();
         seedInitialAdmin();
+        warnAboutTenantlessAdmins();
+    }
+
+    /**
+     * An admin without cross-tenant reach administers their own tenants, so one
+     * with no tenant at all sees no users and can create none. That is silent
+     * from the inside - the Users tab is simply empty - and it is the default
+     * state of every admin created before the ADMIN role became tenant-scoped,
+     * so it is worth naming them at boot.
+     */
+    private void warnAboutTenantlessAdmins() {
+        try {
+            List<String> stranded = userRepository.findAll().stream()
+                    .filter(User::isEnabled)
+                    .filter(user -> user.getTenantIds() == null || user.getTenantIds().isEmpty())
+                    .filter(user -> manages(user) && !hasCrossTenantReach(user))
+                    .map(User::getUsername)
+                    .toList();
+            if (!stranded.isEmpty()) {
+                Log.warnf("These users can manage users but belong to no tenant, so they see none: %s. "
+                        + "A super admin must assign their tenants.", String.join(", ", stranded));
+            }
+        } catch (RuntimeException e) {
+            // a diagnostic must never keep the application from starting
+            Log.debugf(e, "Could not check for tenantless admins.");
+        }
+    }
+
+    private boolean manages(User user) {
+        return hasAnyPermission(user, Permission.USERS_MANAGE);
+    }
+
+    private boolean hasCrossTenantReach(User user) {
+        return hasAnyPermission(user, Permission.TENANTS_VIEW_ALL, Permission.SYSTEM_CONFIG);
+    }
+
+    private boolean hasAnyPermission(User user, Permission... permissions) {
+        return user.getRoleIds().stream()
+                .map(roleRepository::findById)
+                .flatMap(Optional::stream)
+                .anyMatch(role -> {
+                    for (Permission permission : permissions) {
+                        if (role.hasPermission(permission)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                });
     }
 
     /**
