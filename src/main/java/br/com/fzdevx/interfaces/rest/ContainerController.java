@@ -62,6 +62,9 @@ public class ContainerController {
     ContainerProtectionService protectionService;
 
     @Inject
+    br.com.fzdevx.application.usecase.RunContainerUseCase runContainerUseCase;
+
+    @Inject
     br.com.fzdevx.infrastructure.docker.ContainerVisibilityService visibilityService;
 
     @Inject
@@ -94,6 +97,10 @@ public class ContainerController {
             // infrastructure containers (e.g. the app's own database sidecar)
             if (visibilityService.isHiddenImage(dc.getImage())) continue;
             if (dc.getLabels() != null && dc.getLabels().containsKey(RestoreDumpUseCase.EPHEMERAL_LABEL)) continue;
+            // still being built: the container exists from the moment it is created,
+            // but its database restore can run for minutes afterwards and a failure
+            // removes it again - showing a half-built "Created" row is misleading
+            if (runContainerUseCase.isProvisioning(dc.getId())) continue;
             // squad isolation: containers of other tenants are invisible
             if (dc.getLabels() != null
                     && !tenantVisibility.canSee(dc.getLabels().get(Constants.TENANT_LABEL))) continue;

@@ -127,6 +127,24 @@ public class RunContainerUseCase {
 
     private final ConcurrentHashMap<String, RunContext> activeRuns = new ConcurrentHashMap<>();
 
+    /**
+     * Full ids of containers created by a run that has not finished yet. The
+     * container is created before its database is restored - the restore can
+     * take minutes, and a failure removes the container again - so it must not
+     * surface in the listing as a half-built "Created" row in the meantime.
+     *
+     * <p>Kept in memory on purpose: after a restart nothing is in flight, so an
+     * interrupted run's container is either already gone or genuinely there, and
+     * either way it should be listed. A docker label could not express this -
+     * labels cannot be removed once the container exists.</p>
+     */
+    private final java.util.Set<String> provisioningContainerIds = ConcurrentHashMap.newKeySet();
+
+    /** Whether this container is still being provisioned and should stay hidden. */
+    public boolean isProvisioning(String containerId) {
+        return containerId != null && provisioningContainerIds.contains(containerId);
+    }
+
     public boolean cancel(String ticket) {
         RunContext ctx = activeRuns.get(ticket);
         if (ctx == null) return false;
@@ -151,6 +169,8 @@ public class RunContainerUseCase {
         }
 
         String createdContainerId = null;
+        // separate from createdContainerId, which is cleared on success
+        String provisionedContainerId = null;
         try {
             eventSink.accept(ContainerEvent.info("Validating", "Validating input parameters..."));
 
@@ -272,6 +292,9 @@ public class RunContainerUseCase {
             try {
                 container = createContainer(imageRef, request, eventSink, runCtx);
                 createdContainerId = container.getId();
+                // hidden from the listing until the whole flow succeeds
+                provisioningContainerIds.add(container.getId());
+                provisionedContainerId = container.getId();
             } catch (Exception e) {
                 eventSink.accept(ContainerEvent.error("Creating", sanitizeCreateError(e.getMessage(), request.getContainerName())));
                 return;
@@ -384,6 +407,10 @@ public class RunContainerUseCase {
             eventSink.accept(ContainerEvent.success("Complete",
                     "Container started successfully from " + imageRef + expirationMessage));
         } finally {
+            if (provisionedContainerId != null) {
+                // reveal it: either the run finished, or the cleanup below removes it
+                provisioningContainerIds.remove(provisionedContainerId);
+            }
             if (runCtx.allocatedPorts != null) {
                 portFinder.releasePorts(runCtx.allocatedPorts);
             }

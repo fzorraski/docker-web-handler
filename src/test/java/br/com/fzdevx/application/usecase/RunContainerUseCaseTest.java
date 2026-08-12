@@ -728,4 +728,12 @@ class RunContainerUseCaseTest {
         assertHasError("Starting", "Port binding conflict");
         verify(portFinder).releasePorts(List.of(10000));
     }
+
+    // ---- provisioning visibility ----
+
+    @Test
+    void isProvisioning_falseForUnknownContainers() {
+        assertFalse(useCase.isProvisioning("never-created"));
+        assertFalse(useCase.isProvisioning(null));
+    }
 }

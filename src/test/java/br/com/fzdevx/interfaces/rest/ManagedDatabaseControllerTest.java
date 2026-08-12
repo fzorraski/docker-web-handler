@@ -464,6 +464,41 @@ class ManagedDatabaseControllerTest {
         verify(expirationService, never()).disableDatabaseDeletion(any());
     }
 
+    @Test
+    void toggleProtected_enablesProtection_auditsProtect() {
+        ManagedDatabase md = new ManagedDatabase(REPO, DB_NAME);
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(md));
+
+        controller.toggleProtected(REPO, DB_NAME, PASSWORD);
+
+        verify(auditLogger).log("DATABASE_PROTECT", DB_NAME, "repository=" + REPO);
+    }
+
+    @Test
+    void toggleProtected_disablesProtection_auditsUnprotect() {
+        ManagedDatabase md = new ManagedDatabase(REPO, DB_NAME);
+        md.setProtectedFlag(true);
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(md));
+
+        controller.toggleProtected(REPO, DB_NAME, PASSWORD);
+
+        verify(auditLogger).log("DATABASE_UNPROTECT", DB_NAME, "repository=" + REPO);
+    }
+
+    @Test
+    void toggleProtected_auditDetail_carriesDisabledDeletionCount() {
+        ManagedDatabase md = new ManagedDatabase(REPO, DB_NAME);
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(md));
+        ContainerExpiration exp = new ContainerExpiration("c1", "full1",
+                java.time.Instant.now(), REPO, DB_NAME, true);
+        when(expirationService.findByDatabaseName(DB_NAME)).thenReturn(List.of(exp));
+
+        controller.toggleProtected(REPO, DB_NAME, PASSWORD);
+
+        verify(auditLogger).log("DATABASE_PROTECT", DB_NAME,
+                "repository=" + REPO + ", disabledDeletionCount=1");
+    }
+
     // ---- cleanupIdle ----
 
     @Test

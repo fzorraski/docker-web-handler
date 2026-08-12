@@ -1037,6 +1037,14 @@ public class ManagedDatabaseController {
             }
         }
 
+        // dropping protection re-arms deletion of a production database — the trail
+        // has to say who did it, and the side effect on container expiration too
+        String detail = "repository=" + repository;
+        if (disabledDeletionCount > 0) {
+            detail += ", disabledDeletionCount=" + disabledDeletionCount;
+        }
+        auditLogger.log(nowProtected[0] ? "DATABASE_PROTECT" : "DATABASE_UNPROTECT", databaseName, detail);
+
         return Response.ok(Map.of("success", true, "protected", nowProtected[0],
                 "disabledDeletionCount", disabledDeletionCount)).build();
     }

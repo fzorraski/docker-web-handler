@@ -43,6 +43,7 @@ class ContainerControllerTest {
     @Mock DockerClient dockerClient;
     @Mock ContainerExpirationService expirationService;
     @Mock ContainerProtectionService protectionService;
+    @Mock br.com.fzdevx.application.usecase.RunContainerUseCase runContainerUseCase;
     @Mock br.com.fzdevx.infrastructure.docker.ContainerVisibilityService visibilityService;
     @Mock MemoryGuardService memoryGuardService;
     @Mock ContainerListBroadcaster broadcaster;
@@ -465,5 +466,21 @@ class ContainerControllerTest {
         var inOrder = inOrder(expirationService, dockerClient);
         inOrder.verify(expirationService).remove("abc123def4");
         inOrder.verify(dockerClient).stopContainerCmd("abc123def4");
+    }
+
+    @org.junit.jupiter.api.Test
+    void getContainers_hidesContainersStillBeingProvisioned() {
+        // created, but its database restore is still running: a "Created" row
+        // here is a container the user never asked to see yet, and one that a
+        // failed restore removes again
+        Container building = mockContainer("build123456789", "myapp:1.0", "half-built", "Created", "cmd");
+        Container ready = mockContainer("ready123456789", "myapp:1.0", "web-1", "Up 2 minutes", "cmd");
+        when(listContainersCmd.exec()).thenReturn(java.util.List.of(building, ready));
+        when(runContainerUseCase.isProvisioning("build123456789")).thenReturn(true);
+
+        java.util.List<DockerContainer> result = controller.getContainers();
+
+        assertEquals(1, result.size());
+        assertEquals("web-1", result.get(0).getNames());
     }
 }
