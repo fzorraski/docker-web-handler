@@ -132,3 +132,20 @@ export function formatMigrationSummary(
     ? t(`${section}.migrationManualMode`, { chars: (config.sql?.length ?? 0).toString() }) + versionInfo
     : t(`${section}.migrationApiMode`) + versionInfo
 }
+
+/**
+ * Relative time for audit/event feeds ("2 minutes ago"); falls back to the
+ * absolute date beyond 7 days. Pair with a tooltip showing formatDate(iso).
+ */
+export function formatRelative(iso: string | null | undefined): string {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  const seconds = Math.round((Date.now() - d.getTime()) / 1000)
+  if (seconds < 0 || seconds > 7 * 24 * 3600) return formatDate(iso)
+  const rtf = new Intl.RelativeTimeFormat(i18n.language, { numeric: 'auto' })
+  if (seconds < 60) return rtf.format(-seconds, 'second')
+  if (seconds < 3600) return rtf.format(-Math.round(seconds / 60), 'minute')
+  if (seconds < 24 * 3600) return rtf.format(-Math.round(seconds / 3600), 'hour')
+  return rtf.format(-Math.round(seconds / (24 * 3600)), 'day')
+}

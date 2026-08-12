@@ -174,9 +174,10 @@ public class ContainerController {
             return false;
         }
         try {
+            String target = auditTarget(dockerContainer.getContainerId());
             dockerClient.stopContainerCmd(dockerContainer.getContainerId()).exec();
             broadcaster.notifyChange();
-            auditLogger.log("CONTAINER_STOP", dockerContainer.getContainerId(), null);
+            auditLogger.log("CONTAINER_STOP", target, "id=" + dockerContainer.getContainerId());
             return true;
         } catch (Exception e) {
             Log.errorf("Failed to stop container %s: %s", dockerContainer.getContainerId(), e.getMessage());
@@ -199,6 +200,8 @@ public class ContainerController {
             return false;
         }
         try {
+            // resolve the name before removal so the audit trail can record it
+            String target = auditTarget(dockerContainer.getContainerId());
             expirationService.remove(dockerContainer.getContainerId());
             try {
                 dockerClient.stopContainerCmd(dockerContainer.getContainerId()).exec();
@@ -206,7 +209,7 @@ public class ContainerController {
             }
             dockerClient.removeContainerCmd(dockerContainer.getContainerId()).exec();
             broadcaster.notifyChange();
-            auditLogger.log("CONTAINER_REMOVE", dockerContainer.getContainerId(), null);
+            auditLogger.log("CONTAINER_REMOVE", target, "id=" + dockerContainer.getContainerId());
             return true;
         } catch (Exception e) {
             Log.errorf("Failed to remove container %s: %s", dockerContainer.getContainerId(), e.getMessage());
@@ -237,9 +240,10 @@ public class ContainerController {
                     .build();
         }
         try {
+            String target = auditTarget(dockerContainer.getContainerId());
             dockerClient.startContainerCmd(dockerContainer.getContainerId()).exec();
             broadcaster.notifyChange();
-            auditLogger.log("CONTAINER_START", dockerContainer.getContainerId(), null);
+            auditLogger.log("CONTAINER_START", target, "id=" + dockerContainer.getContainerId());
             return Response.ok(Map.of("success", true), MediaType.APPLICATION_JSON_TYPE).build();
         } catch (Exception e) {
             Log.errorf("Failed to start container %s: %s", dockerContainer.getContainerId(), e.getMessage());
@@ -249,6 +253,19 @@ public class ContainerController {
 
     private static final Pattern PORT_PATTERN = Pattern.compile("Bind for [\\d.]+:(\\d+) failed: port is already allocated");
     private static final Pattern ALREADY_RUNNING_PATTERN = Pattern.compile("already (running|started)");
+
+    /**
+     * Resolves the human-readable container name for the audit trail, straight
+     * from Docker (never the client payload, so it can't be spoofed). Falls
+     * back to the id when the container is gone or Docker doesn't answer.
+     */
+    private String auditTarget(String containerId) {
+        try {
+            return dockerClient.inspectContainerCmd(containerId).exec().getName().replaceFirst("^/", "");
+        } catch (Exception e) {
+            return containerId;
+        }
+    }
 
     private Map<String, Object> parseStartError(String message) {
         if (message == null) {

@@ -56,4 +56,57 @@ public class PgAuditLogger implements AuditLogger {
         return jdbc.update("DELETE FROM audit_log WHERE occurred_at < ?", cutoff);
     }
 
+    @Override
+    public br.com.fzdevx.application.dto.AuditSearchResult search(
+            br.com.fzdevx.application.dto.AuditSearchCriteria criteria) {
+        StringBuilder where = new StringBuilder(" WHERE 1=1");
+        java.util.List<Object> params = new java.util.ArrayList<>();
+        if (criteria.actor() != null && !criteria.actor().isBlank()) {
+            where.append(" AND lower(actor) = lower(?)");
+            params.add(criteria.actor().trim());
+        }
+        if (criteria.action() != null && !criteria.action().isBlank()) {
+            where.append(" AND action = ?");
+            params.add(criteria.action().trim());
+        }
+        if (criteria.text() != null && !criteria.text().isBlank()) {
+            where.append(" AND (target ILIKE ? OR detail ILIKE ?)");
+            String like = "%" + escapeLike(criteria.text().trim()) + "%";
+            params.add(like);
+            params.add(like);
+        }
+        if (criteria.from() != null) {
+            where.append(" AND occurred_at >= ?");
+            params.add(criteria.from());
+        }
+        if (criteria.to() != null) {
+            where.append(" AND occurred_at <= ?");
+            params.add(criteria.to());
+        }
+
+        long total = jdbc.queryOne("SELECT count(*) FROM audit_log" + where,
+                rs -> rs.getLong(1), params.toArray()).orElse(0L);
+
+        java.util.List<Object> pageParams = new java.util.ArrayList<>(params);
+        pageParams.add(criteria.size());
+        pageParams.add((long) criteria.page() * criteria.size());
+        java.util.List<br.com.fzdevx.domain.model.AuditEntry> entries = jdbc.query(
+                "SELECT occurred_at, actor, action, target, detail FROM audit_log"
+                        + where + " ORDER BY occurred_at DESC, id DESC LIMIT ? OFFSET ?",
+                rs -> new br.com.fzdevx.domain.model.AuditEntry(
+                        JdbcSupport.instant(rs, "occurred_at"), rs.getString("actor"),
+                        rs.getString("action"), rs.getString("target"), rs.getString("detail")),
+                pageParams.toArray());
+
+        return new br.com.fzdevx.application.dto.AuditSearchResult(entries, total);
+    }
+
+    @Override
+    public java.util.List<String> distinctActions() {
+        return jdbc.query("SELECT DISTINCT action FROM audit_log ORDER BY action", rs -> rs.getString(1));
+    }
+
+    private static String escapeLike(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
 }

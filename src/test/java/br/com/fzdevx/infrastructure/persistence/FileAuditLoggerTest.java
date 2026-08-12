@@ -30,6 +30,26 @@ class FileAuditLoggerTest {
     }
 
     @Test
+    void search_filtersAndPaginatesNewestFirst() {
+        auditLogger.logAs("alice", "LOGIN", "session", "ip=1.1.1.1");
+        auditLogger.logAs("alice", "CONTAINER_CREATE", "web-1", "image=nginx");
+        auditLogger.logAs("bob", "CONTAINER_REMOVE", "web-1", null);
+
+        var byActor = auditLogger.search(new br.com.fzdevx.application.dto.AuditSearchCriteria(
+                "ALICE", null, null, null, null, 0, 10));
+        assertEquals(2, byActor.total());
+        // newest first
+        assertEquals("CONTAINER_CREATE", byActor.entries().get(0).action());
+
+        var byText = auditLogger.search(new br.com.fzdevx.application.dto.AuditSearchCriteria(
+                null, null, "web-1", null, null, 0, 1));
+        assertEquals(2, byText.total());
+        assertEquals(1, byText.entries().size());
+
+        assertEquals(List.of("CONTAINER_CREATE", "CONTAINER_REMOVE", "LOGIN"), auditLogger.distinctActions());
+    }
+
+    @Test
     void log_rbacUser_writesJsonLineWithUsername() throws Exception {
         auditLogger.currentUser.set("u1", "alice", Set.of(Permission.CONTAINERS_RUN));
 

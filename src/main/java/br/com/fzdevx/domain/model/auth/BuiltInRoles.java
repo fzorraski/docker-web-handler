@@ -37,6 +37,9 @@ public final class BuiltInRoles {
         permissions.remove(Permission.SYSTEM_CONFIG);
         permissions.remove(Permission.USERS_MANAGE);
         permissions.remove(Permission.TENANTS_VIEW_ALL);
+        // operators keep creator visibility (AUDIT_VIEW) but not the full
+        // audit trail, which is an admin-and-above capability
+        permissions.remove(Permission.AUDIT_LOG_VIEW);
         return builtIn(OPERATOR_ID, "OPERATOR",
                 "Container, database, schedule, terminal and log operations.",
                 permissions);

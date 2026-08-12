@@ -103,6 +103,112 @@ public class FileAuditLogger implements AuditLogger {
         }
     }
 
+    @Override
+    public br.com.fzdevx.application.dto.AuditSearchResult search(
+            br.com.fzdevx.application.dto.AuditSearchCriteria criteria) {
+        java.util.List<br.com.fzdevx.domain.model.AuditEntry> matches = new java.util.ArrayList<>();
+        for (br.com.fzdevx.domain.model.AuditEntry entry : readAllEntries()) {
+            if (matches(entry, criteria)) {
+                matches.add(entry);
+            }
+        }
+        // newest first (file is append-ordered)
+        java.util.Collections.reverse(matches);
+        int fromIndex = Math.min(criteria.page() * criteria.size(), matches.size());
+        int toIndex = Math.min(fromIndex + criteria.size(), matches.size());
+        return new br.com.fzdevx.application.dto.AuditSearchResult(
+                java.util.List.copyOf(matches.subList(fromIndex, toIndex)), matches.size());
+    }
+
+    @Override
+    public java.util.List<String> distinctActions() {
+        java.util.TreeSet<String> actions = new java.util.TreeSet<>();
+        for (br.com.fzdevx.domain.model.AuditEntry entry : readAllEntries()) {
+            if (entry.action() != null) {
+                actions.add(entry.action());
+            }
+        }
+        return java.util.List.copyOf(actions);
+    }
+
+    private static boolean matches(br.com.fzdevx.domain.model.AuditEntry entry,
+                                   br.com.fzdevx.application.dto.AuditSearchCriteria criteria) {
+        if (criteria.actor() != null && !criteria.actor().isBlank()
+                && (entry.actor() == null || !entry.actor().equalsIgnoreCase(criteria.actor().trim()))) {
+            return false;
+        }
+        if (criteria.action() != null && !criteria.action().isBlank()
+                && !criteria.action().trim().equals(entry.action())) {
+            return false;
+        }
+        if (criteria.text() != null && !criteria.text().isBlank()) {
+            String needle = criteria.text().trim().toLowerCase();
+            boolean inTarget = entry.target() != null && entry.target().toLowerCase().contains(needle);
+            boolean inDetail = entry.detail() != null && entry.detail().toLowerCase().contains(needle);
+            if (!inTarget && !inDetail) {
+                return false;
+            }
+        }
+        if (criteria.from() != null && (entry.timestamp() == null || entry.timestamp().isBefore(criteria.from()))) {
+            return false;
+        }
+        if (criteria.to() != null && (entry.timestamp() == null || entry.timestamp().isAfter(criteria.to()))) {
+            return false;
+        }
+        return true;
+    }
+
+    private java.util.List<br.com.fzdevx.domain.model.AuditEntry> readAllEntries() {
+        lock.lock();
+        try {
+            Path path = Paths.get(file);
+            if (!Files.exists(path)) {
+                return java.util.List.of();
+            }
+            java.util.List<br.com.fzdevx.domain.model.AuditEntry> entries = new java.util.ArrayList<>();
+            try (BufferedReader reader = Files.newBufferedReader(path)) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    br.com.fzdevx.domain.model.AuditEntry entry = parseLine(line);
+                    if (entry != null) {
+                        entries.add(entry);
+                    }
+                }
+            }
+            return entries;
+        } catch (IOException e) {
+            Log.errorf(e, "Failed to read audit file %s.", file);
+            return java.util.List.of();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static br.com.fzdevx.domain.model.AuditEntry parseLine(String line) {
+        if (line.isBlank()) {
+            return null;
+        }
+        try {
+            java.util.Map<String, Object> parsed = br.com.fzdevx.infrastructure.persistence.jdbc.JdbcSupport.JSONB
+                    .fromJson(line, java.util.Map.class);
+            Object timestamp = parsed.get("timestamp");
+            return new br.com.fzdevx.domain.model.AuditEntry(
+                    timestamp == null ? null : Instant.parse(String.valueOf(timestamp)),
+                    stringOrNull(parsed.get("user")),
+                    stringOrNull(parsed.get("action")),
+                    stringOrNull(parsed.get("target")),
+                    stringOrNull(parsed.get("detail")));
+        } catch (Exception e) {
+            // unparseable lines are skipped for browsing (retention keeps them)
+            return null;
+        }
+    }
+
+    private static String stringOrNull(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
     private static final String TIMESTAMP_PREFIX = "{\"timestamp\":\"";
 
     private static Instant parseTimestamp(String line) {

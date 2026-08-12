@@ -17,7 +17,10 @@ public enum Permission {
     LOGS_VIEW("LOGS"),
     LOGS_ANALYZE("LOGS"),
     USERS_MANAGE("ADMINISTRATION"),
+    /** See the "created by" field on containers, dumps, snapshots and databases. */
     AUDIT_VIEW("ADMINISTRATION"),
+    /** Browse the full audit trail (who did what, login IPs, failures). */
+    AUDIT_LOG_VIEW("ADMINISTRATION"),
     TENANTS_VIEW_ALL("ADMINISTRATION"),
     SYSTEM_CONFIG("ADMINISTRATION");
 

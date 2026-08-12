@@ -1060,8 +1060,28 @@ const es: typeof en = {
       users: 'Usuarios',
       roles: 'Roles',
       tenants: 'Tenants',
+      audit: 'Auditoría',
       settings: 'Configuración',
     },
+  },
+
+  audit: {
+    searchPlaceholder: 'Buscar por objetivo o detalle...',
+    refresh: 'Actualizar',
+    action: 'Acción',
+    allActions: 'Todas las acciones',
+    actor: 'Usuario',
+    from: 'Desde',
+    to: 'Hasta',
+    time: 'Hora',
+    target: 'Objetivo',
+    detail: 'Detalle',
+    empty: 'Ningún registro de auditoría coincide con los filtros.',
+    occurred: 'Ocurrido',
+    timestamp: 'Timestamp',
+    rawData: 'Datos Sin Procesar',
+    previous: 'Registro anterior',
+    next: 'Siguiente registro',
   },
 
   users: {
@@ -1169,6 +1189,7 @@ const es: typeof en = {
     LOGS_ANALYZE: 'Ejecutar análisis de logs',
     USERS_MANAGE: 'Gestionar usuarios y roles',
     AUDIT_VIEW: 'Ver quién creó los recursos',
+    AUDIT_LOG_VIEW: 'Consultar el registro de auditoría',
     TENANTS_VIEW_ALL: 'Ver los recursos de todos los tenants',
     SYSTEM_CONFIG: 'Editar configuración del sistema y gestionar súper admins',
     categories: {

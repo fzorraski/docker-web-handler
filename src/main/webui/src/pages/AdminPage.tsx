@@ -6,7 +6,7 @@ import {
 } from '@mui/material'
 import {
   PersonAdd, Edit, Delete, LockReset, AddCircleOutline, Visibility,
-  Group, AdminPanelSettings, Tune, Shield, Workspaces, GroupAdd,
+  Group, AdminPanelSettings, Tune, Shield, Workspaces, GroupAdd, History,
 } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import HeroBanner from '../components/HeroBanner'
@@ -24,8 +24,9 @@ import RoleFormDialog from '../components/admin/RoleFormDialog'
 import TenantFormDialog from '../components/admin/TenantFormDialog'
 
 const SettingsTab = lazy(() => import('../components/admin/SettingsTab'))
+const AuditTab = lazy(() => import('../components/admin/AuditTab'))
 
-type AdminTab = 'users' | 'roles' | 'tenants' | 'settings'
+type AdminTab = 'users' | 'roles' | 'tenants' | 'audit' | 'settings'
 
 export default function AdminPage() {
   const { t } = useTranslation()
@@ -33,6 +34,7 @@ export default function AdminPage() {
   const { currentUser, hasPermission, refreshUser } = useAuth()
   const { theadBg, theadColor } = useTableHeaderTheme()
   const canSystemConfig = hasPermission(P.SYSTEM_CONFIG)
+  const canAuditView = hasPermission(P.AUDIT_LOG_VIEW)
   // an admin without cross-tenant reach only manages members of their own tenants
   const canTenantsViewAll = hasPermission(P.TENANTS_VIEW_ALL) || canSystemConfig
   const myTenants = currentUser?.tenants ?? []
@@ -185,6 +187,7 @@ export default function AdminPage() {
           <Tab value="users" icon={<Group fontSize="small" />} iconPosition="start" label={t('admin.tabs.users')} />
           <Tab value="roles" icon={<AdminPanelSettings fontSize="small" />} iconPosition="start" label={t('admin.tabs.roles')} />
           {canTenantsViewAll && <Tab value="tenants" icon={<Workspaces fontSize="small" />} iconPosition="start" label={t('admin.tabs.tenants')} />}
+          {canAuditView && <Tab value="audit" icon={<History fontSize="small" />} iconPosition="start" label={t('admin.tabs.audit')} />}
           {canSystemConfig && <Tab value="settings" icon={<Tune fontSize="small" />} iconPosition="start" label={t('admin.tabs.settings')} />}
         </Tabs>
 
@@ -478,6 +481,13 @@ export default function AdminPage() {
               </TableContainer>
             </Paper>
           </>
+        )}
+
+        {/* ==================== AUDIT TAB ==================== */}
+        {canAuditView && activeTab === 'audit' && (
+          <Suspense fallback={<CircularProgress size={28} sx={{ display: 'block', mx: 'auto', my: 4 }} />}>
+            <AuditTab />
+          </Suspense>
         )}
 
         {/* ==================== SETTINGS TAB ==================== */}

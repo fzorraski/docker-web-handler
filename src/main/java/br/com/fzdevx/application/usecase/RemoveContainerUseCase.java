@@ -59,6 +59,9 @@ public class RemoveContainerUseCase {
             return;
         }
 
+        // resolve the name before removal so the audit trail can record it
+        String containerName = resolveContainerName(containerId);
+
         eventSink.accept(ContainerEvent.info("Cancelling", "Cancelling scheduled expiration..."));
         expirationService.remove(containerId);
         eventSink.accept(ContainerEvent.info("Cancelling", "Expiration cancelled."));
@@ -103,9 +106,26 @@ public class RemoveContainerUseCase {
             }
         }
 
-        auditLogger.log("CONTAINER_REMOVE", containerId,
-                deleteDatabase && databaseName != null ? "database=" + databaseName : null);
+        auditLogger.log("CONTAINER_REMOVE",
+                containerName != null ? containerName : containerId,
+                "id=" + containerId
+                        + (deleteDatabase && databaseName != null ? ", database=" + databaseName : ""));
         eventSink.accept(ContainerEvent.success("Complete",
                 "Container " + containerId + " removed successfully."));
+    }
+
+    /** Best-effort name lookup; the container may already be gone. */
+    private String resolveContainerName(String containerId) {
+        try {
+            return dockerContainerPort.listContainers(true).stream()
+                    .filter(container -> container.getId().startsWith(containerId))
+                    .findFirst()
+                    .map(container -> container.getNames() != null && container.getNames().length > 0
+                            ? container.getNames()[0].replaceFirst("^/", "")
+                            : null)
+                    .orElse(null);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

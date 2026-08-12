@@ -20,6 +20,20 @@ class BuiltInRolesTest {
     }
 
     @Test
+    void auditLogView_isAdminAndAbove_creatorVisibilityIsBroader() {
+        // full audit trail: admins and up only
+        assertTrue(BuiltInRoles.superAdmin().hasPermission(Permission.AUDIT_LOG_VIEW));
+        assertTrue(BuiltInRoles.admin().hasPermission(Permission.AUDIT_LOG_VIEW));
+        assertFalse(BuiltInRoles.operator().hasPermission(Permission.AUDIT_LOG_VIEW));
+        assertFalse(BuiltInRoles.viewer().hasPermission(Permission.AUDIT_LOG_VIEW));
+
+        // creator visibility: operators keep it, viewers don't
+        assertTrue(BuiltInRoles.admin().hasPermission(Permission.AUDIT_VIEW));
+        assertTrue(BuiltInRoles.operator().hasPermission(Permission.AUDIT_VIEW));
+        assertFalse(BuiltInRoles.viewer().hasPermission(Permission.AUDIT_VIEW));
+    }
+
+    @Test
     void onlySuperAdmin_holdsSystemConfig() {
         assertTrue(BuiltInRoles.superAdmin().hasPermission(Permission.SYSTEM_CONFIG));
         assertFalse(BuiltInRoles.admin().hasPermission(Permission.SYSTEM_CONFIG));

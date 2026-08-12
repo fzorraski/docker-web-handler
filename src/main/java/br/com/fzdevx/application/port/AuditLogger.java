@@ -18,4 +18,11 @@ public interface AuditLogger {
      * Returns the number of entries removed.
      */
     int removeEntriesOlderThan(java.time.Instant cutoff);
+
+    /** Browses the trail, newest first, for the audit screen (AUDIT_LOG_VIEW). */
+    br.com.fzdevx.application.dto.AuditSearchResult search(
+            br.com.fzdevx.application.dto.AuditSearchCriteria criteria);
+
+    /** Distinct action names present in the trail, for the filter dropdown. */
+    java.util.List<String> distinctActions();
 }

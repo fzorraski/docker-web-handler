@@ -1058,8 +1058,28 @@ const en = {
       users: 'Users',
       roles: 'Roles',
       tenants: 'Tenants',
+      audit: 'Audit',
       settings: 'Settings',
     },
+  },
+
+  audit: {
+    searchPlaceholder: 'Search target or detail...',
+    refresh: 'Refresh',
+    action: 'Action',
+    allActions: 'All actions',
+    actor: 'User',
+    from: 'From',
+    to: 'To',
+    time: 'Time',
+    target: 'Target',
+    detail: 'Detail',
+    empty: 'No audit entries match the current filters.',
+    occurred: 'Occurred',
+    timestamp: 'Timestamp',
+    rawData: 'Raw Data',
+    previous: 'Previous entry',
+    next: 'Next entry',
   },
 
   users: {
@@ -1167,6 +1187,7 @@ const en = {
     LOGS_ANALYZE: 'Run log analysis',
     USERS_MANAGE: 'Manage users and roles',
     AUDIT_VIEW: 'See who created resources',
+    AUDIT_LOG_VIEW: 'Browse the audit log',
     TENANTS_VIEW_ALL: 'See resources of all tenants',
     SYSTEM_CONFIG: 'Edit system settings and manage super admins',
     categories: {

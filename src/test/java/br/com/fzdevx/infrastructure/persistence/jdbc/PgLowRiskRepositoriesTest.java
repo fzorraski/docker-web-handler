@@ -147,6 +147,36 @@ class PgLowRiskRepositoriesTest {
     PgAuditLogger auditLogger;
 
     @Test
+    void audit_searchFiltersAndPaginates() {
+        auditLogger.logAs("search-user", "SEARCH_TEST_CREATE", "container-abc", "detail one");
+        auditLogger.logAs("search-user", "SEARCH_TEST_DELETE", "container-xyz", "detail two");
+        auditLogger.logAs("other-user", "SEARCH_TEST_CREATE", "container-abc", null);
+        try {
+            var byActor = auditLogger.search(new br.com.fzdevx.application.dto.AuditSearchCriteria(
+                    "SEARCH-USER", null, null, null, null, 0, 10));
+            assertEquals(2, byActor.total());
+
+            var byAction = auditLogger.search(new br.com.fzdevx.application.dto.AuditSearchCriteria(
+                    null, "SEARCH_TEST_DELETE", null, null, null, 0, 10));
+            assertEquals(1, byAction.total());
+            assertEquals("container-xyz", byAction.entries().get(0).target());
+
+            var byText = auditLogger.search(new br.com.fzdevx.application.dto.AuditSearchCriteria(
+                    null, null, "detail one", null, null, 0, 10));
+            assertEquals(1, byText.total());
+
+            var paged = auditLogger.search(new br.com.fzdevx.application.dto.AuditSearchCriteria(
+                    null, "SEARCH_TEST_CREATE", null, null, null, 0, 1));
+            assertEquals(2, paged.total());
+            assertEquals(1, paged.entries().size());
+
+            assertTrue(auditLogger.distinctActions().contains("SEARCH_TEST_CREATE"));
+        } finally {
+            jdbc.update("DELETE FROM audit_log WHERE action LIKE 'SEARCH_TEST%'");
+        }
+    }
+
+    @Test
     void audit_insertAndRetention() {
         auditLogger.logAs("tester", "TEST_ACTION", "target-1", "detail");
         long count = jdbc.queryOne(

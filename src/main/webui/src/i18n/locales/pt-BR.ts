@@ -1060,8 +1060,28 @@ const ptBR: typeof en = {
       users: 'Usuários',
       roles: 'Papéis',
       tenants: 'Tenants',
+      audit: 'Auditoria',
       settings: 'Configurações',
     },
+  },
+
+  audit: {
+    searchPlaceholder: 'Buscar por alvo ou detalhe...',
+    refresh: 'Atualizar',
+    action: 'Ação',
+    allActions: 'Todas as ações',
+    actor: 'Usuário',
+    from: 'De',
+    to: 'Até',
+    time: 'Hora',
+    target: 'Alvo',
+    detail: 'Detalhe',
+    empty: 'Nenhum registro de auditoria corresponde aos filtros.',
+    occurred: 'Ocorrido',
+    timestamp: 'Timestamp',
+    rawData: 'Dados Brutos',
+    previous: 'Registro anterior',
+    next: 'Próximo registro',
   },
 
   users: {
@@ -1169,6 +1189,7 @@ const ptBR: typeof en = {
     LOGS_ANALYZE: 'Executar análise de logs',
     USERS_MANAGE: 'Gerenciar usuários e papéis',
     AUDIT_VIEW: 'Ver quem criou os recursos',
+    AUDIT_LOG_VIEW: 'Consultar o log de auditoria',
     TENANTS_VIEW_ALL: 'Ver os recursos de todos os tenants',
     SYSTEM_CONFIG: 'Editar configurações do sistema e gerenciar super admins',
     categories: {
