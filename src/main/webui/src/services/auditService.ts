@@ -11,8 +11,12 @@ export interface AuditEntry {
   action: string
   target: string | null
   detail: string | null
-  /** tenant the action belonged to; null = system / cross-tenant action */
-  tenantId: string | null
+  /**
+   * Tenant the action belonged to. Absent (not null) for system and
+   * super-admin actions: the API serialises with JSON-B, which omits null
+   * properties.
+   */
+  tenantId?: string | null
 }
 
 export interface AuditPage {

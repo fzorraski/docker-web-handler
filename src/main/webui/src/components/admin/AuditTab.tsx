@@ -16,6 +16,7 @@ import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { useTenantNames } from '../../hooks/useTenantNames'
 import { useAuth } from '../AuthProvider'
 import { P } from '../../utils/permissions'
+import { resolveTenantLabel, isSystemEntry } from '../../utils/auditTenant'
 import { formatDate, formatRelative } from '../../utils/format'
 import { searchAudit, listAuditActions, type AuditEntry } from '../../services/auditService'
 
@@ -107,8 +108,8 @@ export default function AuditTab() {
   // hasPermission answers true for everything when RBAC is off, and there is no
   // tenant model at all then - every other tenant column gates the same way
   const showTenant = rbacEnabled && hasPermission(P.TENANTS_VIEW_ALL)
-  const tenantLabel = (id: string | null) =>
-    id === null ? t('audit.systemTenant') : tenantNames.get(id) ?? id
+  const tenantLabel = (id?: string | null) =>
+    resolveTenantLabel(id, tenantNames, t('audit.systemTenant'))
 
   // hand-built, so a new field has to be added here explicitly
   const rawData = (entry: AuditEntry) => JSON.stringify({
@@ -238,7 +239,7 @@ export default function AuditTab() {
                 </TableCell>
                 {showTenant && (
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                    {entry.tenantId === null
+                    {isSystemEntry(entry.tenantId)
                       ? <Typography variant="caption" color="text.secondary">{t('audit.systemTenant')}</Typography>
                       : <Chip label={tenantLabel(entry.tenantId)} size="small" variant="outlined" color="secondary" />}
                   </TableCell>
