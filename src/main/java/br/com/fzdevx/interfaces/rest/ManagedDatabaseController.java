@@ -1021,29 +1021,33 @@ public class ManagedDatabaseController {
         }
         listManagedDatabasesUseCase.invalidateCache(repository);
 
-        // Auto-disable database deletion on containers when protecting
+        // Auto-disable database deletion on containers when protecting.
+        // The flag is already persisted at this point, so the audit entry is written in a
+        // finally — a failure in the loop must not leave the state change untraced.
         int disabledDeletionCount = 0;
-        if (nowProtected[0]) {
-            List<ContainerExpiration> expirations = expirationService.findByDatabaseName(databaseName);
-            for (ContainerExpiration exp : expirations) {
-                if (exp.isDeleteDatabaseOnExpiration()) {
-                    expirationService.disableDatabaseDeletion(exp.getShortId());
-                    disabledDeletionCount++;
+        try {
+            if (nowProtected[0]) {
+                List<ContainerExpiration> expirations = expirationService.findByDatabaseName(databaseName);
+                for (ContainerExpiration exp : expirations) {
+                    if (exp.isDeleteDatabaseOnExpiration()) {
+                        expirationService.disableDatabaseDeletion(exp.getShortId());
+                        disabledDeletionCount++;
+                    }
+                }
+                if (disabledDeletionCount > 0) {
+                    Log.infof("Auto-disabled database deletion on %d container(s) for protected database '%s'.",
+                            disabledDeletionCount, databaseName);
                 }
             }
+        } finally {
+            // dropping protection re-arms deletion of a production database — the trail
+            // has to say who did it, and the side effect on container expiration too
+            String detail = "repository=" + repository;
             if (disabledDeletionCount > 0) {
-                Log.infof("Auto-disabled database deletion on %d container(s) for protected database '%s'.",
-                        disabledDeletionCount, databaseName);
+                detail += ", disabledDeletionCount=" + disabledDeletionCount;
             }
+            auditLogger.log(nowProtected[0] ? "DATABASE_PROTECT" : "DATABASE_UNPROTECT", databaseName, detail);
         }
-
-        // dropping protection re-arms deletion of a production database — the trail
-        // has to say who did it, and the side effect on container expiration too
-        String detail = "repository=" + repository;
-        if (disabledDeletionCount > 0) {
-            detail += ", disabledDeletionCount=" + disabledDeletionCount;
-        }
-        auditLogger.log(nowProtected[0] ? "DATABASE_PROTECT" : "DATABASE_UNPROTECT", databaseName, detail);
 
         return Response.ok(Map.of("success", true, "protected", nowProtected[0],
                 "disabledDeletionCount", disabledDeletionCount)).build();

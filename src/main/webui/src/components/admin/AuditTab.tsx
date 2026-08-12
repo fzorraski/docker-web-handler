@@ -22,8 +22,9 @@ import { searchAudit, listAuditActions, type AuditEntry } from '../../services/a
 /** Auth0-logs-style severity coloring derived from the action name. */
 function actionColor(action: string): 'error' | 'warning' | 'success' | 'default' {
   if (/FAILED|DENIED|ERROR/.test(action)) return 'error'
-  if (/DELETE|REMOVE|RESET|CLEANUP/.test(action)) return 'warning'
-  if (/CREATE|LOGIN$|RESTORE|UPLOAD/.test(action)) return 'success'
+  // UNPROTECT first — it re-arms deletion, so it reads as a warning, not a success
+  if (/DELETE|REMOVE|RESET|CLEANUP|UNPROTECT/.test(action)) return 'warning'
+  if (/CREATE|LOGIN$|RESTORE|UPLOAD|PROTECT$/.test(action)) return 'success'
   return 'default'
 }
 
