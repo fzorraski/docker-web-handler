@@ -54,6 +54,110 @@ export async function activityByDay(
   return handleJsonResponse(res)
 }
 
+// ---- dashboard ----
+
+export interface ActivityTotals {
+  events: number
+  /** everything except AUTH - the score the ranking is built on */
+  operational: number
+  auth: number
+  failures: number
+  activeUsers: number
+  distinctActions: number
+  busiestDay: string | null
+  busiestDayCount: number
+  busiestUser: string | null
+  busiestUserCount: number
+}
+
+/** Counts keyed by category name, every category present even at zero. */
+export type CategoryCounts = Record<string, number>
+
+export interface ActivityDayPoint {
+  day: string
+  total: number
+  byCategory: CategoryCounts
+}
+
+export interface ActivityCategoryCount {
+  category: string
+  count: number
+}
+
+export interface ActivityActionCount {
+  action: string
+  category: string
+  count: number
+  /** distinct people who performed it */
+  users: number
+}
+
+export interface ActivityUserRank {
+  actor: string
+  total: number
+  operational: number
+  auth: number
+  failures: number
+  /** the same score over the preceding period, for the trend arrow */
+  previousOperational: number
+  byCategory: CategoryCounts
+  topAction: string | null
+  activeDays: number
+  lastActive: string | null
+}
+
+export interface ActivityTenantCount {
+  tenantId: string | null
+  count: number
+  users: number
+}
+
+export interface ActivityFailureCount {
+  actor: string
+  count: number
+  lastAt: string | null
+}
+
+export interface ActivityHeatCell {
+  actor: string
+  day: string
+  count: number
+}
+
+export interface ActivityOverview {
+  from: string
+  to: string
+  /** last day the roll-up covers; anything after it is read live */
+  summarisedThrough: string | null
+  totals: ActivityTotals
+  previous: ActivityTotals
+  daily: ActivityDayPoint[]
+  categories: ActivityCategoryCount[]
+  topActions: ActivityActionCount[]
+  ranking: ActivityUserRank[]
+  tenants: ActivityTenantCount[]
+  failures: ActivityFailureCount[]
+  heatmap: ActivityHeatCell[]
+}
+
+export interface OverviewFilters {
+  from?: string
+  to?: string
+  tenant?: string
+  topUsers?: number
+}
+
+/** Every aggregate the dashboard draws, for one window. */
+export async function activityOverview(filters: OverviewFilters): Promise<ActivityOverview> {
+  const params = new URLSearchParams()
+  if (filters.from) params.set('from', filters.from)
+  if (filters.to) params.set('to', filters.to)
+  if (filters.tenant) params.set('tenant', filters.tenant)
+  if (filters.topUsers) params.set('topUsers', String(filters.topUsers))
+  const res = await fetchWithAuth(`${API}/overview?${params.toString()}`, undefined, OPTS)
+  return handleJsonResponse(res)
+}
+
 export async function listActivityActions(): Promise<string[]> {
   const res = await fetchWithAuth(`${API}/actions`, undefined, OPTS)
   return handleJsonResponse(res)

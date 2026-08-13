@@ -12,6 +12,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -90,21 +91,27 @@ public class PgUserActivityRepository {
      * Day-by-day rows, newest first. The ORDER BY carries every column of the
      * unique index: a partial ordering lets tied rows repeat or vanish between
      * pages, since LIMIT/OFFSET re-sorts each request independently.
+     *
+     * <p>Rows are grouped again on the way out because the merged source can
+     * hold two rows for the same day and actor - one summarised, one live -
+     * only while the roll-up is mid-flight for that day.</p>
      */
-    public ActivityReportResult search(ActivityReportCriteria criteria) {
+    public ActivityReportResult search(ActivityReportCriteria criteria, ZoneId zone) {
+        Merged base = merged(criteria.from(), criteria.to(), zone);
         StringBuilder where = new StringBuilder(" WHERE 1=1");
-        List<Object> params = new ArrayList<>();
+        List<Object> params = new ArrayList<>(base.params());
         appendFilters(where, params, criteria);
+        String grouped = base.sql() + where + " GROUP BY activity_day, actor, action, tenant_id";
 
-        long total = jdbc.queryOne("SELECT count(*) FROM user_activity_daily" + where,
+        long total = jdbc.queryOne("SELECT count(*) FROM (SELECT 1 FROM " + grouped + ") g",
                 rs -> rs.getLong(1), params.toArray()).orElse(0L);
 
         List<Object> pageParams = new ArrayList<>(params);
         pageParams.add(criteria.size());
         pageParams.add((long) criteria.page() * criteria.size());
         List<UserActivitySummary> rows = jdbc.query(
-                "SELECT activity_day, actor, action, tenant_id, event_count FROM user_activity_daily"
-                        + where + " ORDER BY activity_day DESC, event_count DESC, actor, action,"
+                "SELECT activity_day, actor, action, tenant_id, sum(event_count) AS event_count FROM "
+                        + grouped + " ORDER BY activity_day DESC, sum(event_count) DESC, actor, action,"
                         + " COALESCE(tenant_id, '') LIMIT ? OFFSET ?",
                 PgUserActivityRepository::map, pageParams.toArray());
 
@@ -116,13 +123,14 @@ public class PgUserActivityRepository {
      * screen renders ("alice opened the terminal 12 times this month"). The day
      * is null on these rows because they span the range.
      */
-    public ActivityReportResult totalsByUser(ActivityReportCriteria criteria) {
+    public ActivityReportResult totalsByUser(ActivityReportCriteria criteria, ZoneId zone) {
+        Merged base = merged(criteria.from(), criteria.to(), zone);
         StringBuilder where = new StringBuilder(" WHERE 1=1");
-        List<Object> params = new ArrayList<>();
+        List<Object> params = new ArrayList<>(base.params());
         appendFilters(where, params, criteria);
 
         long total = jdbc.queryOne(
-                "SELECT count(*) FROM (SELECT 1 FROM user_activity_daily" + where
+                "SELECT count(*) FROM (SELECT 1 FROM " + base.sql() + where
                         + " GROUP BY actor, action) grouped",
                 rs -> rs.getLong(1), params.toArray()).orElse(0L);
 
@@ -130,7 +138,7 @@ public class PgUserActivityRepository {
         pageParams.add(criteria.size());
         pageParams.add((long) criteria.page() * criteria.size());
         List<UserActivitySummary> rows = jdbc.query(
-                "SELECT actor, action, sum(event_count) AS event_count FROM user_activity_daily"
+                "SELECT actor, action, sum(event_count) AS event_count FROM " + base.sql()
                         + where + " GROUP BY actor, action ORDER BY sum(event_count) DESC, actor, action"
                         + " LIMIT ? OFFSET ?",
                 rs -> new UserActivitySummary(null, rs.getString("actor"), rs.getString("action"),
@@ -140,10 +148,96 @@ public class PgUserActivityRepository {
         return new ActivityReportResult(rows, total);
     }
 
-    /** Distinct action names present in the summary, for the filter dropdown. */
+    /**
+     * Every row in the window, unpaginated - the dashboard aggregates these
+     * itself. Bounded by {@link br.com.fzdevx.application.dto.ActivityOverviewCriteria#MAX_RANGE_DAYS}
+     * upstream and by the roll-up's own grain (one row per day, actor, action
+     * and tenant), so this stays a few thousand rows even for a busy year.
+     */
+    public List<UserActivitySummary> rowsForRange(LocalDate from, LocalDate to, String tenantId,
+                                                  ZoneId zone) {
+        if (from == null || to == null || from.isAfter(to)) {
+            return List.of();
+        }
+        Merged base = merged(from, to, zone);
+        List<Object> params = new ArrayList<>(base.params());
+        StringBuilder where = new StringBuilder(" WHERE activity_day >= ? AND activity_day <= ?");
+        params.add(Date.valueOf(from));
+        params.add(Date.valueOf(to));
+        if (tenantId != null && !tenantId.isBlank()) {
+            where.append(" AND tenant_id = ?");
+            params.add(tenantId.trim());
+        }
+        return jdbc.query(
+                "SELECT activity_day, actor, action, tenant_id, sum(event_count) AS event_count FROM "
+                        + base.sql() + where + " GROUP BY activity_day, actor, action, tenant_id",
+                PgUserActivityRepository::map, params.toArray());
+    }
+
+    /** A derived table plus the parameters it binds, ready to be filtered. */
+    private record Merged(String sql, List<Object> params) {
+    }
+
+    /**
+     * The roll-up up to the watermark, unioned with the raw audit trail after
+     * it. Without the second half every report would end at the last complete
+     * day - today's work would be invisible until the summariser next runs,
+     * which reads as a broken screen rather than as a design decision.
+     *
+     * <p>The live half is bounded by instants, never by a date expression on
+     * {@code occurred_at}: wrapping the column in a timezone conversion would
+     * shut out the index the audit trail relies on. The requested window
+     * narrows it further whenever one was given.</p>
+     */
+    private Merged merged(LocalDate from, LocalDate to, ZoneId zone) {
+        ZoneId effective = zone == null ? ZoneId.systemDefault() : zone;
+        // absent watermark: nothing is summarised, so everything is live
+        LocalDate watermark = summarisedThrough().orElse(null);
+        List<Object> params = new ArrayList<>();
+
+        StringBuilder sql = new StringBuilder("(");
+        if (watermark != null) {
+            sql.append("SELECT activity_day, actor, action, tenant_id, event_count"
+                    + " FROM user_activity_daily WHERE activity_day <= ?");
+            params.add(Date.valueOf(watermark));
+            sql.append(" UNION ALL ");
+        }
+        // first day the roll-up has not covered yet, clamped to the window
+        LocalDate liveFrom = watermark == null ? from : watermark.plusDays(1);
+        if (from != null && (liveFrom == null || from.isAfter(liveFrom))) {
+            liveFrom = from;
+        }
+        sql.append("SELECT (occurred_at AT TIME ZONE CAST(? AS text))::date AS activity_day,"
+                + " COALESCE(actor, 'system') AS actor, action, tenant_id, count(*) AS event_count"
+                + " FROM audit_log WHERE 1=1");
+        params.add(effective.getId());
+        if (liveFrom != null) {
+            sql.append(" AND occurred_at >= ?");
+            params.add(liveFrom.atStartOfDay(effective).toInstant());
+        }
+        if (to != null) {
+            sql.append(" AND occurred_at < ?");
+            params.add(to.plusDays(1).atStartOfDay(effective).toInstant());
+        }
+        sql.append(" GROUP BY 1, 2, 3, 4) src");
+        return new Merged(sql.toString(), params);
+    }
+
+    /**
+     * Distinct action names present in the summary, for the filter dropdown.
+     * The recent audit trail is unioned in so an action first used today is
+     * selectable today, rather than the day after the roll-up notices it. The
+     * seven-day bound keeps that half an index range scan instead of a full
+     * pass over the audit trail.
+     */
     public List<String> distinctActions() {
-        return jdbc.query("SELECT DISTINCT action FROM user_activity_daily ORDER BY action",
-                rs -> rs.getString(1));
+        return jdbc.query("""
+                SELECT action FROM (
+                    SELECT DISTINCT action FROM user_activity_daily
+                    UNION
+                    SELECT DISTINCT action FROM audit_log WHERE occurred_at >= ?
+                ) actions ORDER BY action
+                """, rs -> rs.getString(1), Instant.now().minus(7, java.time.temporal.ChronoUnit.DAYS));
     }
 
     private static void appendFilters(StringBuilder where, List<Object> params,

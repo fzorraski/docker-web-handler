@@ -157,7 +157,12 @@ public class ActivitySummaryService {
         return day.atStartOfDay(zone()).toInstant();
     }
 
-    private ZoneId zone() {
+    /**
+     * The zone whose calendar days the roll-up is keyed by. Readers need it
+     * too: a report that bucketed the live part of its range in a different
+     * zone would draw a seam at the boundary between summarised and raw days.
+     */
+    public ZoneId zone() {
         String configured = zoneId == null ? null : zoneId.filter(z -> !z.isBlank()).orElse(null);
         if (configured == null) {
             return ZoneId.systemDefault();

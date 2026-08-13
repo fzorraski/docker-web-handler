@@ -1,7 +1,10 @@
 package br.com.fzdevx.interfaces.rest;
 
+import br.com.fzdevx.application.dto.ActivityOverview;
+import br.com.fzdevx.application.dto.ActivityOverviewCriteria;
 import br.com.fzdevx.application.dto.ActivityReportCriteria;
 import br.com.fzdevx.application.dto.ActivityReportResult;
+import br.com.fzdevx.application.usecase.BuildActivityOverviewUseCase;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.infrastructure.persistence.ActivitySummaryService;
@@ -32,6 +35,9 @@ public class ActivityReportController {
     @Inject
     ActivitySummaryService activitySummaryService;
 
+    @Inject
+    BuildActivityOverviewUseCase buildOverview;
+
     /** Day-by-day rows, newest first. */
     @GET
     @Produces(MediaType.APPLICATION_JSON)
@@ -42,8 +48,50 @@ public class ActivityReportController {
                                       @QueryParam("actor") String actor,
                                       @QueryParam("action") String action) {
         requireActive();
-        return respond(activityRepository.search(criteria(page, size, from, to, actor, action)),
-                page, size);
+        return respond(activityRepository.search(criteria(page, size, from, to, actor, action),
+                activitySummaryService.zone()), page, size);
+    }
+
+    /**
+     * Everything the dashboard draws for one window: totals against the
+     * preceding window, the daily trend, the user ranking, action and tenant
+     * breakdowns, failures and the heatmap.
+     *
+     * <p>Defaults to the last 30 days ending today. Today is only on the screen
+     * because the query falls through to the raw audit trail past the roll-up's
+     * watermark; without that the newest thing a dashboard could show would be
+     * yesterday.</p>
+     */
+    @GET
+    @Path("/overview")
+    @Produces(MediaType.APPLICATION_JSON)
+    public ActivityOverview overview(@QueryParam("from") String from,
+                                     @QueryParam("to") String to,
+                                     @QueryParam("tenant") String tenant,
+                                     @QueryParam("topUsers") int topUsers,
+                                     @QueryParam("topActions") int topActions) {
+        requireActive();
+        LocalDate today = LocalDate.now(activitySummaryService.zone());
+        LocalDate end = orDefault(parseDate(to, "to"), today);
+        LocalDate start = orDefault(parseDate(from, "from"), end.minusDays(29));
+        if (start.isAfter(end)) {
+            throw new InvalidInputException("The 'from' date must not be after the 'to' date.");
+        }
+
+        ActivityOverviewCriteria criteria =
+                new ActivityOverviewCriteria(start, end, tenant, topUsers, topActions);
+        if (criteria.days() > ActivityOverviewCriteria.MAX_RANGE_DAYS) {
+            throw new InvalidInputException("The range is limited to "
+                    + ActivityOverviewCriteria.MAX_RANGE_DAYS + " days.");
+        }
+
+        // one fetch spanning both windows - the comparison is a split, not a
+        // second scan of the same rows
+        return buildOverview.build(
+                activityRepository.rowsForRange(criteria.previousFrom(), criteria.to(), tenant,
+                        activitySummaryService.zone()),
+                criteria,
+                activityRepository.summarisedThrough().orElse(null));
     }
 
     /** Totals per user and action over the whole range. */
@@ -57,8 +105,8 @@ public class ActivityReportController {
                                       @QueryParam("actor") String actor,
                                       @QueryParam("action") String action) {
         requireActive();
-        return respond(activityRepository.totalsByUser(criteria(page, size, from, to, actor, action)),
-                page, size);
+        return respond(activityRepository.totalsByUser(criteria(page, size, from, to, actor, action),
+                activitySummaryService.zone()), page, size);
     }
 
     /** Action names present in the summary, for the filter dropdown. */
@@ -109,6 +157,10 @@ public class ActivityReportController {
                 "total", result.total(),
                 "page", applied.page(),
                 "size", applied.size());
+    }
+
+    private static LocalDate orDefault(LocalDate value, LocalDate fallback) {
+        return value == null ? fallback : value;
     }
 
     private static LocalDate parseDate(String value, String field) {
