@@ -20,6 +20,7 @@ import HeroBanner from '../components/HeroBanner'
 import CreateScheduleModal from '../components/CreateScheduleModal'
 import PasswordConfirmDialog from '../components/PasswordConfirmDialog'
 import ShareResourceDialog from '../components/ShareResourceDialog'
+import TruncatedText from '../components/TruncatedText'
 import { RateLimitError } from '../services/fetchWithAuth'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
 import { useStickyHeader } from '../hooks/useStickyHeader'
@@ -569,7 +570,7 @@ export default function SchedulesPage() {
                     {getScheduleDisplay(s)}
                   </TableCell>
                   <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
-                    {getTarget(s)}
+                    <TruncatedText value={getTarget(s)} max={32} />
                   </TableCell>
                   <TableCell>
                     <Tooltip title={

@@ -8,6 +8,7 @@ import { useAuth } from '../components/AuthProvider'
 import { P } from '../utils/permissions'
 import HeroBanner from '../components/HeroBanner'
 import { useTranslation } from 'react-i18next'
+import TruncatedText from '../components/TruncatedText'
 import { formatBackendDate } from '../utils/format'
 import { useTableSort } from '../hooks/useTableSort'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
@@ -335,7 +336,7 @@ export default function ImagesPage() {
                       )}
                     </Box>
                   </TableCell>
-                  <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{img.tag}</TableCell>
+                  <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}><TruncatedText value={img.tag} /></TableCell>
                   <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem' }}>{img.imageId}</TableCell>
                   <TableCell>{formatBackendDate(img.created)}</TableCell>
                   <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{img.size}</TableCell>
