@@ -19,15 +19,16 @@ public record ManagedDatabaseInfo(
         boolean scheduledForDeletion,
         String lastRestoredFrom,
         Instant lastRestoredAt,
+        String lastRestoredBy,
         String createdBy,
         String tenantId
 ) {
 
-    /** Copy without the creator, for callers lacking the AUDIT_VIEW permission. */
+    /** Copy without actor identities, for callers lacking the AUDIT_VIEW permission. */
     public ManagedDatabaseInfo withoutCreatedBy() {
         return new ManagedDatabaseInfo(name, repository, sizeBytes, activeConnections,
                 pgLastActivity, appLastUsedAt, effectiveLastUsedAt, protectedFlag, createdAt,
                 description, containerCount, earliestExpiration, scheduledForDeletion,
-                lastRestoredFrom, lastRestoredAt, null, tenantId);
+                lastRestoredFrom, lastRestoredAt, null, null, tenantId);
     }
 }

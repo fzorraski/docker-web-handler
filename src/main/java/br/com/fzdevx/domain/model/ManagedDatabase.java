@@ -14,6 +14,8 @@ public class ManagedDatabase {
     private String description;
     private String lastRestoredFrom;
     private Instant lastRestoredAt;
+    /** Who ran the last restore; null when it predates tracking or RBAC is off. */
+    private String lastRestoredBy;
     private String createdBy;
     private String tenantId;
 
@@ -50,6 +52,9 @@ public class ManagedDatabase {
 
     public Instant getLastRestoredAt() { return lastRestoredAt; }
     public void setLastRestoredAt(Instant lastRestoredAt) { this.lastRestoredAt = lastRestoredAt; }
+
+    public String getLastRestoredBy() { return lastRestoredBy; }
+    public void setLastRestoredBy(String lastRestoredBy) { this.lastRestoredBy = lastRestoredBy; }
 
     @Override
     public boolean equals(Object o) {

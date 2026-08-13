@@ -452,10 +452,12 @@ public class RestoreDumpUseCase {
             try {
                 Instant restoredAt = Instant.now();
                 // targeted mutation - never clobbers concurrent protect/tenant edits
+                String restoredBy = actorResolver.usernameOrSystem();
                 java.util.function.Consumer<ManagedDatabase> stamp = md -> {
                     md.setAppLastUsedAt(restoredAt);
                     md.setLastRestoredFrom(displayName);
                     md.setLastRestoredAt(restoredAt);
+                    md.setLastRestoredBy(restoredBy);
                 };
                 boolean updated = managedDatabaseRepository.update(
                         request.getRepository(), request.getTargetDatabase(), stamp);

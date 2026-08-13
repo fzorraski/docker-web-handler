@@ -18,7 +18,7 @@ public class PgMigrationRecordRepository implements MigrationRecordRepository {
 
     private static final String SELECT = """
             SELECT database_name, repository, source_version, target_version,
-                   versions_included, total_statements, mode, migrated_at
+                   versions_included, total_statements, mode, migrated_at, migrated_by
             FROM database_migration
             """;
 
@@ -29,19 +29,21 @@ public class PgMigrationRecordRepository implements MigrationRecordRepository {
     public void save(DatabaseMigrationRecord record) {
         jdbc.update("""
                 INSERT INTO database_migration (database_name, repository, source_version,
-                    target_version, versions_included, total_statements, mode, migrated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    target_version, versions_included, total_statements, mode, migrated_at, migrated_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (database_name, repository) DO UPDATE SET
                     source_version = EXCLUDED.source_version,
                     target_version = EXCLUDED.target_version,
                     versions_included = EXCLUDED.versions_included,
                     total_statements = EXCLUDED.total_statements,
                     mode = EXCLUDED.mode,
-                    migrated_at = EXCLUDED.migrated_at
+                    migrated_at = EXCLUDED.migrated_at,
+                    migrated_by = EXCLUDED.migrated_by
                 """,
                 record.getDatabaseName(), record.getRepository(), record.getSourceVersion(),
                 record.getTargetVersion(), JdbcSupport.JsonbValue.of(record.getVersionsIncluded()),
-                record.getTotalStatements(), record.getMode(), record.getMigratedAt());
+                record.getTotalStatements(), record.getMode(), record.getMigratedAt(),
+                record.getMigratedBy());
     }
 
     @Override
@@ -65,6 +67,7 @@ public class PgMigrationRecordRepository implements MigrationRecordRepository {
         record.setTotalStatements(rs.getObject("total_statements", Integer.class));
         record.setMode(rs.getString("mode"));
         record.setMigratedAt(JdbcSupport.instant(rs, "migrated_at"));
+        record.setMigratedBy(rs.getString("migrated_by"));
         return record;
     }
 }

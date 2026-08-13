@@ -21,7 +21,8 @@ import {
 import { useNotification } from './NotificationProvider'
 import { useAuth } from './AuthProvider'
 import { P } from '../utils/permissions'
-import { useTenantNames } from '../hooks/useTenantNames'
+import { useTenants } from '../hooks/useTenants'
+import TenantChip from './TenantChip'
 import PasswordConfirmDialog from './PasswordConfirmDialog'
 import FullscreenToggleButton from './FullscreenToggleButton'
 import CreateSnapshotModal from './CreateSnapshotModal'
@@ -132,7 +133,7 @@ const DB_COLUMNS: { key: string; label: string }[] = [
 export default function DatabasesTab() {
   const { notify } = useNotification()
   const { rbacEnabled, hasPermission } = useAuth()
-  const tenantNames = useTenantNames()
+  const tenants = useTenants()
   const canDbOperate = hasPermission(P.DATABASE_OPERATE)
   const canDbDelete = hasPermission(P.DATABASE_DELETE)
   const canRunContainers = hasPermission(P.CONTAINERS_RUN)
@@ -296,7 +297,7 @@ export default function DatabasesTab() {
       const lc = filter.toLowerCase()
       data = data.filter((db) => db.name.toLowerCase().includes(lc)
         || (db.createdBy ?? '').toLowerCase().includes(lc)
-        || (db.tenantId ? (tenantNames.get(db.tenantId) ?? '').toLowerCase().includes(lc) : false))
+        || (db.tenantId ? (tenants.get(db.tenantId)?.name ?? '').toLowerCase().includes(lc) : false))
     }
 
     // Connections filter
@@ -329,8 +330,8 @@ export default function DatabasesTab() {
         cmp = (a.protectedFlag ? 1 : 0) - (b.protectedFlag ? 1 : 0)
       } else if (sortKey === 'tenantId') {
         // the column displays the resolved name, so sort by it too
-        const va = (a.tenantId ? tenantNames.get(a.tenantId) ?? a.tenantId : '').toLowerCase()
-        const vb = (b.tenantId ? tenantNames.get(b.tenantId) ?? b.tenantId : '').toLowerCase()
+        const va = (a.tenantId ? tenants.get(a.tenantId)?.name ?? a.tenantId : '').toLowerCase()
+        const vb = (b.tenantId ? tenants.get(b.tenantId)?.name ?? b.tenantId : '').toLowerCase()
         cmp = va.localeCompare(vb)
       } else {
         const va = String((a as unknown as Record<string, unknown>)[sortKey] ?? '').toLowerCase()
@@ -339,7 +340,7 @@ export default function DatabasesTab() {
       }
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [databases, filter, sortKey, sortDir, showWithConnections, idleFilter, tenantNames])
+  }, [databases, filter, sortKey, sortDir, showWithConnections, idleFilter, tenants])
 
   const pagination = useTablePagination(filteredDatabases, { storageKey: 'managedDatabases' })
 
@@ -1076,6 +1077,7 @@ export default function DatabasesTab() {
                               ? `${t('database.dbMigrated')} (${migration.sourceVersion} \u2192 ${migration.targetVersion})`
                               : t('database.dbMigrated')
                             if (migration.migratedAt) label += ` — ${formatDate(migration.migratedAt)}`
+                            if (migration.migratedBy) label += ` — ${t('database.byUser', { user: migration.migratedBy })}`
                             return (
                               <Tooltip title={label}>
                                 <SwapHoriz sx={{ fontSize: 16, color: 'info.main', ml: 0.5 }} />
@@ -1083,7 +1085,7 @@ export default function DatabasesTab() {
                             )
                           })()}
                           {db.lastRestoredFrom && (
-                            <Tooltip title={`${t('database.dbRestored')}: ${db.lastRestoredFrom}${db.lastRestoredAt ? ' (' + formatDate(db.lastRestoredAt) + ')' : ''}`}>
+                            <Tooltip title={`${t('database.dbRestored')}: ${db.lastRestoredFrom}${db.lastRestoredAt ? ' (' + formatDate(db.lastRestoredAt) + ')' : ''}${db.lastRestoredBy ? ' — ' + t('database.byUser', { user: db.lastRestoredBy }) : ''}`}>
                               <Restore sx={{ fontSize: 16, color: 'success.main', ml: 0.5 }} />
                             </Tooltip>
                           )}
@@ -1162,7 +1164,7 @@ export default function DatabasesTab() {
                   {rbacEnabled && (
                     <TableCell>
                       {db.tenantId
-                        ? <Chip label={tenantNames.get(db.tenantId) ?? db.tenantId} size="small" variant="outlined" color="secondary" />
+                        ? <TenantChip tenant={tenants.get(db.tenantId)} fallbackLabel={db.tenantId} />
                         : '-'}
                     </TableCell>
                   )}

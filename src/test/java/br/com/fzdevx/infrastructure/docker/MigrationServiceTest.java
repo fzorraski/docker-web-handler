@@ -39,6 +39,7 @@ import static org.mockito.Mockito.when;
 class MigrationServiceTest {
 
     @Mock JsonFileMigrationRepository migrationRepository;
+    @Mock br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
     @Mock ResourceCounterService resourceCounterService;
     @Mock Config config;
     @Mock DockerClient dockerClient;
@@ -55,6 +56,7 @@ class MigrationServiceTest {
         events.clear();
         service = new MigrationService();
         service.migrationRepository = migrationRepository;
+        service.actorResolver = actorResolver;
         service.resourceCounterService = resourceCounterService;
         service.config = config;
         service.dockerClient = dockerClient;
@@ -210,5 +212,30 @@ class MigrationServiceTest {
         assertNotNull(result.versionsIncluded());
         assertTrue(result.versionsIncluded().size() <= 256,
                 "versionsIncluded must be capped to defend against memory-amplification payloads");
+    }
+
+    // ---- recordMigration ----
+
+    @Test
+    void recordMigration_stampsTheActor() {
+        when(actorResolver.usernameOrSystem()).thenReturn("alice");
+
+        service.recordMigration("dev_db", "postgres", "API", null);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(DatabaseMigrationRecord.class);
+        verify(migrationRepository).save(captor.capture());
+        assertEquals("alice", captor.getValue().getMigratedBy());
+    }
+
+    @Test
+    void recordMigration_legacyMode_leavesActorNull() {
+        // legacy password mode has no identity; the tooltip simply omits the user
+        when(actorResolver.usernameOrSystem()).thenReturn(null);
+
+        service.recordMigration("dev_db", "postgres", "API", null);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(DatabaseMigrationRecord.class);
+        verify(migrationRepository).save(captor.capture());
+        assertNull(captor.getValue().getMigratedBy());
     }
 }

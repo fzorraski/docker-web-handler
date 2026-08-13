@@ -55,6 +55,9 @@ public class MigrationService {
     br.com.fzdevx.application.port.MigrationRecordRepository migrationRepository;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
+
+    @Inject
     ResourceCounterService resourceCounterService;
 
     @Inject
@@ -135,6 +138,9 @@ public class MigrationService {
                 result != null ? result.targetVersion() : null,
                 result != null ? result.versionsIncluded() : null,
                 result != null ? result.totalStatements() : null);
+        // both callers (container create SSE, standalone migration SSE) run in
+        // request scope, so this is the real user - "system" only for workers
+        record.setMigratedBy(actorResolver.usernameOrSystem());
         migrationRepository.save(record);
         resourceCounterService.increment(ResourceCounterService.MIGRATIONS_EXECUTED);
     }

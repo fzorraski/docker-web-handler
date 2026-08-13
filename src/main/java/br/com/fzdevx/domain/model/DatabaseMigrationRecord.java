@@ -13,6 +13,8 @@ public class DatabaseMigrationRecord {
     private Integer totalStatements;
     private String mode;
     private Instant migratedAt;
+    /** Who ran the migration; null when it predates tracking or RBAC is off. */
+    private String migratedBy;
 
     public DatabaseMigrationRecord() {}
 
@@ -52,4 +54,7 @@ public class DatabaseMigrationRecord {
 
     public Instant getMigratedAt() { return migratedAt; }
     public void setMigratedAt(Instant migratedAt) { this.migratedAt = migratedAt; }
+
+    public String getMigratedBy() { return migratedBy; }
+    public void setMigratedBy(String migratedBy) { this.migratedBy = migratedBy; }
 }

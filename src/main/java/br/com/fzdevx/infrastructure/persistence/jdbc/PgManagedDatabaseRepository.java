@@ -23,7 +23,7 @@ public class PgManagedDatabaseRepository implements ManagedDatabaseRepository {
 
     private static final String SELECT = """
             SELECT repository, name, protected_flag, app_last_used_at, created_at, description,
-                   last_restored_from, last_restored_at, created_by, tenant_id
+                   last_restored_from, last_restored_at, last_restored_by, created_by, tenant_id
             FROM managed_database
             """;
 
@@ -38,8 +38,9 @@ public class PgManagedDatabaseRepository implements ManagedDatabaseRepository {
         // repository/name keeps the first writer's form
         jdbc.update("""
                 INSERT INTO managed_database (repository, name, protected_flag, app_last_used_at,
-                    created_at, description, last_restored_from, last_restored_at, created_by, tenant_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    created_at, description, last_restored_from, last_restored_at, last_restored_by,
+                    created_by, tenant_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (lower(repository), lower(name)) DO UPDATE SET
                     protected_flag = EXCLUDED.protected_flag,
                     app_last_used_at = EXCLUDED.app_last_used_at,
@@ -47,12 +48,13 @@ public class PgManagedDatabaseRepository implements ManagedDatabaseRepository {
                     description = EXCLUDED.description,
                     last_restored_from = EXCLUDED.last_restored_from,
                     last_restored_at = EXCLUDED.last_restored_at,
+                    last_restored_by = EXCLUDED.last_restored_by,
                     created_by = EXCLUDED.created_by,
                     tenant_id = EXCLUDED.tenant_id
                 """,
                 db.getRepository(), db.getName(), db.isProtectedFlag(), db.getAppLastUsedAt(),
                 db.getCreatedAt(), db.getDescription(), db.getLastRestoredFrom(),
-                db.getLastRestoredAt(), db.getCreatedBy(), db.getTenantId());
+                db.getLastRestoredAt(), db.getLastRestoredBy(), db.getCreatedBy(), db.getTenantId());
     }
 
     @Override
@@ -68,11 +70,13 @@ public class PgManagedDatabaseRepository implements ManagedDatabaseRepository {
             mutator.accept(db);
             jdbc.update(connection, """
                     UPDATE managed_database SET protected_flag = ?, app_last_used_at = ?, created_at = ?,
-                        description = ?, last_restored_from = ?, last_restored_at = ?, created_by = ?, tenant_id = ?
+                        description = ?, last_restored_from = ?, last_restored_at = ?, last_restored_by = ?,
+                        created_by = ?, tenant_id = ?
                     WHERE repository = ? AND name = ?
                     """,
                     db.isProtectedFlag(), db.getAppLastUsedAt(), db.getCreatedAt(), db.getDescription(),
-                    db.getLastRestoredFrom(), db.getLastRestoredAt(), db.getCreatedBy(), db.getTenantId(),
+                    db.getLastRestoredFrom(), db.getLastRestoredAt(), db.getLastRestoredBy(),
+                    db.getCreatedBy(), db.getTenantId(),
                     db.getRepository(), db.getName());
             return true;
         });
@@ -158,6 +162,7 @@ public class PgManagedDatabaseRepository implements ManagedDatabaseRepository {
         db.setDescription(rs.getString("description"));
         db.setLastRestoredFrom(rs.getString("last_restored_from"));
         db.setLastRestoredAt(JdbcSupport.instant(rs, "last_restored_at"));
+        db.setLastRestoredBy(rs.getString("last_restored_by"));
         db.setCreatedBy(rs.getString("created_by"));
         db.setTenantId(rs.getString("tenant_id"));
         return db;

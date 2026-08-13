@@ -62,6 +62,8 @@ class ContainerConfigControllerTest {
         setField("uiLocale", Optional.of("en"));
         controller.containerTenantGuard = br.com.fzdevx.infrastructure.docker.TestContainerTenantGuard.passthrough();
         controller.tenantEntitlements = br.com.fzdevx.infrastructure.config.TestTenantEntitlements.passthrough();
+        // real instance: outside RBAC it grants everything (legacy behavior)
+        controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
         when(runtimeSettings.isTerminalEnabled()).thenReturn(false);
     }
 
@@ -444,5 +446,35 @@ class ContainerConfigControllerTest {
         when(allowedRepositoryResolver.isAllowed("postgres")).thenReturn(true);
         when(migrationService.isApiAvailable("postgres")).thenReturn(true);
         assertTrue(controller.isMigrationApiAvailable("postgres"));
+    }
+
+    // ---- getMigratedDatabases ----
+
+    private static br.com.fzdevx.domain.model.DatabaseMigrationRecord migrationBy(String actor) {
+        var record = new br.com.fzdevx.domain.model.DatabaseMigrationRecord();
+        record.setDatabaseName("dev_db");
+        record.setRepository("postgres");
+        record.setMigratedBy(actor);
+        return record;
+    }
+
+    @Test
+    void getMigratedDatabases_keepsActor_withAuditView() {
+        // RBAC off grants everything, AUDIT_VIEW included
+        when(migrationService.getMigratedDatabases())
+                .thenReturn(new java.util.ArrayList<>(List.of(migrationBy("alice"))));
+
+        assertEquals("alice", controller.getMigratedDatabases().getFirst().getMigratedBy());
+    }
+
+    @Test
+    void getMigratedDatabases_stripsActor_withoutAuditView() {
+        var viewer = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        viewer.set("u1", "bob", java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_VIEW));
+        controller.currentUser = viewer;
+        when(migrationService.getMigratedDatabases())
+                .thenReturn(new java.util.ArrayList<>(List.of(migrationBy("alice"))));
+
+        assertNull(controller.getMigratedDatabases().getFirst().getMigratedBy());
     }
 }

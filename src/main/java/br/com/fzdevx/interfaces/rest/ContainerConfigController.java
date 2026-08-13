@@ -37,6 +37,9 @@ public class ContainerConfigController {
     AllowedRepositoryResolver allowedRepositoryResolver;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.CurrentUser currentUser;
+
+    @Inject
     RegistryService registryService;
 
     @Inject
@@ -432,7 +435,13 @@ public class ContainerConfigController {
     @Path("/migrated-databases")
     @Produces(MediaType.APPLICATION_JSON)
     public List<DatabaseMigrationRecord> getMigratedDatabases() {
-        return migrationService.getMigratedDatabases();
+        List<DatabaseMigrationRecord> records = migrationService.getMigratedDatabases();
+        // actor visibility is its own permission (AUDIT_VIEW); mutating is safe
+        // because the repositories hand out fresh objects on every read
+        if (!currentUser.hasPermission(br.com.fzdevx.domain.model.auth.Permission.AUDIT_VIEW)) {
+            records.forEach(r -> r.setMigratedBy(null));
+        }
+        return records;
     }
 
     /** Also used by the dump restore flow, which only holds DATABASE permissions. */

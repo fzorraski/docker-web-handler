@@ -190,6 +190,7 @@ export interface MigratedDatabase {
   totalStatements?: number
   mode: string
   migratedAt: string
+  migratedBy?: string
 }
 
 export async function getMigratedDatabases(): Promise<MigratedDatabase[]> {
