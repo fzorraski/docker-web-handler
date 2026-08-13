@@ -41,6 +41,7 @@ class ActivityReportControllerTest {
     @Mock PgUserActivityRepository activityRepository;
     @Mock ActivitySummaryService activitySummaryService;
     @Mock BuildActivityOverviewUseCase buildOverview;
+    @Mock br.com.fzdevx.application.port.UserRepository userRepository;
 
     @InjectMocks
     ActivityReportController controller;
@@ -126,7 +127,7 @@ class ActivityReportControllerTest {
 
         ArgumentCaptor<ActivityOverviewCriteria> criteria =
                 ArgumentCaptor.forClass(ActivityOverviewCriteria.class);
-        org.mockito.Mockito.verify(buildOverview).build(any(), criteria.capture(), any());
+        org.mockito.Mockito.verify(buildOverview).build(any(), criteria.capture(), any(), any());
         LocalDate today = LocalDate.now(ZoneId.of("America/Sao_Paulo"));
         assertEquals(today, criteria.getValue().to());
         assertEquals(today.minusDays(29), criteria.getValue().from());
@@ -161,12 +162,12 @@ class ActivityReportControllerTest {
     void overview_passesTheRollUpWatermarkThrough() {
         // the screen labels which part of the range is live off this
         when(activityRepository.summarisedThrough()).thenReturn(Optional.of(LocalDate.of(2026, 8, 12)));
-        when(buildOverview.build(any(), any(), any())).thenReturn(null);
+        when(buildOverview.build(any(), any(), any(), any())).thenReturn(null);
 
         controller.overview("2026-08-01", "2026-08-13", null, 0, 0);
 
         ArgumentCaptor<LocalDate> watermark = ArgumentCaptor.forClass(LocalDate.class);
-        org.mockito.Mockito.verify(buildOverview).build(any(), any(), watermark.capture());
+        org.mockito.Mockito.verify(buildOverview).build(any(), any(), watermark.capture(), any());
         assertEquals(LocalDate.of(2026, 8, 12), watermark.getValue());
     }
 
@@ -174,9 +175,9 @@ class ActivityReportControllerTest {
     void overview_returnsWhateverTheUseCaseBuilt() {
         ActivityOverview built = new ActivityOverview(LocalDate.of(2026, 8, 1),
                 LocalDate.of(2026, 8, 10), null, null, null,
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
         when(activityRepository.summarisedThrough()).thenReturn(Optional.empty());
-        when(buildOverview.build(any(), any(), any())).thenReturn(built);
+        when(buildOverview.build(any(), any(), any(), any())).thenReturn(built);
 
         assertEquals(built, controller.overview("2026-08-01", "2026-08-10", null, 0, 0));
     }

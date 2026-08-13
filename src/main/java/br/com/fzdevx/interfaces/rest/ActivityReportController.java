@@ -62,6 +62,16 @@ public class ActivityReportController {
      * watermark; without that the newest thing a dashboard could show would be
      * yesterday.</p>
      */
+    @Inject
+    br.com.fzdevx.application.port.UserRepository userRepository;
+
+    /** Lowercased so an attempted "Admin" still matches the registered "admin". */
+    private java.util.Set<String> registeredUsernames() {
+        return userRepository.findAll().stream()
+                .map(u -> u.getUsername().toLowerCase(java.util.Locale.ROOT))
+                .collect(java.util.stream.Collectors.toSet());
+    }
+
     @GET
     @Path("/overview")
     @Produces(MediaType.APPLICATION_JSON)
@@ -91,7 +101,8 @@ public class ActivityReportController {
                 activityRepository.rowsForRange(criteria.previousFrom(), criteria.to(), tenant,
                         activitySummaryService.zone()),
                 criteria,
-                activityRepository.summarisedThrough().orElse(null));
+                activityRepository.summarisedThrough().orElse(null),
+                registeredUsernames());
     }
 
     /** Totals per user and action over the whole range. */

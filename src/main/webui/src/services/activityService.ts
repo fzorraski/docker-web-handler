@@ -118,6 +118,15 @@ export interface ActivityFailureCount {
   lastAt: string | null
 }
 
+/** One username that failed to sign in; known = matches a registered account. */
+export interface ActivitySignInAttempt {
+  actor: string
+  known: boolean
+  failures: number
+  successes: number
+  lastAt: string | null
+}
+
 export interface ActivityHeatCell {
   actor: string
   day: string
@@ -137,6 +146,7 @@ export interface ActivityOverview {
   ranking: ActivityUserRank[]
   tenants: ActivityTenantCount[]
   failures: ActivityFailureCount[]
+  signInAttempts: ActivitySignInAttempt[]
   heatmap: ActivityHeatCell[]
 }
 

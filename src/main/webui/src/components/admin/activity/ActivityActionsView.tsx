@@ -6,6 +6,7 @@ import {
   BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
 } from 'recharts'
 import { useTranslation } from 'react-i18next'
+import TenantChip from '../../TenantChip'
 import { ChartCard, useChartTheme } from './ActivityCards'
 import { categoryColor } from '../../../utils/activityCategory'
 import { isSystemEntry, resolveTenantLabel } from '../../../utils/auditTenant'
@@ -112,12 +113,10 @@ export default function ActivityActionsView({ overview, tenants }: {
               {overview.tenants.map(tenant => (
                 <TableRow key={tenant.tenantId ?? 'system'} hover>
                   <TableCell>
-                    <Chip
-                      label={resolveTenantLabel(tenant.tenantId, tenants, t('activity.systemTenant'))}
-                      size="small"
-                      variant="outlined"
-                      color={tenant.tenantId ? 'secondary' : 'default'}
-                    />
+                    {tenant.tenantId
+                      ? <TenantChip tenant={tenants.get(tenant.tenantId)}
+                                    fallbackLabel={resolveTenantLabel(tenant.tenantId, tenants, t('activity.systemTenant'))} />
+                      : <Chip label={t('activity.systemTenant')} size="small" variant="outlined" />}
                   </TableCell>
                   <TableCell align="right" sx={{ fontFamily: "'JetBrains Mono', monospace" }}>
                     {tenant.count.toLocaleString()}

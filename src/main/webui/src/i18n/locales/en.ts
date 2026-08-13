@@ -1142,9 +1142,17 @@ const en = {
       title: 'Where the effort went',
       subtitle: 'Share of events by category',
     },
+    signIns: {
+      title: 'Sign-in attempts',
+      subtitle: 'Usernames with rejected sign-ins. An unknown name that never succeeded is credential guessing, not a typo.',
+      failures: 'Failed',
+      successes: 'Succeeded',
+      unknownUser: 'not registered',
+      empty: 'No rejected sign-ins in this range.',
+    },
     security: {
       title: 'Failed actions by user',
-      subtitle: 'Repeated failures under one name usually mean guessed credentials or a broken integration.',
+      subtitle: 'Operations that failed for signed-in users. Rejected sign-ins are in the sign-in attempts panel.',
       attempts: 'Failures',
       lastSeen: 'Last seen',
       empty: 'No failed actions in this range.',

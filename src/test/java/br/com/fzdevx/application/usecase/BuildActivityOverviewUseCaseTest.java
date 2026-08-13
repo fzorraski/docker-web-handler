@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -32,8 +33,10 @@ class BuildActivityOverviewUseCaseTest {
         return build(new ActivityOverviewCriteria(FROM, TO, null, 0, 0));
     }
 
+    private java.util.Set<String> registered = new java.util.HashSet<>();
+
     private ActivityOverview build(ActivityOverviewCriteria criteria) {
-        return useCase.build(rows, criteria, LocalDate.of(2026, 8, 9));
+        return useCase.build(rows, criteria, LocalDate.of(2026, 8, 9), registered);
     }
 
     @Test
@@ -48,7 +51,8 @@ class BuildActivityOverviewUseCaseTest {
         assertEquals(3, totals.operational());
         assertEquals(12, totals.auth());
         assertEquals(5, totals.failures());
-        assertEquals(2, totals.activeUsers());
+        // bob only ever failed to sign in: an attempted username, not a user
+        assertEquals(1, totals.activeUsers());
         assertEquals(3, totals.distinctActions());
     }
 
@@ -140,9 +144,11 @@ class BuildActivityOverviewUseCaseTest {
 
     @Test
     void ranking_topActionFallsBackWhenAllThereIsIsAuth() {
-        row(FROM, "bob", "LOGIN_FAILED", 9);
+        // a real session, not just rejections - sign-in-only actors do not rank
+        row(FROM, "bob", "LOGIN", 9);
+        row(FROM, "bob", "LOGIN_FAILED", 1);
 
-        assertEquals("LOGIN_FAILED", build().ranking().get(0).topAction());
+        assertEquals("LOGIN", build().ranking().get(0).topAction());
     }
 
     @Test
@@ -211,14 +217,16 @@ class BuildActivityOverviewUseCaseTest {
 
     @Test
     void failures_rankActorsAndKeepTheLastOccurrence() {
-        row(FROM, "unknown", "LOGIN_FAILED", 2);
-        row(TO, "unknown", "LOGIN_FAILED", 7);
+        row(FROM, "alice", "RESTORE_FAILED", 2);
+        row(TO, "alice", "RESTORE_FAILED", 7);
         row(FROM, "alice", "LOGIN", 5);
+        // rejected sign-ins moved to the sign-in attempts report
+        row(TO, "unknown", "LOGIN_FAILED", 9);
 
         List<ActivityOverview.FailureCount> failures = build().failures();
 
-        assertEquals(1, failures.size(), "a successful login is not a failure");
-        assertEquals("unknown", failures.get(0).actor());
+        assertEquals(1, failures.size(), "sign-ins, failed or not, are not operational failures");
+        assertEquals("alice", failures.get(0).actor());
         assertEquals(9, failures.get(0).count());
         assertEquals(TO, failures.get(0).lastAt());
     }
@@ -268,5 +276,64 @@ class BuildActivityOverviewUseCaseTest {
         row(FROM, "alice", "CONTAINER_START", 1);
 
         assertEquals(1, build().totals().events());
+    }
+
+    // ---- sign-in attempts ----
+
+    @Test
+    void signInOnlyActors_doNotCountAsActiveUsers_orRank_orFail() {
+        row(FROM, "alice", "CONTAINER_CREATE", 2);
+        row(FROM, "ama", "LOGIN_FAILED", 3);
+        row(FROM, "adm", "LOGIN_FAILED", 1);
+
+        ActivityOverview overview = build();
+
+        // attempted usernames are not users
+        assertEquals(1, overview.totals().activeUsers());
+        assertTrue(overview.ranking().stream().noneMatch(r -> r.actor().equals("ama")));
+        assertTrue(overview.heatmap().stream().noneMatch(c -> c.actor().equals("ama")));
+        assertTrue(overview.failures().isEmpty());
+        assertEquals("alice", overview.totals().busiestUser());
+    }
+
+    @Test
+    void signInAttempts_flagUnregisteredNames() {
+        registered.add("wesley");
+        row(FROM, "wesley", "LOGIN_FAILED", 2);
+        row(FROM, "wesley", "LOGIN", 9);
+        row(FROM.plusDays(1), "fabricio", "LOGIN_FAILED", 5);
+
+        var attempts = build().signInAttempts();
+
+        assertEquals(2, attempts.size());
+        // most failures first
+        assertEquals("fabricio", attempts.get(0).actor());
+        assertFalse(attempts.get(0).known());
+        assertEquals(0, attempts.get(0).successes());
+        assertEquals("wesley", attempts.get(1).actor());
+        assertTrue(attempts.get(1).known());
+        assertEquals(9, attempts.get(1).successes());
+    }
+
+    @Test
+    void signInAttempts_matchRegisteredNamesCaseInsensitively() {
+        registered.add("admin");
+        row(FROM, "Admin", "LOGIN_FAILED", 1);
+
+        assertTrue(build().signInAttempts().getFirst().known());
+    }
+
+    @Test
+    void failuresPanel_excludesRejectedSignIns_evenForRealUsers() {
+        row(FROM, "alice", "CONTAINER_CREATE", 1);
+        row(FROM, "alice", "LOGIN_FAILED", 4);
+        row(FROM, "alice", "RESTORE_FAILED", 2);
+
+        var failures = build().failures();
+
+        assertEquals(1, failures.size());
+        assertEquals(2, failures.getFirst().count());
+        // ...but the sign-ins still show in their own report
+        assertEquals(4, build().signInAttempts().getFirst().failures());
     }
 }

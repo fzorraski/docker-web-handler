@@ -1144,9 +1144,17 @@ const es: typeof en = {
       title: 'Dónde se concentró el esfuerzo',
       subtitle: 'Participación de eventos por categoría',
     },
+    signIns: {
+      title: 'Intentos de inicio de sesión',
+      subtitle: 'Usuarios con inicios rechazados. Un nombre desconocido que nunca tuvo éxito es adivinación de credenciales, no un error de tipeo.',
+      failures: 'Fallidos',
+      successes: 'Exitosos',
+      unknownUser: 'no registrado',
+      empty: 'Ningún inicio rechazado en este período.',
+    },
     security: {
       title: 'Acciones fallidas por usuario',
-      subtitle: 'Fallos repetidos bajo un mismo nombre suelen indicar credenciales adivinadas o una integración rota.',
+      subtitle: 'Operaciones que fallaron para usuarios autenticados. Los inicios rechazados están en el panel de intentos de inicio de sesión.',
       attempts: 'Fallos',
       lastSeen: 'Última vez',
       empty: 'No hay acciones fallidas en este rango.',

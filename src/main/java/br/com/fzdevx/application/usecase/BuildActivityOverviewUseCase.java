@@ -35,7 +35,7 @@ public class BuildActivityOverviewUseCase {
      *                          screen can say which part of the range is live
      */
     public ActivityOverview build(List<UserActivitySummary> rows, ActivityOverviewCriteria criteria,
-                                  LocalDate summarisedThrough) {
+                                  LocalDate summarisedThrough, Set<String> registeredUsernames) {
         List<UserActivitySummary> current = new ArrayList<>();
         List<UserActivitySummary> previous = new ArrayList<>();
         for (UserActivitySummary row : rows) {
@@ -51,22 +51,43 @@ public class BuildActivityOverviewUseCase {
             }
         }
 
-        List<ActivityOverview.UserRank> ranking = ranking(current, previous, criteria.topUsers());
+        // an actor whose every event is a rejected sign-in is an attempted
+        // username, not a user - those belong in the sign-in report, and would
+        // otherwise inflate active users, the ranking and the failure panel
+        Set<String> currentSignInOnly = signInOnly(current);
+        List<ActivityOverview.UserRank> ranking =
+                ranking(current, previous, criteria.topUsers(), currentSignInOnly);
         return new ActivityOverview(
                 criteria.from(), criteria.to(), summarisedThrough,
-                totals(current), totals(previous),
+                totals(current, currentSignInOnly), totals(previous, signInOnly(previous)),
                 daily(current, criteria),
                 categories(current),
                 topActions(current, criteria.topActions()),
                 ranking,
                 tenants(current),
                 failures(current, criteria.topUsers()),
+                signInAttempts(current, registeredUsernames, criteria.topUsers()),
                 heatmap(current, ranking));
+    }
+
+    /** Actors present in the window whose only events are rejected sign-ins. */
+    private Set<String> signInOnly(List<UserActivitySummary> rows) {
+        Set<String> failedOnly = new HashSet<>();
+        Set<String> didAnythingElse = new HashSet<>();
+        for (UserActivitySummary row : rows) {
+            if ("LOGIN_FAILED".equals(row.action())) {
+                failedOnly.add(row.actor());
+            } else {
+                didAnythingElse.add(row.actor());
+            }
+        }
+        failedOnly.removeAll(didAnythingElse);
+        return failedOnly;
     }
 
     // ---- headline numbers ----
 
-    private ActivityOverview.Totals totals(List<UserActivitySummary> rows) {
+    private ActivityOverview.Totals totals(List<UserActivitySummary> rows, Set<String> signInOnly) {
         long events = 0;
         long operational = 0;
         long auth = 0;
@@ -87,10 +108,14 @@ public class BuildActivityOverviewUseCase {
             if (ActivityCategory.failure(row.action())) {
                 failures += row.count();
             }
-            users.add(row.actor());
             actions.add(row.action());
             perDay.merge(row.day(), row.count(), Long::sum);
-            perUser.merge(row.actor(), row.count(), Long::sum);
+            // attempted usernames are not active users and cannot be the
+            // busiest one - a noisy guessing run would otherwise top both
+            if (!signInOnly.contains(row.actor())) {
+                users.add(row.actor());
+                perUser.merge(row.actor(), row.count(), Long::sum);
+            }
         }
 
         // ties break on the later day and the alphabetically first user, so the
@@ -189,9 +214,13 @@ public class BuildActivityOverviewUseCase {
      * policy rather than the person.
      */
     private List<ActivityOverview.UserRank> ranking(List<UserActivitySummary> current,
-                                                    List<UserActivitySummary> previous, int limit) {
+                                                    List<UserActivitySummary> previous, int limit,
+                                                    Set<String> signInOnly) {
         Map<String, Tally> tallies = new HashMap<>();
         for (UserActivitySummary row : current) {
+            if (signInOnly.contains(row.actor())) {
+                continue;
+            }
             tallies.computeIfAbsent(row.actor(), a -> new Tally()).add(row);
         }
         Map<String, Long> previousOperational = new HashMap<>();
@@ -281,7 +310,9 @@ public class BuildActivityOverviewUseCase {
         Map<String, Long> counts = new HashMap<>();
         Map<String, LocalDate> last = new HashMap<>();
         for (UserActivitySummary row : rows) {
-            if (!ActivityCategory.failure(row.action())) {
+            // rejected sign-ins have their own report; this panel is about
+            // operations that failed for people who are actually working
+            if (!ActivityCategory.failure(row.action()) || "LOGIN_FAILED".equals(row.action())) {
                 continue;
             }
             counts.merge(row.actor(), row.count(), Long::sum);
@@ -291,6 +322,37 @@ public class BuildActivityOverviewUseCase {
                 .map(e -> new ActivityOverview.FailureCount(e.getKey(), e.getValue(), last.get(e.getKey())))
                 .sorted(Comparator.comparingLong(ActivityOverview.FailureCount::count).reversed()
                         .thenComparing(ActivityOverview.FailureCount::actor))
+                .limit(limit)
+                .toList();
+    }
+
+    /**
+     * Every username with at least one rejected sign-in, with its success
+     * count beside it: a known user with one failure and many successes
+     * mistyped a password, an unknown name with only failures never had one.
+     */
+    private List<ActivityOverview.SignInAttempt> signInAttempts(List<UserActivitySummary> rows,
+                                                                Set<String> registeredUsernames, int limit) {
+        Map<String, long[]> counts = new HashMap<>();
+        Map<String, LocalDate> last = new HashMap<>();
+        for (UserActivitySummary row : rows) {
+            boolean failed = "LOGIN_FAILED".equals(row.action());
+            if (!failed && !"LOGIN".equals(row.action())) {
+                continue;
+            }
+            long[] tally = counts.computeIfAbsent(row.actor(), a -> new long[2]);
+            tally[failed ? 0 : 1] += row.count();
+            if (failed) {
+                last.merge(row.actor(), row.day(), (a, b) -> a.isAfter(b) ? a : b);
+            }
+        }
+        return counts.entrySet().stream()
+                .filter(e -> e.getValue()[0] > 0)
+                .map(e -> new ActivityOverview.SignInAttempt(e.getKey(),
+                        registeredUsernames.contains(e.getKey().toLowerCase(java.util.Locale.ROOT)),
+                        e.getValue()[0], e.getValue()[1], last.get(e.getKey())))
+                .sorted(Comparator.comparingLong(ActivityOverview.SignInAttempt::failures).reversed()
+                        .thenComparing(ActivityOverview.SignInAttempt::actor))
                 .limit(limit)
                 .toList();
     }

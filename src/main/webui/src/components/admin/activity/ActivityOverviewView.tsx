@@ -188,6 +188,52 @@ export default function ActivityOverviewView({ overview, days }: {
           )}
         </ChartCard>
 
+        <ChartCard title={t('activity.signIns.title')} subtitle={t('activity.signIns.subtitle')}>
+          {overview.signInAttempts.length === 0 ? (
+            <Empty text={t('activity.signIns.empty')} />
+          ) : (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>{t('activity.actor')}</TableCell>
+                  <TableCell align="right">{t('activity.signIns.failures')}</TableCell>
+                  <TableCell align="right">{t('activity.signIns.successes')}</TableCell>
+                  <TableCell align="right">{t('activity.security.lastSeen')}</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {overview.signInAttempts.map(attempt => (
+                  <TableRow key={attempt.actor} hover>
+                    <TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {attempt.actor}
+                        {!attempt.known && (
+                          <Chip label={t('activity.signIns.unknownUser')} size="small" color="error" variant="outlined"
+                                sx={{ height: 18, fontSize: '0.65rem' }} />
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Chip
+                        label={attempt.failures.toLocaleString()}
+                        size="small"
+                        color={attempt.failures >= 5 || !attempt.known ? 'error' : 'default'}
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell align="right" sx={{ color: 'text.secondary' }}>
+                      {attempt.successes.toLocaleString()}
+                    </TableCell>
+                    <TableCell align="right" sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>
+                      {attempt.lastAt ? dayjs(attempt.lastAt).format('DD/MM/YYYY') : '-'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </ChartCard>
+
         <ChartCard title={t('activity.security.title')} subtitle={t('activity.security.subtitle')}>
           {overview.failures.length === 0 ? (
             <Empty text={t('activity.security.empty')} />

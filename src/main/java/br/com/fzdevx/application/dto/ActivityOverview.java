@@ -30,6 +30,7 @@ public record ActivityOverview(
         List<UserRank> ranking,
         List<TenantCount> tenants,
         List<FailureCount> failures,
+        List<SignInAttempt> signInAttempts,
         List<HeatCell> heatmap) {
 
     /**
@@ -89,8 +90,16 @@ public record ActivityOverview(
     public record TenantCount(String tenantId, long count, int users) {
     }
 
-    /** Failed actions per actor - mostly rejected sign-ins. */
+    /** Operational failures per actor; rejected sign-ins live in {@link SignInAttempt}. */
     public record FailureCount(String actor, long count, LocalDate lastAt) {
+    }
+
+    /**
+     * One username that failed to sign in during the window. {@code known}
+     * says whether the name matches a registered account - a run of failures
+     * under an unknown name is credential guessing, not a colleague's typo.
+     */
+    public record SignInAttempt(String actor, boolean known, long failures, long successes, LocalDate lastAt) {
     }
 
     /** One cell of the user-by-day heatmap. */

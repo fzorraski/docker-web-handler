@@ -1144,9 +1144,17 @@ const ptBR: typeof en = {
       title: 'Onde o esforço foi',
       subtitle: 'Participação dos eventos por categoria',
     },
+    signIns: {
+      title: 'Tentativas de login',
+      subtitle: 'Usuários com logins rejeitados. Um nome desconhecido que nunca teve sucesso é tentativa de adivinhação, não erro de digitação.',
+      failures: 'Falhas',
+      successes: 'Sucessos',
+      unknownUser: 'não registrado',
+      empty: 'Nenhum login rejeitado neste período.',
+    },
     security: {
       title: 'Ações com falha por usuário',
-      subtitle: 'Falhas repetidas com o mesmo nome costumam indicar tentativa de adivinhar senha ou uma integração quebrada.',
+      subtitle: 'Operações que falharam para usuários autenticados. Logins rejeitados ficam no painel de tentativas de login.',
       attempts: 'Falhas',
       lastSeen: 'Última ocorrência',
       empty: 'Nenhuma ação com falha neste período.',
