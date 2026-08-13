@@ -6,6 +6,7 @@ import br.com.fzdevx.application.port.UserRepository;
 import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.domain.model.auth.Role;
 import br.com.fzdevx.domain.model.auth.Tenant;
+import br.com.fzdevx.domain.model.auth.TenantPalette;
 import br.com.fzdevx.domain.model.auth.User;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -39,8 +40,9 @@ public class AuthorizationService {
     @Inject
     TenantRepository tenantRepository;
 
+    /** {@code tenantIds}, {@code tenantNames} and {@code tenantColors} are parallel lists. */
     public record ResolvedUser(String userId, String username, List<String> roleIds, List<String> roleNames,
-                               List<String> tenantIds, List<String> tenantNames,
+                               List<String> tenantIds, List<String> tenantNames, List<String> tenantColors,
                                boolean enabled, Set<Permission> permissions) {
 
         public boolean hasPermission(Permission permission) {
@@ -76,16 +78,18 @@ public class AuthorizationService {
         // memberships of deleted tenants are skipped, like deleted roles
         List<String> tenantIds = new ArrayList<>();
         List<String> tenantNames = new ArrayList<>();
+        List<String> tenantColors = new ArrayList<>();
         for (String tenantId : user.getTenantIds()) {
             Tenant tenant = snap.tenantsById().get(tenantId);
             if (tenant != null) {
                 tenantIds.add(tenant.getId());
                 tenantNames.add(tenant.getName());
+                tenantColors.add(TenantPalette.resolve(tenant.getColor(), tenant.getId()));
             }
         }
         return Optional.of(new ResolvedUser(user.getId(), user.getUsername(),
                 List.copyOf(user.getRoleIds()), List.copyOf(roleNames),
-                List.copyOf(tenantIds), List.copyOf(tenantNames),
+                List.copyOf(tenantIds), List.copyOf(tenantNames), List.copyOf(tenantColors),
                 user.isEnabled(), permissions.isEmpty() ? Set.of() : permissions));
     }
 

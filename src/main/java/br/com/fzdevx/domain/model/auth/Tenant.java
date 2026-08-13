@@ -14,6 +14,8 @@ public class Tenant {
     private List<String> enabledRepositories;
     /** Repositories whose database connection members may use; null = all configured. */
     private List<String> enabledDatabases;
+    /** Badge colour as #RRGGBB; null falls back to a hue derived from the id. */
+    private String color;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -42,6 +44,9 @@ public class Tenant {
 
     public List<String> getEnabledDatabases() { return enabledDatabases; }
     public void setEnabledDatabases(List<String> enabledDatabases) { this.enabledDatabases = enabledDatabases; }
+
+    public String getColor() { return color; }
+    public void setColor(String color) { this.color = color; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

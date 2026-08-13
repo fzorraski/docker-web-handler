@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { resolveTenantLabel, isSystemEntry } from '../utils/auditTenant'
 
-const names = new Map([['t1', 'Process-Team'], ['t2', 'Support']])
+const names = new Map([['t1', { name: 'Process-Team' }], ['t2', { name: 'Support' }]])
 
 describe('audit tenant labelling', () => {
   it('resolves a known tenant id to its name', () => {

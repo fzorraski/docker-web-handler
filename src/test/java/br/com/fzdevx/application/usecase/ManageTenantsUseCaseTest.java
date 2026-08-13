@@ -8,6 +8,7 @@ import br.com.fzdevx.domain.exception.DuplicateEntityException;
 import br.com.fzdevx.domain.exception.EntityNotFoundException;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.auth.Tenant;
+import br.com.fzdevx.domain.model.auth.TenantPalette;
 import br.com.fzdevx.domain.model.auth.User;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.config.AuthorizationService;
@@ -108,6 +109,66 @@ class ManageTenantsUseCaseTest {
     void update_unknownTenant_throws() {
         when(tenantRepository.findById("nope")).thenReturn(Optional.empty());
         assertThrows(EntityNotFoundException.class, () -> useCase.update("nope", request("Name")));
+    }
+
+    // ---- badge colour ----
+
+    @Test
+    void create_withoutColor_picksOneFromThePalette() {
+        Tenant created = useCase.create(request("Support"));
+
+        assertTrue(TenantPalette.COLORS.contains(created.getColor()),
+                "expected a palette colour, got " + created.getColor());
+    }
+
+    @Test
+    void create_withoutColor_avoidsColorsOtherTenantsUse() {
+        // every colour but the last is taken, so the new tenant must land on it
+        List<Tenant> existing = new java.util.ArrayList<>();
+        for (int i = 0; i < TenantPalette.COLORS.size() - 1; i++) {
+            Tenant tenant = new Tenant("t" + i, null);
+            tenant.setColor(TenantPalette.COLORS.get(i));
+            existing.add(tenant);
+        }
+        when(tenantRepository.findAll()).thenReturn(existing);
+
+        assertEquals(TenantPalette.COLORS.getLast(), useCase.create(request("Support")).getColor());
+    }
+
+    @Test
+    void create_withExplicitColor_normalizesIt() {
+        CreateTenantRequest request = request("Support");
+        request.setColor(" #7c4dff ");
+
+        assertEquals("#7C4DFF", useCase.create(request).getColor());
+    }
+
+    @Test
+    void create_withInvalidColor_throws() {
+        CreateTenantRequest request = request("Support");
+        request.setColor("not-a-colour");
+
+        assertThrows(InvalidInputException.class, () -> useCase.create(request));
+    }
+
+    @Test
+    void update_withoutColor_keepsTheCurrentOne() {
+        Tenant tenant = new Tenant("Old", null);
+        tenant.setColor("#4CAF50");
+        stubAtomicUpdate(tenant);
+
+        assertEquals("#4CAF50", useCase.update(tenant.getId(), request("New name")).getColor());
+    }
+
+    @Test
+    void update_withColor_replacesIt() {
+        Tenant tenant = new Tenant("Old", null);
+        tenant.setColor("#4CAF50");
+        stubAtomicUpdate(tenant);
+        CreateTenantRequest request = request("Old");
+        request.setColor("#EC407A");
+
+        assertEquals("#EC407A", useCase.update(tenant.getId(), request).getColor());
     }
 
     // ---- entitlements ----

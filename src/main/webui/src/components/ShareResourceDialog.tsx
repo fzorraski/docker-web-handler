@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from './AuthProvider'
 import { P } from '../utils/permissions'
 import { listTenants, type TenantSummary } from '../services/tenantService'
+import TenantChip from './TenantChip'
 
 interface Props {
   open: boolean
@@ -103,7 +104,7 @@ export default function ShareResourceDialog({ open, onClose, resourceName, tenan
               renderValue: (selected) => (
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                   {(selected as string[]).map((id) => (
-                    <Chip key={id} label={tenantName(id)} size="small" />
+                    <TenantChip key={id} tenant={tenants.find(tn => tn.id === id)} fallbackLabel={id} />
                   ))}
                 </Box>
               ),

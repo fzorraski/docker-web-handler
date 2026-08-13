@@ -29,9 +29,10 @@ function buildRestore(overrides: Partial<ActiveRestore> = {}): ActiveRestore {
 }
 
 function renderAttribution(restore: ActiveRestore, names: Array<[string, string]> = []) {
+  const tenants = new Map(names.map(([id, name]) => [id, { id, name, color: '#2196F3' }]))
   return render(
     <ThemeProvider theme={theme}>
-      <RestoreAttribution restore={restore} tenantNames={new Map(names)} />
+      <RestoreAttribution restore={restore} tenants={tenants} />
     </ThemeProvider>,
   )
 }

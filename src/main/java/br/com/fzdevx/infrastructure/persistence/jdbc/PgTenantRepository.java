@@ -19,19 +19,20 @@ public class PgTenantRepository implements TenantRepository {
 
     private static final String SELECT = """
             SELECT id, name, description, enabled_repositories, enabled_databases,
-                   created_at, updated_at
+                   color, created_at, updated_at
             FROM tenant
             """;
 
     private static final String UPSERT = """
             INSERT INTO tenant (id, name, description, enabled_repositories, enabled_databases,
-                created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                color, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 description = EXCLUDED.description,
                 enabled_repositories = EXCLUDED.enabled_repositories,
                 enabled_databases = EXCLUDED.enabled_databases,
+                color = EXCLUDED.color,
                 created_at = EXCLUDED.created_at,
                 updated_at = EXCLUDED.updated_at
             """;
@@ -87,7 +88,7 @@ public class PgTenantRepository implements TenantRepository {
                 tenant.getId(), tenant.getName(), tenant.getDescription(),
                 JdbcSupport.JsonbValue.of(tenant.getEnabledRepositories()),
                 JdbcSupport.JsonbValue.of(tenant.getEnabledDatabases()),
-                tenant.getCreatedAt(), tenant.getUpdatedAt()};
+                tenant.getColor(), tenant.getCreatedAt(), tenant.getUpdatedAt()};
     }
 
     private static Tenant map(ResultSet rs) throws SQLException {
@@ -97,6 +98,7 @@ public class PgTenantRepository implements TenantRepository {
         tenant.setDescription(rs.getString("description"));
         tenant.setEnabledRepositories(JdbcSupport.fromJson(rs, "enabled_repositories", JdbcSupport.STRING_LIST));
         tenant.setEnabledDatabases(JdbcSupport.fromJson(rs, "enabled_databases", JdbcSupport.STRING_LIST));
+        tenant.setColor(rs.getString("color"));
         tenant.setCreatedAt(JdbcSupport.instant(rs, "created_at"));
         tenant.setUpdatedAt(JdbcSupport.instant(rs, "updated_at"));
         return tenant;

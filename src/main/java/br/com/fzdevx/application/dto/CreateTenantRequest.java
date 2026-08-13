@@ -10,6 +10,8 @@ public class CreateTenantRequest {
     private List<String> enabledRepositories;
     /** null = all configured database connections enabled for the tenant. */
     private List<String> enabledDatabases;
+    /** Badge colour as #RRGGBB; null keeps the current one (or picks one on create). */
+    private String color;
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
@@ -22,4 +24,7 @@ public class CreateTenantRequest {
 
     public List<String> getEnabledDatabases() { return enabledDatabases; }
     public void setEnabledDatabases(List<String> enabledDatabases) { this.enabledDatabases = enabledDatabases; }
+
+    public String getColor() { return color; }
+    public void setColor(String color) { this.color = color; }
 }

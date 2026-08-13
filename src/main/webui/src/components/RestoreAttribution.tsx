@@ -1,11 +1,13 @@
-import { Box, Chip, Tooltip, Typography } from '@mui/material'
+import { Box, Tooltip, Typography } from '@mui/material'
 import { PersonOutline } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
+import TenantChip from './TenantChip'
+import type { TenantLookup } from '../hooks/useTenants'
 import type { ActiveRestore } from '../services/dumpService'
 
 interface RestoreAttributionProps {
   restore: ActiveRestore
-  tenantNames: Map<string, string>
+  tenants: TenantLookup
 }
 
 /**
@@ -17,7 +19,7 @@ interface RestoreAttributionProps {
  * untenanted user belongs to no tenant - so each part renders only when the
  * backend actually knows it, and the whole row disappears when neither is set.
  */
-export default function RestoreAttribution({ restore, tenantNames }: RestoreAttributionProps) {
+export default function RestoreAttribution({ restore, tenants }: RestoreAttributionProps) {
   const { t } = useTranslation()
   const startedBy = restore.startedBy
   const tenantId = restore.tenantId
@@ -39,12 +41,7 @@ export default function RestoreAttribution({ restore, tenantNames }: RestoreAttr
       )}
       {tenantId && (
         <Tooltip title={t('tenants.tenant')} arrow>
-          <Chip
-            label={tenantNames.get(tenantId) ?? tenantId}
-            size="small"
-            variant="outlined"
-            color="secondary"
-          />
+          <TenantChip tenant={tenants.get(tenantId)} fallbackLabel={tenantId} />
         </Tooltip>
       )}
     </Box>

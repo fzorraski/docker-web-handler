@@ -1,4 +1,5 @@
 import fetchWithAuth from './fetchWithAuth'
+import type { TenantSummary } from './tenantService'
 
 const API = '/api/auth/'
 
@@ -11,7 +12,7 @@ export interface CurrentUser {
   username: string
   roleIds: string[]
   roleNames: string[]
-  tenants: { id: string; name: string }[]
+  tenants: TenantSummary[]
   permissions: string[]
 }
 

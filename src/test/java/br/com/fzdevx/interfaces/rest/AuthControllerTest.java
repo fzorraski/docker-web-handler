@@ -266,7 +266,7 @@ class AuthControllerTest {
         when(authorizationService.resolve("user-1")).thenReturn(Optional.of(
                 new AuthorizationService.ResolvedUser("user-1", "alice", java.util.List.of(BuiltInRoles.VIEWER_ID),
                         java.util.List.of("VIEWER"), java.util.List.of(), java.util.List.of(),
-                        true, java.util.Set.of(Permission.CONTAINERS_VIEW, Permission.LOGS_VIEW))));
+                        java.util.List.of(), true, java.util.Set.of(Permission.CONTAINERS_VIEW, Permission.LOGS_VIEW))));
 
         Response response = controller.getMe(cookie);
 
@@ -292,7 +292,7 @@ class AuthControllerTest {
         when(authorizationService.resolve("user-1")).thenReturn(Optional.of(
                 new AuthorizationService.ResolvedUser("user-1", "alice", java.util.List.of(BuiltInRoles.VIEWER_ID),
                         java.util.List.of("VIEWER"), java.util.List.of(), java.util.List.of(),
-                        false, java.util.Set.of())));
+                        java.util.List.of(), false, java.util.Set.of())));
 
         assertEquals(401, controller.getMe(cookie).getStatus());
     }

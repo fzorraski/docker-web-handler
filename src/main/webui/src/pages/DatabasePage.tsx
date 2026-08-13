@@ -6,7 +6,8 @@ import { isManagedDatabasesEnabled } from '../services/managedDatabaseService'
 import { useNotification } from '../components/NotificationProvider'
 import { useAuth } from '../components/AuthProvider'
 import { P } from '../utils/permissions'
-import { useTenantNames } from '../hooks/useTenantNames'
+import { useTenants } from '../hooks/useTenants'
+import TenantCell from '../components/TenantCell'
 import HeroBanner from '../components/HeroBanner'
 import RestoreAttribution from '../components/RestoreAttribution'
 
@@ -85,7 +86,7 @@ export default function DatabasePage() {
   const canDbDelete = hasPermission(P.DATABASE_DELETE)
   const canDbUpload = hasPermission(P.DATABASE_UPLOAD)
   const canViewAudit = hasPermission(P.AUDIT_VIEW)
-  const tenantNames = useTenantNames()
+  const tenants = useTenants()
   const [shareTarget, setShareTarget] = useState<{ kind: 'dump' | 'snapshot'; id: string; name: string; tenantId: string | null; sharedWith: string[] } | null>(null)
   const { t } = useTranslation()
   const { theadBg, theadColor, theadSortSx, theadCheckboxSx } = useTableHeaderTheme()
@@ -273,7 +274,7 @@ export default function DatabasePage() {
     let data = showNeverUsedDumps ? dumps.filter(d => !d.lastUsedAt) : dumps
     const result = data.filter((d) =>
       [d.originalFilename, d.databaseName ?? '', d.version ?? '', d.format, formatBytes(d.fileSize), d.description ?? '', d.createdBy ?? '',
-       d.tenantId ? tenantNames.get(d.tenantId) ?? '' : '']
+       d.tenantId ? tenants.get(d.tenantId)?.name ?? '' : '']
         .some((v) => v.toLowerCase().includes(filter.toLowerCase())),
     )
     if (!sortKey) return result
@@ -284,12 +285,12 @@ export default function DatabasePage() {
       }
       // the tenant column displays the resolved name, so sort by it too
       const sortValue = (d: DatabaseDump) => sortKey === 'tenantId'
-        ? (d.tenantId ? tenantNames.get(d.tenantId) ?? d.tenantId : '')
+        ? (d.tenantId ? tenants.get(d.tenantId)?.name ?? d.tenantId : '')
         : String((d as unknown as Record<string, unknown>)[sortKey] ?? '')
       const cmp = sortValue(a).toLowerCase().localeCompare(sortValue(b).toLowerCase())
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [dumps, filter, sortKey, sortDir, showNeverUsedDumps, tenantNames])
+  }, [dumps, filter, sortKey, sortDir, showNeverUsedDumps, tenants])
 
   const dumpPagination = useTablePagination(filteredDumps, { storageKey: 'dumps' })
 
@@ -413,7 +414,7 @@ export default function DatabasePage() {
     let data = showNeverUsedSnaps ? snapshots.filter(s => !s.lastUsedAt) : snapshots
     const result = data.filter((s) =>
       [s.label ?? '', s.repository, s.sourceDatabaseName, s.containerName ?? '', s.format, formatBytes(s.fileSize), s.description ?? '', s.createdBy ?? '',
-       s.tenantId ? tenantNames.get(s.tenantId) ?? '' : '']
+       s.tenantId ? tenants.get(s.tenantId)?.name ?? '' : '']
         .some((v) => v.toLowerCase().includes(snapFilter.toLowerCase())),
     )
     if (!snapSortKey) return result
@@ -424,12 +425,12 @@ export default function DatabasePage() {
       }
       // the tenant column displays the resolved name, so sort by it too
       const sortValue = (snap: DatabaseSnapshot) => snapSortKey === 'tenantId'
-        ? (snap.tenantId ? tenantNames.get(snap.tenantId) ?? snap.tenantId : '')
+        ? (snap.tenantId ? tenants.get(snap.tenantId)?.name ?? snap.tenantId : '')
         : String((snap as unknown as Record<string, unknown>)[snapSortKey] ?? '')
       const cmp = sortValue(a).toLowerCase().localeCompare(sortValue(b).toLowerCase())
       return snapSortDir === 'asc' ? cmp : -cmp
     })
-  }, [snapshots, snapFilter, snapSortKey, snapSortDir, showNeverUsedSnaps, tenantNames])
+  }, [snapshots, snapFilter, snapSortKey, snapSortDir, showNeverUsedSnaps, tenants])
 
   const snapPagination = useTablePagination(filteredSnapshots, { storageKey: 'snapshots' })
 
@@ -557,7 +558,7 @@ export default function DatabasePage() {
                   <Typography variant="body2">
                     <span dangerouslySetInnerHTML={{ __html: t('database.restoringInto', { filename: r.dumpFilename, database: r.targetDatabase, repository: r.repository }) }} />
                   </Typography>
-                  <RestoreAttribution restore={r} tenantNames={tenantNames} />
+                  <RestoreAttribution restore={r} tenants={tenants} />
                 </Box>
               </Stack>
             ))}
@@ -804,16 +805,7 @@ export default function DatabasePage() {
                       )}
                       {rbacEnabled && (
                         <TableCell>
-                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                            {dump.tenantId
-                              ? <Chip label={tenantNames.get(dump.tenantId) ?? dump.tenantId} size="small" variant="outlined" color="secondary" />
-                              : '-'}
-                            {(dump.sharedWithTenants?.length ?? 0) > 0 && (
-                              <Tooltip title={`${t('tenants.sharedWith')}: ${(dump.sharedWithTenants ?? []).map(id => tenantNames.get(id) ?? id).join(', ')}`}>
-                                <Chip icon={<Share sx={{ fontSize: 14 }} />} label={dump.sharedWithTenants!.length} size="small" variant="outlined" color="info" />
-                              </Tooltip>
-                            )}
-                          </Box>
+                          <TenantCell tenantId={dump.tenantId} sharedWithTenants={dump.sharedWithTenants} tenants={tenants} />
                         </TableCell>
                       )}
                       <TableCell>
@@ -1068,16 +1060,7 @@ export default function DatabasePage() {
                       )}
                       {rbacEnabled && (
                         <TableCell>
-                          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                            {snap.tenantId
-                              ? <Chip label={tenantNames.get(snap.tenantId) ?? snap.tenantId} size="small" variant="outlined" color="secondary" />
-                              : '-'}
-                            {(snap.sharedWithTenants?.length ?? 0) > 0 && (
-                              <Tooltip title={`${t('tenants.sharedWith')}: ${(snap.sharedWithTenants ?? []).map(id => tenantNames.get(id) ?? id).join(', ')}`}>
-                                <Chip icon={<Share sx={{ fontSize: 14 }} />} label={snap.sharedWithTenants!.length} size="small" variant="outlined" color="info" />
-                              </Tooltip>
-                            )}
-                          </Box>
+                          <TenantCell tenantId={snap.tenantId} sharedWithTenants={snap.sharedWithTenants} tenants={tenants} />
                         </TableCell>
                       )}
                       <TableCell>

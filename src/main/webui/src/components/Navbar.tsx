@@ -18,6 +18,7 @@ import { useAuth } from './AuthProvider'
 import { P } from '../utils/permissions'
 import LanguageSwitcher from './LanguageSwitcher'
 import ChangePasswordDialog from './ChangePasswordDialog'
+import TenantChip from './TenantChip'
 
 export default function Navbar() {
   const location = useLocation()
@@ -284,7 +285,7 @@ export default function Navbar() {
           {currentUser && currentUser.tenants.length > 0 && (
             <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.75 }}>
               {currentUser.tenants.map((tn) => (
-                <Chip key={tn.id} label={tn.name} size="small" variant="outlined" color="secondary" sx={{ height: 20, fontSize: '0.7rem' }} />
+                <TenantChip key={tn.id} tenant={tn} fallbackLabel={tn.name} sx={{ height: 20, fontSize: '0.7rem' }} />
               ))}
             </Box>
           )}

@@ -5,6 +5,7 @@ import br.com.fzdevx.application.dto.TenantSummary;
 import br.com.fzdevx.application.usecase.ManageTenantsUseCase;
 import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.domain.model.auth.Tenant;
+import br.com.fzdevx.domain.model.auth.TenantPalette;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -50,6 +51,14 @@ public class TenantController {
                 .toList();
     }
 
+    /** The badge colours the tenant form offers as swatches. */
+    @GET
+    @Path("/palette")
+    @Produces(MediaType.APPLICATION_JSON)
+    public List<String> palette() {
+        return TenantPalette.COLORS;
+    }
+
     /** Global repository/database option lists for the tenant entitlement editor. */
     @GET
     @Path("/entitlement-options")
@@ -89,6 +98,7 @@ public class TenantController {
         entry.put("description", tenant.getDescription());
         entry.put("enabledRepositories", tenant.getEnabledRepositories());
         entry.put("enabledDatabases", tenant.getEnabledDatabases());
+        entry.put("color", TenantPalette.resolve(tenant.getColor(), tenant.getId()));
         entry.put("createdAt", tenant.getCreatedAt());
         entry.put("memberCount", memberCount);
         return entry;

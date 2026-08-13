@@ -14,6 +14,7 @@ export interface DockerContainer {
   ipAddress?: string
   createdBy?: string
   tenantId?: string
+  sharedWithTenants?: string[]
   upgradeEnabled?: boolean
   protectedFlag?: boolean
 }
@@ -82,6 +83,7 @@ export interface ContainerSchedule {
   lastExecutionMessage?: string
   createdBy?: string
   tenantId?: string
+  sharedWithTenants?: string[]
 }
 
 export interface RunContainerConfig {
@@ -261,6 +263,7 @@ export interface ManagedDatabaseInfo {
   scheduledForDeletion: boolean
   lastRestoredFrom?: string
   lastRestoredAt?: string
+  lastRestoredBy?: string
   createdBy?: string
   tenantId?: string
 }

@@ -10,6 +10,8 @@ const OPTS = { forbiddenEvent: false }
 export interface TenantSummary {
   id: string
   name: string
+  /** Badge colour as #RRGGBB; always resolved by the backend, never null. */
+  color: string
 }
 
 export interface Tenant {
@@ -20,6 +22,7 @@ export interface Tenant {
   enabledRepositories?: string[] | null
   /** null/undefined = all configured database connections enabled */
   enabledDatabases?: string[] | null
+  color: string
   createdAt: string | null
   memberCount: number
 }
@@ -29,6 +32,8 @@ export interface TenantRequest {
   description?: string
   enabledRepositories?: string[] | null
   enabledDatabases?: string[] | null
+  /** omitted = keep the current colour on edit, pick a random one on create */
+  color?: string
 }
 
 /** Global option lists for the tenant entitlement editor (global admins only). */
@@ -39,6 +44,12 @@ export interface EntitlementOptions {
 
 export async function listTenants(): Promise<TenantSummary[]> {
   const res = await fetchWithAuth(API, undefined, OPTS)
+  return handleJsonResponse(res)
+}
+
+/** The swatches offered by the tenant form; the source of truth lives in TenantPalette. */
+export async function getTenantPalette(): Promise<string[]> {
+  const res = await fetchWithAuth(`${API}/palette`, undefined, OPTS)
   return handleJsonResponse(res)
 }
 

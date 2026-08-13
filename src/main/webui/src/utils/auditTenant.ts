@@ -8,13 +8,13 @@
  */
 export function resolveTenantLabel(
   tenantId: string | null | undefined,
-  tenantNames: Map<string, string>,
+  tenants: Map<string, { name: string }>,
   systemLabel: string,
 ): string {
   if (tenantId == null || tenantId === '') {
     return systemLabel
   }
-  return tenantNames.get(tenantId) ?? tenantId
+  return tenants.get(tenantId)?.name ?? tenantId
 }
 
 /** Whether this entry belongs to no tenant (system or super-admin action). */

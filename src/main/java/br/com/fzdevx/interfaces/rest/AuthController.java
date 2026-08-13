@@ -99,7 +99,9 @@ public class AuthController {
     private static java.util.List<Map<String, String>> tenantsOf(AuthorizationService.ResolvedUser user) {
         var tenants = new java.util.ArrayList<Map<String, String>>();
         for (int i = 0; i < user.tenantIds().size(); i++) {
-            tenants.add(Map.of("id", user.tenantIds().get(i), "name", user.tenantNames().get(i)));
+            tenants.add(Map.of("id", user.tenantIds().get(i),
+                    "name", user.tenantNames().get(i),
+                    "color", user.tenantColors().get(i)));
         }
         return tenants;
     }

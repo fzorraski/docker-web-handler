@@ -10,6 +10,7 @@ import br.com.fzdevx.domain.exception.EntityNotFoundException;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.domain.model.auth.Tenant;
+import br.com.fzdevx.domain.model.auth.TenantPalette;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.config.AuthorizationService;
 import br.com.fzdevx.infrastructure.config.CurrentUser;
@@ -85,6 +86,8 @@ public class ManageTenantsUseCase {
                 request.getEnabledRepositories(), knownRepositories(), "repository"));
         tenant.setEnabledDatabases(validateEntitlementList(
                 request.getEnabledDatabases(), knownDatabases(), "database connection"));
+        String color = validateColor(request.getColor());
+        tenant.setColor(color != null ? color : TenantPalette.pickUnused(usedColors()));
         tenantRepository.save(tenant);
         authorizationService.invalidateCache();
         auditLogger.log("TENANT_CREATE", name, null);
@@ -105,6 +108,7 @@ public class ManageTenantsUseCase {
                 request.getEnabledRepositories(), knownRepositories(), "repository");
         List<String> enabledDatabases = validateEntitlementList(
                 request.getEnabledDatabases(), knownDatabases(), "database connection");
+        String color = validateColor(request.getColor());
 
         Tenant[] result = new Tenant[1];
         boolean found = tenantRepository.update(id, tenant -> {
@@ -112,6 +116,10 @@ public class ManageTenantsUseCase {
             tenant.setDescription(description);
             tenant.setEnabledRepositories(enabledRepositories);
             tenant.setEnabledDatabases(enabledDatabases);
+            // omitted colour keeps the current badge rather than clearing it
+            if (color != null) {
+                tenant.setColor(color);
+            }
             tenant.setUpdatedAt(Instant.now());
             result[0] = tenant;
         });
@@ -196,5 +204,21 @@ public class ManageTenantsUseCase {
 
     private String trimmedDescription(CreateTenantRequest request) {
         return request.getDescription() != null ? request.getDescription().trim() : null;
+    }
+
+    /** Null when the caller sent none, meaning "pick one" on create and "keep" on update. */
+    private String validateColor(String color) {
+        try {
+            return TenantPalette.normalize(color);
+        } catch (IllegalArgumentException e) {
+            throw new InvalidInputException(e.getMessage());
+        }
+    }
+
+    /** Colours already in use, so a new tenant draws from what is left. */
+    private List<String> usedColors() {
+        return tenantRepository.findAll().stream()
+                .map(tenant -> TenantPalette.resolve(tenant.getColor(), tenant.getId()))
+                .toList();
     }
 }
