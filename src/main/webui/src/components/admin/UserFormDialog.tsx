@@ -6,6 +6,7 @@ import {
 } from '@mui/material'
 import { PersonAdd, Edit } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
+import TenantChip from '../TenantChip'
 import { createUser, updateUser, type AppUser } from '../../services/userService'
 import type { AppRole } from '../../services/roleService'
 import type { TenantSummary } from '../../services/tenantService'
@@ -181,7 +182,7 @@ export default function UserFormDialog({ open, onClose, onSaved, roles, tenants,
                 renderValue: (selected) => (
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                     {(selected as string[]).map((id) => (
-                      <Chip key={id} label={tenantName(id)} size="small" />
+                      <TenantChip key={id} tenant={tenants.find(tn => tn.id === id)} fallbackLabel={tenantName(id)} />
                     ))}
                   </Box>
                 ),

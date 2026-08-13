@@ -14,6 +14,7 @@ import { useNotification } from '../NotificationProvider'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { useTenants } from '../../hooks/useTenants'
+import TenantChip from '../TenantChip'
 import { useAuth } from '../AuthProvider'
 import { P } from '../../utils/permissions'
 import { resolveTenantLabel, isSystemEntry } from '../../utils/auditTenant'
@@ -241,7 +242,7 @@ export default function AuditTab() {
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
                     {isSystemEntry(entry.tenantId)
                       ? <Typography variant="caption" color="text.secondary">{t('audit.systemTenant')}</Typography>
-                      : <Chip label={tenantLabel(entry.tenantId)} size="small" variant="outlined" color="secondary" />}
+                      : <TenantChip tenant={entry.tenantId ? tenants.get(entry.tenantId) : undefined} fallbackLabel={tenantLabel(entry.tenantId)} />}
                   </TableCell>
                 )}
               </TableRow>

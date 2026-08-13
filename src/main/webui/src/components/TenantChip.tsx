@@ -8,6 +8,10 @@ interface TenantChipProps {
   /** Shown when the tenant is unknown - usually the raw id. */
   fallbackLabel: string
   size?: 'small' | 'medium'
+  /** Optional marker, e.g. the owner star in the tenant access selector. */
+  icon?: React.ReactElement
+  /** Native tooltip, paired with the icon. */
+  title?: string
   sx?: SxProps<Theme>
 }
 
@@ -20,13 +24,15 @@ interface TenantChipProps {
  * border and the text take the full colour so the badge survives on either
  * theme, and an unknown tenant falls back to the theme's own outline.</p>
  */
-export default function TenantChip({ tenant, fallbackLabel, size = 'small', sx }: TenantChipProps) {
+export default function TenantChip({ tenant, fallbackLabel, size = 'small', icon, title, sx }: TenantChipProps) {
   const color = tenant?.color
 
   return (
     <Chip
       label={tenant?.name ?? fallbackLabel}
       size={size}
+      icon={icon}
+      title={title}
       variant="outlined"
       color={color ? undefined : 'secondary'}
       sx={{

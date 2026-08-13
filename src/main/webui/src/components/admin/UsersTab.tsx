@@ -22,6 +22,8 @@ import {
   filterUser, sortUserValue,
 } from './adminTableUtils'
 import AdminTableToolbar from './AdminTableToolbar'
+import TenantChip from '../TenantChip'
+import { useTenants } from '../../hooks/useTenants'
 
 interface Props {
   users: AppUser[]
@@ -59,6 +61,7 @@ export default function UsersTab({ users, roles, loading, onCreate, onEdit, onRe
   const tableRef = useRef<HTMLDivElement>(null)
   useStickyHeader(tableRef)
   const actionMenu = useActionMenu<AppUser>()
+  const tenants = useTenants()
 
   const columns = useMemo(() => [
     { key: 'username', label: t('users.username'), sortable: true },
@@ -166,10 +169,10 @@ export default function UsersTab({ users, roles, loading, onCreate, onEdit, onRe
                     </TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                        {u.tenantNames.length === 0
+                        {u.tenantIds.length === 0
                           ? <Typography variant="caption" color="text.secondary">{t('users.noTenant')}</Typography>
-                          : u.tenantNames.map((name) => (
-                              <Chip key={name} label={name} size="small" variant="outlined" color="secondary" />
+                          : u.tenantIds.map((id, i) => (
+                              <TenantChip key={id} tenant={tenants.get(id)} fallbackLabel={u.tenantNames[i] ?? id} />
                             ))}
                       </Box>
                     </TableCell>

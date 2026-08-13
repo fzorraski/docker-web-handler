@@ -3,6 +3,7 @@ import { TextField, MenuItem, Checkbox, ListItemText, Chip, Box } from '@mui/mat
 import { Star } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from './AuthProvider'
+import TenantChip from './TenantChip'
 import { P } from '../utils/permissions'
 import { listTenants, type TenantSummary } from '../services/tenantService'
 import {
@@ -129,12 +130,11 @@ export default function TenantAccessSelect({ value, onChange, disabled }: Props)
             return (
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                 {shown.map((id, i) => (
-                  <Chip
+                  <TenantChip
                     key={id}
-                    label={tenantName(id)}
-                    size="small"
+                    tenant={options.find((tn) => tn.id === id)}
+                    fallbackLabel={id}
                     icon={i === 0 ? <Star fontSize="small" /> : undefined}
-                    color={i === 0 ? 'primary' : 'default'}
                     title={i === 0 ? t('tenants.sharing.owner') : undefined}
                   />
                 ))}
