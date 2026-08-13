@@ -33,7 +33,12 @@ class BuildActivityOverviewUseCaseTest {
         return build(new ActivityOverviewCriteria(FROM, TO, null, 0, 0));
     }
 
-    private java.util.Set<String> registered = new java.util.HashSet<>();
+    /** lowercase -> canonical, as the controller builds it */
+    private final java.util.Map<String, String> registered = new java.util.HashMap<>();
+
+    private void registered(String username) {
+        registered.put(username.toLowerCase(java.util.Locale.ROOT), username);
+    }
 
     private ActivityOverview build(ActivityOverviewCriteria criteria) {
         return useCase.build(rows, criteria, LocalDate.of(2026, 8, 9), registered);
@@ -298,7 +303,7 @@ class BuildActivityOverviewUseCaseTest {
 
     @Test
     void signInAttempts_flagUnregisteredNames() {
-        registered.add("wesley");
+        registered("wesley");
         row(FROM, "wesley", "LOGIN_FAILED", 2);
         row(FROM, "wesley", "LOGIN", 9);
         row(FROM.plusDays(1), "fabricio", "LOGIN_FAILED", 5);
@@ -316,11 +321,68 @@ class BuildActivityOverviewUseCaseTest {
     }
 
     @Test
-    void signInAttempts_matchRegisteredNamesCaseInsensitively() {
-        registered.add("admin");
+    void signInAttempts_pairCaseVariantFailuresWithTheirSuccesses() {
+        // login is case-insensitive: failures audit under the TYPED name,
+        // successes under the canonical one - they must land in one row or a
+        // daily user's typo reads as credential guessing
+        registered("admin");
         row(FROM, "Admin", "LOGIN_FAILED", 1);
+        row(FROM, "admin", "LOGIN", 30);
 
-        assertTrue(build().signInAttempts().getFirst().known());
+        var attempts = build().signInAttempts();
+
+        assertEquals(1, attempts.size());
+        assertEquals("admin", attempts.getFirst().actor());
+        assertTrue(attempts.getFirst().known());
+        assertEquals(1, attempts.getFirst().failures());
+        assertEquals(30, attempts.getFirst().successes());
+    }
+
+    @Test
+    void signInAttempts_reportTheFullCountPastTheCap() {
+        for (int i = 0; i < 30; i++) {
+            row(FROM, "guess" + i, "LOGIN_FAILED", 1);
+        }
+
+        ActivityOverview overview = build();
+
+        assertEquals(BuildActivityOverviewUseCase.SIGN_IN_REPORT_LIMIT,
+                overview.signInAttempts().size());
+        assertEquals(30, overview.signInAttemptsTotal());
+    }
+
+    @Test
+    void tenantUsersColumn_excludesAttemptedUsernames() {
+        row(FROM, "alice", "CONTAINER_CREATE", 2);
+        row(FROM, "ama", "LOGIN_FAILED", 3);
+
+        var tenants = build().tenants();
+
+        // event counts stay complete; the users column counts people
+        assertEquals(1, tenants.size());
+        assertEquals(5, tenants.getFirst().count());
+        assertEquals(1, tenants.getFirst().users());
+    }
+
+    @Test
+    void busiestDay_deliberatelyCountsRejectedSignIns() {
+        // it must agree with the trend chart, which shows them in its AUTH band
+        row(FROM, "alice", "CONTAINER_CREATE", 2);
+        row(TO, "ama", "LOGIN_FAILED", 50);
+
+        assertEquals(TO, build().totals().busiestDay());
+    }
+
+    @Test
+    void signInPredicates_surviveVariantCasing() {
+        // ActivityCategory normalizes; the sign-in handling must not diverge
+        row(FROM, "ama", "login_failed", 3);
+
+        ActivityOverview overview = build();
+
+        assertEquals(0, overview.totals().activeUsers());
+        assertTrue(overview.failures().isEmpty());
+        assertEquals(3, overview.signInAttempts().getFirst().failures());
     }
 
     @Test

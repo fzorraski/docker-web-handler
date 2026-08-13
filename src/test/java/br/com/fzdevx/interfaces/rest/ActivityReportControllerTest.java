@@ -175,7 +175,7 @@ class ActivityReportControllerTest {
     void overview_returnsWhateverTheUseCaseBuilt() {
         ActivityOverview built = new ActivityOverview(LocalDate.of(2026, 8, 1),
                 LocalDate.of(2026, 8, 10), null, null, null,
-                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), 0, List.of());
         when(activityRepository.summarisedThrough()).thenReturn(Optional.empty());
         when(buildOverview.build(any(), any(), any(), any())).thenReturn(built);
 

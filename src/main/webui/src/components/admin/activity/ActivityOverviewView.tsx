@@ -232,6 +232,14 @@ export default function ActivityOverviewView({ overview, days }: {
               </TableBody>
             </Table>
           )}
+          {overview.signInAttemptsTotal > overview.signInAttempts.length && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'right', mt: 1 }}>
+              {t('activity.signIns.truncated', {
+                shown: overview.signInAttempts.length,
+                total: overview.signInAttemptsTotal,
+              })}
+            </Typography>
+          )}
         </ChartCard>
 
         <ChartCard title={t('activity.security.title')} subtitle={t('activity.security.subtitle')}>

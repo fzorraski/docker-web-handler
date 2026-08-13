@@ -1150,6 +1150,7 @@ const es: typeof en = {
       failures: 'Fallidos',
       successes: 'Exitosos',
       unknownUser: 'no registrado',
+      truncated: 'mostrando {{shown}} de {{total}} usuarios',
       empty: 'Ningún inicio rechazado en este período.',
     },
     security: {

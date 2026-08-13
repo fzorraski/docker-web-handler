@@ -31,6 +31,7 @@ public record ActivityOverview(
         List<TenantCount> tenants,
         List<FailureCount> failures,
         List<SignInAttempt> signInAttempts,
+        int signInAttemptsTotal,
         List<HeatCell> heatmap) {
 
     /**

@@ -1150,6 +1150,7 @@ const ptBR: typeof en = {
       failures: 'Falhas',
       successes: 'Sucessos',
       unknownUser: 'não registrado',
+      truncated: 'mostrando {{shown}} de {{total}} usuários',
       empty: 'Nenhum login rejeitado neste período.',
     },
     security: {

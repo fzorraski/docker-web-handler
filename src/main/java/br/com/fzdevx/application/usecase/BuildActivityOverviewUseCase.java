@@ -35,7 +35,7 @@ public class BuildActivityOverviewUseCase {
      *                          screen can say which part of the range is live
      */
     public ActivityOverview build(List<UserActivitySummary> rows, ActivityOverviewCriteria criteria,
-                                  LocalDate summarisedThrough, Set<String> registeredUsernames) {
+                                  LocalDate summarisedThrough, Map<String, String> registeredUsernames) {
         List<UserActivitySummary> current = new ArrayList<>();
         List<UserActivitySummary> previous = new ArrayList<>();
         for (UserActivitySummary row : rows) {
@@ -57,6 +57,7 @@ public class BuildActivityOverviewUseCase {
         Set<String> currentSignInOnly = signInOnly(current);
         List<ActivityOverview.UserRank> ranking =
                 ranking(current, previous, criteria.topUsers(), currentSignInOnly);
+        SignInReport signIns = signInAttempts(current, registeredUsernames);
         return new ActivityOverview(
                 criteria.from(), criteria.to(), summarisedThrough,
                 totals(current, currentSignInOnly), totals(previous, signInOnly(previous)),
@@ -64,9 +65,9 @@ public class BuildActivityOverviewUseCase {
                 categories(current),
                 topActions(current, criteria.topActions()),
                 ranking,
-                tenants(current),
+                tenants(current, currentSignInOnly),
                 failures(current, criteria.topUsers()),
-                signInAttempts(current, registeredUsernames, criteria.topUsers()),
+                signIns.rows(), signIns.total(),
                 heatmap(current, ranking));
     }
 
@@ -75,7 +76,7 @@ public class BuildActivityOverviewUseCase {
         Set<String> failedOnly = new HashSet<>();
         Set<String> didAnythingElse = new HashSet<>();
         for (UserActivitySummary row : rows) {
-            if ("LOGIN_FAILED".equals(row.action())) {
+            if (ActivityCategory.rejectedSignIn(row.action())) {
                 failedOnly.add(row.actor());
             } else {
                 didAnythingElse.add(row.actor());
@@ -109,6 +110,9 @@ public class BuildActivityOverviewUseCase {
                 failures += row.count();
             }
             actions.add(row.action());
+            // busiest day deliberately counts everything, rejected sign-ins
+            // included - it must agree with the trend chart above it, which
+            // shows those events in its AUTH band
             perDay.merge(row.day(), row.count(), Long::sum);
             // attempted usernames are not active users and cannot be the
             // busiest one - a noisy guessing run would otherwise top both
@@ -290,13 +294,18 @@ public class BuildActivityOverviewUseCase {
         }
     }
 
-    private List<ActivityOverview.TenantCount> tenants(List<UserActivitySummary> rows) {
+    private List<ActivityOverview.TenantCount> tenants(List<UserActivitySummary> rows,
+                                                       Set<String> signInOnly) {
         Map<String, Long> counts = new HashMap<>();
         Map<String, Set<String>> actors = new HashMap<>();
         // a null tenant is a real bucket ("system"), and HashMap keys may be null
         for (UserActivitySummary row : rows) {
             counts.merge(String.valueOf(row.tenantId()), row.count(), Long::sum);
-            actors.computeIfAbsent(String.valueOf(row.tenantId()), t -> new HashSet<>()).add(row.actor());
+            // event counts stay complete, but attempted usernames are not
+            // users - without this the System row disagrees with the KPI
+            if (!signInOnly.contains(row.actor())) {
+                actors.computeIfAbsent(String.valueOf(row.tenantId()), t -> new HashSet<>()).add(row.actor());
+            }
         }
         return counts.entrySet().stream()
                 .map(e -> new ActivityOverview.TenantCount(
@@ -312,7 +321,7 @@ public class BuildActivityOverviewUseCase {
         for (UserActivitySummary row : rows) {
             // rejected sign-ins have their own report; this panel is about
             // operations that failed for people who are actually working
-            if (!ActivityCategory.failure(row.action()) || "LOGIN_FAILED".equals(row.action())) {
+            if (!ActivityCategory.failure(row.action()) || ActivityCategory.rejectedSignIn(row.action())) {
                 continue;
             }
             counts.merge(row.actor(), row.count(), Long::sum);
@@ -331,30 +340,54 @@ public class BuildActivityOverviewUseCase {
      * count beside it: a known user with one failure and many successes
      * mistyped a password, an unknown name with only failures never had one.
      */
-    private List<ActivityOverview.SignInAttempt> signInAttempts(List<UserActivitySummary> rows,
-                                                                Set<String> registeredUsernames, int limit) {
+    /**
+     * The report has its own cap, decoupled from topUsers: shrinking the
+     * ranking panel must not silently shrink a security report. The total is
+     * returned beside the rows so a wide credential spray is never mistaken
+     * for a narrow one.
+     */
+    static final int SIGN_IN_REPORT_LIMIT = 25;
+
+    private SignInReport signInAttempts(List<UserActivitySummary> rows,
+                                        Map<String, String> registeredUsernames) {
+        // grouped case-insensitively: login itself is case-insensitive, and the
+        // audit trail records failures under the TYPED name but successes under
+        // the canonical one - grouped verbatim, "Admin" would show failures
+        // with zero successes and read as guessing
         Map<String, long[]> counts = new HashMap<>();
         Map<String, LocalDate> last = new HashMap<>();
+        Map<String, String> display = new HashMap<>();
         for (UserActivitySummary row : rows) {
-            boolean failed = "LOGIN_FAILED".equals(row.action());
-            if (!failed && !"LOGIN".equals(row.action())) {
+            boolean failed = ActivityCategory.rejectedSignIn(row.action());
+            if (!failed && !ActivityCategory.signIn(row.action())) {
                 continue;
             }
-            long[] tally = counts.computeIfAbsent(row.actor(), a -> new long[2]);
+            String key = row.actor().toLowerCase(java.util.Locale.ROOT);
+            long[] tally = counts.computeIfAbsent(key, a -> new long[2]);
             tally[failed ? 0 : 1] += row.count();
             if (failed) {
-                last.merge(row.actor(), row.day(), (a, b) -> a.isAfter(b) ? a : b);
+                last.merge(key, row.day(), (a, b) -> a.isAfter(b) ? a : b);
             }
+            // deterministic label for unknown names; registered ones use the
+            // canonical username below
+            display.merge(key, row.actor(), (a, b) -> a.compareTo(b) <= 0 ? a : b);
         }
-        return counts.entrySet().stream()
+        List<ActivityOverview.SignInAttempt> all = counts.entrySet().stream()
                 .filter(e -> e.getValue()[0] > 0)
-                .map(e -> new ActivityOverview.SignInAttempt(e.getKey(),
-                        registeredUsernames.contains(e.getKey().toLowerCase(java.util.Locale.ROOT)),
-                        e.getValue()[0], e.getValue()[1], last.get(e.getKey())))
+                .map(e -> {
+                    String canonical = registeredUsernames.get(e.getKey());
+                    return new ActivityOverview.SignInAttempt(
+                            canonical != null ? canonical : display.get(e.getKey()),
+                            canonical != null,
+                            e.getValue()[0], e.getValue()[1], last.get(e.getKey()));
+                })
                 .sorted(Comparator.comparingLong(ActivityOverview.SignInAttempt::failures).reversed()
                         .thenComparing(ActivityOverview.SignInAttempt::actor))
-                .limit(limit)
                 .toList();
+        return new SignInReport(all.stream().limit(SIGN_IN_REPORT_LIMIT).toList(), all.size());
+    }
+
+    private record SignInReport(List<ActivityOverview.SignInAttempt> rows, int total) {
     }
 
     /**

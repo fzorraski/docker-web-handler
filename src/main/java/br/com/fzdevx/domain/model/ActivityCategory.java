@@ -79,7 +79,25 @@ public enum ActivityCategory {
         if (action == null) {
             return false;
         }
-        String name = action.trim().toUpperCase(java.util.Locale.ROOT);
+        String name = normalize(action);
         return name.endsWith("_FAILED") || name.contains("DENIED");
+    }
+
+    /**
+     * A rejected sign-in. Normalized like every other predicate here, so a
+     * variant-cased action can never pass {@link #failure} yet dodge the
+     * sign-in handling that depends on this one.
+     */
+    public static boolean rejectedSignIn(String action) {
+        return action != null && "LOGIN_FAILED".equals(normalize(action));
+    }
+
+    /** A successful sign-in. */
+    public static boolean signIn(String action) {
+        return action != null && "LOGIN".equals(normalize(action));
+    }
+
+    private static String normalize(String action) {
+        return action.trim().toUpperCase(java.util.Locale.ROOT);
     }
 }

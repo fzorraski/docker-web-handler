@@ -1148,6 +1148,7 @@ const en = {
       failures: 'Failed',
       successes: 'Succeeded',
       unknownUser: 'not registered',
+      truncated: 'showing {{shown}} of {{total}} usernames',
       empty: 'No rejected sign-ins in this range.',
     },
     security: {

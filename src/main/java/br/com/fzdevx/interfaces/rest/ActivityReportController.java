@@ -4,11 +4,15 @@ import br.com.fzdevx.application.dto.ActivityOverview;
 import br.com.fzdevx.application.dto.ActivityOverviewCriteria;
 import br.com.fzdevx.application.dto.ActivityReportCriteria;
 import br.com.fzdevx.application.dto.ActivityReportResult;
+import br.com.fzdevx.application.port.UserRepository;
 import br.com.fzdevx.application.usecase.BuildActivityOverviewUseCase;
+import br.com.fzdevx.domain.model.auth.User;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.infrastructure.persistence.ActivitySummaryService;
 import br.com.fzdevx.infrastructure.persistence.jdbc.PgUserActivityRepository;
+import java.util.Locale;
+import java.util.stream.Collectors;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
@@ -38,6 +42,21 @@ public class ActivityReportController {
     @Inject
     BuildActivityOverviewUseCase buildOverview;
 
+    @Inject
+    UserRepository userRepository;
+
+    /**
+     * Lowercase key so an attempted "Admin" still matches the registered
+     * "admin"; the canonical casing is kept as the value for display.
+     */
+    private Map<String, String> registeredUsernames() {
+        return userRepository.findAll().stream()
+                .collect(Collectors.toMap(
+                        u -> u.getUsername().toLowerCase(Locale.ROOT),
+                        User::getUsername,
+                        (a, b) -> a));
+    }
+
     /** Day-by-day rows, newest first. */
     @GET
     @Produces(MediaType.APPLICATION_JSON)
@@ -62,16 +81,6 @@ public class ActivityReportController {
      * watermark; without that the newest thing a dashboard could show would be
      * yesterday.</p>
      */
-    @Inject
-    br.com.fzdevx.application.port.UserRepository userRepository;
-
-    /** Lowercased so an attempted "Admin" still matches the registered "admin". */
-    private java.util.Set<String> registeredUsernames() {
-        return userRepository.findAll().stream()
-                .map(u -> u.getUsername().toLowerCase(java.util.Locale.ROOT))
-                .collect(java.util.stream.Collectors.toSet());
-    }
-
     @GET
     @Path("/overview")
     @Produces(MediaType.APPLICATION_JSON)

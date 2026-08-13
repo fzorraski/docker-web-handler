@@ -147,6 +147,8 @@ export interface ActivityOverview {
   tenants: ActivityTenantCount[]
   failures: ActivityFailureCount[]
   signInAttempts: ActivitySignInAttempt[]
+  /** distinct usernames with rejected sign-ins; more than rows when truncated */
+  signInAttemptsTotal: number
   heatmap: ActivityHeatCell[]
 }
 
