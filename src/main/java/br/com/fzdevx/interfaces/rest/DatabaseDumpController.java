@@ -552,13 +552,13 @@ public class DatabaseDumpController {
     @GET
     @Path("/restore/active")
     @Produces(MediaType.APPLICATION_JSON)
-    public List<Map<String, String>> getActiveRestores() {
+    public List<RestoreDumpUseCase.ActiveRestoreInfo> getActiveRestores() {
+        // the record goes out as-is rather than remapped to a Map, which would
+        // reject the nulls the UI needs to see as explicit nulls; who started a
+        // restore is creator information, gated like createdBy everywhere else
+        boolean showActor = currentUser.hasPermission(Permission.AUDIT_VIEW);
         return restoreDumpUseCase.getActiveRestores().stream()
-                .map(info -> Map.of(
-                        "repository", info.repository(),
-                        "targetDatabase", info.targetDatabase(),
-                        "dumpFilename", info.dumpFilename()
-                ))
+                .map(info -> showActor ? info : info.withoutStartedBy())
                 .toList();
     }
 

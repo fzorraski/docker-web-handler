@@ -115,6 +115,10 @@ export interface ActiveRestore {
   repository: string
   targetDatabase: string
   dumpFilename: string
+  /** Username that triggered it, 'system' for a scheduled run, null with RBAC off. */
+  startedBy: string | null
+  /** Owning tenant, or null when the restore belongs to none. */
+  tenantId: string | null
 }
 
 export async function getActiveRestores(): Promise<ActiveRestore[]> {

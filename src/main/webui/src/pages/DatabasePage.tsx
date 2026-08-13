@@ -8,6 +8,7 @@ import { useAuth } from '../components/AuthProvider'
 import { P } from '../utils/permissions'
 import { useTenantNames } from '../hooks/useTenantNames'
 import HeroBanner from '../components/HeroBanner'
+import RestoreAttribution from '../components/RestoreAttribution'
 
 const DatabasesTab = lazy(() => import('../components/DatabasesTab'))
 import UploadDumpModal from '../components/UploadDumpModal'
@@ -550,11 +551,14 @@ export default function DatabasePage() {
           <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
             <AlertTitle>{t('database.restoreInProgress')}</AlertTitle>
             {activeRestores.map((r, i) => (
-              <Stack key={i} direction="row" alignItems="center" spacing={1}>
+              <Stack key={i} direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
                 <LinearProgress sx={{ width: 80 }} />
-                <Typography variant="body2">
-                  <span dangerouslySetInnerHTML={{ __html: t('database.restoringInto', { filename: r.dumpFilename, database: r.targetDatabase, repository: r.repository }) }} />
-                </Typography>
+                <Box>
+                  <Typography variant="body2">
+                    <span dangerouslySetInnerHTML={{ __html: t('database.restoringInto', { filename: r.dumpFilename, database: r.targetDatabase, repository: r.repository }) }} />
+                  </Typography>
+                  <RestoreAttribution restore={r} tenantNames={tenantNames} />
+                </Box>
               </Stack>
             ))}
           </Alert>

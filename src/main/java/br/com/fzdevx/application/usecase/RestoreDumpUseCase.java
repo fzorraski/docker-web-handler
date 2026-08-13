@@ -82,6 +82,9 @@ public class RestoreDumpUseCase {
     @Inject
     ListManagedDatabasesUseCase listManagedDatabasesUseCase;
 
+    @Inject
+    br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
+
     public static final String EPHEMERAL_LABEL = "docker-web-handler.ephemeral";
     private static final long PROGRESS_THROTTLE_MS = 200;
 
@@ -150,7 +153,24 @@ public class RestoreDumpUseCase {
 
     private record RestoreResult(int exitCode, int warningsIgnored) {}
 
-    public record ActiveRestoreInfo(String repository, String targetDatabase, String dumpFilename) {}
+    /**
+     * A restore currently running, as shown in the "restore in progress" banner.
+     *
+     * <p>{@code startedBy} is the username that triggered it, "system" for a
+     * scheduler-driven run, or null with RBAC off; {@code tenantId} is the
+     * tenant the restore belongs to, or null when it belongs to none. Both are
+     * attribution only - the banner lists every active restore regardless of
+     * who started it, because a restore also means the target database is
+     * busy.</p>
+     */
+    public record ActiveRestoreInfo(String repository, String targetDatabase, String dumpFilename,
+                                    String startedBy, String tenantId) {
+
+        /** Copy without the actor, for callers lacking the AUDIT_VIEW permission. */
+        public ActiveRestoreInfo withoutStartedBy() {
+            return new ActiveRestoreInfo(repository, targetDatabase, dumpFilename, null, tenantId);
+        }
+    }
 
     static class RestoreContext {
         final ActiveRestoreInfo info;
@@ -289,8 +309,11 @@ public class RestoreDumpUseCase {
 
         // Concurrency check
         String lockKey = request.getRepository() + ":" + request.getTargetDatabase();
+        // resolved here, not at prepare time: the SSE stream carries the session
+        // cookie too, and a scheduler-driven run has no request scope at all
         RestoreContext ctx = new RestoreContext(new ActiveRestoreInfo(
-                request.getRepository(), request.getTargetDatabase(), displayName));
+                request.getRepository(), request.getTargetDatabase(), displayName,
+                actorResolver.usernameOrSystem(), request.getTenantId()));
         if (activeRestores.putIfAbsent(lockKey, ctx) != null) {
             eventSink.accept(ContainerEvent.error("Validating",
                     "A restore is already in progress for " + request.getTargetDatabase()

@@ -33,6 +33,7 @@ import { useAuth } from '../components/AuthProvider'
 import { P } from '../utils/permissions'
 import { useTenantNames } from '../hooks/useTenantNames'
 import HeroBanner from '../components/HeroBanner'
+import RestoreAttribution from '../components/RestoreAttribution'
 import { useTranslation } from 'react-i18next'
 import { formatBackendDate, formatDate } from '../utils/format'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
@@ -468,9 +469,12 @@ export default function ContainersPage() {
           <Alert severity="info" variant="outlined" sx={{ mb: 3 }}>
             <AlertTitle>{t('containers.restoreInProgress')}</AlertTitle>
             {activeRestores.map((r, i) => (
-              <Typography key={i} variant="body2">
-                <span dangerouslySetInnerHTML={{ __html: t('containers.restoringInto', { filename: r.dumpFilename, database: r.targetDatabase, repository: r.repository }) }} />
-              </Typography>
+              <Box key={i} sx={{ mb: 0.5 }}>
+                <Typography variant="body2">
+                  <span dangerouslySetInnerHTML={{ __html: t('containers.restoringInto', { filename: r.dumpFilename, database: r.targetDatabase, repository: r.repository }) }} />
+                </Typography>
+                <RestoreAttribution restore={r} tenantNames={tenantNames} />
+              </Box>
             ))}
           </Alert>
         )}

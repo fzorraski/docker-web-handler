@@ -31,6 +31,7 @@ const ptBR: typeof en = {
     fullscreen: 'Tela cheia',
     exitFullscreen: 'Sair da tela cheia',
     rowsPerPage: 'Linhas por página:',
+    startedBy: 'Iniciado por {{user}}',
   },
 
   navbar: {

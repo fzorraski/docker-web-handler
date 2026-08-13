@@ -18,6 +18,7 @@ public class CurrentUser {
     private Set<Permission> permissions = Set.of();
     private Set<String> tenantIds = Set.of();
     private boolean rbacActive;
+    private String serviceActor;
 
     public void set(String userId, String username, Set<Permission> permissions) {
         set(userId, username, permissions, Set.of());
@@ -29,6 +30,20 @@ public class CurrentUser {
         this.permissions = permissions == null ? Set.of() : permissions;
         this.tenantIds = tenantIds == null ? Set.of() : tenantIds;
         this.rbacActive = true;
+    }
+
+    /**
+     * Names a caller that authenticated outside RBAC (currently the CI API, which
+     * carries an API key rather than a session). Attribution only: it deliberately
+     * leaves {@link #rbacActive} false, so such a caller keeps the unrestricted
+     * access {@link #hasPermission} already grants it.
+     */
+    public void setServiceActor(String serviceActor) {
+        this.serviceActor = serviceActor;
+    }
+
+    public String getServiceActor() {
+        return serviceActor;
     }
 
     public boolean hasPermission(Permission permission) {

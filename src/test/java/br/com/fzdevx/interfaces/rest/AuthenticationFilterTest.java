@@ -311,6 +311,32 @@ class AuthenticationFilterTest {
     }
 
     @Test
+    void filter_ciPath_validApiKey_stampsCiActor() {
+        setField("ciEnabled", true);
+        setField("ciApiKey", java.util.Optional.of("secret"));
+        when(uriInfo.getPath()).thenReturn("/ci/environments");
+        when(requestContext.getHeaderString("X-API-Key")).thenReturn("secret");
+
+        filter.filter(requestContext);
+
+        // attribution only - createdBy on pipeline-created resources, never a grant
+        verify(currentUser).setServiceActor("ci");
+        verify(currentUser, never()).set(anyString(), anyString(), any());
+    }
+
+    @Test
+    void filter_ciPath_wrongApiKey_stampsNoActor() {
+        setField("ciEnabled", true);
+        setField("ciApiKey", java.util.Optional.of("secret"));
+        when(uriInfo.getPath()).thenReturn("/ci/environments");
+        when(requestContext.getHeaderString("X-API-Key")).thenReturn("wrong");
+
+        filter.filter(requestContext);
+
+        verify(currentUser, never()).setServiceActor(anyString());
+    }
+
+    @Test
     void filter_ciPath_authIndependentOfAppAuth() {
         setField("authEnabled", false);
         setField("ciEnabled", true);

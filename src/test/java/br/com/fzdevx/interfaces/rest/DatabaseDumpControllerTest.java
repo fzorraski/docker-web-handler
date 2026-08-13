@@ -443,13 +443,58 @@ class DatabaseDumpControllerTest {
     @Test
     void getActiveRestores_delegatesToUseCase() {
         when(restoreDumpUseCase.getActiveRestores()).thenReturn(List.of(
-                new RestoreDumpUseCase.ActiveRestoreInfo("pg", "mydb", "backup.sql")
+                new RestoreDumpUseCase.ActiveRestoreInfo("pg", "mydb", "backup.sql", "alice", "squad-a")
         ));
 
         var result = controller.getActiveRestores();
 
         assertEquals(1, result.size());
-        assertEquals("pg", result.getFirst().get("repository"));
+        assertEquals("pg", result.getFirst().repository());
+        assertEquals("alice", result.getFirst().startedBy());
+        assertEquals("squad-a", result.getFirst().tenantId());
+    }
+
+    @Test
+    void getActiveRestores_keepsNullAttribution() {
+        when(restoreDumpUseCase.getActiveRestores()).thenReturn(List.of(
+                new RestoreDumpUseCase.ActiveRestoreInfo("pg", "mydb", "backup.sql", null, null)
+        ));
+
+        var result = controller.getActiveRestores();
+
+        assertEquals(1, result.size());
+        assertNull(result.getFirst().startedBy());
+        assertNull(result.getFirst().tenantId());
+    }
+
+    @Test
+    void getActiveRestores_stripsActorWithoutAuditView() {
+        var running = new RestoreDumpUseCase.ActiveRestoreInfo("pg", "mydb", "backup.sql", "alice", "squad-a");
+        when(restoreDumpUseCase.getActiveRestores()).thenReturn(List.of(running));
+        var rbacUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        rbacUser.set("u1", "bob", java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.DATABASE_VIEW));
+        controller.currentUser = rbacUser;
+
+        var result = controller.getActiveRestores();
+
+        assertNull(result.getFirst().startedBy(), "actor must be stripped without AUDIT_VIEW");
+        // the tenant is not creator information - it stays, and the banner needs it
+        assertEquals("squad-a", result.getFirst().tenantId());
+        assertEquals("alice", running.startedBy(), "the live restore record must not be altered");
+    }
+
+    @Test
+    void getActiveRestores_keepsActorWithAuditView() {
+        when(restoreDumpUseCase.getActiveRestores()).thenReturn(List.of(
+                new RestoreDumpUseCase.ActiveRestoreInfo("pg", "mydb", "backup.sql", "alice", "squad-a")
+        ));
+        var rbacUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        rbacUser.set("u1", "bob", java.util.Set.of(
+                br.com.fzdevx.domain.model.auth.Permission.DATABASE_VIEW,
+                br.com.fzdevx.domain.model.auth.Permission.AUDIT_VIEW));
+        controller.currentUser = rbacUser;
+
+        assertEquals("alice", controller.getActiveRestores().getFirst().startedBy());
     }
 
     // ---- cancelRestore ----

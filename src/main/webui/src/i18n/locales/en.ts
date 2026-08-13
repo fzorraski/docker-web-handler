@@ -29,6 +29,7 @@ const en = {
     fullscreen: 'Fullscreen',
     exitFullscreen: 'Exit fullscreen',
     rowsPerPage: 'Rows per page:',
+    startedBy: 'Started by {{user}}',
   },
 
   navbar: {

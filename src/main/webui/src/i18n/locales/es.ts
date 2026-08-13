@@ -31,6 +31,7 @@ const es: typeof en = {
     fullscreen: 'Pantalla completa',
     exitFullscreen: 'Salir de pantalla completa',
     rowsPerPage: 'Filas por página:',
+    startedBy: 'Iniciado por {{user}}',
   },
 
   navbar: {

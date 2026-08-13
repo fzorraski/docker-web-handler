@@ -31,6 +31,9 @@ public class AuthenticationFilter implements ContainerRequestFilter, ContainerRe
     /** MDC key rendered by the log format so every request log line carries the acting user. */
     static final String MDC_USER_KEY = "user";
 
+    /** Actor name for API-key callers, in logs and in createdBy stamps alike. */
+    static final String CI_ACTOR = "ci";
+
     private static final Set<String> ALLOWLISTED_PATHS = Set.of(
             "/auth/login",
             "/auth/logout",
@@ -79,7 +82,7 @@ public class AuthenticationFilter implements ContainerRequestFilter, ContainerRe
 
         // CI API key auth (independent of app.auth.enabled)
         if (path.startsWith("/ci/")) {
-            MDC.put(MDC_USER_KEY, "ci");
+            MDC.put(MDC_USER_KEY, CI_ACTOR);
             if (!ciEnabled) {
                 abort(requestContext, 404, "NOT_FOUND", "CI API is not enabled.");
                 return;
@@ -100,6 +103,9 @@ public class AuthenticationFilter implements ContainerRequestFilter, ContainerRe
                 abort(requestContext, 401, "UNAUTHORIZED", "Invalid API key.");
             } else {
                 rateLimitPort.recordSuccess(rateLimitKey);
+                // attribution only - the CI API has no RBAC identity, and marking
+                // it here keeps createdBy on pipeline-created resources non-null
+                currentUser.setServiceActor(CI_ACTOR);
             }
             return;
         }
