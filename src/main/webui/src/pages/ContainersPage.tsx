@@ -337,7 +337,12 @@ export default function ContainersPage() {
       case 'image': return c.image
       case 'tag': return c.image.split(':')[1] ?? ''
       case 'command': return c.command
-      case 'created': return c.created
+      // dd/MM/yyyy sorts by day-of-month lexicographically; rearrange to a
+      // sortable yyyyMMdd form (invalid/legacy values sort first, unchanged)
+      case 'created': {
+        const d = dayjs(c.created, 'DD/MM/YYYY HH:mm:ss')
+        return d.isValid() ? d.format('YYYYMMDDHHmmss') : ''
+      }
       case 'status': return c.status
       case 'ports': return c.ports
       case 'ipAddress': return c.ipAddress ?? ''
@@ -346,6 +351,7 @@ export default function ContainersPage() {
       case 'expires': return c.expiresAt ?? ''
       // the column displays the resolved tenant name, so sort by it too
       case 'tenantId': return c.tenantId ? (tenants.get(c.tenantId)?.name ?? c.tenantId) : ''
+      case 'createdBy': return c.createdBy ?? ''
       default: return ''
     }
   }
