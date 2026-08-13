@@ -58,6 +58,26 @@ public class DatabaseDumpController {
         return items;
     }
 
+    /** How many deleted filenames a bulk audit detail spells out before summarising. */
+    private static final int AUDIT_FILENAME_LIMIT = 10;
+
+    /** What to call a dump in the audit trail; the id stands in for a nameless record. */
+    private static String auditName(DatabaseDump dump) {
+        String filename = dump.getOriginalFilename();
+        return filename == null || filename.isBlank() ? dump.getId() : filename;
+    }
+
+    /**
+     * The deleted filenames for a bulk audit detail. Capped because a bulk delete
+     * is unbounded, and the count stays exact so a truncated line never reads as
+     * the whole story.
+     */
+    private static String listFilenames(List<String> filenames) {
+        String listed = String.join(", ", filenames.subList(0, Math.min(filenames.size(), AUDIT_FILENAME_LIMIT)));
+        int remaining = filenames.size() - AUDIT_FILENAME_LIMIT;
+        return remaining > 0 ? "files=" + listed + " (+" + remaining + " more)" : "files=" + listed;
+    }
+
     /** Tenant-hidden dumps are reported as nonexistent. */
     private Optional<DatabaseDump> findVisible(String id) {
         return dumpStorageService.findById(id)
@@ -280,14 +300,19 @@ public class DatabaseDumpController {
                     .build();
         }
 
-        if (findVisible(id).isEmpty()) {
+        Optional<DatabaseDump> visible = findVisible(id);
+        if (visible.isEmpty()) {
             return Response.status(Response.Status.NOT_FOUND)
                     .entity(Map.of("error", "Dump not found."))
                     .build();
         }
 
+        // read the name before deleting - afterwards only the id is left, and an
+        // audit trail of bare uuids says nothing about what was destroyed
+        String filename = auditName(visible.get());
         dumpStorageService.deleteDump(id);
-        auditLogger.log("DUMP_DELETE", id, null);
+        // name in target, id in detail, as CONTAINER_REMOVE records a container
+        auditLogger.log("DUMP_DELETE", filename, "id=" + id);
         return Response.ok(Map.of("success", true)).build();
     }
 
@@ -320,19 +345,20 @@ public class DatabaseDumpController {
         Map<String, DatabaseDump> dumpsById = dumpStorageService.findAll().stream()
                 .collect(java.util.stream.Collectors.toMap(DatabaseDump::getId, d -> d));
 
-        int deleted = 0;
+        List<String> deletedNames = new java.util.ArrayList<>();
         for (String id : ids) {
             if (InputValidator.validateUuid(id).isPresent()) continue;
             // tenant-hidden ids are skipped, matching the single-delete 404 behavior
             DatabaseDump dump = dumpsById.get(id);
             if (dump != null && tenantVisibility.canSee(dump.getTenantId(), dump.getSharedWithTenants())) {
                 dumpStorageService.deleteDump(id);
-                deleted++;
+                deletedNames.add(auditName(dump));
             }
         }
 
+        int deleted = deletedNames.size();
         if (deleted > 0) {
-            auditLogger.log("DUMP_DELETE", deleted + " dump(s)", null);
+            auditLogger.log("DUMP_DELETE", deleted + " dump(s)", listFilenames(deletedNames));
         }
         return Response.ok(Map.of("success", true, "deleted", deleted)).build();
     }

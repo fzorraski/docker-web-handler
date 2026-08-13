@@ -31,6 +31,7 @@ import static org.mockito.Mockito.*;
 class DatabaseDumpControllerTest {
 
     private static final String VALID_UUID = "550e8400-e29b-41d4-a716-446655440000";
+    private static final String OTHER_UUID = "550e8400-e29b-41d4-a716-446655440001";
     private static final String VALID_PASSWORD = "secret";
 
     @Mock DumpStorageService dumpStorageService;
@@ -350,6 +351,19 @@ class DatabaseDumpControllerTest {
         verify(dumpStorageService).deleteDump(VALID_UUID);
     }
 
+    @Test
+    void deleteDump_auditsFilenameAndId() {
+        when(dumpStorageService.isEnabled()).thenReturn(true);
+        when(dumpStorageService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        DatabaseDump dump = new DatabaseDump();
+        dump.setOriginalFilename("ekko-PROD_2026-06-17.sql");
+        when(dumpStorageService.findById(VALID_UUID)).thenReturn(Optional.of(dump));
+
+        controller.deleteDump(VALID_UUID, VALID_PASSWORD);
+
+        verify(auditLogger).log("DUMP_DELETE", "ekko-PROD_2026-06-17.sql", "id=" + VALID_UUID);
+    }
+
     // ---- deleteBulk ----
 
     @Test
@@ -403,6 +417,47 @@ class DatabaseDumpControllerTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> entity = (Map<String, Object>) response.getEntity();
         assertEquals(1, entity.get("deleted"));
+    }
+
+    @Test
+    void deleteBulk_auditsDeletedFilenames() {
+        when(dumpStorageService.isEnabled()).thenReturn(true);
+        when(dumpStorageService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dumpStorageService.findAll()).thenReturn(List.of(
+                dumpWithId(VALID_UUID, "first.sql"),
+                dumpWithId(OTHER_UUID, "second.sql")));
+
+        controller.deleteBulk(VALID_PASSWORD, List.of(VALID_UUID, OTHER_UUID));
+
+        verify(auditLogger).log("DUMP_DELETE", "2 dump(s)", "files=first.sql, second.sql");
+    }
+
+    @Test
+    void deleteBulk_auditsCountBeyondTheNameLimit() {
+        when(dumpStorageService.isEnabled()).thenReturn(true);
+        when(dumpStorageService.validateOperationsPassword(VALID_PASSWORD)).thenReturn(true);
+        List<DatabaseDump> dumps = new java.util.ArrayList<>();
+        List<String> ids = new java.util.ArrayList<>();
+        for (int i = 0; i < 12; i++) {
+            String id = "550e8400-e29b-41d4-a716-4466554400" + (i < 10 ? "0" + i : i);
+            ids.add(id);
+            dumps.add(dumpWithId(id, "dump-" + i + ".sql"));
+        }
+        when(dumpStorageService.findAll()).thenReturn(dumps);
+
+        controller.deleteBulk(VALID_PASSWORD, ids);
+
+        // exact count, so a truncated list never reads as everything that was deleted
+        verify(auditLogger).log(eq("DUMP_DELETE"), eq("12 dump(s)"),
+                argThat(detail -> detail.startsWith("files=dump-0.sql, ")
+                        && detail.endsWith("dump-9.sql (+2 more)")));
+    }
+
+    private static DatabaseDump dumpWithId(String id, String filename) {
+        DatabaseDump dump = new DatabaseDump();
+        dump.setId(id);
+        dump.setOriginalFilename(filename);
+        return dump;
     }
 
     @Test
