@@ -2,6 +2,7 @@ package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.domain.model.DatabaseSnapshot;
 import br.com.fzdevx.domain.model.auth.Permission;
+import br.com.fzdevx.infrastructure.config.TenantSharing;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
@@ -38,7 +39,7 @@ public class SnapshotController {
     br.com.fzdevx.infrastructure.config.TenantEntitlements tenantEntitlements;
 
     @Inject
-    br.com.fzdevx.application.port.TenantRepository tenantRepository;
+    TenantSharing tenantSharing;
 
     /**
      * Creator visibility is its own permission (AUDIT_VIEW); strip it for callers
@@ -306,38 +307,46 @@ public class SnapshotController {
                     .entity(Map.of("error", "Only the owning tenant can change sharing.")).build();
         }
 
-        List<String> sharedWithTenants = extractTenantIds(body.get("sharedWithTenants"));
-        for (String tenantId : sharedWithTenants) {
-            if (tenantRepository.findById(tenantId).isEmpty()) {
-                return Response.status(Response.Status.BAD_REQUEST)
-                        .entity(Map.of("error", "Unknown tenant: " + tenantId)).build();
-            }
-        }
-
         boolean changeOwner = body.containsKey("tenantId")
                 && tenantVisibility.bypass() && currentUser.isRbacActive();
         String newTenantId = null;
         if (changeOwner) {
             Object raw = body.get("tenantId");
             newTenantId = raw == null || raw.toString().isBlank() ? null : raw.toString();
-            if (newTenantId != null && tenantRepository.findById(newTenantId).isEmpty()) {
-                return Response.status(Response.Status.BAD_REQUEST)
-                        .entity(Map.of("error", "Unknown tenant: " + newTenantId)).build();
+            Optional<Response> ownerError = validateShareTargets(
+                    newTenantId == null ? List.of() : List.of(newTenantId));
+            if (ownerError.isPresent()) {
+                return ownerError.get();
             }
         }
 
-        snapshotStorageService.updateSharing(id, sharedWithTenants, newTenantId, changeOwner);
+        // normalized against the EFFECTIVE owner - a stored copy of the owner's
+        // own id would survive a later ownership transfer and keep the former
+        // tenant's members on the share list. A transfer to "no tenant" strips
+        // the OUTGOING owner for the same reason: the resource becomes visible
+        // to everyone, and the id would linger if the snapshot is adopted later.
+        String effectiveOwner = changeOwner && newTenantId != null ? newTenantId : snapshot.get().getTenantId();
+        List<String> sharedWithTenants =
+                tenantSharing.normalize(TenantSharing.asStrings(body.get("sharedWithTenants")), effectiveOwner);
+        Optional<Response> shareError = validateShareTargets(sharedWithTenants);
+        if (shareError.isPresent()) {
+            return shareError.get();
+        }
+
+        // false = deleted between the visibility check and the write; a 200
+        // here would report a sharing update that never happened
+        if (!snapshotStorageService.updateSharing(id, sharedWithTenants, newTenantId, changeOwner)) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", "Snapshot not found.")).build();
+        }
         return Response.ok(Map.of("success", true)).build();
     }
 
-    private List<String> extractTenantIds(Object raw) {
-        if (!(raw instanceof List<?> list)) return List.of();
-        return list.stream()
-                .filter(java.util.Objects::nonNull)
-                .map(item -> item.toString().trim())
-                .filter(s -> !s.isEmpty())
-                .distinct()
-                .toList();
+    /** Every shared-with id must reference an existing tenant. */
+    private Optional<Response> validateShareTargets(List<String> tenantIds) {
+        return tenantSharing.firstUnknown(tenantIds)
+                .map(unknown -> Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Unknown tenant: " + unknown)).build());
     }
 
     @RequiresPermission(Permission.DATABASE_DELETE)

@@ -32,6 +32,7 @@ class SnapshotControllerTest {
     private static final String VALID_PASSWORD = "secret";
 
     @Mock SnapshotStorageService snapshotStorageService;
+    @Mock br.com.fzdevx.application.port.TenantRepository tenantRepository;
     @Mock DumpStorageService dumpStorageService;
     @Mock DatabaseService databaseService;
     @Mock CreateSnapshotUseCase createSnapshotUseCase;
@@ -46,6 +47,7 @@ class SnapshotControllerTest {
         controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
         controller.tenantVisibility = br.com.fzdevx.infrastructure.config.TestTenantVisibility.passthrough();
         controller.tenantEntitlements = br.com.fzdevx.infrastructure.config.TestTenantEntitlements.passthrough();
+        controller.tenantSharing = br.com.fzdevx.infrastructure.config.TestTenantSharing.with(tenantRepository);
     }
 
     // ---- listSnapshots ----
@@ -354,5 +356,42 @@ class SnapshotControllerTest {
         Response response = controller.cleanupIdleSnapshots(Map.of("password", "secret", "minDays", 30));
         assertEquals(200, response.getStatus());
         assertEquals(1, ((Map<String, Object>) response.getEntity()).get("deleted"));
+    }
+
+    // ---- updateSharing ----
+
+    @Test
+    void updateSharing_ownershipTransfer_stripsTheNewOwnerFromTheShareList() {
+        // normalization must run against the EFFECTIVE owner: transferring to
+        // tenant B while B is also on the share list would store B's id
+        // verbatim, and it would linger after any later transfer away from B
+        when(dumpStorageService.isEnabled()).thenReturn(true);
+        var snapshot = new br.com.fzdevx.domain.model.DatabaseSnapshot();
+        snapshot.setId(VALID_UUID);
+        snapshot.setTenantId("tenant-a");
+        when(snapshotStorageService.findById(VALID_UUID)).thenReturn(Optional.of(snapshot));
+        when(snapshotStorageService.updateSharing(eq(VALID_UUID), any(), any(), anyBoolean())).thenReturn(true);
+        var tb = new br.com.fzdevx.domain.model.auth.Tenant("B", null);
+        tb.setId("tenant-b");
+        var tc = new br.com.fzdevx.domain.model.auth.Tenant("C", null);
+        tc.setId("tenant-c");
+        when(tenantRepository.findAll()).thenReturn(java.util.List.of(tb, tc));
+
+        // changeOwner requires an ACTIVE RBAC identity that bypasses tenant
+        // filtering - a TENANTS_VIEW_ALL holder, not the RBAC-off passthrough
+        var globalAdmin = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        globalAdmin.set("u1", "root",
+                java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.TENANTS_VIEW_ALL));
+        controller.currentUser = globalAdmin;
+        controller.tenantVisibility =
+                br.com.fzdevx.infrastructure.config.TestTenantVisibility.forUser(globalAdmin, tenantRepository);
+
+        Response response = controller.updateSharing(VALID_UUID, Map.of(
+                "tenantId", "tenant-b",
+                "sharedWithTenants", java.util.List.of("tenant-b", "tenant-c")));
+
+        assertEquals(200, response.getStatus());
+        verify(snapshotStorageService).updateSharing(eq(VALID_UUID),
+                eq(java.util.List.of("tenant-c")), eq("tenant-b"), eq(true));
     }
 }

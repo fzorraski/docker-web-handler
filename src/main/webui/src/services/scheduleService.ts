@@ -58,6 +58,8 @@ export async function createSchedule(request: {
   createConfig?: object
   operationsPassword?: string
   tenantId?: string
+  noTenant?: boolean
+  sharedWithTenants?: string[]
 }): Promise<ContainerSchedule> {
   const res = await postJson(API + 'create', request)
   return handleResponse(res)
@@ -80,6 +82,22 @@ export async function toggleSchedule(id: string, password: string): Promise<Cont
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Schedule-Password': password },
     body: '{}',
+  })
+  return handleResponse(res)
+}
+
+/** RBAC-only feature: the scheduling password is bypassed under RBAC, so none is collected. */
+export async function updateScheduleSharing(
+  id: string,
+  sharedWithTenants: string[],
+  tenantId: string | null | undefined,
+): Promise<ContainerSchedule> {
+  const body: Record<string, unknown> = { sharedWithTenants }
+  if (tenantId !== undefined) body.tenantId = tenantId
+  const res = await fetchWithAuth(API + 'sharing/' + encodeURIComponent(id), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-Schedule-Password': '' },
+    body: JSON.stringify(body),
   })
   return handleResponse(res)
 }

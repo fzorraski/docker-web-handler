@@ -30,6 +30,7 @@ import jakarta.ws.rs.sse.SseEventSink;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Path("/containers/sse")
 @RequiresPermission(Permission.CONTAINERS_VIEW)
@@ -70,6 +71,9 @@ public class ContainerSseController {
 
     @Inject
     br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
+
+    @Inject
+    br.com.fzdevx.infrastructure.config.TenantSharing tenantSharing;
 
     @Inject
     br.com.fzdevx.infrastructure.config.TenantEntitlements tenantEntitlements;
@@ -142,7 +146,16 @@ public class ContainerSseController {
                 tenantEntitlements.requireDatabaseAllowed(request.getRepository());
             }
         }
-        request.setTenantId(tenantVisibility.resolveCreationTenant(request.getTenantId()));
+        request.setTenantId(tenantVisibility.resolveCreationTenant(request.getTenantId(), request.isNoTenant()));
+        List<String> sharedWithTenants =
+                tenantSharing.normalize(request.getSharedWithTenants(), request.getTenantId());
+        Optional<String> unknownTenant = tenantSharing.firstUnknown(sharedWithTenants);
+        if (unknownTenant.isPresent()) {
+            return jakarta.ws.rs.core.Response.status(jakarta.ws.rs.core.Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Unknown tenant: " + unknownTenant.get()))
+                    .build();
+        }
+        request.setSharedWithTenants(sharedWithTenants);
         if (request.getDumpId() != null) {
             dumpStorageService.findById(request.getDumpId()).ifPresent(dump ->
                     tenantVisibility.requireVisible(dump.getTenantId(), dump.getSharedWithTenants()));

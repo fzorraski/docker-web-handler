@@ -1,6 +1,8 @@
 package br.com.fzdevx.domain.model;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -33,6 +35,8 @@ public class ContainerSchedule {
     private String lastExecutionMessage;
     private String createdBy;
     private String tenantId;
+    /** Tenants the owner shared it with; they see and manage it like the owner does. */
+    private List<String> sharedWithTenants = new ArrayList<>();
 
     public ContainerSchedule() {
     }
@@ -109,4 +113,9 @@ public class ContainerSchedule {
 
     public String getTenantId() { return tenantId; }
     public void setTenantId(String tenantId) { this.tenantId = tenantId; }
+
+    public List<String> getSharedWithTenants() { return sharedWithTenants; }
+    public void setSharedWithTenants(List<String> sharedWithTenants) {
+        this.sharedWithTenants = sharedWithTenants == null ? new ArrayList<>() : new ArrayList<>(sharedWithTenants);
+    }
 }

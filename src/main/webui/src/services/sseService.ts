@@ -61,6 +61,8 @@ export async function prepareRunContainer(body: {
   migrationTargetVersion?: string | null
   webhookNotify?: boolean
   tenantId?: string
+  noTenant?: boolean
+  sharedWithTenants?: string[]
 }): Promise<string> {
   const res = await fetchWithAuth('/api/containers/sse/run/prepare', {
     method: 'POST',

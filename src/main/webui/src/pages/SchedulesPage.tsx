@@ -8,22 +8,24 @@ import {
 import {
   Search, AddCircleOutline, Delete, PlayArrow, Stop, Add,
   Schedule, EventRepeat, EventAvailable, CheckCircle, Cancel, Pending,
-  FilterList, Clear, Science, Lock,
+  FilterList, Clear, Science, Lock, Share,
 } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useNotification } from '../components/NotificationProvider'
 import { useAuth } from '../components/AuthProvider'
 import { P } from '../utils/permissions'
-import { useTenantNames } from '../hooks/useTenantNames'
+import { useTenants } from '../hooks/useTenants'
+import TenantCell from '../components/TenantCell'
 import HeroBanner from '../components/HeroBanner'
 import CreateScheduleModal from '../components/CreateScheduleModal'
 import PasswordConfirmDialog from '../components/PasswordConfirmDialog'
+import ShareResourceDialog from '../components/ShareResourceDialog'
 import { RateLimitError } from '../services/fetchWithAuth'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
 import { useStickyHeader } from '../hooks/useStickyHeader'
 import { useTablePagination } from '../hooks/useTablePagination'
 import {
-  listSchedules, toggleSchedule, deleteSchedule, executeScheduleNow,
+  listSchedules, toggleSchedule, deleteSchedule, executeScheduleNow, updateScheduleSharing,
 } from '../services/scheduleService'
 import { getContainers, getFeatures } from '../services/containerService'
 import { cronToHuman } from '../utils/cronFormat'
@@ -41,7 +43,7 @@ export default function SchedulesPage() {
   const { t } = useTranslation()
   const { notify, confirm } = useNotification()
   const { rbacEnabled, hasPermission } = useAuth()
-  const tenantNames = useTenantNames()
+  const tenants = useTenants()
   const canManageSchedules = hasPermission(P.SCHEDULES_MANAGE)
   const canViewContainers = hasPermission(P.CONTAINERS_VIEW)
   const canViewAudit = hasPermission(P.AUDIT_VIEW)
@@ -63,6 +65,7 @@ export default function SchedulesPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
+  const [shareTarget, setShareTarget] = useState<ContainerSchedule | null>(null)
   const [contextMenuPos, setContextMenuPos] = useState<{ top: number; left: number } | null>(null)
   const [contextSchedule, setContextSchedule] = useState<ContainerSchedule | null>(null)
   const [pwRequired, setPwRequired] = useState(true)
@@ -106,7 +109,7 @@ export default function SchedulesPage() {
         s.action.toLowerCase().includes(f) ||
         (s.containerName || '').toLowerCase().includes(f) ||
         (s.createdBy || '').toLowerCase().includes(f) ||
-        (s.tenantId ? (tenantNames.get(s.tenantId) ?? '').toLowerCase().includes(f) : false)
+        (s.tenantId ? (tenants.get(s.tenantId)?.name ?? '').toLowerCase().includes(f) : false)
       )) return false
       if (actionFilter && s.action !== actionFilter) return false
       if (typeFilter && s.scheduleType !== typeFilter) return false
@@ -117,7 +120,7 @@ export default function SchedulesPage() {
     if (sortKey) {
       // the tenant column displays the resolved name, so sort by it too
       const sortValue = (item: (typeof result)[number]) => sortKey === 'tenantId'
-        ? (item.tenantId ? tenantNames.get(item.tenantId) ?? item.tenantId : '')
+        ? (item.tenantId ? tenants.get(item.tenantId)?.name ?? item.tenantId : '')
         : String((item as unknown as Record<string, unknown>)[sortKey] ?? '')
       result = [...result].sort((a, b) => {
         const va = sortValue(a).toLowerCase()
@@ -126,7 +129,7 @@ export default function SchedulesPage() {
       })
     }
     return result
-  }, [schedules, filter, actionFilter, typeFilter, enabledFilter, statusFilter, sortKey, sortDir, tenantNames])
+  }, [schedules, filter, actionFilter, typeFilter, enabledFilter, statusFilter, sortKey, sortDir, tenants])
 
   const pagination = useTablePagination(filtered, { storageKey: 'schedules' })
 
@@ -612,9 +615,7 @@ export default function SchedulesPage() {
                   )}
                   {rbacEnabled && (
                     <TableCell>
-                      {s.tenantId
-                        ? <Chip label={tenantNames.get(s.tenantId) ?? s.tenantId} size="small" variant="outlined" color="secondary" />
-                        : '-'}
+                      <TenantCell tenantId={s.tenantId} sharedWithTenants={s.sharedWithTenants} tenants={tenants} />
                     </TableCell>
                   )}
                   <TableCell>
@@ -676,6 +677,18 @@ export default function SchedulesPage() {
               <ListItemText>{t('schedules.executeNow')}</ListItemText>
             </MenuItem>
           ),
+          canManageSchedules && rbacEnabled && (
+            <MenuItem
+              key="share"
+              onClick={() => {
+                setShareTarget(contextSchedule)
+                setContextMenuPos(null); setContextSchedule(null)
+              }}
+            >
+              <ListItemIcon><Share fontSize="small" color="info" /></ListItemIcon>
+              <ListItemText>{t('tenants.sharing.title')}</ListItemText>
+            </MenuItem>
+          ),
           canManageSchedules && contextSchedule.enabled && <Divider key="divider" />,
           canManageSchedules && (
             <MenuItem
@@ -692,6 +705,20 @@ export default function SchedulesPage() {
           ),
         ]}
       </Menu>
+
+      <ShareResourceDialog
+        open={shareTarget !== null}
+        onClose={() => setShareTarget(null)}
+        resourceName={shareTarget?.name ?? ''}
+        tenantId={shareTarget?.tenantId ?? null}
+        sharedWithTenants={shareTarget?.sharedWithTenants ?? []}
+        onSave={async (shared, tenantId) => {
+          if (!shareTarget) return
+          const updated = await updateScheduleSharing(shareTarget.id, shared, tenantId)
+          setSchedules(prev => prev.map(s => s.id === updated.id ? updated : s))
+          notify(t('tenants.sharing.updated'), 'success')
+        }}
+      />
 
       <CreateScheduleModal
         open={modalOpen}

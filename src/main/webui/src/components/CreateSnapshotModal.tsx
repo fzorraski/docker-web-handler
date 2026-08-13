@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useTenantChoice } from './TenantSelect'
-import TenantAccessSelect from './TenantAccessSelect'
+import TenantAccessSelect, { useTenantChoice, useCanClearTenant } from './TenantAccessSelect'
 import { splitOwner } from '../utils/tenantAccess'
 import { useSseOperation } from '../hooks/useSseOperation'
 import {
@@ -31,7 +30,6 @@ import { getRepositoryDatabases } from '../services/containerService'
 import { prepareSnapshot, streamSnapshot } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
 import { useAuth } from './AuthProvider'
-import { P } from '../utils/permissions'
 import OperationProgress, { SNAPSHOT_STEPS } from './OperationProgress'
 
 interface Props {
@@ -45,9 +43,8 @@ interface Props {
 
 export default function CreateSnapshotModal({ open, onClose, onCreated, initialRepository, initialDatabase, containerName }: Props) {
   const { notify } = useNotification()
-  const { rbacEnabled, hasPermission } = useAuth()
-  // only these users are offered "none", so only they may ask for it
-  const canClearTenant = rbacEnabled && hasPermission(P.TENANTS_VIEW_ALL)
+  const { rbacEnabled } = useAuth()
+  const canClearTenant = useCanClearTenant()
   const { t } = useTranslation()
   const locked = !!(initialRepository && initialDatabase)
   const [repositories, setRepositories] = useState<string[]>([])

@@ -3,7 +3,6 @@ import { TextField, MenuItem, Checkbox, ListItemText, Chip, Box } from '@mui/mat
 import { Star } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from './AuthProvider'
-import { useTenantChoice } from './TenantSelect'
 import { P } from '../utils/permissions'
 import { listTenants, type TenantSummary } from '../services/tenantService'
 import {
@@ -24,6 +23,25 @@ interface Props {
 
 /** How many chips to show before collapsing the rest into a +N chip. */
 const MAX_CHIPS = 3
+
+/**
+ * Whether the tenant selector applies to the current user. Users bound to zero
+ * or one tenant have no choice to make and get no field at all.
+ */
+export function useTenantChoice(): boolean {
+  const { rbacEnabled, currentUser, hasPermission } = useAuth()
+  return rbacEnabled && (hasPermission(P.TENANTS_VIEW_ALL) || (currentUser?.tenants.length ?? 0) > 1)
+}
+
+/**
+ * Whether the user may create a resource with no tenant at all. Only these
+ * users are offered "none", and the backend refuses the request from anyone
+ * else - so callers must gate the noTenant flag on this.
+ */
+export function useCanClearTenant(): boolean {
+  const { rbacEnabled, hasPermission } = useAuth()
+  return rbacEnabled && hasPermission(P.TENANTS_VIEW_ALL)
+}
 
 /**
  * Combined owner + shared-with selector for creation flows that support

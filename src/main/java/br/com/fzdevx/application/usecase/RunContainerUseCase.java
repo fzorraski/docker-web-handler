@@ -36,6 +36,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import br.com.fzdevx.domain.shared.Constants;
+import br.com.fzdevx.infrastructure.config.TenantSharing;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -487,6 +488,11 @@ public class RunContainerUseCase {
         // by a schedule's persisted config; absent means visible to everyone.
         if (request.getTenantId() != null && !request.getTenantId().isBlank()) {
             labels.put(Constants.TENANT_LABEL, request.getTenantId());
+        }
+        // Tenants the owner shared it with; they get the same access the owner has.
+        String sharedWith = TenantSharing.toCsv(request.getSharedWithTenants());
+        if (sharedWith != null) {
+            labels.put(Constants.SHARED_TENANTS_LABEL, sharedWith);
         }
         if (request.getExtraLabels() != null) {
             labels.putAll(request.getExtraLabels());

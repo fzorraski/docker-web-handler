@@ -33,6 +33,9 @@ public class ManageScheduleUseCase {
     br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.TenantSharing tenantSharing;
+
+    @Inject
     br.com.fzdevx.infrastructure.docker.ContainerTenantGuard containerTenantGuard;
 
     @Inject
@@ -112,7 +115,13 @@ public class ManageScheduleUseCase {
 
         ContainerSchedule schedule = new ContainerSchedule(request.getName(), action, type);
         schedule.setCreatedBy(actorResolver.usernameOrSystem());
-        schedule.setTenantId(tenantVisibility.resolveCreationTenant(request.getTenantId()));
+        schedule.setTenantId(tenantVisibility.resolveCreationTenant(request.getTenantId(), request.isNoTenant()));
+        List<String> sharedWithTenants =
+                tenantSharing.normalize(request.getSharedWithTenants(), schedule.getTenantId());
+        tenantSharing.firstUnknown(sharedWithTenants).ifPresent(unknown -> {
+            throw new InvalidInputException("Unknown tenant: " + unknown);
+        });
+        schedule.setSharedWithTenants(sharedWithTenants);
 
         if (type == ScheduleType.RECURRING) {
             Optional<String> cronError = InputValidator.validateCronExpression(request.getCronExpression());
@@ -244,8 +253,12 @@ public class ManageScheduleUseCase {
             }
 
             // scheduled creates run outside a request scope - the container inherits
-            // the schedule's tenant through the persisted config, not the actor
+            // the schedule's tenant and sharing through the persisted config, not the
+            // actor. Always overwritten from the schedule's VALIDATED list: the config
+            // deserializes a sharedWithTenants field of its own, which would otherwise
+            // reach the docker label without the unknown-tenant check
             request.getCreateConfig().setTenantId(schedule.getTenantId());
+            request.getCreateConfig().setSharedWithTenants(schedule.getSharedWithTenants());
             schedule.setCreateConfig(request.getCreateConfig());
         }
 
@@ -332,10 +345,54 @@ public class ManageScheduleUseCase {
                 }
                 request.getCreateConfig().setExpiresAt(null);
             }
-            // the schedule's tenant is fixed at creation and survives config edits
+            // the schedule's tenant and sharing are fixed at creation and survive
+            // config edits; overwriting also discards any smuggled shared list
             request.getCreateConfig().setTenantId(schedule.getTenantId());
+            request.getCreateConfig().setSharedWithTenants(schedule.getSharedWithTenants());
             schedule.setCreateConfig(request.getCreateConfig());
         }
+    }
+
+    /**
+     * Replaces who the schedule is shared with (and, for cross-tenant admins,
+     * its owner). Sharing a schedule grants edit/disable/execute-now, so the
+     * decision stays with the owning tenant - the controller enforces that.
+     * The persisted createConfig is kept in sync: it is what a CREATE schedule
+     * reads at fire time, outside any request scope.
+     */
+    public ContainerSchedule updateSharing(String id, List<String> requestedShares,
+                                           String newTenantId, boolean changeOwner) {
+        ContainerSchedule current = scheduleRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Schedule not found: " + id));
+
+        // normalized against the EFFECTIVE owner; a transfer to "no tenant"
+        // strips the OUTGOING owner so its id cannot linger on the share list
+        String effectiveOwner = changeOwner && newTenantId != null ? newTenantId : current.getTenantId();
+        List<String> sharedWithTenants = tenantSharing.normalize(requestedShares, effectiveOwner);
+        tenantSharing.firstUnknown(sharedWithTenants).ifPresent(unknown -> {
+            throw new InvalidInputException("Unknown tenant: " + unknown);
+        });
+        if (changeOwner && newTenantId != null
+                && tenantSharing.firstUnknown(List.of(newTenantId)).isPresent()) {
+            throw new InvalidInputException("Unknown tenant: " + newTenantId);
+        }
+
+        ContainerSchedule[] updated = new ContainerSchedule[1];
+        boolean found = scheduleRepository.update(id, schedule -> {
+            schedule.setSharedWithTenants(sharedWithTenants);
+            if (changeOwner) {
+                schedule.setTenantId(newTenantId);
+            }
+            if (schedule.getCreateConfig() != null) {
+                schedule.getCreateConfig().setTenantId(schedule.getTenantId());
+                schedule.getCreateConfig().setSharedWithTenants(sharedWithTenants);
+            }
+            updated[0] = schedule;
+        });
+        if (!found) {
+            throw new EntityNotFoundException("Schedule not found: " + id);
+        }
+        return updated[0];
     }
 
     public void delete(String id) {

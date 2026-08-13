@@ -178,6 +178,7 @@ class ContainerControllerTest {
         // real instance: outside RBAC it grants everything (legacy behavior)
         controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
         controller.tenantVisibility = br.com.fzdevx.infrastructure.config.TestTenantVisibility.passthrough();
+        controller.tenantSharing = br.com.fzdevx.infrastructure.config.TestTenantSharing.withoutRepository();
         controller.containerTenantGuard = br.com.fzdevx.infrastructure.docker.TestContainerTenantGuard.passthrough();
     }
 

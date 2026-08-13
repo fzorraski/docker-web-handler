@@ -23,7 +23,7 @@ public class PgScheduleRepository implements ScheduleRepository {
             SELECT id, name, action, schedule_type, enabled, cron_expression, scheduled_at,
                    container_id, container_name, create_config, next_execution_at,
                    last_executed_at, last_execution_status, last_execution_message,
-                   created_by, tenant_id, created_at
+                   created_by, tenant_id, shared_with_tenants, created_at
             FROM container_schedule
             """;
 
@@ -31,8 +31,8 @@ public class PgScheduleRepository implements ScheduleRepository {
             INSERT INTO container_schedule (id, name, action, schedule_type, enabled,
                 cron_expression, scheduled_at, container_id, container_name, create_config,
                 next_execution_at, last_executed_at, last_execution_status,
-                last_execution_message, created_by, tenant_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                last_execution_message, created_by, tenant_id, shared_with_tenants, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 action = EXCLUDED.action,
@@ -49,6 +49,7 @@ public class PgScheduleRepository implements ScheduleRepository {
                 last_execution_message = EXCLUDED.last_execution_message,
                 created_by = EXCLUDED.created_by,
                 tenant_id = EXCLUDED.tenant_id,
+                shared_with_tenants = EXCLUDED.shared_with_tenants,
                 created_at = EXCLUDED.created_at
             """;
 
@@ -85,7 +86,9 @@ public class PgScheduleRepository implements ScheduleRepository {
                 JdbcSupport.JsonbValue.of(schedule.getCreateConfig()),
                 schedule.getNextExecutionAt(), schedule.getLastExecutedAt(),
                 schedule.getLastExecutionStatus(), schedule.getLastExecutionMessage(),
-                schedule.getCreatedBy(), schedule.getTenantId(), schedule.getCreatedAt()};
+                schedule.getCreatedBy(), schedule.getTenantId(),
+                JdbcSupport.JsonbValue.of(schedule.getSharedWithTenants()),
+                schedule.getCreatedAt()};
     }
 
     @Override
@@ -146,6 +149,7 @@ public class PgScheduleRepository implements ScheduleRepository {
         schedule.setLastExecutionMessage(rs.getString("last_execution_message"));
         schedule.setCreatedBy(rs.getString("created_by"));
         schedule.setTenantId(rs.getString("tenant_id"));
+        schedule.setSharedWithTenants(JdbcSupport.fromJson(rs, "shared_with_tenants", JdbcSupport.STRING_LIST));
         schedule.setCreatedAt(JdbcSupport.instant(rs, "created_at"));
         return schedule;
     }

@@ -165,6 +165,16 @@ public class RunContainerConfig {
     public String getTenantId() { return tenantId; }
     public void setTenantId(String tenantId) { this.tenantId = tenantId; }
 
+    /** Tenants the container is shared with, beyond its owner. Persisted with the config so a scheduled create shares it too. */
+    private List<String> sharedWithTenants;
+
+    public List<String> getSharedWithTenants() { return sharedWithTenants; }
+
+    /** Defensive copy: callers pass live lists (e.g. the owning schedule's), and an aliased reference would let later mutations skip validation. */
+    public void setSharedWithTenants(List<String> sharedWithTenants) {
+        this.sharedWithTenants = sharedWithTenants == null ? null : new java.util.ArrayList<>(sharedWithTenants);
+    }
+
     public RunContainerConfig copy() {
         RunContainerConfig c = new RunContainerConfig();
         c.repository = this.repository;
@@ -188,6 +198,7 @@ public class RunContainerConfig {
         c.migrationTargetVersion = this.migrationTargetVersion;
         c.extraLabels = this.extraLabels != null ? Map.copyOf(this.extraLabels) : null;
         c.tenantId = this.tenantId;
+        c.sharedWithTenants = this.sharedWithTenants != null ? List.copyOf(this.sharedWithTenants) : null;
         return c;
     }
 }

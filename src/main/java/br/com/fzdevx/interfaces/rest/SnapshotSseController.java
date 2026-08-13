@@ -40,7 +40,7 @@ public class SnapshotSseController {
     br.com.fzdevx.infrastructure.config.TenantEntitlements tenantEntitlements;
 
     @Inject
-    br.com.fzdevx.application.port.TenantRepository tenantRepository;
+    br.com.fzdevx.infrastructure.config.TenantSharing tenantSharing;
 
     @Inject
     br.com.fzdevx.application.port.ManagedDatabaseRepository managedDatabaseRepository;
@@ -70,15 +70,15 @@ public class SnapshotSseController {
 
         // tenant resolution happens here (request scope); the SSE stream runs off a ticket
         request.setTenantId(tenantVisibility.resolveCreationTenant(request.getTenantId(), request.isNoTenant()));
-        if (request.getSharedWithTenants() != null) {
-            for (String tenantId : request.getSharedWithTenants()) {
-                if (tenantRepository.findById(tenantId).isEmpty()) {
-                    return jakarta.ws.rs.core.Response.status(jakarta.ws.rs.core.Response.Status.BAD_REQUEST)
-                            .entity(Map.of("error", "Unknown tenant: " + tenantId))
-                            .build();
-                }
-            }
+        java.util.List<String> sharedWithTenants =
+                tenantSharing.normalize(request.getSharedWithTenants(), request.getTenantId());
+        java.util.Optional<String> unknownTenant = tenantSharing.firstUnknown(sharedWithTenants);
+        if (unknownTenant.isPresent()) {
+            return jakarta.ws.rs.core.Response.status(jakarta.ws.rs.core.Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Unknown tenant: " + unknownTenant.get()))
+                    .build();
         }
+        request.setSharedWithTenants(sharedWithTenants);
         if (request.getRepository() != null) {
             tenantEntitlements.requireDatabaseAllowed(request.getRepository());
             if (request.getSourceDatabaseName() != null) {

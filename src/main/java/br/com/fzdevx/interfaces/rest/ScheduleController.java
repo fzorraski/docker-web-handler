@@ -43,7 +43,7 @@ public class ScheduleController {
     /** Tenant-hidden schedules 404 like nonexistent ones; null means visible. */
     private Response guardVisible(String id) {
         Optional<ContainerSchedule> schedule = manageScheduleUseCase.findById(id);
-        if (schedule.isPresent() && !tenantVisibility.canSee(schedule.get().getTenantId())) {
+        if (schedule.isPresent() && !tenantVisibility.canSee(schedule.get().getTenantId(), schedule.get().getSharedWithTenants())) {
             return Response.status(Response.Status.NOT_FOUND)
                     .entity(Map.of("error", "Schedule not found.")).build();
         }
@@ -75,8 +75,8 @@ public class ScheduleController {
         if (!schedulingService.isEnabled()) {
             return Collections.emptyList();
         }
-        List<ContainerSchedule> visible = tenantVisibility.visible(
-                manageScheduleUseCase.findAll(), ContainerSchedule::getTenantId);
+        List<ContainerSchedule> visible = tenantVisibility.visible(manageScheduleUseCase.findAll(),
+                ContainerSchedule::getTenantId, ContainerSchedule::getSharedWithTenants);
         return withCreatorVisibility(visible, ContainerSchedule::setCreatedBy);
     }
 
@@ -96,7 +96,7 @@ public class ScheduleController {
         }
 
         Optional<ContainerSchedule> schedule = manageScheduleUseCase.findById(id)
-                .filter(s -> tenantVisibility.canSee(s.getTenantId()));
+                .filter(s -> tenantVisibility.canSee(s.getTenantId(), s.getSharedWithTenants()));
         if (schedule.isEmpty()) {
             return Response.status(Response.Status.NOT_FOUND)
                     .entity(Map.of("error", "Schedule not found.")).build();
@@ -112,7 +112,7 @@ public class ScheduleController {
             return Collections.emptyList();
         }
         return tenantVisibility.visible(manageScheduleUseCase.findByContainerId(containerId),
-                ContainerSchedule::getTenantId);
+                ContainerSchedule::getTenantId, ContainerSchedule::getSharedWithTenants);
     }
 
     @RequiresPermission(Permission.SCHEDULES_MANAGE)
@@ -193,6 +193,57 @@ public class ScheduleController {
 
         ContainerSchedule schedule = manageScheduleUseCase.toggleAndReschedule(id);
         return Response.ok(schedule).build();
+    }
+
+    @RequiresPermission(Permission.SCHEDULES_MANAGE)
+    @PUT
+    @Path("/sharing/{id}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response updateSharing(@PathParam("id") String id,
+                                  @HeaderParam("X-Schedule-Password") String password,
+                                  Map<String, Object> body) {
+        if (!schedulingService.isEnabled()) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Scheduling is disabled.")).build();
+        }
+        if (!passwordValidationService.validateSchedulingPassword(password)) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Invalid scheduling password.")).build();
+        }
+        Optional<String> uuidError = InputValidator.validateUuid(id);
+        if (uuidError.isPresent()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", uuidError.get())).build();
+        }
+
+        Optional<ContainerSchedule> schedule = manageScheduleUseCase.findById(id)
+                .filter(s -> tenantVisibility.canSee(s.getTenantId(), s.getSharedWithTenants()));
+        if (schedule.isEmpty()) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", "Schedule not found.")).build();
+        }
+        // only the owning tenant decides who manages the schedule - a share
+        // recipient must not re-share it onward or revoke the owner's shares
+        String ownerTenantId = schedule.get().getTenantId();
+        boolean canEditSharing = tenantVisibility.bypass()
+                || (ownerTenantId != null && currentUser.getTenantIds().contains(ownerTenantId));
+        if (!canEditSharing) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "Only the owning tenant can change sharing.")).build();
+        }
+
+        boolean changeOwner = body.containsKey("tenantId")
+                && tenantVisibility.bypass() && currentUser.isRbacActive();
+        Object rawOwner = body.get("tenantId");
+        String newTenantId = !changeOwner || rawOwner == null || rawOwner.toString().isBlank()
+                ? null : rawOwner.toString();
+
+        // InvalidInputException (unknown tenant, oversized list) maps to 400
+        ContainerSchedule updated = manageScheduleUseCase.updateSharing(id,
+                br.com.fzdevx.infrastructure.config.TenantSharing.asStrings(body.get("sharedWithTenants")),
+                newTenantId, changeOwner);
+        return Response.ok(updated).build();
     }
 
     @RequiresPermission(Permission.SCHEDULES_MANAGE)

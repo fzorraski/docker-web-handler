@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import TenantSelect, { useTenantChoice } from './TenantSelect'
+import TenantAccessSelect, { useTenantChoice, useCanClearTenant } from './TenantAccessSelect'
+import { splitOwner } from '../utils/tenantAccess'
 import { useSseOperation } from '../hooks/useSseOperation'
 import {
   Autocomplete,
@@ -80,8 +81,10 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
   const [tagsLoading, setTagsLoading] = useState(false)
   const [containerName, setContainerName] = useState('')
-  const [tenantId, setTenantId] = useState('')
+  // ordered: the first tenant owns the container, the rest are shared with
+  const [tenantAccess, setTenantAccess] = useState<string[]>([])
   const showTenantSelect = useTenantChoice()
+  const canClearTenant = useCanClearTenant()
   const containerNameValid = containerName === '' || /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(containerName)
   const [envVars, setEnvVars] = useState<EnvVar[]>([])
   const [memoryMb, setMemoryMb] = useState<string>('')
@@ -346,7 +349,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setSelectedTag(null)
     setAllTags([])
     setContainerName('')
-    setTenantId('')
+    setTenantAccess([])
     setEnvVars([])
     setMemoryMb('')
     setExpirationEnabled(true)
@@ -463,7 +466,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         migrationSourceVersion: migrationEnabled && migrationConfig ? migrationConfig.sourceVersion : null,
         migrationTargetVersion: migrationEnabled && migrationConfig ? migrationConfig.targetVersion : null,
         webhookNotify: webhookFeatureEnabled ? webhookNotify : undefined,
-        tenantId: tenantId || undefined,
+        ...splitOwner(tenantAccess, canClearTenant),
       })
 
       setRunTicket(ticket)
@@ -590,7 +593,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
               </Grid>
               {showTenantSelect && (
                 <Grid size={{ xs: 12, md: 6 }}>
-                  <TenantSelect value={tenantId} onChange={setTenantId} />
+                  <TenantAccessSelect value={tenantAccess} onChange={setTenantAccess} />
                 </Grid>
               )}
               {memoryEnabled && (

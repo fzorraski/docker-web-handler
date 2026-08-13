@@ -28,6 +28,7 @@ public final class TestContainerTenantGuard {
         guard.tenantVisibility = tenantVisibility;
         guard.dockerClient = dockerClient;
         guard.visibilityService = visibilityService;
+        guard.tenantSharing = new br.com.fzdevx.infrastructure.config.TenantSharing();
         return guard;
     }
 

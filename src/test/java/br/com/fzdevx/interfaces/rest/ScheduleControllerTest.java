@@ -19,6 +19,7 @@ import org.mockito.quality.Strictness;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -279,5 +280,60 @@ class ScheduleControllerTest {
         Response response = controller.executeNow(VALID_UUID, VALID_PASSWORD);
         assertEquals(202, response.getStatus());
         verify(manageScheduleUseCase).executeNow(VALID_UUID);
+    }
+
+    // ---- updateSharing ----
+
+    @Test
+    void updateSharing_shareRecipient_cannotReshare() {
+        when(schedulingService.isEnabled()).thenReturn(true);
+        when(passwordValidationService.validateSchedulingPassword(VALID_PASSWORD)).thenReturn(true);
+        ContainerSchedule schedule = makeSchedule();
+        schedule.setId(VALID_UUID);
+        schedule.setTenantId("owner-tenant");
+        schedule.setSharedWithTenants(java.util.List.of("recipient-tenant"));
+        when(manageScheduleUseCase.findById(VALID_UUID)).thenReturn(Optional.of(schedule));
+
+        var recipient = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        recipient.set("u1", "bob",
+                java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.SCHEDULES_MANAGE),
+                java.util.Set.of("recipient-tenant"));
+        controller.currentUser = recipient;
+        controller.tenantVisibility =
+                br.com.fzdevx.infrastructure.config.TestTenantVisibility.forUser(recipient, null);
+
+        // a share grants edit/disable/execute-now, but never re-sharing onward
+        Response response = controller.updateSharing(VALID_UUID, VALID_PASSWORD,
+                Map.of("sharedWithTenants", java.util.List.of("third-tenant")));
+
+        assertEquals(403, response.getStatus());
+        verify(manageScheduleUseCase, never()).updateSharing(any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void updateSharing_ownerTenantMember_delegates() {
+        when(schedulingService.isEnabled()).thenReturn(true);
+        when(passwordValidationService.validateSchedulingPassword(VALID_PASSWORD)).thenReturn(true);
+        ContainerSchedule schedule = makeSchedule();
+        schedule.setId(VALID_UUID);
+        schedule.setTenantId("owner-tenant");
+        when(manageScheduleUseCase.findById(VALID_UUID)).thenReturn(Optional.of(schedule));
+        when(manageScheduleUseCase.updateSharing(eq(VALID_UUID), any(), any(), anyBoolean()))
+                .thenReturn(schedule);
+
+        var owner = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        owner.set("u1", "alice",
+                java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.SCHEDULES_MANAGE),
+                java.util.Set.of("owner-tenant"));
+        controller.currentUser = owner;
+        controller.tenantVisibility =
+                br.com.fzdevx.infrastructure.config.TestTenantVisibility.forUser(owner, null);
+
+        Response response = controller.updateSharing(VALID_UUID, VALID_PASSWORD,
+                Map.of("sharedWithTenants", java.util.List.of("other-tenant")));
+
+        assertEquals(200, response.getStatus());
+        verify(manageScheduleUseCase).updateSharing(eq(VALID_UUID),
+                eq(java.util.List.of("other-tenant")), isNull(), eq(false));
     }
 }

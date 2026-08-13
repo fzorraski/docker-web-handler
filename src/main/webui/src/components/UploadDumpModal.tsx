@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useTenantChoice } from './TenantSelect'
-import TenantAccessSelect from './TenantAccessSelect'
+import TenantAccessSelect, { useTenantChoice, useCanClearTenant } from './TenantAccessSelect'
 import { splitOwner } from '../utils/tenantAccess'
 import {
   Dialog,
@@ -28,7 +27,6 @@ import { uploadDump } from '../services/dumpService'
 import { getDefaultExpirationMinutes } from '../services/containerService'
 import { useNotification } from './NotificationProvider'
 import { useAuth } from './AuthProvider'
-import { P } from '../utils/permissions'
 import type { DatabaseDump } from '../types'
 
 interface Props {
@@ -48,7 +46,7 @@ const ACCEPTED_EXTENSIONS = '.sql,.dump,.gz'
 
 export default function UploadDumpModal({ open, onClose, onUploaded, existingFilenames }: Props) {
   const { notify } = useNotification()
-  const { rbacEnabled, hasPermission } = useAuth()
+  const { rbacEnabled } = useAuth()
   const { t } = useTranslation()
   const [password, setPassword] = useState('')
   const [file, setFile] = useState<File | null>(null)
@@ -58,8 +56,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
   // ordered: the first tenant owns the dump, the rest are shared with
   const [tenantAccess, setTenantAccess] = useState<string[]>([])
   const showTenantSelect = useTenantChoice()
-  // only these users are offered "none", so only they may ask for it
-  const canClearTenant = rbacEnabled && hasPermission(P.TENANTS_VIEW_ALL)
+  const canClearTenant = useCanClearTenant()
   const [defaultExpMinutes, setDefaultExpMinutes] = useState(480)
   const [expirationEnabled, setExpirationEnabled] = useState(false)
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(null)

@@ -2,7 +2,9 @@ package br.com.fzdevx.domain.model;
 
 import io.quarkus.logging.Log;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -38,6 +40,8 @@ public class DockerContainer {
 
     private String createdBy;
     private String tenantId;
+    /** Tenants the owner shared it with; they get the same access the owner has. */
+    private List<String> sharedWithTenants = new ArrayList<>();
 
     private boolean upgradeEnabled;
 
@@ -177,6 +181,14 @@ public class DockerContainer {
 
     public void setTenantId(String tenantId) {
         this.tenantId = tenantId;
+    }
+
+    public List<String> getSharedWithTenants() {
+        return sharedWithTenants;
+    }
+
+    public void setSharedWithTenants(List<String> sharedWithTenants) {
+        this.sharedWithTenants = sharedWithTenants == null ? new ArrayList<>() : new ArrayList<>(sharedWithTenants);
     }
 
     public String getIpAddress() {

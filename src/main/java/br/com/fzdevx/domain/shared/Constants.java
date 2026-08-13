@@ -7,6 +7,8 @@ public class Constants {
     public static final String DATABASE_NAME_LABEL = "docker-web-handler.database-name";
     public static final String CREATED_BY_LABEL = "docker-web-handler.created-by";
     public static final String TENANT_LABEL = "docker-web-handler.tenant";
+    /** Comma-separated tenant ids the container is shared with, beyond its owner. */
+    public static final String SHARED_TENANTS_LABEL = "docker-web-handler.shared-tenants";
     public static final String CI_LABEL = "docker-web-handler.ci-environment";
     public static final String CI_PIPELINE_LABEL = "docker-web-handler.ci-pipeline";
 }

@@ -49,6 +49,7 @@ class ManageScheduleUseCaseTest {
     @org.junit.jupiter.api.BeforeEach
     void wireTenantVisibility() {
         useCase.tenantVisibility = br.com.fzdevx.infrastructure.config.TestTenantVisibility.passthrough();
+        useCase.tenantSharing = br.com.fzdevx.infrastructure.config.TestTenantSharing.withoutRepository();
         // mirror the real atomic update: apply the mutator to whatever findById is stubbed with
         org.mockito.Mockito.lenient()
                 .when(scheduleRepository.update(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any()))
@@ -318,6 +319,130 @@ class ManageScheduleUseCaseTest {
 
         assertEquals("tenant-1", schedule.getTenantId());
         assertEquals("tenant-1", schedule.getCreateConfig().getTenantId());
+    }
+
+    @Test
+    void create_createAction_copiesSharingIntoPersistedConfig() {
+        // a schedule shared with tenant B must produce containers tenant B can
+        // see - the config is what executeCreate() reads at fire time
+        var tenantRepository = mock(br.com.fzdevx.application.port.TenantRepository.class);
+        var tenantTwo = new br.com.fzdevx.domain.model.auth.Tenant("Two", null);
+        tenantTwo.setId("tenant-2");
+        when(tenantRepository.findAll()).thenReturn(java.util.List.of(tenantTwo));
+        var rbacUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        rbacUser.set("u1", "alice", java.util.Set.of(),
+                new java.util.LinkedHashSet<>(java.util.List.of("tenant-1")));
+        useCase.tenantVisibility =
+                br.com.fzdevx.infrastructure.config.TestTenantVisibility.forUser(rbacUser, null);
+        useCase.tenantSharing = br.com.fzdevx.infrastructure.config.TestTenantSharing.with(tenantRepository);
+
+        CreateScheduleRequest req = new CreateScheduleRequest();
+        req.setName("Auto create");
+        req.setAction("CREATE");
+        req.setScheduleType("ONE_TIME");
+        req.setScheduledAt(Instant.now().plus(1, ChronoUnit.HOURS).toString());
+        req.setSharedWithTenants(java.util.List.of("tenant-2"));
+        req.setCreateConfig(new br.com.fzdevx.application.dto.RunContainerRequest());
+
+        ContainerSchedule schedule = useCase.create(req);
+
+        assertEquals(java.util.List.of("tenant-2"), schedule.getSharedWithTenants());
+        assertEquals(java.util.List.of("tenant-2"), schedule.getCreateConfig().getSharedWithTenants());
+    }
+
+    @Test
+    void create_createAction_discardsSharingSmuggledInsideTheConfig() {
+        // the config deserializes a sharedWithTenants field of its own; left
+        // alone it would reach the docker label without the unknown-tenant
+        // check, granting a not-yet-existing tenant access to the container
+        var rbacUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        rbacUser.set("u1", "alice", java.util.Set.of(),
+                new java.util.LinkedHashSet<>(java.util.List.of("tenant-1")));
+        useCase.tenantVisibility =
+                br.com.fzdevx.infrastructure.config.TestTenantVisibility.forUser(rbacUser, null);
+
+        CreateScheduleRequest req = new CreateScheduleRequest();
+        req.setName("Auto create");
+        req.setAction("CREATE");
+        req.setScheduleType("ONE_TIME");
+        req.setScheduledAt(Instant.now().plus(1, ChronoUnit.HOURS).toString());
+        var config = new br.com.fzdevx.application.dto.RunContainerRequest();
+        config.setSharedWithTenants(java.util.List.of("planted-tenant-id"));
+        req.setCreateConfig(config);
+
+        ContainerSchedule schedule = useCase.create(req);
+
+        assertTrue(schedule.getCreateConfig().getSharedWithTenants().isEmpty());
+    }
+
+    // ---- updateSharing ----
+
+    @Test
+    void updateSharing_replacesSharesAndSyncsTheCreateConfig() {
+        var tenantB = new br.com.fzdevx.domain.model.auth.Tenant("B", null);
+        tenantB.setId("tenant-b");
+        var tenantRepository = mock(br.com.fzdevx.application.port.TenantRepository.class);
+        when(tenantRepository.findAll()).thenReturn(java.util.List.of(tenantB));
+        useCase.tenantSharing = br.com.fzdevx.infrastructure.config.TestTenantSharing.with(tenantRepository);
+
+        ContainerSchedule stored = new ContainerSchedule("auto", ScheduleAction.CREATE, ScheduleType.ONE_TIME);
+        stored.setId(VALID_UUID);
+        stored.setTenantId("tenant-a");
+        stored.setCreateConfig(new br.com.fzdevx.domain.model.RunContainerConfig());
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.of(stored));
+
+        ContainerSchedule updated = useCase.updateSharing(VALID_UUID,
+                java.util.List.of("tenant-a", "tenant-b"), null, false);
+
+        // owner stripped, config kept in sync - it is what a scheduled CREATE
+        // reads at fire time, outside any request scope
+        assertEquals(java.util.List.of("tenant-b"), updated.getSharedWithTenants());
+        assertEquals(java.util.List.of("tenant-b"), updated.getCreateConfig().getSharedWithTenants());
+        assertEquals("tenant-a", updated.getCreateConfig().getTenantId());
+    }
+
+    @Test
+    void updateSharing_unknownTenant_throws() {
+        var tenantRepository = mock(br.com.fzdevx.application.port.TenantRepository.class);
+        when(tenantRepository.findAll()).thenReturn(java.util.List.of());
+        useCase.tenantSharing = br.com.fzdevx.infrastructure.config.TestTenantSharing.with(tenantRepository);
+
+        ContainerSchedule stored = new ContainerSchedule("auto", ScheduleAction.STOP, ScheduleType.ONE_TIME);
+        stored.setId(VALID_UUID);
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.of(stored));
+
+        assertThrows(InvalidInputException.class,
+                () -> useCase.updateSharing(VALID_UUID, java.util.List.of("nope"), null, false));
+    }
+
+    @Test
+    void updateSharing_notFound_throws() {
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.empty());
+        assertThrows(EntityNotFoundException.class,
+                () -> useCase.updateSharing(VALID_UUID, java.util.List.of(), null, false));
+    }
+
+    @Test
+    void persistedConfigNeverAliasesTheSchedulesLiveList() {
+        // an aliased reference would let a later in-place mutation of the
+        // schedule's list rewrite the container-label list past validation
+        var rbacUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        rbacUser.set("u1", "alice", java.util.Set.of(),
+                new java.util.LinkedHashSet<>(java.util.List.of("tenant-1")));
+        useCase.tenantVisibility =
+                br.com.fzdevx.infrastructure.config.TestTenantVisibility.forUser(rbacUser, null);
+
+        CreateScheduleRequest req = new CreateScheduleRequest();
+        req.setName("Auto create");
+        req.setAction("CREATE");
+        req.setScheduleType("ONE_TIME");
+        req.setScheduledAt(Instant.now().plus(1, ChronoUnit.HOURS).toString());
+        req.setCreateConfig(new br.com.fzdevx.application.dto.RunContainerRequest());
+
+        ContainerSchedule schedule = useCase.create(req);
+        schedule.getSharedWithTenants().add("smuggled-later");
+
+        assertFalse(schedule.getCreateConfig().getSharedWithTenants().contains("smuggled-later"));
     }
 
     // ---- toggleEnabled ----

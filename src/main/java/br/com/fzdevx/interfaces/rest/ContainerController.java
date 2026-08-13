@@ -56,6 +56,15 @@ public class ContainerController {
     br.com.fzdevx.infrastructure.config.TenantVisibility tenantVisibility;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.TenantSharing tenantSharing;
+
+    /** The tenants a container's labels say it is shared with. */
+    private List<String> sharedTenantsOf(Map<String, String> labels) {
+        return tenantSharing.parse(labels.get(Constants.SHARED_TENANTS_LABEL),
+                labels.get(Constants.TENANT_LABEL));
+    }
+
+    @Inject
     ContainerExpirationService expirationService;
 
     @Inject
@@ -101,9 +110,10 @@ public class ContainerController {
             // but its database restore can run for minutes afterwards and a failure
             // removes it again - showing a half-built "Created" row is misleading
             if (runContainerUseCase.isProvisioning(dc.getId())) continue;
-            // squad isolation: containers of other tenants are invisible
+            // squad isolation: containers of other tenants are invisible unless shared
             if (dc.getLabels() != null
-                    && !tenantVisibility.canSee(dc.getLabels().get(Constants.TENANT_LABEL))) continue;
+                    && !tenantVisibility.canSee(dc.getLabels().get(Constants.TENANT_LABEL),
+                            sharedTenantsOf(dc.getLabels()))) continue;
 
             DockerContainer dockerContainer = new DockerContainer();
             dockerContainer.setContainerId(dc.getId().substring(0, 10));
@@ -142,6 +152,7 @@ public class ContainerController {
 
             if (dc.getLabels() != null) {
                 dockerContainer.setTenantId(dc.getLabels().get(Constants.TENANT_LABEL));
+                dockerContainer.setSharedWithTenants(sharedTenantsOf(dc.getLabels()));
             }
 
             br.com.fzdevx.domain.model.ContainerExpiration expiration =

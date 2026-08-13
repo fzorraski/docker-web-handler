@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import TenantSelect, { useTenantChoice } from './TenantSelect'
+import TenantAccessSelect, { useTenantChoice, useCanClearTenant } from './TenantAccessSelect'
+import { splitOwner } from '../utils/tenantAccess'
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button,
   TextField, Box, Typography, IconButton, Chip, Grid, Alert,
@@ -34,8 +35,10 @@ export default function CreateScheduleModal({ open, onClose, onCreated, containe
   const { notify } = useNotification()
 
   const [name, setName] = useState('')
-  const [tenantId, setTenantId] = useState('')
+  // ordered: the first tenant owns the schedule, the rest are shared with
+  const [tenantAccess, setTenantAccess] = useState<string[]>([])
   const showTenantSelect = useTenantChoice()
+  const canClearTenant = useCanClearTenant()
   const [action, setAction] = useState<'START' | 'STOP' | 'CREATE' | 'REMOVE'>('START')
   const [scheduleType, setScheduleType] = useState<'ONE_TIME' | 'RECURRING'>('ONE_TIME')
   const [cronExpression, setCronExpression] = useState('0 8 * * 1-5')
@@ -103,7 +106,7 @@ export default function CreateScheduleModal({ open, onClose, onCreated, containe
 
   function reset() {
     setName('')
-    setTenantId('')
+    setTenantAccess([])
     setAction('START')
     setScheduleType('ONE_TIME')
     setCronExpression('0 8 * * 1-5')
@@ -129,7 +132,7 @@ export default function CreateScheduleModal({ open, onClose, onCreated, containe
       scheduleType,
       cronExpression: scheduleType === 'RECURRING' ? cronExpression : undefined,
       scheduledAt: scheduleType === 'ONE_TIME' && scheduledAt ? scheduledAt.toISOString() : undefined,
-      tenantId: tenantId || undefined,
+      ...splitOwner(tenantAccess, canClearTenant),
     }
 
     if (action === 'START' || action === 'STOP' || action === 'REMOVE') {
@@ -207,7 +210,7 @@ export default function CreateScheduleModal({ open, onClose, onCreated, containe
             onChange={(e) => setName(e.target.value)}
           />
 
-          {showTenantSelect && <TenantSelect value={tenantId} onChange={setTenantId} />}
+          {showTenantSelect && <TenantAccessSelect value={tenantAccess} onChange={setTenantAccess} />}
 
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary' }}>{t('schedules.columns.action')}</Typography>

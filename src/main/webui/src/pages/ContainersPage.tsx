@@ -31,7 +31,8 @@ import RemoveContainerDialog from '../components/RemoveContainerDialog'
 import { useNotification } from '../components/NotificationProvider'
 import { useAuth } from '../components/AuthProvider'
 import { P } from '../utils/permissions'
-import { useTenantNames } from '../hooks/useTenantNames'
+import { useTenants } from '../hooks/useTenants'
+import TenantCell from '../components/TenantCell'
 import HeroBanner from '../components/HeroBanner'
 import RestoreAttribution from '../components/RestoreAttribution'
 import { useTranslation } from 'react-i18next'
@@ -79,7 +80,7 @@ import {
   TablePagination,
   LinearProgress,
 } from '@mui/material'
-import { Search, AddCircleOutline, Stop, PlayArrow, Delete, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord, Code, Memory, Timer, SystemUpdateAlt, Lock } from '@mui/icons-material'
+import { Search, AddCircleOutline, Stop, PlayArrow, Delete, ViewColumn, Warning, MoreTime, CameraAlt, Terminal, Dns, CheckCircle, StopCircle, Schedule, SwapHoriz, AccessTime, Monitor, MoreVert, CleaningServices, FiberManualRecord, Code, Memory, Timer, SystemUpdateAlt, Lock, DeleteForever } from '@mui/icons-material'
 import { isSchedulingEnabled, listSchedules } from '../services/scheduleService'
 import { subscribeContainerUpdates } from '../services/sseService'
 import type { ContainerSchedule } from '../types'
@@ -91,6 +92,22 @@ interface ColumnDef {
 }
 
 const STORAGE_KEY = 'containerColumnsVisibility'
+
+/**
+ * The secondary chips under a countdown (database deletion warnings). Smaller
+ * and lighter than the countdown itself on purpose: the expiry time is what the
+ * column is for, and a filled chip below it out-shouted the very thing it
+ * qualifies. The full sentence lives in each chip's tooltip.
+ */
+const DENSE_CHIP_SX = {
+  // 22 rather than smaller: the delete icon is the only way to cancel a pending
+  // database deletion, so it stays a real click target
+  height: 22,
+  fontSize: '0.7rem',
+  '& .MuiChip-label': { px: 0.75 },
+  '& .MuiChip-icon': { fontSize: 14, ml: '6px' },
+  '& .MuiChip-deleteIcon': { fontSize: 15, mr: '4px' },
+}
 
 import { DAY_MARKS } from '../utils/constants'
 
@@ -110,7 +127,7 @@ function loadVisibility(columns: ColumnDef[]): Record<string, boolean> {
 export default function ContainersPage() {
   const { notify, confirm } = useNotification()
   const { rbacEnabled, hasPermission } = useAuth()
-  const tenantNames = useTenantNames()
+  const tenants = useTenants()
   const canOperate = hasPermission(P.CONTAINERS_OPERATE)
   const canRun = hasPermission(P.CONTAINERS_RUN)
   const canTerminal = hasPermission(P.TERMINAL_ACCESS)
@@ -328,7 +345,7 @@ export default function ContainersPage() {
       case 'database': return c.databaseName ?? ''
       case 'expires': return c.expiresAt ?? ''
       // the column displays the resolved tenant name, so sort by it too
-      case 'tenantId': return c.tenantId ? (tenantNames.get(c.tenantId) ?? c.tenantId) : ''
+      case 'tenantId': return c.tenantId ? (tenants.get(c.tenantId)?.name ?? c.tenantId) : ''
       default: return ''
     }
   }
@@ -360,7 +377,7 @@ export default function ContainersPage() {
     const lc = filter.toLowerCase()
     const result = filteredByStatus.filter((c) =>
       Object.values(c).some((v) => String(v ?? '').toLowerCase().includes(lc))
-        || (c.tenantId ? (tenantNames.get(c.tenantId) ?? '').toLowerCase().includes(lc) : false)
+        || (c.tenantId ? (tenants.get(c.tenantId)?.name ?? '').toLowerCase().includes(lc) : false)
     )
     if (!sortKey) return result
     return [...result].sort((a, b) => {
@@ -369,7 +386,7 @@ export default function ContainersPage() {
       const cmp = va.localeCompare(vb)
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [filteredByStatus, filter, sortKey, sortDir, tenantNames])
+  }, [filteredByStatus, filter, sortKey, sortDir, tenants])
 
   const toggleSelectAll = useCallback(() => {
     setSelected(prev =>
@@ -473,7 +490,7 @@ export default function ContainersPage() {
                 <Typography variant="body2">
                   <span dangerouslySetInnerHTML={{ __html: t('containers.restoringInto', { filename: r.dumpFilename, database: r.targetDatabase, repository: r.repository }) }} />
                 </Typography>
-                <RestoreAttribution restore={r} tenantNames={tenantNames} />
+                <RestoreAttribution restore={r} tenants={tenants} />
               </Box>
             ))}
           </Alert>
@@ -766,6 +783,7 @@ export default function ContainersPage() {
                                   ? t('containers.dbMigrated') + ` (${migration.sourceVersion} \u2192 ${migration.targetVersion})`
                                   : t('containers.dbMigrated'))
                                 + (migration.migratedAt ? ` — ${formatDate(migration.migratedAt)}` : '')
+                                + (migration.migratedBy ? ` — ${t('database.byUser', { user: migration.migratedBy })}` : '')
                               }>
                                 <SwapHoriz sx={{ fontSize: 16, color: 'info.main' }} />
                               </Tooltip>
@@ -793,7 +811,9 @@ export default function ContainersPage() {
                           </Tooltip>
                         )
                       ) : c.expiresAt ? (
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                        // flex-start, or the column's default stretch blows each chip
+                        // out to the cell width and centres its label inside the pill
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <ExpirationChip expiresAt={c.expiresAt} onCancel={canOperate ? () => actions.handleCancelExpiration(c.containerId, c.names) : undefined} onExpired={loadContainers} onClick={canOperate ? () => dialogs.openEditExpiration(c) : undefined} />
                             {canOperate && (
@@ -810,8 +830,9 @@ export default function ContainersPage() {
                                 label={t('containers.dbWillBeDeletedShort')}
                                 size="small"
                                 color="warning"
-                                icon={<Warning />}
-                                variant="filled"
+                                icon={<DeleteForever />}
+                                variant="outlined"
+                                sx={DENSE_CHIP_SX}
                                 onDelete={canOperate ? () => actions.handleCancelDbDeletion(c.containerId, c.names) : undefined}
                               />
                             </Tooltip>
@@ -824,6 +845,7 @@ export default function ContainersPage() {
                                 color="error"
                                 icon={<Warning />}
                                 variant="outlined"
+                                sx={DENSE_CHIP_SX}
                               />
                             </Tooltip>
                           )}
@@ -846,7 +868,7 @@ export default function ContainersPage() {
                   )}
                   {vis.has('created') &&<TableCell sx={{ fontSize: '0.85rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>{formatBackendDate(c.created)}</TableCell>}
                   {vis.has('createdBy') &&<TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{c.createdBy || '-'}</TableCell>}
-                  {vis.has('tenantId') &&<TableCell>{c.tenantId ? <Chip label={tenantNames.get(c.tenantId) ?? c.tenantId} size="small" variant="outlined" color="secondary" /> : '-'}</TableCell>}
+                  {vis.has('tenantId') &&<TableCell><TenantCell tenantId={c.tenantId} sharedWithTenants={c.sharedWithTenants} tenants={tenants} /></TableCell>}
                   {vis.has('containerId') &&<TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem' }}>{c.containerId}</TableCell>}
                   {vis.has('command') &&<TableCell>{c.command}</TableCell>}
                   {vis.has('actions') && (

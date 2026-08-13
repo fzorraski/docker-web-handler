@@ -40,7 +40,16 @@ public class CreateScheduleRequest {
     public void setOperationsPassword(String operationsPassword) { this.operationsPassword = operationsPassword; }
 
     private String tenantId;
+    /** Set when the caller deliberately wants an untenanted schedule. */
+    private boolean noTenant;
+    private java.util.List<String> sharedWithTenants;
 
     public String getTenantId() { return tenantId; }
     public void setTenantId(String tenantId) { this.tenantId = tenantId; }
+
+    public boolean isNoTenant() { return noTenant; }
+    public void setNoTenant(boolean noTenant) { this.noTenant = noTenant; }
+
+    public java.util.List<String> getSharedWithTenants() { return sharedWithTenants; }
+    public void setSharedWithTenants(java.util.List<String> sharedWithTenants) { this.sharedWithTenants = sharedWithTenants; }
 }

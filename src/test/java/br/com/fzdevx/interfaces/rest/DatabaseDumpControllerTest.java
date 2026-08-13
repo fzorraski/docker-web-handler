@@ -40,6 +40,7 @@ class DatabaseDumpControllerTest {
     @Mock AllowedRepositoryResolver allowedRepositoryResolver;
     @Mock ResourceCounterService resourceCounterService;
     @Mock br.com.fzdevx.application.port.AuditLogger auditLogger;
+    @Mock br.com.fzdevx.application.port.TenantRepository tenantRepository;
 
     @InjectMocks
     DatabaseDumpController controller;
@@ -50,6 +51,7 @@ class DatabaseDumpControllerTest {
         controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
         controller.tenantVisibility = br.com.fzdevx.infrastructure.config.TestTenantVisibility.passthrough();
         controller.tenantEntitlements = br.com.fzdevx.infrastructure.config.TestTenantEntitlements.passthrough();
+        controller.tenantSharing = br.com.fzdevx.infrastructure.config.TestTenantSharing.with(tenantRepository);
     }
 
     // ---- isEnabled ----
@@ -115,6 +117,102 @@ class DatabaseDumpControllerTest {
         Response response = controller.updateSharing(VALID_UUID, Map.of("sharedWithTenants", java.util.List.of()));
 
         assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    void updateSharing_stripsTheOwnersOwnId() {
+        // a stored copy of the owner's id would survive a later ownership
+        // transfer and keep the former tenant's members on the share list
+        when(dumpStorageService.isEnabled()).thenReturn(true);
+        DatabaseDump dump = new DatabaseDump();
+        dump.setId(VALID_UUID);
+        dump.setTenantId("owner-tenant");
+        when(dumpStorageService.findById(VALID_UUID)).thenReturn(Optional.of(dump));
+        when(dumpStorageService.updateSharing(eq(VALID_UUID), any(), any(), anyBoolean())).thenReturn(true);
+        var other = new br.com.fzdevx.domain.model.auth.Tenant("Other", null);
+        other.setId("other-tenant");
+        when(tenantRepository.findAll()).thenReturn(java.util.List.of(other));
+
+        var owner = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        owner.set("u1", "alice",
+                java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.DATABASE_VIEW,
+                        br.com.fzdevx.domain.model.auth.Permission.DATABASE_OPERATE),
+                java.util.Set.of("owner-tenant"));
+        controller.currentUser = owner;
+        controller.tenantVisibility =
+                br.com.fzdevx.infrastructure.config.TestTenantVisibility.forUser(owner, null);
+
+        Response response = controller.updateSharing(VALID_UUID,
+                Map.of("sharedWithTenants", java.util.List.of("owner-tenant", "other-tenant")));
+
+        assertEquals(200, response.getStatus());
+        verify(dumpStorageService).updateSharing(eq(VALID_UUID),
+                eq(java.util.List.of("other-tenant")), isNull(), eq(false));
+    }
+
+    @Test
+    void updateSharing_transferToNoTenant_stripsTheOutgoingOwner() {
+        // the resource becomes visible to everyone, and the demoted owner's id
+        // would linger on the share list if the dump is adopted later
+        when(dumpStorageService.isEnabled()).thenReturn(true);
+        DatabaseDump dump = new DatabaseDump();
+        dump.setId(VALID_UUID);
+        dump.setTenantId("tenant-a");
+        when(dumpStorageService.findById(VALID_UUID)).thenReturn(Optional.of(dump));
+        when(dumpStorageService.updateSharing(eq(VALID_UUID), any(), any(), anyBoolean())).thenReturn(true);
+        var ta = new br.com.fzdevx.domain.model.auth.Tenant("A", null);
+        ta.setId("tenant-a");
+        var tb = new br.com.fzdevx.domain.model.auth.Tenant("B", null);
+        tb.setId("tenant-b");
+        when(tenantRepository.findAll()).thenReturn(java.util.List.of(ta, tb));
+
+        var globalAdmin = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        globalAdmin.set("u1", "root",
+                java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.TENANTS_VIEW_ALL));
+        controller.currentUser = globalAdmin;
+        controller.tenantVisibility =
+                br.com.fzdevx.infrastructure.config.TestTenantVisibility.forUser(globalAdmin, tenantRepository);
+
+        java.util.Map<String, Object> body = new java.util.HashMap<>();
+        body.put("tenantId", "");
+        body.put("sharedWithTenants", java.util.List.of("tenant-a", "tenant-b"));
+        Response response = controller.updateSharing(VALID_UUID, body);
+
+        assertEquals(200, response.getStatus());
+        verify(dumpStorageService).updateSharing(eq(VALID_UUID),
+                eq(java.util.List.of("tenant-b")), isNull(), eq(true));
+    }
+
+    @Test
+    void updateSharing_lostWrite_reports404NotSuccess() {
+        // deleted between the visibility check and the write: a 200 would log
+        // a DUMP_SHARING_UPDATE audit entry that never happened
+        when(dumpStorageService.isEnabled()).thenReturn(true);
+        DatabaseDump dump = new DatabaseDump();
+        dump.setId(VALID_UUID);
+        when(dumpStorageService.findById(VALID_UUID)).thenReturn(Optional.of(dump));
+        when(dumpStorageService.updateSharing(eq(VALID_UUID), any(), any(), anyBoolean())).thenReturn(false);
+
+        Response response = controller.updateSharing(VALID_UUID,
+                Map.of("sharedWithTenants", java.util.List.of()));
+
+        assertEquals(404, response.getStatus());
+        verify(auditLogger, never()).log(eq("DUMP_SHARING_UPDATE"), any(), any());
+    }
+
+    @Test
+    void updateSharing_unknownTenant_rejected() {
+        when(dumpStorageService.isEnabled()).thenReturn(true);
+        DatabaseDump dump = new DatabaseDump();
+        dump.setId(VALID_UUID);
+        when(dumpStorageService.findById(VALID_UUID)).thenReturn(Optional.of(dump));
+        when(tenantRepository.findAll()).thenReturn(java.util.List.of());
+
+        Response response = controller.updateSharing(VALID_UUID,
+                Map.of("sharedWithTenants", java.util.List.of("nope")));
+
+        assertEquals(400, response.getStatus());
+        verify(dumpStorageService, never()).updateSharing(any(), any(), any(), anyBoolean());
     }
 
     @Test

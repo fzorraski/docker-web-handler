@@ -24,6 +24,11 @@ import java.util.Map;
  * tenant then lives in a docker label, so checking it needs an inspect -
  * skipped entirely when the caller bypasses tenant filtering (RBAC off,
  * TENANTS_VIEW_ALL, workers) and no hidden image is configured.</p>
+ *
+ * <p>A second label lists the tenants the owner shared the container with.
+ * Since this guard is the only gate on by-id operations, being on that list
+ * grants the same access the owning tenant has, terminal and removal
+ * included.</p>
  */
 @ApplicationScoped
 public class ContainerTenantGuard {
@@ -33,6 +38,9 @@ public class ContainerTenantGuard {
 
     @Inject
     TenantVisibility tenantVisibility;
+
+    @Inject
+    br.com.fzdevx.infrastructure.config.TenantSharing tenantSharing;
 
     @Inject
     ContainerVisibilityService visibilityService;
@@ -64,6 +72,7 @@ public class ContainerTenantGuard {
         }
         Map<String, String> labels = config == null ? null : config.getLabels();
         String tenantId = labels == null ? null : labels.get(Constants.TENANT_LABEL);
-        return tenantVisibility.canSee(tenantId);
+        String sharedWith = labels == null ? null : labels.get(Constants.SHARED_TENANTS_LABEL);
+        return tenantVisibility.canSee(tenantId, tenantSharing.parse(sharedWith, tenantId));
     }
 }
