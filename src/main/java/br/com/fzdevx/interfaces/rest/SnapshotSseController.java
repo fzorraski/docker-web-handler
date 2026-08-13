@@ -69,7 +69,7 @@ public class SnapshotSseController {
         }
 
         // tenant resolution happens here (request scope); the SSE stream runs off a ticket
-        request.setTenantId(tenantVisibility.resolveCreationTenant(request.getTenantId()));
+        request.setTenantId(tenantVisibility.resolveCreationTenant(request.getTenantId(), request.isNoTenant()));
         if (request.getSharedWithTenants() != null) {
             for (String tenantId : request.getSharedWithTenants()) {
                 if (tenantRepository.findById(tenantId).isEmpty()) {

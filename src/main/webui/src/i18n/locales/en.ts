@@ -1151,6 +1151,13 @@ const en = {
     sharedWith: 'Shared With',
     noneOption: 'None (visible to everyone)',
     selectorHint: 'The new resource will belong to this tenant.',
+    accessLabel: 'Tenant access',
+    accessHint: 'The first tenant selected (★) owns the file; the others can see it.',
+    allTenantsOption: 'All tenants',
+    allMyTenantsOption: 'All my tenants',
+    allTenantsHint: 'Selects the tenants that exist now; tenants created later will not see it.',
+    noneOptionHint: 'Visible to everyone, including tenants created later. Afterwards only administrators who can view all tenants can change its sharing.',
+    moreTenants: '+{{count}} more',
     sharing: {
       title: 'Sharing',
       description: 'Select which other tenants can see this resource.',

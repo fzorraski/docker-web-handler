@@ -201,7 +201,10 @@ public class DatabaseDumpController {
 
             Instant expiresAt = DateTimeParser.parseExpiresAt(extractString(form, "expiresAt"));
 
-            String tenantId = tenantVisibility.resolveCreationTenant(extractString(form, "tenantId"));
+            // "noTenant" is how the UI says "visible to everyone" out loud: an
+            // absent tenantId alone would fall back to the actor's own tenant
+            boolean noTenant = Boolean.parseBoolean(extractString(form, "noTenant"));
+            String tenantId = tenantVisibility.resolveCreationTenant(extractString(form, "tenantId"), noTenant);
             List<String> sharedWithTenants = parseTenantList(extractString(form, "sharedWithTenants"));
             Optional<Response> shareError = validateShareTargets(sharedWithTenants);
             if (shareError.isPresent()) {

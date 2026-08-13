@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import TenantSelect, { useTenantChoice } from './TenantSelect'
+import { useTenantChoice } from './TenantSelect'
+import TenantAccessSelect from './TenantAccessSelect'
+import { splitOwner } from '../utils/tenantAccess'
 import { useSseOperation } from '../hooks/useSseOperation'
 import {
   Dialog,
@@ -29,6 +31,7 @@ import { getRepositoryDatabases } from '../services/containerService'
 import { prepareSnapshot, streamSnapshot } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
 import { useAuth } from './AuthProvider'
+import { P } from '../utils/permissions'
 import OperationProgress, { SNAPSHOT_STEPS } from './OperationProgress'
 
 interface Props {
@@ -42,7 +45,9 @@ interface Props {
 
 export default function CreateSnapshotModal({ open, onClose, onCreated, initialRepository, initialDatabase, containerName }: Props) {
   const { notify } = useNotification()
-  const { rbacEnabled } = useAuth()
+  const { rbacEnabled, hasPermission } = useAuth()
+  // only these users are offered "none", so only they may ask for it
+  const canClearTenant = rbacEnabled && hasPermission(P.TENANTS_VIEW_ALL)
   const { t } = useTranslation()
   const locked = !!(initialRepository && initialDatabase)
   const [repositories, setRepositories] = useState<string[]>([])
@@ -53,7 +58,8 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
   const [format, setFormat] = useState<'CUSTOM' | 'SQL'>('CUSTOM')
   const [label, setLabel] = useState('')
   const [description, setDescription] = useState('')
-  const [tenantId, setTenantId] = useState('')
+  // ordered: the first tenant owns the snapshot, the rest are shared with
+  const [tenantAccess, setTenantAccess] = useState<string[]>([])
   const showTenantSelect = useTenantChoice()
   const [expirationEnabled, setExpirationEnabled] = useState(false)
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(dayjs().add(7, 'day'))
@@ -105,7 +111,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
     setFormat('CUSTOM')
     setLabel('')
     setDescription('')
-    setTenantId('')
+    setTenantAccess([])
     setExpirationEnabled(false)
     setExpiresAt(dayjs().add(7, 'day'))
     setPassword('')
@@ -150,7 +156,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
         password,
         containerName,
         temporary: download,
-        tenantId: tenantId || undefined,
+        ...splitOwner(tenantAccess, canClearTenant),
       })
 
       sse.start(
@@ -320,7 +326,7 @@ export default function CreateSnapshotModal({ open, onClose, onCreated, initialR
 
             {showTenantSelect && (
               <Box sx={{ mb: 3 }}>
-                <TenantSelect value={tenantId} onChange={setTenantId} />
+                <TenantAccessSelect value={tenantAccess} onChange={setTenantAccess} />
               </Box>
             )}
 

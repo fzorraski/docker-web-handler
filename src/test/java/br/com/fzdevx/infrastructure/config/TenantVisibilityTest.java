@@ -162,6 +162,34 @@ class TenantVisibilityTest {
                 () -> rbacUser(Set.of(Permission.TENANTS_VIEW_ALL)).resolveCreationTenant("nope"));
     }
 
+    // ---- resolveCreationTenant, explicit "no tenant" ----
+
+    @Test
+    void explicitNone_viewAllHolderWhoIsAlsoAMember_getsNoTenant() {
+        // the regression: without the flag this falls through to "nothing
+        // requested" and stamps t1, so a dump the UI promised was visible to
+        // everyone would silently belong to the admin's own tenant
+        assertNull(rbacUser(Set.of(Permission.TENANTS_VIEW_ALL), "t1").resolveCreationTenant(null, true));
+    }
+
+    @Test
+    void explicitNone_isRejectedForATenantMember() {
+        // members are never offered the choice, so the flag can only be forged
+        assertThrows(InvalidInputException.class,
+                () -> rbacUser(Set.of(), "t1").resolveCreationTenant(null, true));
+    }
+
+    @Test
+    void explicitNone_rbacOff_returnsNull() {
+        assertNull(TestTenantVisibility.passthrough().resolveCreationTenant("t1", true));
+    }
+
+    @Test
+    void withoutTheFlag_viewAllHolderStillDefaultsToTheirOwnTenant() {
+        // unchanged behaviour for every caller that does not pass the flag
+        assertEquals("t1", rbacUser(Set.of(Permission.TENANTS_VIEW_ALL), "t1").resolveCreationTenant(null));
+    }
+
     @Test
     void builtInAdmin_doesNotBypass() {
         // cheapest guard against TENANTS_VIEW_ALL being put back into ADMIN

@@ -108,6 +108,21 @@ public class TenantVisibility {
      * first membership, or no tenant for tenant-less users.
      */
     public String resolveCreationTenant(String requestedTenantId) {
+        return resolveCreationTenant(requestedTenantId, false);
+    }
+
+    /**
+     * As {@link #resolveCreationTenant(String)}, but {@code explicitNone}
+     * distinguishes "the caller deliberately asked for an untenanted resource"
+     * from "the caller said nothing about tenants".
+     *
+     * <p>The distinction matters because the default for a silent request is
+     * the actor's first membership: without it, a TENANTS_VIEW_ALL holder who
+     * also belongs to a tenant would pick "visible to everyone" in the UI and
+     * silently get their own tenant stamped instead. Only cross-tenant actors
+     * may create an untenanted resource, mirroring who is offered the choice.</p>
+     */
+    public String resolveCreationTenant(String requestedTenantId, boolean explicitNone) {
         Set<String> mine;
         boolean rbac;
         try {
@@ -115,10 +130,16 @@ public class TenantVisibility {
             mine = currentUser.getTenantIds();
         } catch (ContextNotActiveException e) {
             // scheduler/worker threads: tenant comes pre-resolved from the persisted config
-            return normalize(requestedTenantId);
+            return explicitNone ? null : normalize(requestedTenantId);
         }
         String requested = normalize(requestedTenantId);
         if (!rbac) {
+            return null;
+        }
+        if (explicitNone) {
+            if (!currentUser.hasPermission(Permission.TENANTS_VIEW_ALL)) {
+                throw new InvalidInputException("Invalid tenant.");
+            }
             return null;
         }
         if (requested == null) {

@@ -1153,6 +1153,13 @@ const es: typeof en = {
     sharedWith: 'Compartido Con',
     noneOption: 'Ninguno (visible para todos)',
     selectorHint: 'El nuevo recurso pertenecerá a este tenant.',
+    accessLabel: 'Acceso por tenant',
+    accessHint: 'El primer tenant seleccionado (★) será el propietario del archivo; los demás podrán verlo.',
+    allTenantsOption: 'Todos los tenants',
+    allMyTenantsOption: 'Todos mis tenants',
+    allTenantsHint: 'Selecciona los tenants que existen ahora; los tenants creados después no lo verán.',
+    noneOptionHint: 'Visible para todos, incluidos los tenants creados después. Luego solo los administradores que ven todos los tenants podrán cambiar la compartición.',
+    moreTenants: '+{{count}} más',
     sharing: {
       title: 'Compartir',
       description: 'Selecciona qué otros tenants pueden ver este recurso.',

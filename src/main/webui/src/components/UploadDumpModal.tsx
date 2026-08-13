@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import TenantSelect, { useTenantChoice } from './TenantSelect'
+import { useTenantChoice } from './TenantSelect'
+import TenantAccessSelect from './TenantAccessSelect'
+import { splitOwner } from '../utils/tenantAccess'
 import {
   Dialog,
   DialogTitle,
@@ -26,6 +28,7 @@ import { uploadDump } from '../services/dumpService'
 import { getDefaultExpirationMinutes } from '../services/containerService'
 import { useNotification } from './NotificationProvider'
 import { useAuth } from './AuthProvider'
+import { P } from '../utils/permissions'
 import type { DatabaseDump } from '../types'
 
 interface Props {
@@ -45,15 +48,18 @@ const ACCEPTED_EXTENSIONS = '.sql,.dump,.gz'
 
 export default function UploadDumpModal({ open, onClose, onUploaded, existingFilenames }: Props) {
   const { notify } = useNotification()
-  const { rbacEnabled } = useAuth()
+  const { rbacEnabled, hasPermission } = useAuth()
   const { t } = useTranslation()
   const [password, setPassword] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [databaseName, setDatabaseName] = useState('')
   const [version, setVersion] = useState('')
   const [description, setDescription] = useState('')
-  const [tenantId, setTenantId] = useState('')
+  // ordered: the first tenant owns the dump, the rest are shared with
+  const [tenantAccess, setTenantAccess] = useState<string[]>([])
   const showTenantSelect = useTenantChoice()
+  // only these users are offered "none", so only they may ask for it
+  const canClearTenant = rbacEnabled && hasPermission(P.TENANTS_VIEW_ALL)
   const [defaultExpMinutes, setDefaultExpMinutes] = useState(480)
   const [expirationEnabled, setExpirationEnabled] = useState(false)
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(null)
@@ -83,7 +89,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
     setDatabaseName('')
     setVersion('')
     setDescription('')
-    setTenantId('')
+    setTenantAccess([])
     setExpirationEnabled(false)
     setExpiresAt(null)
     setUploading(false)
@@ -118,7 +124,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
         version: version || undefined,
         expiresAt: expirationEnabled && expiresAt ? expiresAt.format('YYYY-MM-DDTHH:mm:ss') : undefined,
         description: description || undefined,
-        tenantId: tenantId || undefined,
+        ...splitOwner(tenantAccess, canClearTenant),
       },
       (percent) => setUploadProgress(percent),
     )
@@ -278,7 +284,7 @@ export default function UploadDumpModal({ open, onClose, onUploaded, existingFil
 
             {showTenantSelect && (
               <Box sx={{ mb: 3 }}>
-                <TenantSelect value={tenantId} onChange={setTenantId} disabled={uploading} />
+                <TenantAccessSelect value={tenantAccess} onChange={setTenantAccess} disabled={uploading} />
               </Box>
             )}
 

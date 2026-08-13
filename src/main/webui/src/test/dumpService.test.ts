@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   isDumpEnabled,
   listDumps,
@@ -12,6 +12,7 @@ import {
   updateDumpMetadata,
   cleanupIdleDumps,
   getPostRestoreScripts,
+  uploadDump,
 } from '../services/dumpService'
 
 const mockFetch = vi.fn()
@@ -263,6 +264,67 @@ describe('dumpService', () => {
       mockFetch.mockReturnValue(jsonResponse(null, false))
       const result = await getPostRestoreScripts('pg')
       expect(result.enabled).toBe(false)
+    })
+  })
+
+  // ---- uploadDump ----
+
+  describe('uploadDump', () => {
+    // pins the wire format against the backend's parseTenantList, which splits
+    // the sharedWithTenants part on commas
+    class MockXhr {
+      static last: MockXhr | null = null
+      upload = { addEventListener: () => {} }
+      status = 200
+      responseText = '{"id":"dump-1"}'
+      body: FormData | null = null
+      private listeners: Record<string, () => void> = {}
+      addEventListener(type: string, fn: () => void) { this.listeners[type] = fn }
+      open() {}
+      send(body: FormData) {
+        this.body = body
+        MockXhr.last = this
+        this.listeners.load?.()
+      }
+    }
+
+    const file = new File(['dump'], 'backup.sql')
+    const realXhr = global.XMLHttpRequest
+
+    beforeEach(() => {
+      MockXhr.last = null
+      global.XMLHttpRequest = MockXhr as unknown as typeof XMLHttpRequest
+    })
+
+    // restore it: leaving the stub in place would silently apply to any
+    // describe block added after this one
+    afterEach(() => {
+      global.XMLHttpRequest = realXhr
+    })
+
+    it('sends the owning tenant and joins the shared list with commas', async () => {
+      await uploadDump(file, 'pw', { tenantId: 'a', sharedWithTenants: ['b', 'c'] })
+      const body = MockXhr.last!.body!
+      expect(body.get('tenantId')).toBe('a')
+      expect(body.get('sharedWithTenants')).toBe('b,c')
+      expect(body.has('noTenant')).toBe(false)
+    })
+
+    it('omits every tenant field when the selector was never shown', async () => {
+      await uploadDump(file, 'pw', { sharedWithTenants: [] })
+      const body = MockXhr.last!.body!
+      expect(body.has('tenantId')).toBe(false)
+      expect(body.has('sharedWithTenants')).toBe(false)
+      expect(body.has('noTenant')).toBe(false)
+    })
+
+    it('asks for no tenant explicitly when the user chose "visible to everyone"', async () => {
+      // an omitted tenantId alone means "unspecified", which the backend
+      // answers with the actor's own first membership
+      await uploadDump(file, 'pw', { noTenant: true, sharedWithTenants: [] })
+      const body = MockXhr.last!.body!
+      expect(body.get('noTenant')).toBe('true')
+      expect(body.has('tenantId')).toBe(false)
     })
   })
 })

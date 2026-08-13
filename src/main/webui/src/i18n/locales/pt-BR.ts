@@ -1153,6 +1153,13 @@ const ptBR: typeof en = {
     sharedWith: 'Compartilhado Com',
     noneOption: 'Nenhum (visível para todos)',
     selectorHint: 'O novo recurso pertencerá a este tenant.',
+    accessLabel: 'Acesso por tenant',
+    accessHint: 'O primeiro tenant selecionado (★) será o dono do arquivo; os demais poderão vê-lo.',
+    allTenantsOption: 'Todos os tenants',
+    allMyTenantsOption: 'Todos os meus tenants',
+    allTenantsHint: 'Seleciona os tenants que existem agora; tenants criados depois não o verão.',
+    noneOptionHint: 'Visível para todos, inclusive tenants criados depois. Depois disso, só administradores que enxergam todos os tenants poderão alterar o compartilhamento.',
+    moreTenants: '+{{count}} outros',
     sharing: {
       title: 'Compartilhamento',
       description: 'Selecione quais outros tenants podem ver este recurso.',

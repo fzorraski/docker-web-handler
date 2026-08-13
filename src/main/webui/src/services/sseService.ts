@@ -347,6 +347,7 @@ export async function prepareSnapshot(body: {
   containerName?: string
   temporary?: boolean
   tenantId?: string
+  noTenant?: boolean
   sharedWithTenants?: string[]
 }): Promise<string> {
   const res = await fetchWithAuth('/api/database/snapshots/sse/create/prepare', {

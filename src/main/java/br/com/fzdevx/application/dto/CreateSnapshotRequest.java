@@ -34,6 +34,8 @@ public class CreateSnapshotRequest {
     private String description;
     private boolean temporary;
     private String tenantId;
+    /** Set when the caller deliberately wants an untenanted snapshot. */
+    private boolean noTenant;
     private java.util.List<String> sharedWithTenants;
 
     public String getDescription() { return description; }
@@ -44,6 +46,9 @@ public class CreateSnapshotRequest {
 
     public String getTenantId() { return tenantId; }
     public void setTenantId(String tenantId) { this.tenantId = tenantId; }
+
+    public boolean isNoTenant() { return noTenant; }
+    public void setNoTenant(boolean noTenant) { this.noTenant = noTenant; }
 
     public java.util.List<String> getSharedWithTenants() { return sharedWithTenants; }
     public void setSharedWithTenants(java.util.List<String> sharedWithTenants) { this.sharedWithTenants = sharedWithTenants; }
