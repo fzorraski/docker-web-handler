@@ -1,20 +1,13 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
+import { Box, Typography, Tabs, Tab, CircularProgress } from '@mui/material'
 import {
-  Box, Typography, Button, Paper, Chip, IconButton, Tooltip, Switch,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Tabs, Tab, CircularProgress,
-} from '@mui/material'
-import {
-  PersonAdd, Edit, Delete, LockReset, AddCircleOutline, Visibility,
-  Group, AdminPanelSettings, Tune, Shield, Workspaces, GroupAdd, History, Insights,
+  Group, AdminPanelSettings, Tune, Workspaces, History, Insights,
 } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import HeroBanner from '../components/HeroBanner'
 import { useNotification } from '../components/NotificationProvider'
 import { useAuth } from '../components/AuthProvider'
-import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
 import { P } from '../utils/permissions'
-import { formatDate } from '../utils/format'
 import { listUsers, updateUser, deleteUser, type AppUser } from '../services/userService'
 import { listRoles, deleteRole, getPermissionCatalog, type AppRole, type PermissionInfo } from '../services/roleService'
 import { listTenantsManage, deleteTenant, type Tenant } from '../services/tenantService'
@@ -22,6 +15,10 @@ import UserFormDialog from '../components/admin/UserFormDialog'
 import ResetPasswordDialog from '../components/admin/ResetPasswordDialog'
 import RoleFormDialog from '../components/admin/RoleFormDialog'
 import TenantFormDialog from '../components/admin/TenantFormDialog'
+import UsersTab from '../components/admin/UsersTab'
+import RolesTab from '../components/admin/RolesTab'
+import TenantsTab from '../components/admin/TenantsTab'
+import { type AdminActor, canActOnRole } from '../components/admin/adminTableUtils'
 
 const SettingsTab = lazy(() => import('../components/admin/SettingsTab'))
 const AuditTab = lazy(() => import('../components/admin/AuditTab'))
@@ -33,7 +30,6 @@ export default function AdminPage() {
   const { t } = useTranslation()
   const { notify, confirm } = useNotification()
   const { currentUser, hasPermission, refreshUser } = useAuth()
-  const { theadBg, theadColor } = useTableHeaderTheme()
   const canSystemConfig = hasPermission(P.SYSTEM_CONFIG)
   const canAuditView = hasPermission(P.AUDIT_LOG_VIEW)
   // an admin without cross-tenant reach only manages members of their own tenants
@@ -54,6 +50,14 @@ export default function AdminPage() {
   const [editingRole, setEditingRole] = useState<AppRole | null>(null)
   const [tenantDialogOpen, setTenantDialogOpen] = useState(false)
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null)
+
+  const actor: AdminActor = useMemo(() => ({
+    canSystemConfig,
+    canTenantsViewAll,
+    myPermissions: currentUser?.permissions ?? [],
+    myTenantIds: myTenants.map(tn => tn.id),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [canSystemConfig, canTenantsViewAll, currentUser])
 
   const load = useCallback(async () => {
     try {
@@ -77,51 +81,6 @@ export default function AdminPage() {
   useEffect(() => {
     getPermissionCatalog().then(setCatalog).catch(() => setCatalog([]))
   }, [])
-
-  function rolesOf(user: AppUser): AppRole[] {
-    return user.roleIds
-      .map(id => roles.find(r => r.id === id))
-      .filter((r): r is AppRole => r !== undefined)
-  }
-
-  function holdsSystemConfig(user: AppUser): boolean {
-    return rolesOf(user).some(r => r.permissions.includes(P.SYSTEM_CONFIG))
-  }
-
-  function holdsTenantsViewAll(user: AppUser): boolean {
-    return rolesOf(user).some(r => r.permissions.includes(P.TENANTS_VIEW_ALL))
-  }
-
-  // mirrors the backend rule: you can only manage permissions you hold yourself,
-  // otherwise taking over the account would be an escalation
-  function holdsOnlyMyPermissions(user: AppUser): boolean {
-    if (canSystemConfig) return true
-    const mine = currentUser?.permissions ?? []
-    return rolesOf(user).every(r => r.permissions.every(p => mine.includes(p)))
-  }
-
-  // acting on a user (or role) that holds SYSTEM_CONFIG requires SYSTEM_CONFIG;
-  // global admins (TENANTS_VIEW_ALL) are likewise off-limits to tenant-scoped admins
-  function canActOnUser(user: AppUser): boolean {
-    return (canSystemConfig || !holdsSystemConfig(user))
-      && (canTenantsViewAll || !holdsTenantsViewAll(user))
-      && holdsOnlyMyPermissions(user)
-  }
-
-  // tenant-scoped admins assign roles but never define them; the built-in
-  // defaults are a system-level concern, so only a super admin retunes them
-  function canActOnRole(role: AppRole): boolean {
-    return canTenantsViewAll && (canSystemConfig || !role.builtIn)
-      && (canSystemConfig || !role.permissions.includes(P.SYSTEM_CONFIG))
-  }
-
-  // account-wide actions (roles, enable/disable, password, delete) on a user who
-  // also belongs to a foreign tenant would leak into that tenant - membership only
-  function canFullyManage(user: AppUser): boolean {
-    return canTenantsViewAll || user.tenantIds.every(id => myTenants.some(tn => tn.id === id))
-  }
-
-  const isSelf = (user: AppUser) => currentUser?.username === user.username
 
   async function handleToggleEnabled(user: AppUser) {
     try {
@@ -203,317 +162,52 @@ export default function AdminPage() {
           {canSystemConfig && <Tab value="settings" icon={<Tune fontSize="small" />} iconPosition="start" label={t('admin.tabs.settings')} />}
         </Tabs>
 
-        {/* ==================== USERS TAB ==================== */}
         {activeTab === 'users' && (
-          <>
-            {/* a scoped admin without tenants cannot create anyone - hide the dead-end button */}
-            {(canTenantsViewAll || myTenants.length > 0) && (
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-                <Button
-                  variant="contained"
-                  color="success"
-                  startIcon={<PersonAdd />}
-                  size="small"
-                  onClick={() => { setEditingUser(null); setUserDialogOpen(true) }}
-                >
-                  {t('users.newUser')}
-                </Button>
-              </Box>
-            )}
-            <Paper elevation={2} sx={{ borderRadius: 2 }}>
-              <TableContainer>
-                <Table aria-label="Users">
-                  <TableHead>
-                    <TableRow>
-                      {[t('users.username'), t('users.roles'), t('users.tenants'), t('users.enabled'), t('users.createdAt'), t('users.lastLogin'), ''].map((label, i) => (
-                        <TableCell key={i} sx={{ bgcolor: theadBg, color: theadColor, fontWeight: 600 }}>{label}</TableCell>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {loading && (
-                      <TableRow>
-                        <TableCell colSpan={7} align="center" sx={{ py: 4 }}><CircularProgress size={28} /></TableCell>
-                      </TableRow>
-                    )}
-                    {!loading && users.length === 0 && !canTenantsViewAll && (
-                      <TableRow>
-                        <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
-                          {myTenants.length === 0 ? t('users.noTenantAdminHint') : t('users.noUsersInTenant')}
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {!loading && users.map((u) => {
-                      const actionable = canActOnUser(u)
-                      const fullyManageable = actionable && canFullyManage(u)
-                      const superAdmin = holdsSystemConfig(u)
-                      return (
-                        <TableRow key={u.id} hover>
-                          <TableCell sx={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              {u.username}
-                              {isSelf(u) && <Chip label={t('users.you')} size="small" color="primary" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />}
-                              {superAdmin && (
-                                <Tooltip title={t('users.superAdmin')}>
-                                  <Shield sx={{ fontSize: 16, color: 'warning.main' }} />
-                                </Tooltip>
-                              )}
-                            </Box>
-                          </TableCell>
-                          <TableCell>
-                            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                              {rolesOf(u).map((r) => (
-                                <Chip
-                                  key={r.id}
-                                  label={r.name}
-                                  size="small"
-                                  variant="outlined"
-                                  color={r.permissions.includes(P.SYSTEM_CONFIG) ? 'warning' : 'default'}
-                                />
-                              ))}
-                            </Box>
-                          </TableCell>
-                          <TableCell>
-                            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                              {u.tenantNames.length === 0
-                                ? <Typography variant="caption" color="text.secondary">{t('users.noTenant')}</Typography>
-                                : u.tenantNames.map((name) => (
-                                    <Chip key={name} label={name} size="small" variant="outlined" color="secondary" />
-                                  ))}
-                            </Box>
-                          </TableCell>
-                          <TableCell>
-                            <Switch
-                              checked={u.enabled}
-                              size="small"
-                              disabled={!fullyManageable || isSelf(u)}
-                              onChange={() => handleToggleEnabled(u)}
-                            />
-                          </TableCell>
-                          <TableCell sx={{ fontSize: '0.85rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>
-                            {u.createdAt ? formatDate(u.createdAt) : '-'}
-                          </TableCell>
-                          <TableCell sx={{ fontSize: '0.85rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>
-                            {u.lastLoginAt ? formatDate(u.lastLoginAt) : t('users.never')}
-                          </TableCell>
-                          <TableCell align="right">
-                            {actionable && (
-                              <Box sx={{ display: 'flex', gap: 0.25, justifyContent: 'flex-end' }}>
-                                <Tooltip title={fullyManageable ? t('users.editUser') : t('users.membershipOnlyHint')}>
-                                  <IconButton size="small" onClick={() => { setEditingUser(u); setUserDialogOpen(true) }}>
-                                    <Edit fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                                {fullyManageable && (
-                                  <Tooltip title={t('users.resetPassword')}>
-                                    <IconButton size="small" color="warning" onClick={() => setResetTarget(u)}>
-                                      <LockReset fontSize="small" />
-                                    </IconButton>
-                                  </Tooltip>
-                                )}
-                                {fullyManageable && !isSelf(u) && (
-                                  <Tooltip title={t('common.delete')}>
-                                    <IconButton size="small" color="error" onClick={() => handleDeleteUser(u)}>
-                                      <Delete fontSize="small" />
-                                    </IconButton>
-                                  </Tooltip>
-                                )}
-                              </Box>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Paper>
-          </>
+          <UsersTab
+            users={users}
+            roles={roles}
+            loading={loading}
+            onCreate={() => { setEditingUser(null); setUserDialogOpen(true) }}
+            onEdit={(u) => { setEditingUser(u); setUserDialogOpen(true) }}
+            onResetPassword={setResetTarget}
+            onDelete={handleDeleteUser}
+            onToggleEnabled={handleToggleEnabled}
+          />
         )}
 
-        {/* ==================== ROLES TAB ==================== */}
         {activeTab === 'roles' && (
-          <>
-            {canTenantsViewAll && (
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-                <Button
-                  variant="contained"
-                  color="success"
-                  startIcon={<AddCircleOutline />}
-                  size="small"
-                  onClick={() => { setEditingRole(null); setRoleDialogOpen(true) }}
-                >
-                  {t('roles.newRole')}
-                </Button>
-              </Box>
-            )}
-            <Paper elevation={2} sx={{ borderRadius: 2 }}>
-              <TableContainer>
-                <Table aria-label="Roles">
-                  <TableHead>
-                    <TableRow>
-                      {[t('roles.name'), t('roles.description'), t('roles.permissions'), t('roles.type'), ''].map((label, i) => (
-                        <TableCell key={i} sx={{ bgcolor: theadBg, color: theadColor, fontWeight: 600 }}>{label}</TableCell>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {loading && (
-                      <TableRow>
-                        <TableCell colSpan={5} align="center" sx={{ py: 4 }}><CircularProgress size={28} /></TableCell>
-                      </TableRow>
-                    )}
-                    {!loading && roles.map((r) => {
-                      const usedBy = users.filter(u => u.roleIds.includes(r.id)).length
-                      const editable = canActOnRole(r)
-                      return (
-                        <TableRow key={r.id} hover>
-                          <TableCell sx={{ fontWeight: 600 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              {r.name}
-                              {r.permissions.includes(P.SYSTEM_CONFIG) && (
-                                <Tooltip title={t('users.superAdmin')}>
-                                  <Shield sx={{ fontSize: 16, color: 'warning.main' }} />
-                                </Tooltip>
-                              )}
-                            </Box>
-                          </TableCell>
-                          <TableCell sx={{ fontSize: '0.85rem', color: 'text.secondary' }}>{r.description || '-'}</TableCell>
-                          <TableCell>
-                            <Chip label={t('roles.permissionsCount', { count: r.permissions.length })} size="small" variant="outlined" />
-                            {usedBy > 0 && (
-                              <Chip label={t('roles.usedBy', { count: usedBy })} size="small" variant="outlined" color="info" sx={{ ml: 0.5 }} />
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Chip
-                              label={r.builtIn ? t('roles.builtIn') : t('roles.custom')}
-                              size="small"
-                              color={r.builtIn ? 'info' : 'default'}
-                              variant="outlined"
-                            />
-                            {r.builtIn && r.customized && (
-                              <Chip label={t('roles.customized')} size="small" variant="outlined" color="warning" sx={{ ml: 0.5 }} />
-                            )}
-                          </TableCell>
-                          <TableCell align="right">
-                            <Box sx={{ display: 'flex', gap: 0.25, justifyContent: 'flex-end' }}>
-                              {editable ? (
-                                <>
-                                  <Tooltip title={t('roles.editRole')}>
-                                    <IconButton size="small" onClick={() => { setEditingRole(r); setRoleDialogOpen(true) }}>
-                                      <Edit fontSize="small" />
-                                    </IconButton>
-                                  </Tooltip>
-                                  {/* built-in roles are editable by a super admin but never deletable */}
-                                  <Tooltip title={r.builtIn ? t('roles.builtInUndeletable') : usedBy > 0 ? t('roles.inUse') : t('common.delete')}>
-                                    <span>
-                                      <IconButton size="small" color="error" disabled={r.builtIn || usedBy > 0} onClick={() => handleDeleteRole(r)}>
-                                        <Delete fontSize="small" />
-                                      </IconButton>
-                                    </span>
-                                  </Tooltip>
-                                </>
-                              ) : (
-                                <Tooltip title={t('roles.viewRole')}>
-                                  <IconButton size="small" onClick={() => { setEditingRole(r); setRoleDialogOpen(true) }}>
-                                    <Visibility fontSize="small" />
-                                  </IconButton>
-                                </Tooltip>
-                              )}
-                            </Box>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Paper>
-          </>
+          <RolesTab
+            roles={roles}
+            users={users}
+            loading={loading}
+            onCreate={() => { setEditingRole(null); setRoleDialogOpen(true) }}
+            onEdit={(r) => { setEditingRole(r); setRoleDialogOpen(true) }}
+            onDelete={handleDeleteRole}
+          />
         )}
 
-        {/* ==================== TENANTS TAB ==================== */}
         {canTenantsViewAll && activeTab === 'tenants' && (
-          <>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, mb: 2 }}>
-              <Typography variant="body2" color="text.secondary">{t('tenants.hint')}</Typography>
-              <Button
-                variant="contained"
-                color="success"
-                startIcon={<GroupAdd />}
-                size="small"
-                sx={{ flexShrink: 0 }}
-                onClick={() => { setEditingTenant(null); setTenantDialogOpen(true) }}
-              >
-                {t('tenants.newTenant')}
-              </Button>
-            </Box>
-            <Paper elevation={2} sx={{ borderRadius: 2 }}>
-              <TableContainer>
-                <Table aria-label="Tenants">
-                  <TableHead>
-                    <TableRow>
-                      {[t('tenants.name'), t('tenants.description'), t('tenants.members'), t('tenants.createdAt'), ''].map((label, i) => (
-                        <TableCell key={i} sx={{ bgcolor: theadBg, color: theadColor, fontWeight: 600 }}>{label}</TableCell>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {loading && (
-                      <TableRow>
-                        <TableCell colSpan={5} align="center" sx={{ py: 4 }}><CircularProgress size={28} /></TableCell>
-                      </TableRow>
-                    )}
-                    {!loading && tenants.map((tn) => (
-                      <TableRow key={tn.id} hover>
-                        <TableCell sx={{ fontWeight: 600 }}>{tn.name}</TableCell>
-                        <TableCell sx={{ fontSize: '0.85rem', color: 'text.secondary' }}>{tn.description || '-'}</TableCell>
-                        <TableCell>
-                          <Chip label={t('tenants.membersCount', { count: tn.memberCount })} size="small" variant="outlined"
-                                color={tn.memberCount > 0 ? 'info' : 'default'} />
-                        </TableCell>
-                        <TableCell sx={{ fontSize: '0.85rem', color: 'text.secondary', whiteSpace: 'nowrap' }}>
-                          {tn.createdAt ? formatDate(tn.createdAt) : '-'}
-                        </TableCell>
-                        <TableCell align="right">
-                          <Box sx={{ display: 'flex', gap: 0.25, justifyContent: 'flex-end' }}>
-                            <Tooltip title={t('tenants.editTenant')}>
-                              <IconButton size="small" onClick={() => { setEditingTenant(tn); setTenantDialogOpen(true) }}>
-                                <Edit fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title={t('common.delete')}>
-                              <IconButton size="small" color="error" onClick={() => handleDeleteTenant(tn)}>
-                                <Delete fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Paper>
-          </>
+          <TenantsTab
+            tenants={tenants}
+            loading={loading}
+            onCreate={() => { setEditingTenant(null); setTenantDialogOpen(true) }}
+            onEdit={(tn) => { setEditingTenant(tn); setTenantDialogOpen(true) }}
+            onDelete={handleDeleteTenant}
+          />
         )}
 
-        {/* ==================== AUDIT TAB ==================== */}
         {canAuditView && activeTab === 'audit' && (
           <Suspense fallback={<CircularProgress size={28} sx={{ display: 'block', mx: 'auto', my: 4 }} />}>
             <AuditTab />
           </Suspense>
         )}
 
-        {/* ==================== ACTIVITY TAB ==================== */}
         {canSystemConfig && activeTab === 'activity' && (
           <Suspense fallback={<CircularProgress size={28} sx={{ display: 'block', mx: 'auto', my: 4 }} />}>
             <ActivityTab />
           </Suspense>
         )}
 
-        {/* ==================== SETTINGS TAB ==================== */}
         {canSystemConfig && activeTab === 'settings' && (
           <Suspense fallback={<CircularProgress size={28} sx={{ display: 'block', mx: 'auto', my: 4 }} />}>
             <SettingsTab />
@@ -547,7 +241,7 @@ export default function AdminPage() {
         role={editingRole}
         catalog={catalog}
         canSystemConfig={canSystemConfig}
-        readOnly={editingRole !== null && !canActOnRole(editingRole)}
+        readOnly={editingRole !== null && !canActOnRole(editingRole, actor)}
       />
 
       <TenantFormDialog

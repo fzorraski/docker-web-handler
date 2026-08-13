@@ -13,7 +13,7 @@ import { useTranslation } from 'react-i18next'
 import { useNotification } from '../NotificationProvider'
 import { useTableHeaderTheme } from '../../hooks/useTableHeaderTheme'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
-import { useTenantNames } from '../../hooks/useTenantNames'
+import { useTenants } from '../../hooks/useTenants'
 import { useAuth } from '../AuthProvider'
 import { P } from '../../utils/permissions'
 import { resolveTenantLabel, isSystemEntry } from '../../utils/auditTenant'
@@ -104,12 +104,12 @@ export default function AuditTab() {
   // a scoped reader only ever gets their own tenants back, so the column would
   // be a constant - it is worth showing only to cross-tenant readers
   const { hasPermission, rbacEnabled } = useAuth()
-  const tenantNames = useTenantNames()
+  const tenants = useTenants()
   // hasPermission answers true for everything when RBAC is off, and there is no
   // tenant model at all then - every other tenant column gates the same way
   const showTenant = rbacEnabled && hasPermission(P.TENANTS_VIEW_ALL)
   const tenantLabel = (id?: string | null) =>
-    resolveTenantLabel(id, tenantNames, t('audit.systemTenant'))
+    resolveTenantLabel(id, tenants, t('audit.systemTenant'))
 
   // hand-built, so a new field has to be added here explicitly
   const rawData = (entry: AuditEntry) => JSON.stringify({
@@ -256,6 +256,7 @@ export default function AuditTab() {
           rowsPerPage={size}
           onRowsPerPageChange={(e) => { setSize(parseInt(e.target.value, 10)); setPage(0) }}
           rowsPerPageOptions={[25, 50, 100]}
+          labelRowsPerPage={t('common.rowsPerPage')}
         />
       </TableContainer>
 
