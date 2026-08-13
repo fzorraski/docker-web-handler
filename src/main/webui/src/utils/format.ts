@@ -23,6 +23,15 @@ export function compareTagsDesc(a: string, b: string): number {
   return 0
 }
 
+/**
+ * Ellipsis-truncation for table cells that can receive unbounded values
+ * (an image tag may be a full digest). Returns the value untouched when it
+ * fits, so callers can use the result to decide whether a tooltip is needed.
+ */
+export function truncate(value: string, max: number): string {
+  return value.length <= max ? value : value.slice(0, max - 1) + '\u2026'
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'

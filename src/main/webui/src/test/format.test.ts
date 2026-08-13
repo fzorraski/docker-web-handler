@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatBytes, formatBytesRate, formatScriptSize } from '../utils/format'
+import { formatBytes, formatBytesRate, formatScriptSize, truncate } from '../utils/format'
 
 describe('formatBytes', () => {
   it('formats bytes', () => {
@@ -40,5 +40,20 @@ describe('formatScriptSize', () => {
 
   it('formats megabytes', () => {
     expect(formatScriptSize(5 * 1024 * 1024)).toBe('5.0 MB')
+  })
+})
+
+describe('truncate', () => {
+  it('returns short values untouched, so callers can detect truncation by identity', () => {
+    expect(truncate('20.98.0', 18)).toBe('20.98.0')
+    expect(truncate('123456789012345678', 18)).toBe('123456789012345678')
+  })
+
+  it('cuts to the limit including the ellipsis', () => {
+    const digest = 'bd7214219d260d7efb82525207dae8dde38cfa1f9a2506b2d2a473fd48d5a9f0'
+    const cut = truncate(digest, 18)
+    expect(cut).toHaveLength(18)
+    expect(cut.endsWith('\u2026')).toBe(true)
+    expect(digest.startsWith(cut.slice(0, -1))).toBe(true)
   })
 })

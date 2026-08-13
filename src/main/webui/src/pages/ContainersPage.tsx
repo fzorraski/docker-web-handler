@@ -36,7 +36,7 @@ import TenantCell from '../components/TenantCell'
 import HeroBanner from '../components/HeroBanner'
 import RestoreAttribution from '../components/RestoreAttribution'
 import { useTranslation } from 'react-i18next'
-import { formatBackendDate, formatDate } from '../utils/format'
+import { formatBackendDate, formatDate, truncate } from '../utils/format'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
 import { useStickyHeader } from '../hooks/useStickyHeader'
 import { useContainerActions } from '../hooks/useContainerActions'
@@ -739,7 +739,14 @@ export default function ContainersPage() {
                     </TableCell>
                   )}
                   {vis.has('image') &&<TableCell sx={{ fontSize: '0.85rem' }}>{c.image.split(':')[0]}</TableCell>}
-                  {vis.has('tag') &&<TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{c.image.split(':')[1] ?? '-'}</TableCell>}
+                  {vis.has('tag') &&<TableCell sx={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>{(() => {
+                    const tag = c.image.split(':')[1] ?? '-'
+                    // a tag can be a full digest; keep the column narrow and
+                    // hand the whole value to the tooltip
+                    return tag.length > 18
+                      ? <Tooltip title={tag}><span>{truncate(tag, 18)}</span></Tooltip>
+                      : tag
+                  })()}</TableCell>}
                   {vis.has('ports') && (
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
