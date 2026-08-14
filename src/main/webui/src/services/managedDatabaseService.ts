@@ -1,5 +1,5 @@
 import type { ManagedDatabaseInfo, ServerHealth, DatabaseHealthInfo, DatabaseActivity, DatabaseTableStats, QueryResult, TopQuery } from '../types'
-import fetchWithAuth from './fetchWithAuth'
+import fetchWithAuth, { apiErrorMessage, handleJsonResponse } from './fetchWithAuth'
 
 const API = '/api/database/managed/'
 
@@ -86,7 +86,7 @@ export async function enablePgStatStatements(
   )
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
   const data = await res.json()
   return { success: true, alreadyInstalled: data.alreadyInstalled }
@@ -106,7 +106,7 @@ export async function resetQueryStats(
   )
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
   return { success: true }
 }
@@ -125,7 +125,7 @@ export async function resetTableStats(
   )
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
   return { success: true }
 }
@@ -147,7 +147,7 @@ export async function resetSingleTableStats(
   )
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
   return { success: true }
 }
@@ -166,11 +166,7 @@ export async function getServerHealth(repository: string): Promise<ServerHealth 
 
 export async function listManagedDatabases(repository: string): Promise<ManagedDatabaseInfo[]> {
   const res = await fetchWithAuth(API + 'list/' + encodeURIComponent(repository))
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || res.statusText)
-  }
-  return res.json()
+  return handleJsonResponse(res)
 }
 
 export async function deleteManagedDatabase(
@@ -187,7 +183,7 @@ export async function deleteManagedDatabase(
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText, errorCode: data.errorCode, count: data.count, requiresForce: data.requiresForce, activeConnections: data.activeConnections }
+    return { success: false, error: apiErrorMessage(data, res.statusText), errorCode: data.errorCode, count: data.count, requiresForce: data.requiresForce, activeConnections: data.activeConnections }
   }
   return { success: true }
 }
@@ -210,7 +206,7 @@ export async function deleteManagedDatabasesBulk(
   )
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
   const data = await res.json()
   return { success: true, deleted: data.deleted, skipped: data.skipped }
@@ -235,7 +231,7 @@ export async function updateDatabaseDescription(
   )
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
   return { success: true }
 }
@@ -254,7 +250,7 @@ export async function toggleDatabaseProtected(
   )
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
   const data = await res.json()
   return { success: true, protected: data.protected, disabledDeletionCount: data.disabledDeletionCount }
@@ -278,7 +274,7 @@ export async function cleanupIdleDatabases(
     },
   )
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) return { success: false, error: data.error || res.statusText }
+  if (!res.ok) return { success: false, error: apiErrorMessage(data, res.statusText) }
   return { success: true, deleted: data.deleted }
 }
 
@@ -300,7 +296,7 @@ export async function explainQuery(
   )
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
   const data = await res.json()
   return { success: true, plan: data.plan, tableStats: data.tableStats }
@@ -337,7 +333,7 @@ export async function executeQuery(
   )
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
   const data = await res.json()
   return { success: true, result: data }

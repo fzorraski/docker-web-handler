@@ -1,4 +1,4 @@
-import fetchWithAuth from './fetchWithAuth'
+import fetchWithAuth, { apiErrorMessage, handleJsonResponse } from './fetchWithAuth'
 
 export interface ContainerEvent {
   type: 'INFO' | 'PROGRESS' | 'SUCCESS' | 'ERROR'
@@ -69,11 +69,7 @@ export async function prepareRunContainer(body: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || res.statusText)
-  }
-  const data = await res.json()
+  const data = await handleJsonResponse<{ ticket: string }>(res)
   return data.ticket
 }
 
@@ -107,11 +103,7 @@ export async function prepareRunMigration(body: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || res.statusText)
-  }
-  const data = await res.json()
+  const data = await handleJsonResponse<{ ticket: string }>(res)
   return data.ticket
 }
 
@@ -145,11 +137,7 @@ export async function prepareUpgradeContainer(body: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || res.statusText)
-  }
-  const data = await res.json()
+  const data = await handleJsonResponse<{ ticket: string }>(res)
   return data.ticket
 }
 
@@ -178,11 +166,7 @@ export async function preparePruneImages(body: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || res.statusText)
-  }
-  const data = await res.json()
+  const data = await handleJsonResponse<{ ticket: string }>(res)
   return data.ticket
 }
 
@@ -285,11 +269,7 @@ export async function prepareRemoveContainer(body: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }))
-    throw new Error(err.error || res.statusText)
-  }
-  const data = await res.json()
+  const data = await handleJsonResponse<{ ticket: string }>(res)
   return data.ticket
 }
 
@@ -321,11 +301,7 @@ export async function prepareRestoreDump(body: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || res.statusText)
-  }
-  const data = await res.json()
+  const data = await handleJsonResponse<{ ticket: string }>(res)
   return data.ticket
 }
 
@@ -357,11 +333,7 @@ export async function prepareSnapshot(body: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || res.statusText)
-  }
-  const data = await res.json()
+  const data = await handleJsonResponse<{ ticket: string }>(res)
   return data.ticket
 }
 
@@ -409,7 +381,7 @@ export async function prepareLogAnalysis(
         } else {
           try {
             const data = JSON.parse(xhr.responseText)
-            reject(new Error(data.error || xhr.statusText))
+            reject(new Error(apiErrorMessage(data, xhr.statusText)))
           } catch { reject(new Error(xhr.statusText)) }
         }
       }
@@ -419,11 +391,7 @@ export async function prepareLogAnalysis(
   }
 
   const res = await fetchWithAuth('/api/logs/analyzer/sse/upload/prepare', { method: 'POST', body: form })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || res.statusText)
-  }
-  const data = await res.json()
+  const data = await handleJsonResponse<{ ticket: string }>(res)
   return data.ticket
 }
 
@@ -455,11 +423,7 @@ export async function prepareComposeAnalysis(body: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || res.statusText)
-  }
-  const data = await res.json()
+  const data = await handleJsonResponse<{ ticket: string }>(res)
   return data.ticket
 }
 

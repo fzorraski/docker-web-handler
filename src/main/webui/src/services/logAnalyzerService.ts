@@ -1,11 +1,11 @@
-import fetchWithAuth from './fetchWithAuth'
+import fetchWithAuth, { apiErrorMessage } from './fetchWithAuth'
 
 const API = '/api/logs/analyzer'
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }))
-    throw new Error(body.error || res.statusText)
+    throw new Error(apiErrorMessage(body, res.statusText))
   }
   return res.json()
 }

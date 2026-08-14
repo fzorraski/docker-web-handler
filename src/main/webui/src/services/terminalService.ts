@@ -1,4 +1,4 @@
-import fetchWithAuth from './fetchWithAuth'
+import fetchWithAuth, { apiErrorMessage } from './fetchWithAuth'
 
 const API = '/api/containers/'
 
@@ -12,7 +12,7 @@ export async function authorizeTerminal(
     body: JSON.stringify({ containerId, password }),
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) return { error: data.error || 'Authorization failed.' }
+  if (!res.ok) return { error: apiErrorMessage(data, 'Authorization failed.') }
   return { ticket: data.ticket }
 }
 
@@ -43,7 +43,7 @@ export function uploadFileToContainer(
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve({ success: true, filename: data.filename, remotePath: data.remotePath })
         } else {
-          resolve({ success: false, error: data.error || 'Upload failed' })
+          resolve({ success: false, error: apiErrorMessage(data, 'Upload failed') })
         }
       } catch {
         resolve({ success: false, error: 'Upload failed' })

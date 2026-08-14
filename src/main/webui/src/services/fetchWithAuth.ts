@@ -56,10 +56,20 @@ export default async function fetchWithAuth(
 }
 
 /** Shared JSON response unwrapper: throws the backend's error message on non-2xx. */
+/**
+ * The human-readable message of an error body. The backend speaks two shapes:
+ * validation errors carry {error}, while permission refusals and the global
+ * exception mapper carry {code, message} - a reader that only checks `error`
+ * shows a bare "Forbidden" for the latter.
+ */
+export function apiErrorMessage(data: { error?: string; message?: string }, fallback: string): string {
+  return data.error || data.message || fallback
+}
+
 export async function handleJsonResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || data.message || res.statusText)
+    throw new Error(apiErrorMessage(data, res.statusText))
   }
   return res.json()
 }

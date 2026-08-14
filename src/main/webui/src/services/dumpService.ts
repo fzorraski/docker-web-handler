@@ -1,5 +1,5 @@
 import type { DatabaseDump } from '../types'
-import fetchWithAuth from './fetchWithAuth'
+import fetchWithAuth, { apiErrorMessage } from './fetchWithAuth'
 
 const API = '/api/database/dumps/'
 
@@ -47,7 +47,7 @@ export function uploadDump(
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve({ success: true, dump: data })
         } else {
-          resolve({ success: false, error: data.error || 'Upload failed' })
+          resolve({ success: false, error: apiErrorMessage(data, 'Upload failed') })
         }
       } catch {
         resolve({ success: false, error: 'Upload failed' })
@@ -78,7 +78,7 @@ export async function deleteDump(
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
 
   return { success: true }
@@ -99,7 +99,7 @@ export async function deleteDumpsBulk(
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
 
   const data = await res.json()
@@ -171,7 +171,7 @@ export async function updateDumpExpiration(
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
   return { success: true }
 }
@@ -193,7 +193,7 @@ export async function updateDumpMetadata(
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
   return { success: true }
 }
@@ -212,7 +212,7 @@ export async function updateDumpSharing(
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
   return { success: true }
 }
@@ -224,7 +224,7 @@ export async function cleanupIdleDumps(password: string, minDays: number): Promi
     body: JSON.stringify({ password, minDays }),
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) return { success: false, error: data.error || res.statusText }
+  if (!res.ok) return { success: false, error: apiErrorMessage(data, res.statusText) }
   return { success: true, deleted: data.deleted }
 }
 

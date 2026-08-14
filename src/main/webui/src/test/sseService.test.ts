@@ -4,6 +4,7 @@ import {
   cancelRunContainer,
   prepareUpgradeContainer,
   cancelUpgradeContainer,
+  prepareRemoveContainer,
 } from '../services/sseService'
 
 const mockFetch = vi.fn()
@@ -124,6 +125,33 @@ describe('sseService — new container', () => {
     it('returns false on http error', async () => {
       mockFetch.mockReturnValue(Promise.resolve({ ok: false } as Response))
       expect(await cancelRunContainer('abc')).toBe(false)
+    })
+  })
+})
+
+describe('sseService — remove container', () => {
+  describe('prepareRemoveContainer', () => {
+    const body = { containerId: 'abc123def456', deleteDatabase: true, repository: 'pg', databaseName: 'mydb' }
+
+    it('returns the ticket', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ ticket: 'rm-1' }))
+
+      expect(await prepareRemoveContainer(body)).toBe('rm-1')
+    })
+
+    it('surfaces {error}-shaped validation failures', async () => {
+      mockFetch.mockReturnValue(jsonResponse({ error: 'Invalid repository.' }, false))
+
+      await expect(prepareRemoveContainer(body)).rejects.toThrow('Invalid repository.')
+    })
+
+    it('surfaces {code,message}-shaped permission refusals', async () => {
+      // the delete-own 403 speaks this shape; a reader checking only `error`
+      // showed a bare "Internal Server Error" instead of the ownership rule
+      mockFetch.mockReturnValue(jsonResponse(
+        { code: 'FORBIDDEN', message: 'You can only delete databases you created.' }, false))
+
+      await expect(prepareRemoveContainer(body)).rejects.toThrow('You can only delete databases you created.')
     })
   })
 })

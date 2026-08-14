@@ -1,5 +1,5 @@
 import type { DatabaseSnapshot } from '../types'
-import fetchWithAuth from './fetchWithAuth'
+import fetchWithAuth, { apiErrorMessage } from './fetchWithAuth'
 
 const API = '/api/database/snapshots/'
 
@@ -20,7 +20,7 @@ export async function deleteSnapshot(
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
 
   return { success: true }
@@ -40,7 +40,7 @@ export async function updateSnapshotSharing(
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
   return { success: true }
 }
@@ -60,7 +60,7 @@ export async function deleteSnapshotsBulk(
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
 
   const data = await res.json()
@@ -115,7 +115,7 @@ export async function updateSnapshotMetadata(
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
   return { success: true }
 }
@@ -135,7 +135,7 @@ export async function updateSnapshotExpiration(
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
   return { success: true }
 }
@@ -147,6 +147,6 @@ export async function cleanupIdleSnapshots(password: string, minDays: number): P
     body: JSON.stringify({ password, minDays }),
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) return { success: false, error: data.error || res.statusText }
+  if (!res.ok) return { success: false, error: apiErrorMessage(data, res.statusText) }
   return { success: true, deleted: data.deleted }
 }
