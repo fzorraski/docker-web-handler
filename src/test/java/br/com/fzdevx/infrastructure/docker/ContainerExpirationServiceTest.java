@@ -3,6 +3,7 @@ package br.com.fzdevx.infrastructure.docker;
 import br.com.fzdevx.application.port.ExpirationRepository;
 import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.domain.model.ContainerExpiration;
+import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.interfaces.rest.util.ContainerListBroadcaster;
 import com.github.dockerjava.api.DockerClient;
@@ -36,6 +37,8 @@ class ContainerExpirationServiceTest {
     @Mock ContainerSchedulingService schedulingService;
     @Mock ContainerProtectionService protectionService;
     @Mock ContainerListBroadcaster broadcaster;
+    @Mock br.com.fzdevx.application.port.AuditLogger auditLogger;
+    @Mock br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
 
     @InjectMocks
     ContainerExpirationService service;
@@ -286,58 +289,6 @@ class ContainerExpirationServiceTest {
         verify(expirationRepository, never()).save(any());
     }
 
-    // ---- enableDatabaseDeletion ----
-
-    @Test
-    void enableDatabaseDeletion_validRecord_setsFlag() {
-        ContainerExpiration expiration = new ContainerExpiration(
-                "abc123def4", "abc123def4full", Instant.now().plusSeconds(3600),
-                "repo", "mydb", false);
-        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(expiration));
-
-        boolean result = service.enableDatabaseDeletion("abc123def4");
-
-        assertTrue(result);
-        ArgumentCaptor<ContainerExpiration> captor = ArgumentCaptor.forClass(ContainerExpiration.class);
-        verify(expirationRepository).save(captor.capture());
-        assertTrue(captor.getValue().isDeleteDatabaseOnExpiration());
-    }
-
-    @Test
-    void enableDatabaseDeletion_noExpiresAt_returnsFalse() {
-        ContainerExpiration expiration = new ContainerExpiration();
-        expiration.setShortId("abc123def4");
-        expiration.setDatabaseName("mydb");
-        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(expiration));
-
-        boolean result = service.enableDatabaseDeletion("abc123def4");
-
-        assertFalse(result);
-        verify(expirationRepository, never()).save(any());
-    }
-
-    @Test
-    void enableDatabaseDeletion_noDatabaseName_returnsFalse() {
-        ContainerExpiration expiration = new ContainerExpiration(
-                "abc123def4", "abc123def4full", Instant.now().plusSeconds(3600));
-        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(expiration));
-
-        boolean result = service.enableDatabaseDeletion("abc123def4");
-
-        assertFalse(result);
-        verify(expirationRepository, never()).save(any());
-    }
-
-    @Test
-    void enableDatabaseDeletion_notFound_returnsFalse() {
-        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.empty());
-
-        boolean result = service.enableDatabaseDeletion("abc123def4");
-
-        assertFalse(result);
-        verify(expirationRepository, never()).save(any());
-    }
-
     // ---- cancel_metadataOnly ----
 
     @Test
@@ -426,5 +377,172 @@ class ContainerExpirationServiceTest {
         service.onStartup(null);
 
         verify(expirationRepository).delete("gone123456");
+    }
+
+    // ---- deletionArmedBy stamping ----
+
+    @Test
+    void schedule_armed_stampsWhoArmedIt() {
+        service.schedule("abc123def4", "abc123def4full", Instant.now().plusSeconds(3600),
+                "repo", "mydb", true, "alice", "tenant-1");
+
+        ArgumentCaptor<ContainerExpiration> captor = ArgumentCaptor.forClass(ContainerExpiration.class);
+        verify(expirationRepository).save(captor.capture());
+        assertEquals("alice", captor.getValue().getDeletionArmedBy());
+        assertEquals("tenant-1", captor.getValue().getTenantId());
+    }
+
+    @Test
+    void schedule_notArmed_neverKeepsAnArmer() {
+        service.schedule("abc123def4", "abc123def4full", Instant.now().plusSeconds(3600),
+                "repo", "mydb", false, "alice", "tenant-1");
+
+        ArgumentCaptor<ContainerExpiration> captor = ArgumentCaptor.forClass(ContainerExpiration.class);
+        verify(expirationRepository).save(captor.capture());
+        assertNull(captor.getValue().getDeletionArmedBy());
+    }
+
+    @Test
+    void updateExpiration_arming_stampsTheCurrentActor() {
+        ContainerExpiration expiration = new ContainerExpiration(
+                "abc123def4", "abc123def4full", Instant.now().plusSeconds(3600), "repo", "mydb", false);
+        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(expiration));
+        when(actorResolver.usernameOrSystem()).thenReturn("alice");
+
+        assertTrue(service.updateExpiration("abc123def4", Instant.now().plusSeconds(7200), true));
+
+        ArgumentCaptor<ContainerExpiration> captor = ArgumentCaptor.forClass(ContainerExpiration.class);
+        verify(expirationRepository).save(captor.capture());
+        assertEquals("alice", captor.getValue().getDeletionArmedBy());
+    }
+
+    @Test
+    void updateExpiration_disarming_clearsTheArmer() {
+        ContainerExpiration expiration = new ContainerExpiration(
+                "abc123def4", "abc123def4full", Instant.now().plusSeconds(3600), "repo", "mydb", true);
+        expiration.setDeletionArmedBy("alice");
+        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(expiration));
+
+        assertTrue(service.updateExpiration("abc123def4", Instant.now().plusSeconds(7200), false));
+
+        ArgumentCaptor<ContainerExpiration> captor = ArgumentCaptor.forClass(ContainerExpiration.class);
+        verify(expirationRepository).save(captor.capture());
+        assertNull(captor.getValue().getDeletionArmedBy());
+    }
+
+    @Test
+    void updateExpiration_arming_keepsTheContainersOwnTenant() {
+        ContainerExpiration expiration = new ContainerExpiration(
+                "abc123def4", "abc123def4full", Instant.now().plusSeconds(3600), "repo", "mydb", false);
+        expiration.setTenantId("original-tenant");
+        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(expiration));
+        when(actorResolver.usernameOrSystem()).thenReturn("alice");
+
+        service.updateExpiration("abc123def4", Instant.now().plusSeconds(7200), true);
+
+        ArgumentCaptor<ContainerExpiration> captor = ArgumentCaptor.forClass(ContainerExpiration.class);
+        verify(expirationRepository).save(captor.capture());
+        // the owning tenant from creation wins; arming must not re-stamp it
+        assertEquals("original-tenant", captor.getValue().getTenantId());
+    }
+
+    // ---- dropDatabaseIfConfigured: the worker-side drop ----
+
+    private ContainerExpiration armedExpiration() {
+        ContainerExpiration expiration = new ContainerExpiration(
+                "abc123def4", "abc123def4full", Instant.now().minusSeconds(1), "repo", "mydb", true);
+        expiration.setDeletionArmedBy("alice");
+        expiration.setTenantId("tenant-1");
+        return expiration;
+    }
+
+    @Test
+    void dropOnExpiration_auditsTheOriginalArmer() {
+        ContainerExpiration expiration = armedExpiration();
+        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(expiration));
+        when(databaseService.isDeletionOnExpirationEnabled()).thenReturn(true);
+        when(databaseService.hasDatabaseConfig("repo")).thenReturn(true);
+        when(managedDatabaseRepository.find("repo", "mydb")).thenReturn(Optional.empty());
+
+        service.dropDatabaseIfConfigured(expiration);
+
+        verify(databaseService).dropDatabase("repo", "mydb");
+        verify(auditLogger).logForTenant(eq("system"), eq("tenant-1"),
+                eq("DATABASE_DELETE_ON_EXPIRATION"), eq("mydb"),
+                org.mockito.ArgumentMatchers.contains("armedBy=alice"));
+    }
+
+    @Test
+    void dropOnExpiration_legacyRecordWithoutArmer_auditsWithoutTheField() {
+        ContainerExpiration expiration = armedExpiration();
+        expiration.setDeletionArmedBy(null);
+        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(expiration));
+        when(databaseService.isDeletionOnExpirationEnabled()).thenReturn(true);
+        when(databaseService.hasDatabaseConfig("repo")).thenReturn(true);
+        when(managedDatabaseRepository.find("repo", "mydb")).thenReturn(Optional.empty());
+
+        service.dropDatabaseIfConfigured(expiration);
+
+        verify(auditLogger).logForTenant(eq("system"), eq("tenant-1"),
+                eq("DATABASE_DELETE_ON_EXPIRATION"), eq("mydb"),
+                org.mockito.ArgumentMatchers.argThat(detail -> !detail.contains("armedBy")));
+    }
+
+    @Test
+    void dropOnExpiration_reReadsTheRecord_soACancelledDeletionNeverFires() {
+        // the timer holds a stale copy; the user disarmed between scheduling and firing
+        ContainerExpiration armedCopy = armedExpiration();
+        ContainerExpiration disarmed = armedExpiration();
+        disarmed.setDeleteDatabaseOnExpiration(false);
+        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(disarmed));
+
+        service.dropDatabaseIfConfigured(armedCopy);
+
+        verify(databaseService, never()).dropDatabase(any(), any());
+        verify(auditLogger, never()).logForTenant(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void dropOnExpiration_protectedDatabase_isNeverDropped() {
+        ContainerExpiration expiration = armedExpiration();
+        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(expiration));
+        when(databaseService.isDeletionOnExpirationEnabled()).thenReturn(true);
+        when(databaseService.hasDatabaseConfig("repo")).thenReturn(true);
+        ManagedDatabase md = new ManagedDatabase("repo", "mydb");
+        md.setProtectedFlag(true);
+        when(managedDatabaseRepository.find("repo", "mydb")).thenReturn(Optional.of(md));
+
+        service.dropDatabaseIfConfigured(expiration);
+
+        verify(databaseService, never()).dropDatabase(any(), any());
+    }
+
+    @Test
+    void dropOnExpiration_featureDisabled_neverDrops() {
+        ContainerExpiration expiration = armedExpiration();
+        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(expiration));
+        when(databaseService.isDeletionOnExpirationEnabled()).thenReturn(false);
+
+        service.dropDatabaseIfConfigured(expiration);
+
+        verify(databaseService, never()).dropDatabase(any(), any());
+    }
+
+    @Test
+    void updateExpiration_alreadyArmed_keepsTheOriginalArmer() {
+        // Bob extends the deadline of a deletion alice armed; the pending drop
+        // stays attributed to alice, matching the upgrade path's transfer rule
+        ContainerExpiration expiration = new ContainerExpiration(
+                "abc123def4", "abc123def4full", Instant.now().plusSeconds(3600), "repo", "mydb", true);
+        expiration.setDeletionArmedBy("alice");
+        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(expiration));
+
+        assertTrue(service.updateExpiration("abc123def4", Instant.now().plusSeconds(7200), true));
+
+        ArgumentCaptor<ContainerExpiration> captor = ArgumentCaptor.forClass(ContainerExpiration.class);
+        verify(expirationRepository).save(captor.capture());
+        assertEquals("alice", captor.getValue().getDeletionArmedBy());
+        // the editing actor is never even resolved - bob cannot become the armer
+        verify(actorResolver, never()).usernameOrSystem();
     }
 }

@@ -55,6 +55,10 @@ class BuiltInRolesTest {
         // the rest of the database workflow stays with the operator
         assertTrue(BuiltInRoles.operator().hasPermission(Permission.DATABASE_OPERATE));
         assertTrue(BuiltInRoles.operator().hasPermission(Permission.DATABASE_UPLOAD));
+        // including their own databases: without delete-own, the overwrite fence
+        // would break the operator's daily restore-refresh into a DB they created
+        assertTrue(BuiltInRoles.operator().hasPermission(Permission.DATABASE_DELETE_OWN));
+        assertFalse(BuiltInRoles.viewer().hasPermission(Permission.DATABASE_DELETE_OWN));
     }
 
     @Test

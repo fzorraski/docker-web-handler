@@ -8,6 +8,8 @@ public class DatabaseConflict {
     private List<String> inUseByContainers;
     private String expiresAt;
     private boolean protectedFlag;
+    /** Whether the CURRENT caller created this database (drives delete-own UI gating). */
+    private boolean createdByMe;
 
     public DatabaseConflict() {
     }
@@ -48,5 +50,13 @@ public class DatabaseConflict {
 
     public void setProtectedFlag(boolean protectedFlag) {
         this.protectedFlag = protectedFlag;
+    }
+
+    public boolean isCreatedByMe() {
+        return createdByMe;
+    }
+
+    public void setCreatedByMe(boolean createdByMe) {
+        this.createdByMe = createdByMe;
     }
 }

@@ -1317,6 +1317,7 @@ const en = {
     DATABASE_OPERATE: 'Restore, snapshot and manage databases (deletion requires DATABASE_DELETE)',
     DATABASE_UPLOAD: 'Upload database dumps',
     DATABASE_DELETE: 'Delete databases, dumps and snapshots',
+    DATABASE_DELETE_OWN: 'Delete only databases created by the user themself',
     SCHEDULES_VIEW: 'View schedules',
     SCHEDULES_MANAGE: 'Create and manage schedules',
     TERMINAL_ACCESS: 'Open container terminals and upload files',

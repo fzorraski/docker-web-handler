@@ -128,6 +128,13 @@ public class RunContainerConfig {
     private boolean webhookNotify;
     private String operationsPassword;
     private boolean operationsPasswordValidated;
+    /**
+     * Actor a scheduler-driven run executes for (the schedule's creator), so a
+     * deferred database deletion is armed in their name instead of "system".
+     * Control field like {@link #operationsPasswordValidated}: set only by the
+     * scheduling service; the REST layer strips any client-supplied value.
+     */
+    private String onBehalfOf;
     private String migrationMode;
     private String migrationSql;
     private String migrationSourceVersion;
@@ -141,6 +148,9 @@ public class RunContainerConfig {
 
     public boolean isOperationsPasswordValidated() { return operationsPasswordValidated; }
     public void setOperationsPasswordValidated(boolean operationsPasswordValidated) { this.operationsPasswordValidated = operationsPasswordValidated; }
+
+    public String getOnBehalfOf() { return onBehalfOf; }
+    public void setOnBehalfOf(String onBehalfOf) { this.onBehalfOf = onBehalfOf; }
 
     public String getMigrationMode() { return migrationMode; }
     public void setMigrationMode(String migrationMode) { this.migrationMode = migrationMode; }
@@ -192,6 +202,7 @@ public class RunContainerConfig {
         c.webhookNotify = this.webhookNotify;
         c.operationsPassword = this.operationsPassword;
         c.operationsPasswordValidated = this.operationsPasswordValidated;
+        c.onBehalfOf = this.onBehalfOf;
         c.migrationMode = this.migrationMode;
         c.migrationSql = this.migrationSql;
         c.migrationSourceVersion = this.migrationSourceVersion;

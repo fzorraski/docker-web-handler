@@ -50,6 +50,10 @@ public class ManageScheduleUseCase {
     @Inject
     ContainerSchedulingService schedulingService;
 
+
+    @Inject
+    br.com.fzdevx.infrastructure.config.DatabaseDeletionPolicy deletionPolicy;
+
     public ContainerSchedule createAndSchedule(CreateScheduleRequest request) {
         ContainerSchedule schedule = create(request);
         schedulingService.scheduleNext(schedule);
@@ -252,6 +256,11 @@ public class ManageScheduleUseCase {
                 request.getCreateConfig().setExpiresAt(null);
             }
 
+            // one-time CREATE may arm database deletion, which is a deferred drop:
+            // it needs the delete permission now, because execution later runs on a
+            // worker thread where the policy has no identity to check
+            guardArmedDeletion(request.getCreateConfig());
+
             // scheduled creates run outside a request scope - the container inherits
             // the schedule's tenant and sharing through the persisted config, not the
             // actor. Always overwritten from the schedule's VALIDATED list: the config
@@ -277,6 +286,9 @@ public class ManageScheduleUseCase {
             }
             containerTenantGuard.requireVisible(request.getContainerId());
         }
+        // same lock rule: the armed-deletion guard reads the database store, so
+        // it must run before the mutation, not inside it
+        guardArmedDeletion(request.getCreateConfig());
         // atomic mutation: an admin edit must not write back stale execution
         // fields over a concurrently finishing run (and vice versa); the
         // mutated object is captured so the response reflects exactly what
@@ -459,6 +471,27 @@ public class ManageScheduleUseCase {
             } catch (Exception e2) {
                 throw new InvalidInputException("Invalid datetime format: " + value);
             }
+        }
+    }
+
+    /**
+     * Refuses a CREATE config that arms database deletion unless the caller may
+     * delete the target database (full permission, own database, or a database
+     * this config itself creates). Runs at schedule write time - execution
+     * happens on a worker thread where the policy has no identity to check.
+     */
+    private void guardArmedDeletion(br.com.fzdevx.domain.model.RunContainerConfig createConfig) {
+        if (createConfig == null || !createConfig.isDeleteDatabaseOnExpiration()) {
+            return;
+        }
+        if (createConfig.getRepository() == null || createConfig.getDatabaseName() == null
+                || createConfig.getDatabaseName().isBlank()) {
+            throw new InvalidInputException("Database deletion on expiration requires a database.");
+        }
+        if (!deletionPolicy.canArmDeletion(createConfig.getRepository(), createConfig.getDatabaseName(),
+                createConfig.isCreateDatabase())) {
+            throw new br.com.fzdevx.domain.exception.AccessDeniedException(
+                    "You can only delete databases you created.");
         }
     }
 }

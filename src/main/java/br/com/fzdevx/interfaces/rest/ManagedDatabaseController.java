@@ -97,6 +97,9 @@ public class ManagedDatabaseController {
     @Inject
     br.com.fzdevx.infrastructure.config.TenantEntitlements tenantEntitlements;
 
+    @Inject
+    br.com.fzdevx.infrastructure.config.DatabaseDeletionPolicy deletionPolicy;
+
     private boolean isStatsResetEnabled(String repository) {
         return config.getOptionalValue("database.query-stats.reset-enabled." + repository, Boolean.class)
                 .orElse(false);
@@ -730,6 +733,11 @@ public class ManagedDatabaseController {
             List<ManagedDatabaseInfo> databases = listManagedDatabasesUseCase.listDatabases(repository);
             // the cached list is shared across users - filter/copy, never mutate
             databases = tenantVisibility.visible(databases, ManagedDatabaseInfo::tenantId);
+            // ownership is stamped before the actor fields are stripped, so a
+            // delete-own holder still learns which rows are theirs to delete
+            databases = databases.stream()
+                    .map(db -> db.withCreatedByMe(deletionPolicy.isCaller(db.createdBy())))
+                    .toList();
             // creator visibility is its own permission (AUDIT_VIEW)
             if (!currentUser.hasPermission(Permission.AUDIT_VIEW)) {
                 databases = databases.stream().map(ManagedDatabaseInfo::withoutCreatedBy).toList();
@@ -750,7 +758,8 @@ public class ManagedDatabaseController {
         }
     }
 
-    @RequiresPermission(Permission.DATABASE_DELETE)
+    // any-of; delete-own callers are narrowed to their own databases below
+    @RequiresPermission({Permission.DATABASE_DELETE, Permission.DATABASE_DELETE_OWN})
     @DELETE
     @Path("/{repository}/{databaseName}")
     @Produces(MediaType.APPLICATION_JSON)
@@ -782,6 +791,12 @@ public class ManagedDatabaseController {
         requireDbVisible(repository, databaseName);
 
         Optional<ManagedDatabase> md = managedDatabaseRepository.find(repository, databaseName);
+        if (!deletionPolicy.canDelete(md.orElse(null))) {
+            // {error}, not {code: FORBIDDEN}: an expected per-database refusal must
+            // not trigger the frontend's global revoked-permissions flow
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", "You can only delete databases you created.")).build();
+        }
         if (md.isPresent() && md.get().isProtectedFlag()) {
             return Response.status(Response.Status.CONFLICT)
                     .entity(Map.of("errorCode", "DATABASE_PROTECTED")).build();
@@ -829,7 +844,8 @@ public class ManagedDatabaseController {
         return Response.ok(Map.of("success", true)).build();
     }
 
-    @RequiresPermission(Permission.DATABASE_DELETE)
+    // any-of; delete-own callers are narrowed to their own databases below
+    @RequiresPermission({Permission.DATABASE_DELETE, Permission.DATABASE_DELETE_OWN})
     @DELETE
     @Path("/{repository}/bulk")
     @Consumes(MediaType.APPLICATION_JSON)
@@ -882,6 +898,12 @@ public class ManagedDatabaseController {
 
             // tenant-hidden databases are skipped, matching the single-delete 404 behavior
             if (md != null && !tenantVisibility.canSee(md.getTenantId())) {
+                skipped++;
+                continue;
+            }
+
+            // delete-own callers skip what they did not create, like the single-delete 403
+            if (!deletionPolicy.canDelete(md)) {
                 skipped++;
                 continue;
             }

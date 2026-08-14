@@ -11,6 +11,8 @@ public enum Permission {
     DATABASE_OPERATE("DATABASE"),
     DATABASE_UPLOAD("DATABASE"),
     DATABASE_DELETE("DATABASE"),
+    /** Delete only databases the user created themself (e.g. via their own restores). */
+    DATABASE_DELETE_OWN("DATABASE"),
     SCHEDULES_VIEW("SCHEDULES"),
     SCHEDULES_MANAGE("SCHEDULES"),
     TERMINAL_ACCESS("TERMINAL"),

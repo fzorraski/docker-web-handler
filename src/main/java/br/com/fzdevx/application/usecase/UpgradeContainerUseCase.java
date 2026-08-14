@@ -55,6 +55,7 @@ public class UpgradeContainerUseCase {
     @Inject LogRotationResolver logRotationResolver;
     @Inject ManagedDatabaseUsageTracker usageTracker;
     @Inject br.com.fzdevx.infrastructure.config.TenantEntitlements tenantEntitlements;
+    @Inject br.com.fzdevx.infrastructure.config.DatabaseDeletionPolicy deletionPolicy;
 
     private final ConcurrentHashMap<String, AtomicBoolean> activeRuns = new ConcurrentHashMap<>();
 
@@ -293,9 +294,13 @@ public class UpgradeContainerUseCase {
                 String repo = oldExpiration.getRepository();
 
                 if (expiresAt != null) {
-                    expirationService.schedule(newShortId, newFullId, expiresAt, repo, dbName, deleteDb);
+                    // carry the arming actor/tenant over: the upgrade must not
+                    // re-attribute a pending database deletion to the upgrader
+                    expirationService.schedule(newShortId, newFullId, expiresAt, repo, dbName, deleteDb,
+                            oldExpiration.getDeletionArmedBy(), oldExpiration.getTenantId());
                 } else if (dbName != null && !dbName.isBlank()) {
-                    expirationService.saveMetadata(newShortId, newFullId, repo, dbName);
+                    expirationService.saveMetadata(newShortId, newFullId, repo, dbName,
+                            oldExpiration.getTenantId());
                 }
             }
 
@@ -343,6 +348,27 @@ public class UpgradeContainerUseCase {
         if (!databaseService.hasDatabaseConfig(repository)) {
             eventSink.accept(ContainerEvent.info("Running Migration", "No database config for repository, skipping migration."));
             return true;
+        }
+
+        // manual SQL is arbitrary and can rewrite the pre-existing database, so
+        // it is fenced like an overwrite; API mode runs curated scripts and stays
+        // open - upgrading a container's schema is exactly what it is for
+        if ("MANUAL".equals(request.getMigrationMode())) {
+            switch (deletionPolicy.overwriteVerdict(repository, databaseName)) {
+                case PROTECTED -> {
+                    eventSink.accept(ContainerEvent.error("Running Migration",
+                            "Database '" + databaseName + "' is protected; manual migration SQL cannot"
+                                    + " run against it. Remove its protection first."));
+                    return false;
+                }
+                case NOT_OWNER -> {
+                    eventSink.accept(ContainerEvent.error("Running Migration",
+                            "Manual migration SQL can rewrite the contents of '" + databaseName
+                                    + "'. You can only run it against databases you created."));
+                    return false;
+                }
+                case ALLOWED -> { }
+            }
         }
 
         String pgImage = databaseService.getContainerImage(repository);

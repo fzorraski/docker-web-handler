@@ -17,7 +17,7 @@ public class PgExpirationRepository implements ExpirationRepository {
 
     private static final String SELECT = """
             SELECT short_id, full_container_id, expires_at, repository, database_name,
-                   delete_database_on_expiration
+                   delete_database_on_expiration, deletion_armed_by, tenant_id
             FROM container_expiration
             """;
 
@@ -28,18 +28,22 @@ public class PgExpirationRepository implements ExpirationRepository {
     public void save(ContainerExpiration expiration) {
         jdbc.update("""
                 INSERT INTO container_expiration (short_id, full_container_id, expires_at,
-                    repository, database_name, delete_database_on_expiration)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    repository, database_name, delete_database_on_expiration,
+                    deletion_armed_by, tenant_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (short_id) DO UPDATE SET
                     full_container_id = EXCLUDED.full_container_id,
                     expires_at = EXCLUDED.expires_at,
                     repository = EXCLUDED.repository,
                     database_name = EXCLUDED.database_name,
-                    delete_database_on_expiration = EXCLUDED.delete_database_on_expiration
+                    delete_database_on_expiration = EXCLUDED.delete_database_on_expiration,
+                    deletion_armed_by = EXCLUDED.deletion_armed_by,
+                    tenant_id = EXCLUDED.tenant_id
                 """,
                 expiration.getShortId(), expiration.getFullContainerId(), expiration.getExpiresAt(),
                 expiration.getRepository(), expiration.getDatabaseName(),
-                expiration.isDeleteDatabaseOnExpiration());
+                expiration.isDeleteDatabaseOnExpiration(),
+                expiration.getDeletionArmedBy(), expiration.getTenantId());
     }
 
     @Override
@@ -70,6 +74,8 @@ public class PgExpirationRepository implements ExpirationRepository {
         expiration.setRepository(rs.getString("repository"));
         expiration.setDatabaseName(rs.getString("database_name"));
         expiration.setDeleteDatabaseOnExpiration(rs.getBoolean("delete_database_on_expiration"));
+        expiration.setDeletionArmedBy(rs.getString("deletion_armed_by"));
+        expiration.setTenantId(rs.getString("tenant_id"));
         return expiration;
     }
 }

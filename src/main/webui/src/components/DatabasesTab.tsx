@@ -136,6 +136,9 @@ export default function DatabasesTab() {
   const tenants = useTenants()
   const canDbOperate = hasPermission(P.DATABASE_OPERATE)
   const canDbDelete = hasPermission(P.DATABASE_DELETE)
+  // delete-own: no blanket deletion, but rows this user created are theirs to drop
+  const canDbDeleteOwn = hasPermission(P.DATABASE_DELETE_OWN)
+  const canDeleteRow = (db: ManagedDatabaseInfo) => canDbDelete || (canDbDeleteOwn && db.createdByMe)
   const canRunContainers = hasPermission(P.CONTAINERS_RUN)
   const canViewContainers = hasPermission(P.CONTAINERS_VIEW)
   const canViewAudit = hasPermission(P.AUDIT_VIEW)
@@ -890,7 +893,7 @@ export default function DatabasesTab() {
           <MenuItem value="never">{t('database.idleNeverUsed')}</MenuItem>
         </TextField>
         <Box sx={{ flex: 1 }} />
-        {canDbDelete && selected.size > 0 && (
+        {selected.size > 0 && filteredDatabases.some((db) => selected.has(db.name) && canDeleteRow(db)) && (
           <Button
             variant="contained"
             color="error"
@@ -1169,7 +1172,7 @@ export default function DatabasesTab() {
                     </TableCell>
                   )}
                   <TableCell>
-                    {canDbDelete && (
+                    {canDeleteRow(db) && (
                       <Tooltip title={db.protectedFlag ? t('database.databaseProtected') : t('common.delete')}>
                         <span>
                           <Button
@@ -1269,8 +1272,8 @@ export default function DatabasesTab() {
               <ListItemText>{menu.target.protectedFlag ? t('database.removeProtection') : t('database.enableProtection')}</ListItemText>
             </MenuItem>
           ),
-          canDbDelete && <Divider key="divider2" />,
-          canDbDelete && (
+          canDeleteRow(menu.target) && <Divider key="divider2" />,
+          canDeleteRow(menu.target) && (
             <MenuItem
               key="delete"
               disabled={menu.target.protectedFlag}

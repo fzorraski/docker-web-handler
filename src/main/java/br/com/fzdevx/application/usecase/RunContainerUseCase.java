@@ -107,6 +107,9 @@ public class RunContainerUseCase {
     ManagedDatabaseRepository managedDatabaseRepository;
 
     @Inject
+    br.com.fzdevx.infrastructure.config.DatabaseDeletionPolicy deletionPolicy;
+
+    @Inject
     ListManagedDatabasesUseCase listManagedDatabasesUseCase;
 
     @Inject
@@ -229,6 +232,16 @@ public class RunContainerUseCase {
                     && !request.isOperationsPasswordValidated()
                     && !dumpStorageService.validateOperationsPassword(null)) {
                 eventSink.accept(ContainerEvent.error("Validating", "Invalid operations password."));
+                return;
+            }
+
+            // second gate behind prepareRun's 403: arming deletion is a deferred
+            // drop. Worker threads (scheduled runs) and CI bypass inside the policy.
+            if (request.isDeleteDatabaseOnExpiration()
+                    && !deletionPolicy.canArmDeletion(request.getRepository(), request.getDatabaseName(),
+                            request.isCreateDatabase())) {
+                eventSink.accept(ContainerEvent.error("Validating",
+                        "You can only delete databases you created."));
                 return;
             }
 
@@ -404,7 +417,8 @@ public class RunContainerUseCase {
             usageTracker.markUsed(request.getRepository(), request.getDatabaseName());
 
             createdContainerId = null; // success — don't clean up
-            auditLogger.log("CONTAINER_CREATE", request.getContainerName(), "image=" + imageRef);
+            auditLogger.log("CONTAINER_CREATE", request.getContainerName(),
+                    buildCreateAuditDetail(request, imageRef, expirationMessage));
             eventSink.accept(ContainerEvent.success("Complete",
                     "Container started successfully from " + imageRef + expirationMessage));
         } finally {
@@ -588,21 +602,49 @@ public class RunContainerUseCase {
         return result;
     }
 
+    /**
+     * What the audit trail keeps about a creation: the image, the memory limit
+     * when one was set, and — because it arms an irreversible automatic drop —
+     * the database chosen and whether delete-on-expiration was enabled.
+     */
+    private static String buildCreateAuditDetail(RunContainerConfig request, String imageRef,
+                                                 String expirationMessage) {
+        StringBuilder detail = new StringBuilder("image=").append(imageRef);
+        if (request.getMemoryMb() != null) {
+            detail.append(", memoryMb=").append(request.getMemoryMb());
+        }
+        if (request.getDatabaseName() != null && !request.getDatabaseName().isBlank()) {
+            detail.append(", database=").append(request.getDatabaseName());
+            if (request.isDeleteDatabaseOnExpiration()) {
+                detail.append(", deleteDatabaseOnExpiration=true");
+            }
+        }
+        return detail + expirationMessage;
+    }
+
     private String scheduleExpiration(RunContainerConfig request, String fullContainerId, Instant startedAt) {
         Instant expiresInstant = resolveExpiration(request, startedAt);
+        String tenantId = request.getTenantId() != null && !request.getTenantId().isBlank()
+                ? request.getTenantId() : null;
         if (expiresInstant == null) {
             String dbName = request.getDatabaseName();
             if (dbName != null && !dbName.isBlank()) {
                 String shortId = fullContainerId.substring(0, 10);
-                expirationService.saveMetadata(shortId, fullContainerId, request.getRepository(), dbName);
+                expirationService.saveMetadata(shortId, fullContainerId, request.getRepository(), dbName,
+                        tenantId);
             }
             return "";
         }
 
         String shortId = fullContainerId.substring(0, 10);
+        // scheduler-driven runs resolve to "system" here; the schedule's creator
+        // travels in onBehalfOf so the armed deletion is attributed to a person
+        String armedBy = request.getOnBehalfOf() != null && !request.getOnBehalfOf().isBlank()
+                ? request.getOnBehalfOf() : actorResolver.usernameOrSystem();
         expirationService.schedule(shortId, fullContainerId, expiresInstant,
                 request.getRepository(), request.getDatabaseName(),
-                request.isDeleteDatabaseOnExpiration());
+                request.isDeleteDatabaseOnExpiration(),
+                armedBy, tenantId);
 
         LocalDateTime ldt = LocalDateTime.ofInstant(expiresInstant, ZoneId.systemDefault());
         return " (expires at " + ldt.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) + ")";

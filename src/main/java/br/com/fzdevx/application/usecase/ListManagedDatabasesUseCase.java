@@ -137,7 +137,9 @@ public class ListManagedDatabasesUseCase {
                     md.getLastRestoredAt(),
                     md.getLastRestoredBy(),
                     md.getCreatedBy(),
-                    md.getTenantId()
+                    md.getTenantId(),
+                    // per-caller, so never computed here: this list is cached across users
+                    false
             ));
         }
 

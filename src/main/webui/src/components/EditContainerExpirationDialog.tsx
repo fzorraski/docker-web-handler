@@ -18,6 +18,7 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from './AuthProvider'
 import { P } from '../utils/permissions'
+import { canArmDbDeletion } from '../utils/newContainerUtils'
 import ExpirationPicker from './ExpirationPicker'
 import type { DockerContainer, DatabaseConflict } from '../types'
 import { getDatabaseConflicts, validateOperationsPassword, type UpdateExpirationRequest } from '../services/containerService'
@@ -41,7 +42,6 @@ export default function EditContainerExpirationDialog({
 }: Props) {
   const { t } = useTranslation()
   const { hasPermission } = useAuth()
-  const canDeleteDb = hasPermission(P.DATABASE_DELETE)
   const [enabled, setEnabled] = useState(false)
   const [expiresAt, setExpiresAt] = useState<Dayjs | null>(dayjs().add(8, 'hour'))
   const [deleteDbOnExpiration, setDeleteDbOnExpiration] = useState(false)
@@ -55,6 +55,18 @@ export default function EditContainerExpirationDialog({
   const otherContainersUsingDb = (dbConflict?.inUseByContainers ?? []).filter(name => name !== container?.names)
   const hasDbUsageConflict = otherContainersUsingDb.length > 0
   const isAdding = !container?.expiresAt
+  // NEWLY arming follows the deletion rule (backend refuses otherwise); an
+  // already-armed record stays visible so its deadline can be edited or the
+  // deletion disarmed - keeping it claims no new destructive right
+  const alreadyArmed = !!container?.deleteDatabaseOnExpiration
+  const canDeleteDb = alreadyArmed || canArmDbDeletion({
+    canDelete: hasPermission(P.DATABASE_DELETE),
+    canDeleteOwn: hasPermission(P.DATABASE_DELETE_OWN),
+    dbMode: 'existing',
+    restoreDbExists: false,
+    createDatabase: false,
+    createdByMe: dbConflict?.createdByMe,
+  })
   const showDbDeletion = dbDeletionEnabled && !!container?.databaseName && enabled && canDeleteDb
   // DB deletion is being newly enabled (wasn't on before)
   const isEnablingDbDeletion = deleteDbOnExpiration && enabled && !(container?.deleteDatabaseOnExpiration)
@@ -81,7 +93,7 @@ export default function EditContainerExpirationDialog({
     setConfirmNameInput('')
 
     if (container.databaseName) {
-      getDatabaseConflicts(container.databaseName)
+      getDatabaseConflicts(container.databaseName, container.repository)
         .then(setDbConflict)
         .catch(() => setDbConflict(null))
     }

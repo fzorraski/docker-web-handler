@@ -71,6 +71,8 @@ class RunContainerUseCaseTest {
     @Mock ManagedDatabaseUsageTracker usageTracker;
     @Mock br.com.fzdevx.application.port.AuditLogger auditLogger;
     @Mock br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
+    @Mock br.com.fzdevx.application.port.ManagedDatabaseRepository managedDatabaseRepository;
+    @Mock br.com.fzdevx.infrastructure.config.DatabaseDeletionPolicy deletionPolicy;
 
     @InjectMocks
     RunContainerUseCase useCase;
@@ -81,9 +83,46 @@ class RunContainerUseCaseTest {
     void setUp() throws Exception {
         events = new ArrayList<>();
         useCase.tenantEntitlements = br.com.fzdevx.infrastructure.config.TestTenantEntitlements.passthrough();
+        // the arming gate defaults open here; the dedicated gate tests close it
+        lenient().when(deletionPolicy.canArmDeletion(any(), any(), anyBoolean())).thenReturn(true);
         java.lang.reflect.Field maxMbField = RunContainerUseCase.class.getDeclaredField("memoryLimitMaxMb");
         maxMbField.setAccessible(true);
         maxMbField.setLong(useCase, 65536L);
+    }
+
+    // ---- deferred-deletion attribution ----
+
+    @Test
+    void execute_scheduledRun_armsDeletionAsTheScheduleCreator() {
+        stubHappyPath();
+        when(actorResolver.usernameOrSystem()).thenReturn("system");
+        var req = validRequest();
+        req.setDatabaseName("mydb");
+        req.setDeleteDatabaseOnExpiration(true);
+        req.setOperationsPasswordValidated(true);
+        req.setExpiresAt("2099-12-31T23:59:59");
+        req.setOnBehalfOf("alice");
+
+        useCase.execute(req, events::add);
+
+        verify(expirationService).schedule(any(), any(), any(), any(), eq("mydb"),
+                eq(true), eq("alice"), any());
+    }
+
+    @Test
+    void execute_interactiveRun_armsDeletionAsTheCurrentActor() {
+        stubHappyPath();
+        when(actorResolver.usernameOrSystem()).thenReturn("alice");
+        var req = validRequest();
+        req.setDatabaseName("mydb");
+        req.setDeleteDatabaseOnExpiration(true);
+        req.setOperationsPasswordValidated(true);
+        req.setExpiresAt("2099-12-31T23:59:59");
+
+        useCase.execute(req, events::add);
+
+        verify(expirationService).schedule(any(), any(), any(), any(), eq("mydb"),
+                eq(true), eq("alice"), any());
     }
 
     // ---- helpers ----

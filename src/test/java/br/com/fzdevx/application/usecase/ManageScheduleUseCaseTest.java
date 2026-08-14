@@ -274,6 +274,91 @@ class ManageScheduleUseCaseTest {
         assertThrows(InvalidInputException.class, () -> useCase.create(req));
     }
 
+    private CreateScheduleRequest oneTimeCreateArmingDeletion() {
+        CreateScheduleRequest req = new CreateScheduleRequest();
+        req.setName("Auto create");
+        req.setAction("CREATE");
+        req.setScheduleType("ONE_TIME");
+        req.setScheduledAt(Instant.now().plus(1, ChronoUnit.HOURS).toString());
+        var config = new br.com.fzdevx.application.dto.RunContainerRequest();
+        config.setRepository("myapp");
+        config.setDatabaseName("mydb");
+        config.setDeleteDatabaseOnExpiration(true);
+        req.setCreateConfig(config);
+        return req;
+    }
+
+    private br.com.fzdevx.application.port.ManagedDatabaseRepository databaseMetadata;
+
+    private void wireDeletionPolicy(br.com.fzdevx.domain.model.auth.Permission... permissions) {
+        var user = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        user.set("u1", "alice", java.util.Set.of(permissions));
+        databaseMetadata =
+                org.mockito.Mockito.mock(br.com.fzdevx.application.port.ManagedDatabaseRepository.class);
+        useCase.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy
+                .forUser(user, databaseMetadata);
+    }
+
+    @Test
+    void create_oneTimeCreate_armingDeletion_withoutDeleteGrant_denied() {
+        wireDeletionPolicy(br.com.fzdevx.domain.model.auth.Permission.SCHEDULES_MANAGE);
+
+        assertThrows(br.com.fzdevx.domain.exception.AccessDeniedException.class,
+                () -> useCase.create(oneTimeCreateArmingDeletion()));
+        verify(scheduleRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void create_oneTimeCreate_armingDeletion_deleteOwn_foreignDatabase_denied() {
+        wireDeletionPolicy(br.com.fzdevx.domain.model.auth.Permission.DATABASE_DELETE_OWN);
+        var foreign = new br.com.fzdevx.domain.model.ManagedDatabase("myapp", "mydb");
+        foreign.setCreatedBy("bob");
+        when(databaseMetadata.find("myapp", "mydb")).thenReturn(Optional.of(foreign));
+
+        assertThrows(br.com.fzdevx.domain.exception.AccessDeniedException.class,
+                () -> useCase.create(oneTimeCreateArmingDeletion()));
+    }
+
+    @Test
+    void create_oneTimeCreate_armingDeletion_deleteOwn_ownDatabase_saves() {
+        wireDeletionPolicy(br.com.fzdevx.domain.model.auth.Permission.DATABASE_DELETE_OWN);
+        var mine = new br.com.fzdevx.domain.model.ManagedDatabase("myapp", "mydb");
+        mine.setCreatedBy("alice");
+        when(databaseMetadata.find("myapp", "mydb")).thenReturn(Optional.of(mine));
+
+        ContainerSchedule schedule = useCase.create(oneTimeCreateArmingDeletion());
+
+        assertTrue(schedule.getCreateConfig().isDeleteDatabaseOnExpiration());
+        verify(scheduleRepository).save(any());
+    }
+
+    @Test
+    void create_oneTimeCreate_armingDeletion_withoutDatabase_throws() {
+        wireDeletionPolicy(br.com.fzdevx.domain.model.auth.Permission.DATABASE_DELETE);
+        CreateScheduleRequest req = oneTimeCreateArmingDeletion();
+        req.getCreateConfig().setDatabaseName(null);
+
+        assertThrows(InvalidInputException.class, () -> useCase.create(req));
+    }
+
+    @Test
+    void update_armingDeletion_withoutDeleteGrant_denied() {
+        wireDeletionPolicy(br.com.fzdevx.domain.model.auth.Permission.SCHEDULES_MANAGE);
+        ContainerSchedule stored = new ContainerSchedule("auto", ScheduleAction.CREATE, ScheduleType.ONE_TIME);
+        stored.setId(VALID_UUID);
+        when(scheduleRepository.findById(VALID_UUID)).thenReturn(Optional.of(stored));
+
+        UpdateScheduleRequest request = new UpdateScheduleRequest();
+        var config = new br.com.fzdevx.application.dto.RunContainerRequest();
+        config.setRepository("myapp");
+        config.setDatabaseName("mydb");
+        config.setDeleteDatabaseOnExpiration(true);
+        request.setCreateConfig(config);
+
+        assertThrows(br.com.fzdevx.domain.exception.AccessDeniedException.class,
+                () -> useCase.update(VALID_UUID, request));
+    }
+
     @Test
     void create_targetingForeignTenantContainer_denied() {
         // schedules fire outside any request scope where no tenant check can run,

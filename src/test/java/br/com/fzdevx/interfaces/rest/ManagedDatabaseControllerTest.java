@@ -55,6 +55,7 @@ class ManagedDatabaseControllerTest {
         controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
         controller.tenantVisibility = br.com.fzdevx.infrastructure.config.TestTenantVisibility.passthrough();
         controller.tenantEntitlements = br.com.fzdevx.infrastructure.config.TestTenantEntitlements.passthrough();
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy.passthrough();
     }
 
     @BeforeEach
@@ -136,7 +137,7 @@ class ManagedDatabaseControllerTest {
     @SuppressWarnings("unchecked")
     void listDatabases_stripsCreatorWithoutAuditView() {
         ManagedDatabaseInfo db = new ManagedDatabaseInfo("mydb", REPO, 1024L, 0, null, null,
-                null, false, Instant.now(), null, 0, null, false, null, null, null, "alice", null);
+                null, false, Instant.now(), null, 0, null, false, null, null, null, "alice", null, false);
         when(listManagedDatabasesUseCase.listDatabases(REPO)).thenReturn(List.of(db));
         var rbacUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
         rbacUser.set("u1", "bob", java.util.Set.of(br.com.fzdevx.domain.model.auth.Permission.DATABASE_VIEW));
@@ -154,7 +155,7 @@ class ManagedDatabaseControllerTest {
     @SuppressWarnings("unchecked")
     void listDatabases_keepsCreatorWithAuditView() {
         ManagedDatabaseInfo db = new ManagedDatabaseInfo("mydb", REPO, 1024L, 0, null, null,
-                null, false, Instant.now(), null, 0, null, false, null, null, null, "alice", null);
+                null, false, Instant.now(), null, 0, null, false, null, null, null, "alice", null, false);
         when(listManagedDatabasesUseCase.listDatabases(REPO)).thenReturn(List.of(db));
 
         List<ManagedDatabaseInfo> body =
@@ -228,6 +229,90 @@ class ManagedDatabaseControllerTest {
         verify(databaseService).dropDatabase(REPO, DB_NAME);
         verify(managedDatabaseRepository).delete(REPO, DB_NAME);
         verify(listManagedDatabasesUseCase).invalidateCache(REPO);
+    }
+
+    // ---- DATABASE_DELETE_OWN ----
+
+    private void actAsDeleteOwnUser() {
+        var own = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        own.set("u1", "alice", java.util.Set.of(
+                br.com.fzdevx.domain.model.auth.Permission.DATABASE_VIEW,
+                br.com.fzdevx.domain.model.auth.Permission.DATABASE_DELETE_OWN));
+        controller.currentUser = own;
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy
+                .forUser(own, managedDatabaseRepository);
+    }
+
+    @Test
+    void deleteDatabase_deleteOwn_ownDatabase_succeeds() {
+        actAsDeleteOwnUser();
+        ManagedDatabase md = new ManagedDatabase(REPO, DB_NAME);
+        md.setCreatedBy("alice");
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(md));
+        when(expirationService.findByDatabaseName(DB_NAME)).thenReturn(List.of());
+
+        assertEquals(200, controller.deleteDatabase(REPO, DB_NAME, PASSWORD, false).getStatus());
+        verify(databaseService).dropDatabase(REPO, DB_NAME);
+    }
+
+    @Test
+    void deleteDatabase_deleteOwn_foreignDatabase_returns403() {
+        actAsDeleteOwnUser();
+        ManagedDatabase md = new ManagedDatabase(REPO, DB_NAME);
+        md.setCreatedBy("bob");
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.of(md));
+
+        assertEquals(403, controller.deleteDatabase(REPO, DB_NAME, PASSWORD, false).getStatus());
+        verify(databaseService, never()).dropDatabase(any(), any());
+    }
+
+    @Test
+    void deleteDatabase_deleteOwn_noMetadata_returns403() {
+        // a database nobody recorded a creator for is nobody's "own"
+        actAsDeleteOwnUser();
+        when(managedDatabaseRepository.find(REPO, DB_NAME)).thenReturn(Optional.empty());
+
+        assertEquals(403, controller.deleteDatabase(REPO, DB_NAME, PASSWORD, false).getStatus());
+        verify(databaseService, never()).dropDatabase(any(), any());
+    }
+
+    @Test
+    void deleteBulk_deleteOwn_skipsForeignDatabases() {
+        actAsDeleteOwnUser();
+        ManagedDatabase mine = new ManagedDatabase(REPO, "mine_db");
+        mine.setCreatedBy("alice");
+        ManagedDatabase theirs = new ManagedDatabase(REPO, "theirs_db");
+        theirs.setCreatedBy("bob");
+        when(managedDatabaseRepository.findByRepository(REPO)).thenReturn(List.of(mine, theirs));
+
+        Response response = controller.deleteBulk(REPO, PASSWORD, List.of("mine_db", "theirs_db"));
+        assertEquals(200, response.getStatus());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) response.getEntity();
+        assertEquals(1, body.get("deleted"));
+        assertEquals(1, body.get("skipped"));
+        verify(databaseService).dropDatabase(REPO, "mine_db");
+        verify(databaseService, never()).dropDatabase(REPO, "theirs_db");
+    }
+
+    @Test
+    void listDatabases_stampsCreatedByMe_evenWithoutAuditView() {
+        ManagedDatabaseInfo mine = new ManagedDatabaseInfo("mine_db", REPO, 1024L, 0, null, null,
+                null, false, Instant.now(), null, 0, null, false, null, null, null, "alice", null, false);
+        ManagedDatabaseInfo theirs = new ManagedDatabaseInfo("theirs_db", REPO, 1024L, 0, null, null,
+                null, false, Instant.now(), null, 0, null, false, null, null, null, "bob", null, false);
+        when(listManagedDatabasesUseCase.listDatabases(REPO)).thenReturn(List.of(mine, theirs));
+        actAsDeleteOwnUser();
+
+        @SuppressWarnings("unchecked")
+        List<ManagedDatabaseInfo> body =
+                (List<ManagedDatabaseInfo>) controller.listDatabases(REPO).getEntity();
+
+        assertTrue(body.get(0).createdByMe());
+        assertFalse(body.get(1).createdByMe());
+        // no AUDIT_VIEW: the names are stripped, the ownership flag survives
+        assertNull(body.get(0).createdBy());
     }
 
     @Test
@@ -753,7 +838,7 @@ class ManagedDatabaseControllerTest {
 
     private ManagedDatabaseInfo makeDb(String name) {
         return new ManagedDatabaseInfo(name, REPO, 1024L, 0, null, null,
-                null, false, Instant.now(), null, 0, null, false, null, null, null, null, null);
+                null, false, Instant.now(), null, 0, null, false, null, null, null, null, null, false);
     }
 
     private void setField(String name, Object value) {

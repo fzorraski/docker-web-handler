@@ -85,6 +85,9 @@ public class RestoreDumpUseCase {
     @Inject
     br.com.fzdevx.infrastructure.config.ActorResolver actorResolver;
 
+    @Inject
+    br.com.fzdevx.infrastructure.config.DatabaseDeletionPolicy deletionPolicy;
+
     public static final String EPHEMERAL_LABEL = "docker-web-handler.ephemeral";
     private static final long PROGRESS_THROTTLE_MS = 200;
 
@@ -343,6 +346,26 @@ public class RestoreDumpUseCase {
                 return false;
             }
             boolean databaseExisted = databaseService.databaseExists(request.getRepository(), request.getTargetDatabase());
+            // a --clean restore into an existing database destroys its contents, so
+            // it is fenced like deletion; checked here rather than at prepare time so
+            // every door (restore dialog, container creation, CI) hits the same rules
+            if (databaseExisted) {
+                switch (deletionPolicy.overwriteVerdict(request.getRepository(), request.getTargetDatabase())) {
+                    case PROTECTED -> {
+                        eventSink.accept(ContainerEvent.error("Validating",
+                                "Database '" + request.getTargetDatabase() + "' is protected and cannot be"
+                                        + " overwritten. Remove its protection first."));
+                        return false;
+                    }
+                    case NOT_OWNER -> {
+                        eventSink.accept(ContainerEvent.error("Validating",
+                                "Database '" + request.getTargetDatabase() + "' already exists and restoring would"
+                                        + " overwrite it. You can only overwrite databases you created."));
+                        return false;
+                    }
+                    case ALLOWED -> { }
+                }
+            }
             if (request.isCreateDatabase()) {
                 eventSink.accept(ContainerEvent.info("Creating Database",
                         "Creating database '" + request.getTargetDatabase() + "'..."));

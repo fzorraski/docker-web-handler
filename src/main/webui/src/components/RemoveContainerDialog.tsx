@@ -15,6 +15,7 @@ import { Delete, Warning } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from './AuthProvider'
 import { P } from '../utils/permissions'
+import { canArmDbDeletion } from '../utils/newContainerUtils'
 import { getDatabaseConflicts } from '../services/containerService'
 import type { DockerContainer, DatabaseConflict } from '../types'
 
@@ -34,12 +35,21 @@ interface Props {
 export default function RemoveContainerDialog({ open, container, dbDeletionEnabled, opsPwRequired, onClose, onConfirm }: Props) {
   const { t } = useTranslation()
   const { hasPermission } = useAuth()
-  const canDeleteDb = hasPermission(P.DATABASE_DELETE)
   const [deleteDb, setDeleteDb] = useState(false)
   const [password, setPassword] = useState('')
   const [dbConflict, setDbConflict] = useState<DatabaseConflict | null>(null)
   const [error, setError] = useState('')
 
+  // removing WITH the database is an immediate drop, so the offer follows the
+  // backend's rule exactly: full delete, or delete-own on the caller's own DB
+  const canDeleteDb = canArmDbDeletion({
+    canDelete: hasPermission(P.DATABASE_DELETE),
+    canDeleteOwn: hasPermission(P.DATABASE_DELETE_OWN),
+    dbMode: 'existing',
+    restoreDbExists: false,
+    createDatabase: false,
+    createdByMe: dbConflict?.createdByMe,
+  })
   const hasDb = !!container?.databaseName && dbDeletionEnabled && !!container?.deleteDatabaseOnExpiration && canDeleteDb
   const isProtected = dbConflict?.protectedFlag ?? false
   const otherContainers = (dbConflict?.inUseByContainers ?? []).filter(n => n !== container?.names)
@@ -49,7 +59,7 @@ export default function RemoveContainerDialog({ open, container, dbDeletionEnabl
       setDeleteDb(false)
       setPassword('')
       setError('')
-      getDatabaseConflicts(container.databaseName)
+      getDatabaseConflicts(container.databaseName, container.repository)
         .then(setDbConflict)
         .catch(() => setDbConflict(null))
     } else {

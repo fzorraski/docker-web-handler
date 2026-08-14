@@ -1,5 +1,5 @@
 import type { DockerContainer, ApiResponse, DatabaseConflict } from '../types'
-import fetchWithAuth from './fetchWithAuth'
+import fetchWithAuth, { apiErrorMessage, handleJsonResponse } from './fetchWithAuth'
 
 const API = '/api/containers/'
 
@@ -106,8 +106,11 @@ export async function getLocale(): Promise<string> {
   return res.text()
 }
 
-export async function getDatabaseConflicts(databaseName: string): Promise<DatabaseConflict> {
-  const res = await fetchWithAuth(API + 'database-conflicts?databaseName=' + encodeURIComponent(databaseName))
+export async function getDatabaseConflicts(databaseName: string, repository?: string): Promise<DatabaseConflict> {
+  // the repository disambiguates same-named databases across repos and lets the
+  // backend report createdByMe; older callers without it keep the legacy behavior
+  const repoParam = repository ? '&repository=' + encodeURIComponent(repository) : ''
+  const res = await fetchWithAuth(API + 'database-conflicts?databaseName=' + encodeURIComponent(databaseName) + repoParam)
   return handleResponse(res)
 }
 
@@ -209,11 +212,7 @@ export interface MigrationPreview {
 export async function previewMigration(repository: string, sourceVersion: string, targetVersion: string): Promise<MigrationPreview> {
   const params = new URLSearchParams({ repository, sourceVersion, targetVersion })
   const res = await fetchWithAuth(API + 'migration-preview?' + params)
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.error || res.statusText)
-  }
-  return res.json()
+  return handleJsonResponse(res)
 }
 
 export async function extendExpiration(id: string, minutes: number = 10): Promise<boolean> {
@@ -242,7 +241,7 @@ export async function updateContainerExpiration(request: UpdateExpirationRequest
   const res = await postJson(API + 'update-expiration', request)
   if (res.status === 403 || res.status === 400 || res.status === 404) {
     const data = await res.json().catch(() => ({}))
-    return { success: false, error: data.error || res.statusText }
+    return { success: false, error: apiErrorMessage(data, res.statusText) }
   }
   if (!res.ok) throw new Error(res.statusText)
   return res.json()

@@ -1319,6 +1319,7 @@ const es: typeof en = {
     DATABASE_OPERATE: 'Restaurar, crear snapshots y gestionar bases de datos (eliminar requiere DATABASE_DELETE)',
     DATABASE_UPLOAD: 'Subir dumps de bases de datos',
     DATABASE_DELETE: 'Eliminar bases de datos, dumps y snapshots',
+    DATABASE_DELETE_OWN: 'Eliminar solo bases de datos creadas por el propio usuario',
     SCHEDULES_VIEW: 'Ver agendamientos',
     SCHEDULES_MANAGE: 'Crear y gestionar agendamientos',
     TERMINAL_ACCESS: 'Abrir terminales de contenedores y subir archivos',

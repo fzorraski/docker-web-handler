@@ -1319,6 +1319,7 @@ const ptBR: typeof en = {
     DATABASE_OPERATE: 'Restaurar, criar snapshots e gerenciar bancos de dados (excluir requer DATABASE_DELETE)',
     DATABASE_UPLOAD: 'Enviar dumps de banco de dados',
     DATABASE_DELETE: 'Excluir bancos de dados, dumps e snapshots',
+    DATABASE_DELETE_OWN: 'Excluir apenas bancos de dados criados pelo próprio usuário',
     SCHEDULES_VIEW: 'Ver agendamentos',
     SCHEDULES_MANAGE: 'Criar e gerenciar agendamentos',
     TERMINAL_ACCESS: 'Abrir terminais de containers e enviar arquivos',

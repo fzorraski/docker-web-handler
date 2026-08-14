@@ -39,7 +39,7 @@ public class ContainerExpirationController {
     DockerClient dockerClient;
 
     @Inject
-    br.com.fzdevx.infrastructure.config.CurrentUser currentUser;
+    br.com.fzdevx.infrastructure.config.DatabaseDeletionPolicy deletionPolicy;
 
     @Inject
     ContainerExpirationService expirationService;
@@ -64,28 +64,38 @@ public class ContainerExpirationController {
     @GET
     @Path("/database-conflicts")
     @Produces(MediaType.APPLICATION_JSON)
-    public DatabaseConflict getDatabaseConflicts(@QueryParam("databaseName") String databaseName) {
+    public DatabaseConflict getDatabaseConflicts(@QueryParam("databaseName") String databaseName,
+                                                 @QueryParam("repository") String repository) {
         Optional<String> dbError = InputValidator.validateDatabaseName(databaseName);
         if (dbError.isPresent()) {
+            return new DatabaseConflict(null, Collections.emptyList(), null);
+        }
+        if (repository != null && InputValidator.validateRepository(repository).isPresent()) {
             return new DatabaseConflict(null, Collections.emptyList(), null);
         }
 
         List<ContainerExpiration> expirations = expirationService.findByDatabaseName(databaseName);
 
-        // Check protected flag — use repository from expiration entries if available
-        boolean isProtected = false;
-        if (!expirations.isEmpty()) {
-            String repo = expirations.getFirst().getRepository();
-            if (repo != null) {
-                isProtected = managedDatabaseRepository.find(repo, databaseName)
-                        .map(ManagedDatabase::isProtectedFlag).orElse(false);
+        // Resolve the metadata once. The explicit repository disambiguates same-named
+        // databases across repos; without it, fall back to the expiration entries'
+        // repository as before (and no ownership can be reported).
+        String repo = repository != null ? repository
+                : expirations.isEmpty() ? null : expirations.getFirst().getRepository();
+        Optional<ManagedDatabase> metadata = repo != null
+                ? managedDatabaseRepository.find(repo, databaseName)
+                : Optional.empty();
+        boolean isProtected = metadata.map(ManagedDatabase::isProtectedFlag).orElse(false);
+        boolean createdByMe = metadata.map(md -> deletionPolicy.isCaller(md.getCreatedBy())).orElse(false);
+
+        if (expirations.isEmpty()) {
+            if (repo == null) {
+                // No containers and no repository given — legacy scan for protection only
+                isProtected = managedDatabaseRepository.findAll().stream()
+                        .anyMatch(md -> md.getName().equals(databaseName) && md.isProtectedFlag());
             }
-        } else {
-            // No containers use this database — check all repos for the protected flag
-            isProtected = managedDatabaseRepository.findAll().stream()
-                    .anyMatch(md -> md.getName().equals(databaseName) && md.isProtectedFlag());
             DatabaseConflict conflict = new DatabaseConflict(null, Collections.emptyList(), null);
             conflict.setProtectedFlag(isProtected);
+            conflict.setCreatedByMe(createdByMe);
             return conflict;
         }
 
@@ -106,6 +116,7 @@ public class ContainerExpirationController {
 
         DatabaseConflict conflict = new DatabaseConflict(scheduledForDeletionBy, inUseByContainers, expiresAt);
         conflict.setProtectedFlag(isProtected);
+        conflict.setCreatedByMe(createdByMe);
         return conflict;
     }
 
@@ -196,12 +207,6 @@ public class ContainerExpirationController {
         }
 
         if (request.deleteDatabaseOnExpiration) {
-            // scheduling a database drop needs the dedicated delete permission
-            if (!currentUser.hasPermission(Permission.DATABASE_DELETE)) {
-                return Response.status(Response.Status.FORBIDDEN)
-                        .entity(Map.of("code", "FORBIDDEN",
-                                "message", "You do not have permission to perform this action.")).build();
-            }
             if (expiresInstant == null) {
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", "Cannot enable database deletion without expiration.")).build();
@@ -216,6 +221,17 @@ public class ContainerExpirationController {
                     || InputValidator.validateDatabaseName(dbName).isPresent()) {
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", "Container has no database associated.")).build();
+            }
+            // NEWLY arming a database drop needs the delete permission - full, or
+            // delete-own when the caller created the target. A record that is
+            // already armed stays editable (deadline changes) by anyone allowed
+            // here: the arming was authorized once, and the original armer is
+            // preserved, so keeping the flag claims no new destructive right
+            if (!expirationService.isDeleteDatabaseOnExpiration(request.containerId)
+                    && !deletionPolicy.canDelete(expirationService.getRepository(request.containerId), dbName)) {
+                // {error} on purpose: expected refusal, not an RBAC denial
+                return Response.status(Response.Status.FORBIDDEN)
+                        .entity(Map.of("error", "You can only delete databases you created.")).build();
             }
             if (passwordValidationService.isOperationsPasswordRequired()
                     && !passwordValidationService.validateOperationsPassword(request.operationsPassword)) {

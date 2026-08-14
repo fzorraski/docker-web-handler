@@ -44,11 +44,15 @@ public final class BuiltInRoles {
         // operators keep creator visibility (AUDIT_VIEW) but not the full
         // audit trail, which is an admin-and-above capability
         permissions.remove(Permission.AUDIT_LOG_VIEW);
-        // operators restore and snapshot, but destroying a database, dump or
-        // snapshot is an admin-and-above capability
+        // operators restore and snapshot, but destroying ANY database, dump or
+        // snapshot is an admin-and-above capability. DATABASE_DELETE_OWN stays:
+        // restore-into-existing and delete are fenced by the deletion policy, and
+        // without delete-own an operator could not even refresh a database their
+        // own earlier restore created - the role's core daily workflow
         permissions.remove(Permission.DATABASE_DELETE);
         return builtIn(OPERATOR_ID, "OPERATOR",
-                "Container, database, schedule, terminal and log operations (no deletion of databases, dumps or snapshots).",
+                "Container, database, schedule, terminal and log operations. May delete or overwrite only "
+                        + "databases they created themselves (no deletion of other databases, dumps or snapshots).",
                 permissions);
     }
 

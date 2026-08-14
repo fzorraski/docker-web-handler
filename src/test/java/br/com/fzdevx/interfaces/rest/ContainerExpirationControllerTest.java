@@ -50,7 +50,7 @@ class ContainerExpirationControllerTest {
     @org.junit.jupiter.api.BeforeEach
     void injectCurrentUser() {
         // real instance: outside RBAC it grants everything (legacy behavior)
-        controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy.passthrough();
         controller.containerTenantGuard = br.com.fzdevx.infrastructure.docker.TestContainerTenantGuard.passthrough();
     }
 
@@ -126,7 +126,7 @@ class ContainerExpirationControllerTest {
 
     @Test
     void getDatabaseConflicts_invalidDbName_returnsEmpty() {
-        var result = controller.getDatabaseConflicts("123bad");
+        var result = controller.getDatabaseConflicts("123bad", null);
         assertTrue(result.getInUseByContainers().isEmpty());
         assertNull(result.getScheduledForDeletionBy());
     }
@@ -134,7 +134,7 @@ class ContainerExpirationControllerTest {
     @Test
     void getDatabaseConflicts_noExpirations_returnsEmpty() {
         when(expirationService.findByDatabaseName("mydb")).thenReturn(Collections.emptyList());
-        var result = controller.getDatabaseConflicts("mydb");
+        var result = controller.getDatabaseConflicts("mydb", null);
         assertTrue(result.getInUseByContainers().isEmpty());
     }
 
@@ -145,7 +145,7 @@ class ContainerExpirationControllerTest {
         md.setProtectedFlag(true);
         when(managedDatabaseRepository.findAll()).thenReturn(List.of(md));
 
-        var result = controller.getDatabaseConflicts("mydb");
+        var result = controller.getDatabaseConflicts("mydb", null);
         assertTrue(result.isProtectedFlag());
     }
 
@@ -154,7 +154,7 @@ class ContainerExpirationControllerTest {
         when(expirationService.findByDatabaseName("mydb")).thenReturn(Collections.emptyList());
         when(managedDatabaseRepository.findAll()).thenReturn(List.of());
 
-        var result = controller.getDatabaseConflicts("mydb");
+        var result = controller.getDatabaseConflicts("mydb", null);
         assertFalse(result.isProtectedFlag());
     }
 
@@ -173,7 +173,7 @@ class ContainerExpirationControllerTest {
         when(listCmd.withShowAll(true)).thenReturn(listCmd);
         when(listCmd.exec()).thenReturn(Collections.emptyList());
 
-        var result = controller.getDatabaseConflicts("mydb");
+        var result = controller.getDatabaseConflicts("mydb", null);
         assertTrue(result.isProtectedFlag());
         assertEquals(1, result.getInUseByContainers().size());
     }
@@ -190,7 +190,7 @@ class ContainerExpirationControllerTest {
         when(listCmd.withShowAll(true)).thenReturn(listCmd);
         when(listCmd.exec()).thenReturn(Collections.emptyList());
 
-        var result = controller.getDatabaseConflicts("mydb");
+        var result = controller.getDatabaseConflicts("mydb", null);
         assertFalse(result.isProtectedFlag());
     }
 
@@ -206,7 +206,7 @@ class ContainerExpirationControllerTest {
         when(listCmd.withShowAll(true)).thenReturn(listCmd);
         when(listCmd.exec()).thenReturn(Collections.emptyList());
 
-        var result = controller.getDatabaseConflicts("mydb");
+        var result = controller.getDatabaseConflicts("mydb", null);
         assertNotNull(result.getScheduledForDeletionBy());
         assertNotNull(result.getExpiresAt());
     }
@@ -349,5 +349,89 @@ class ContainerExpirationControllerTest {
         when(expirationService.updateExpiration(eq("abc123def4"), any(Instant.class), eq(true))).thenReturn(true);
         Response resp = controller.updateExpiration(updateReq("abc123def4", future, true, null));
         assertEquals(200, resp.getStatus());
+    }
+
+    // ---- getDatabaseConflicts: createdByMe ----
+
+    @org.junit.jupiter.api.Test
+    void getDatabaseConflicts_withRepository_reportsOwnership() {
+        var rbacUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        rbacUser.set("u1", "alice", java.util.Set.of(
+                br.com.fzdevx.domain.model.auth.Permission.DATABASE_VIEW));
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy
+                .forUser(rbacUser, managedDatabaseRepository);
+        var mine = new ManagedDatabase("myapp", "mydb");
+        mine.setCreatedBy("alice");
+        when(managedDatabaseRepository.find("myapp", "mydb")).thenReturn(Optional.of(mine));
+        when(expirationService.findByDatabaseName("mydb")).thenReturn(java.util.List.of());
+
+        var result = controller.getDatabaseConflicts("mydb", "myapp");
+
+        org.junit.jupiter.api.Assertions.assertTrue(result.isCreatedByMe());
+    }
+
+    @org.junit.jupiter.api.Test
+    void getDatabaseConflicts_withRepository_foreignDatabase_notMine() {
+        var rbacUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        rbacUser.set("u1", "alice", java.util.Set.of(
+                br.com.fzdevx.domain.model.auth.Permission.DATABASE_VIEW));
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy
+                .forUser(rbacUser, managedDatabaseRepository);
+        var foreign = new ManagedDatabase("myapp", "mydb");
+        foreign.setCreatedBy("bob");
+        when(managedDatabaseRepository.find("myapp", "mydb")).thenReturn(Optional.of(foreign));
+        when(expirationService.findByDatabaseName("mydb")).thenReturn(java.util.List.of());
+
+        org.junit.jupiter.api.Assertions.assertFalse(
+                controller.getDatabaseConflicts("mydb", "myapp").isCreatedByMe());
+    }
+
+    @org.junit.jupiter.api.Test
+    void getDatabaseConflicts_withoutRepositoryOrMetadata_neverMine() {
+        when(expirationService.findByDatabaseName("mydb")).thenReturn(java.util.List.of());
+        when(managedDatabaseRepository.findAll()).thenReturn(java.util.List.of());
+
+        org.junit.jupiter.api.Assertions.assertFalse(
+                controller.getDatabaseConflicts("mydb", null).isCreatedByMe());
+    }
+
+    // ---- updateExpiration: arming is gated on the TRANSITION only ----
+
+    @org.junit.jupiter.api.Test
+    void updateExpiration_alreadyArmed_deadlineEditNeedsNoDeleteGrant() {
+        // bob (no delete permission) extends the deadline of a deletion alice
+        // armed; keeping the flag claims no new destructive right
+        var bob = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        bob.set("u1", "bob", java.util.Set.of(
+                br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_OPERATE));
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy
+                .forUser(bob, managedDatabaseRepository);
+        when(expirationService.isDeleteDatabaseOnExpiration("abc123def4")).thenReturn(true);
+        when(expirationService.getDatabaseName("abc123def4")).thenReturn("mydb");
+        when(databaseService.isDeletionOnExpirationEnabled()).thenReturn(true);
+        when(passwordValidationService.isOperationsPasswordRequired()).thenReturn(false);
+        when(expirationService.updateExpiration(eq("abc123def4"), any(), eq(true))).thenReturn(true);
+
+        var resp = controller.updateExpiration(updateReq("abc123def4",
+                LocalDateTime.now().plusDays(1).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME), true, null));
+
+        assertEquals(200, resp.getStatus());
+    }
+
+    @org.junit.jupiter.api.Test
+    void updateExpiration_newlyArming_withoutGrant_returns403() {
+        var bob = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        bob.set("u1", "bob", java.util.Set.of(
+                br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_OPERATE));
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy
+                .forUser(bob, managedDatabaseRepository);
+        when(expirationService.isDeleteDatabaseOnExpiration("abc123def4")).thenReturn(false);
+        when(expirationService.getDatabaseName("abc123def4")).thenReturn("mydb");
+        when(databaseService.isDeletionOnExpirationEnabled()).thenReturn(true);
+
+        var resp = controller.updateExpiration(updateReq("abc123def4",
+                LocalDateTime.now().plusDays(1).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME), true, null));
+
+        assertEquals(403, resp.getStatus());
     }
 }

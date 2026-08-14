@@ -40,7 +40,7 @@ public class ContainerSseController {
     RequestStash requestStash;
 
     @Inject
-    br.com.fzdevx.infrastructure.config.CurrentUser currentUser;
+    br.com.fzdevx.infrastructure.config.DatabaseDeletionPolicy deletionPolicy;
 
     @Inject
     RunContainerUseCase runContainerUseCase;
@@ -130,6 +130,8 @@ public class ContainerSseController {
         // the flag lives on the deserialised request, so a client can post it
         // as true; only this method may grant it, and only against a password
         request.setOperationsPasswordValidated(false);
+        // scheduler-only attribution field - a client must not spoof the armer
+        request.setOnBehalfOf(null);
         if (request.getOperationsPassword() != null && !request.getOperationsPassword().isBlank()) {
             if (!dumpStorageService.validateOperationsPassword(request.getOperationsPassword())) {
                 return jakarta.ws.rs.core.Response.status(403)
@@ -167,6 +169,25 @@ public class ContainerSseController {
         if (request.getRepository() != null && request.getDatabaseName() != null) {
             managedDatabaseRepository.find(request.getRepository(), request.getDatabaseName())
                     .ifPresent(db -> tenantVisibility.requireVisible(db.getTenantId()));
+        }
+
+        // arming automatic deletion of the attached database is a deferred drop,
+        // so it needs the delete permission - full, or delete-own when the target
+        // is the caller's own (or does not exist yet and this request creates it)
+        if (request.isDeleteDatabaseOnExpiration()) {
+            if (request.getRepository() == null || request.getDatabaseName() == null
+                    || request.getDatabaseName().isBlank()) {
+                return jakarta.ws.rs.core.Response.status(400)
+                        .entity(Map.of("error", "Database deletion on expiration requires a database.")).build();
+            }
+            if (!deletionPolicy.canArmDeletion(request.getRepository(), request.getDatabaseName(),
+                    request.isCreateDatabase())) {
+                // {error}, not {code: FORBIDDEN}: this is an expected per-database
+                // refusal, and the FORBIDDEN shape triggers the frontend's global
+                // revoked-permissions flow (fetchWithAuth) instead of the dialog
+                return jakarta.ws.rs.core.Response.status(403)
+                        .entity(Map.of("error", "You can only delete databases you created.")).build();
+            }
         }
 
         String ticket = requestStash.stash(request);
@@ -331,12 +352,6 @@ public class ContainerSseController {
         }
         containerTenantGuard.requireVisible(request.getContainerId());
         if (request.isDeleteDatabase()) {
-            // dropping the database alongside the container needs the dedicated delete permission
-            if (!currentUser.hasPermission(Permission.DATABASE_DELETE)) {
-                return jakarta.ws.rs.core.Response.status(403)
-                        .entity(Map.of("code", "FORBIDDEN",
-                                "message", "You do not have permission to perform this action.")).build();
-            }
             if (request.getRepository() == null || InputValidator.validateRepository(request.getRepository()).isPresent()) {
                 return jakarta.ws.rs.core.Response.status(400)
                         .entity(Map.of("error", "Invalid repository.")).build();
@@ -344,6 +359,13 @@ public class ContainerSseController {
             if (request.getDatabaseName() == null || InputValidator.validateDatabaseName(request.getDatabaseName()).isPresent()) {
                 return jakarta.ws.rs.core.Response.status(400)
                         .entity(Map.of("error", "Invalid database name.")).build();
+            }
+            // dropping the database alongside the container needs the delete
+            // permission - full, or delete-own when this caller created it
+            if (!deletionPolicy.canDelete(request.getRepository(), request.getDatabaseName())) {
+                // {error} on purpose - see the arming gate in prepareRun
+                return jakarta.ws.rs.core.Response.status(403)
+                        .entity(Map.of("error", "You can only delete databases you created.")).build();
             }
             if (!dumpStorageService.validateOperationsPassword(request.getOperationsPassword())) {
                 return jakarta.ws.rs.core.Response.status(403)

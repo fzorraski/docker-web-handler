@@ -1,6 +1,7 @@
 package br.com.fzdevx.interfaces.rest;
 
 import br.com.fzdevx.application.dto.RemoveContainerRequest;
+import br.com.fzdevx.application.dto.RunContainerRequest;
 import br.com.fzdevx.application.usecase.RemoveContainerUseCase;
 import br.com.fzdevx.application.usecase.RunContainerUseCase;
 import br.com.fzdevx.application.usecase.RunMigrationUseCase;
@@ -51,7 +52,7 @@ class ContainerSseControllerTest {
     @org.junit.jupiter.api.BeforeEach
     void injectCurrentUser() {
         // real instance: outside RBAC it grants everything (legacy behavior)
-        controller.currentUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy.passthrough();
         controller.tenantVisibility = br.com.fzdevx.infrastructure.config.TestTenantVisibility.passthrough();
         controller.tenantSharing = br.com.fzdevx.infrastructure.config.TestTenantSharing.withoutRepository();
         controller.containerTenantGuard = br.com.fzdevx.infrastructure.docker.TestContainerTenantGuard.passthrough();
@@ -64,7 +65,8 @@ class ContainerSseControllerTest {
         var rbacUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
         rbacUser.set("u1", "alice", java.util.Set.of(
                 br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_RUN));
-        controller.currentUser = rbacUser;
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy
+                .forUser(rbacUser, managedDatabaseRepository);
 
         RemoveContainerRequest req = new RemoveContainerRequest();
         req.setContainerId("abc123def456");
@@ -75,6 +77,155 @@ class ContainerSseControllerTest {
         Response res = controller.prepareRemove(req);
 
         assertEquals(403, res.getStatus());
+    }
+
+    @org.junit.jupiter.api.Test
+    void prepareRemove_deleteOwn_ownDatabase_passes() {
+        var rbacUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        rbacUser.set("u1", "alice", java.util.Set.of(
+                br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_RUN,
+                br.com.fzdevx.domain.model.auth.Permission.DATABASE_DELETE_OWN));
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy
+                .forUser(rbacUser, managedDatabaseRepository);
+        var mine = new br.com.fzdevx.domain.model.ManagedDatabase("myapp", "mydb");
+        mine.setCreatedBy("alice");
+        when(managedDatabaseRepository.find("myapp", "mydb")).thenReturn(java.util.Optional.of(mine));
+        when(dumpStorageService.validateOperationsPassword(any())).thenReturn(true);
+        when(requestStash.stashRemove(any())).thenReturn("ticket-own");
+
+        RemoveContainerRequest req = new RemoveContainerRequest();
+        req.setContainerId("abc123def456");
+        req.setDeleteDatabase(true);
+        req.setRepository("myapp");
+        req.setDatabaseName("mydb");
+        req.setOperationsPassword("secret");
+
+        assertEquals(200, controller.prepareRemove(req).getStatus());
+    }
+
+    @org.junit.jupiter.api.Test
+    void prepareRemove_deleteOwn_foreignDatabase_returns403() {
+        var rbacUser = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        rbacUser.set("u1", "alice", java.util.Set.of(
+                br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_RUN,
+                br.com.fzdevx.domain.model.auth.Permission.DATABASE_DELETE_OWN));
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy
+                .forUser(rbacUser, managedDatabaseRepository);
+        var foreign = new br.com.fzdevx.domain.model.ManagedDatabase("myapp", "mydb");
+        foreign.setCreatedBy("bob");
+        when(managedDatabaseRepository.find("myapp", "mydb")).thenReturn(java.util.Optional.of(foreign));
+
+        RemoveContainerRequest req = new RemoveContainerRequest();
+        req.setContainerId("abc123def456");
+        req.setDeleteDatabase(true);
+        req.setRepository("myapp");
+        req.setDatabaseName("mydb");
+
+        assertEquals(403, controller.prepareRemove(req).getStatus());
+    }
+
+    // ---- prepareRun: arming database deletion ----
+
+    private RunContainerRequest runRequestArmingDeletion() {
+        RunContainerRequest req = new RunContainerRequest();
+        req.setRepository("myapp");
+        req.setTag("1.0");
+        req.setContainerName("c1");
+        req.setDatabaseName("mydb");
+        req.setDeleteDatabaseOnExpiration(true);
+        return req;
+    }
+
+    private br.com.fzdevx.infrastructure.config.CurrentUser userWith(
+            br.com.fzdevx.domain.model.auth.Permission... permissions) {
+        var user = new br.com.fzdevx.infrastructure.config.CurrentUser();
+        user.set("u1", "alice", java.util.Set.of(permissions));
+        return user;
+    }
+
+    @org.junit.jupiter.api.Test
+    void prepareRun_stripsAClientSuppliedOnBehalfOf() {
+        // scheduler-only attribution field: a client posting it must not spoof
+        // who armed a deferred database deletion
+        when(requestStash.stash(any())).thenReturn("t");
+        RunContainerRequest req = new RunContainerRequest();
+        req.setRepository("myapp");
+        req.setTag("1.0");
+        req.setContainerName("c1");
+        req.setOnBehalfOf("victim-admin");
+
+        controller.prepareRun(req);
+
+        org.mockito.ArgumentCaptor<RunContainerRequest> captor =
+                org.mockito.ArgumentCaptor.forClass(RunContainerRequest.class);
+        verify(requestStash).stash(captor.capture());
+        assertNull(captor.getValue().getOnBehalfOf());
+    }
+
+    @org.junit.jupiter.api.Test
+    void prepareRun_armingDeletion_withoutDeleteGrant_returns403AndNeverStashes() {
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy
+                .forUser(userWith(br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_RUN),
+                        managedDatabaseRepository);
+
+        Response res = controller.prepareRun(runRequestArmingDeletion());
+
+        assertEquals(403, res.getStatus());
+        verify(requestStash, never()).stash(any());
+    }
+
+    @org.junit.jupiter.api.Test
+    void prepareRun_armingDeletion_deleteOwn_foreignDatabase_returns403() {
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy
+                .forUser(userWith(br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_RUN,
+                                br.com.fzdevx.domain.model.auth.Permission.DATABASE_DELETE_OWN),
+                        managedDatabaseRepository);
+        var foreign = new br.com.fzdevx.domain.model.ManagedDatabase("myapp", "mydb");
+        foreign.setCreatedBy("bob");
+        when(managedDatabaseRepository.find("myapp", "mydb")).thenReturn(java.util.Optional.of(foreign));
+
+        assertEquals(403, controller.prepareRun(runRequestArmingDeletion()).getStatus());
+    }
+
+    @org.junit.jupiter.api.Test
+    void prepareRun_armingDeletion_deleteOwn_ownDatabase_passes() {
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy
+                .forUser(userWith(br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_RUN,
+                                br.com.fzdevx.domain.model.auth.Permission.DATABASE_DELETE_OWN),
+                        managedDatabaseRepository);
+        var mine = new br.com.fzdevx.domain.model.ManagedDatabase("myapp", "mydb");
+        mine.setCreatedBy("alice");
+        when(managedDatabaseRepository.find("myapp", "mydb")).thenReturn(java.util.Optional.of(mine));
+        when(requestStash.stash(any())).thenReturn("ticket-arm");
+
+        assertEquals(200, controller.prepareRun(runRequestArmingDeletion()).getStatus());
+    }
+
+    @org.junit.jupiter.api.Test
+    void prepareRun_armingDeletion_deleteOwn_databaseThisRequestCreates_passes() {
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy
+                .forUser(userWith(br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_RUN,
+                                br.com.fzdevx.domain.model.auth.Permission.DATABASE_DELETE_OWN),
+                        managedDatabaseRepository);
+        when(requestStash.stash(any())).thenReturn("ticket-new");
+
+        RunContainerRequest req = runRequestArmingDeletion();
+        req.setDumpId("550e8400-e29b-41d4-a716-446655440000");
+        req.setCreateDatabase(true);
+
+        assertEquals(200, controller.prepareRun(req).getStatus());
+    }
+
+    @org.junit.jupiter.api.Test
+    void prepareRun_armingDeletion_withoutADatabase_returns400() {
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy
+                .forUser(userWith(br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_RUN,
+                                br.com.fzdevx.domain.model.auth.Permission.DATABASE_DELETE),
+                        managedDatabaseRepository);
+        RunContainerRequest req = runRequestArmingDeletion();
+        req.setDatabaseName(null);
+
+        assertEquals(400, controller.prepareRun(req).getStatus());
     }
 
     @Test
@@ -244,7 +395,8 @@ class ContainerSseControllerTest {
                 br.com.fzdevx.domain.model.auth.Permission.CONTAINERS_RUN,
                 br.com.fzdevx.domain.model.auth.Permission.DATABASE_DELETE),
                 java.util.Set.of("my-tenant"));
-        controller.currentUser = scoped;
+        controller.deletionPolicy = br.com.fzdevx.infrastructure.config.TestDeletionPolicy
+                .forUser(scoped, managedDatabaseRepository);
         controller.tenantVisibility =
                 br.com.fzdevx.infrastructure.config.TestTenantVisibility.forUser(scoped, null);
         when(dumpStorageService.validateOperationsPassword(any())).thenReturn(true);

@@ -11,6 +11,11 @@ public class ContainerExpiration {
     private String repository;
     private String databaseName;
     private boolean deleteDatabaseOnExpiration;
+    // Captured when deletion is armed: the expiration timer fires outside any
+    // request scope, so the audit entry for the automatic drop needs the actor
+    // and tenant recorded up front.
+    private String deletionArmedBy;
+    private String tenantId;
 
     public ContainerExpiration() {
     }
@@ -79,6 +84,22 @@ public class ContainerExpiration {
 
     public void setDeleteDatabaseOnExpiration(boolean deleteDatabaseOnExpiration) {
         this.deleteDatabaseOnExpiration = deleteDatabaseOnExpiration;
+    }
+
+    public String getDeletionArmedBy() {
+        return deletionArmedBy;
+    }
+
+    public void setDeletionArmedBy(String deletionArmedBy) {
+        this.deletionArmedBy = deletionArmedBy;
+    }
+
+    public String getTenantId() {
+        return tenantId;
+    }
+
+    public void setTenantId(String tenantId) {
+        this.tenantId = tenantId;
     }
 
     @Override

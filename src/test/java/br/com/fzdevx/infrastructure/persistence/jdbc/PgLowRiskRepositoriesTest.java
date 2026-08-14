@@ -77,12 +77,16 @@ class PgLowRiskRepositoriesTest {
         Instant expires = Instant.now().plus(1, ChronoUnit.HOURS).truncatedTo(ChronoUnit.MILLIS);
         ContainerExpiration expiration = new ContainerExpiration("abc123", "abc123full", expires,
                 "repo-a", "db1", true);
+        expiration.setDeletionArmedBy("alice");
+        expiration.setTenantId("tenant-1");
         expirationRepository.save(expiration);
 
         ContainerExpiration loaded = expirationRepository.findByContainerId("abc123").orElseThrow();
         assertEquals("abc123full", loaded.getFullContainerId());
         assertEquals(expires, loaded.getExpiresAt());
         assertTrue(loaded.isDeleteDatabaseOnExpiration());
+        assertEquals("alice", loaded.getDeletionArmedBy());
+        assertEquals("tenant-1", loaded.getTenantId());
 
         assertEquals(1, expirationRepository.findByDatabaseName("db1").size());
 

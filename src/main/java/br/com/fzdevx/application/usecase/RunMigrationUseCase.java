@@ -27,6 +27,10 @@ public class RunMigrationUseCase {
     @Inject
     ManagedDatabaseUsageTracker usageTracker;
 
+
+    @Inject
+    br.com.fzdevx.infrastructure.config.DatabaseDeletionPolicy deletionPolicy;
+
     private final ConcurrentHashMap<String, AtomicBoolean> activeRuns = new ConcurrentHashMap<>();
 
     public boolean cancel(String ticket) {
@@ -73,6 +77,24 @@ public class RunMigrationUseCase {
                 if (sqlError.isPresent()) {
                     eventSink.accept(ContainerEvent.error("Validating", sqlError.get()));
                     return;
+                }
+                // manual SQL is arbitrary and can rewrite everything the database
+                // holds, so it is fenced like an overwrite; API mode stays open -
+                // it runs curated migration scripts, which is this flow's purpose
+                switch (deletionPolicy.overwriteVerdict(request.getRepository(), request.getTargetDatabase())) {
+                    case PROTECTED -> {
+                        eventSink.accept(ContainerEvent.error("Validating",
+                                "Database '" + request.getTargetDatabase() + "' is protected; manual migration"
+                                        + " SQL cannot run against it. Remove its protection first."));
+                        return;
+                    }
+                    case NOT_OWNER -> {
+                        eventSink.accept(ContainerEvent.error("Validating",
+                                "Manual migration SQL can rewrite the contents of '" + request.getTargetDatabase()
+                                        + "'. You can only run it against databases you created."));
+                        return;
+                    }
+                    case ALLOWED -> { }
                 }
             } else if ("API".equals(request.getMigrationMode())) {
                 Optional<String> srcError = InputValidator.validateVersion(request.getMigrationSourceVersion());

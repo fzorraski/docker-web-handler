@@ -55,6 +55,8 @@ class UpgradeContainerUseCaseTest {
     @Mock org.eclipse.microprofile.config.Config appConfig;
     @Mock br.com.fzdevx.infrastructure.docker.LogRotationResolver logRotationResolver;
     @Mock ManagedDatabaseUsageTracker usageTracker;
+    @Mock br.com.fzdevx.application.port.ManagedDatabaseRepository managedDatabaseRepository;
+    @Mock br.com.fzdevx.infrastructure.config.DatabaseDeletionPolicy deletionPolicy;
     @Mock br.com.fzdevx.application.port.AuditLogger auditLogger;
 
     @InjectMocks
@@ -266,6 +268,58 @@ class UpgradeContainerUseCaseTest {
         verify(migrationService).orchestrateMigration(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
+    @Test
+    void execute_migrationOnly_manualSql_withoutOverwriteRight_isRefused() {
+        stubInspect();
+        ContainerExpiration exp = new ContainerExpiration();
+        exp.setShortId("abc123def4");
+        exp.setFullContainerId("abc123def4full");
+        exp.setRepository("myrepo");
+        exp.setDatabaseName("testdb");
+        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(exp));
+        when(databaseService.hasDatabaseConfig("myrepo")).thenReturn(true);
+        when(deletionPolicy.overwriteVerdict("myrepo", "testdb"))
+                .thenReturn(br.com.fzdevx.infrastructure.config.DatabaseDeletionPolicy.OverwriteVerdict.NOT_OWNER);
+
+        UpgradeContainerRequest req = new UpgradeContainerRequest();
+        req.setContainerId("abc123def4");
+        req.setMigrationMode("MANUAL");
+        req.setMigrationSql("TRUNCATE users;");
+        useCase.execute(req, eventSink, null);
+
+        assertTrue(events.stream().anyMatch(e -> e.getType() == ContainerEvent.EventType.ERROR
+                && e.getMessage().contains("databases you created")));
+        verify(migrationService, never()).orchestrateMigration(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void execute_migrationOnly_manualSql_withOverwriteRight_runs() {
+        stubInspect();
+        ContainerExpiration exp = new ContainerExpiration();
+        exp.setShortId("abc123def4");
+        exp.setFullContainerId("abc123def4full");
+        exp.setRepository("myrepo");
+        exp.setDatabaseName("testdb");
+        when(expirationRepository.findByContainerId("abc123def4")).thenReturn(Optional.of(exp));
+        when(databaseService.hasDatabaseConfig("myrepo")).thenReturn(true);
+        when(databaseService.getContainerImage("myrepo")).thenReturn("postgres:16");
+        when(databaseService.getConnectionInfo("myrepo")).thenReturn(
+                new DatabasePort.PgConnectionInfo("localhost", 5432, "postgres", "pass"));
+        when(deletionPolicy.overwriteVerdict("myrepo", "testdb"))
+                .thenReturn(br.com.fzdevx.infrastructure.config.DatabaseDeletionPolicy.OverwriteVerdict.ALLOWED);
+        when(migrationService.orchestrateMigration(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(true);
+
+        UpgradeContainerRequest req = new UpgradeContainerRequest();
+        req.setContainerId("abc123def4");
+        req.setMigrationMode("MANUAL");
+        req.setMigrationSql("UPDATE config SET value = '1';");
+        useCase.execute(req, eventSink, null);
+
+        assertTrue(events.stream().anyMatch(e -> e.getType() == ContainerEvent.EventType.SUCCESS));
+    }
+
     // ---- Tag change with migration ----
 
     @Test
@@ -343,7 +397,7 @@ class UpgradeContainerUseCaseTest {
 
         verify(expirationService).remove("abc123def4");
         verify(expirationService).schedule(eq("newid12345"), anyString(), eq(expiresAt),
-                eq("myrepo"), eq("testdb"), eq(true));
+                eq("myrepo"), eq("testdb"), eq(true), isNull(), isNull());
     }
 
     // ---- Schedule transfer ----

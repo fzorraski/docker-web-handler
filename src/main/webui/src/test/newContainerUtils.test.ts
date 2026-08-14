@@ -218,3 +218,44 @@ describe('memory validation', () => {
     expect(isMemoryValid('abc')).toBe(false)
   })
 })
+
+import { canArmDbDeletion } from '../utils/newContainerUtils'
+
+describe('canArmDbDeletion', () => {
+  const base = { canDelete: false, canDeleteOwn: false, dbMode: 'existing' as const, restoreDbExists: false, createDatabase: false, createdByMe: undefined }
+
+  it('full delete permission arms anything', () => {
+    expect(canArmDbDeletion({ ...base, canDelete: true })).toBe(true)
+    expect(canArmDbDeletion({ ...base, canDelete: true, dbMode: 'restore', restoreDbExists: true })).toBe(true)
+  })
+
+  it('no delete permission hides the toggle everywhere', () => {
+    expect(canArmDbDeletion(base)).toBe(false)
+    expect(canArmDbDeletion({ ...base, dbMode: 'restore' })).toBe(false)
+    expect(canArmDbDeletion({ ...base, createdByMe: true })).toBe(false)
+  })
+
+  it('delete-own arms only databases the user created', () => {
+    expect(canArmDbDeletion({ ...base, canDeleteOwn: true, createdByMe: true })).toBe(true)
+    expect(canArmDbDeletion({ ...base, canDeleteOwn: true, createdByMe: false })).toBe(false)
+  })
+
+  it('delete-own arms a database the restore is about to create', () => {
+    expect(canArmDbDeletion({ ...base, canDeleteOwn: true, dbMode: 'restore', restoreDbExists: false, createDatabase: true })).toBe(true)
+  })
+
+  it('a new name with the create switch OFF is refused, matching the backend', () => {
+    // the backend receives creatingIt=false and would 403 at prepare time
+    expect(canArmDbDeletion({ ...base, canDeleteOwn: true, dbMode: 'restore', restoreDbExists: false, createDatabase: false })).toBe(false)
+  })
+
+  it('restore into an EXISTING database follows ownership, not the create switch', () => {
+    // flipping "create database" on for an existing name must not reveal the toggle
+    expect(canArmDbDeletion({ ...base, canDeleteOwn: true, dbMode: 'restore', restoreDbExists: true, createdByMe: false })).toBe(false)
+    expect(canArmDbDeletion({ ...base, canDeleteOwn: true, dbMode: 'restore', restoreDbExists: true, createdByMe: true })).toBe(true)
+  })
+
+  it('stays hidden while the ownership fetch is in flight', () => {
+    expect(canArmDbDeletion({ ...base, canDeleteOwn: true, createdByMe: undefined })).toBe(false)
+  })
+})

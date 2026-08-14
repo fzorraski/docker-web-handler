@@ -42,6 +42,9 @@ import {
 import { listDumps, getPostRestoreScripts, type PostRestoreScriptsResponse } from '../services/dumpService'
 import type { DatabaseConflict, DatabaseDump, DatabaseSnapshot } from '../types'
 import { buildTargetDbName, buildSnapshotTargetDbName, formatBytes, formatMigrationSummary, compareTagsDesc } from '../utils/format'
+import { canArmDbDeletion } from '../utils/newContainerUtils'
+import { useAuth } from './AuthProvider'
+import { P } from '../utils/permissions'
 import PostRestoreScriptsSection from './PostRestoreScriptsSection'
 import { prepareRunContainer, streamRunContainer, cancelRunContainer } from '../services/sseService'
 import { useNotification } from './NotificationProvider'
@@ -75,6 +78,7 @@ const sectionSx = {
 export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const { notify, confirm } = useNotification()
   const { t } = useTranslation()
+  const { hasPermission } = useAuth()
   const [repositories, setRepositories] = useState<string[]>([])
   const [selectedRepo, setSelectedRepo] = useState('')
   const [allTags, setAllTags] = useState<string[]>([])
@@ -128,6 +132,15 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   const activeDbName = dbMode === 'restore' ? restoreTargetDb.trim() || null : selectedDb
   const hasDbUsageConflict = (dbConflict?.inUseByContainers?.length ?? 0) > 0
   const restoreDbExists = !!(dbMode === 'restore' && restoreTargetDb.trim() && databases.includes(restoreTargetDb.trim()))
+  // arming deletion is a deferred drop: only offered to users the backend would allow
+  const canArmDeletion = canArmDbDeletion({
+    canDelete: hasPermission(P.DATABASE_DELETE),
+    canDeleteOwn: hasPermission(P.DATABASE_DELETE_OWN),
+    dbMode,
+    restoreDbExists,
+    createDatabase: dbMode === 'restore' && createDatabase,
+    createdByMe: dbConflict?.createdByMe,
+  })
   const expirationLockedByDb = !!(dbConflict?.scheduledForDeletionBy && dbConflict?.expiresAt)
   const [defaultExpMinutes, setDefaultExpMinutes] = useState(480)
   const [expirationEnabled, setExpirationEnabled] = useState(true)
@@ -215,6 +228,14 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         setExpiresAt(dayjs().add(cfg.defaultExpirationMinutes, 'minute'))
       })
       .catch(() => {})
+    // everything derived from the previous repository's databases is stale now:
+    // a cached conflict (createdByMe, scheduledForDeletionBy) must not gate or
+    // lock fields for a same-named database in the newly selected repository
+    setRestoreTargetDb('')
+    setSelectedDump(null)
+    setSelectedSnapshot(null)
+    setDbConflict(null)
+    setDeleteDbOnExpiration(false)
     repositoryHasDatabases(selectedRepo)
       .then((has) => {
         setDbEnabled(has)
@@ -245,7 +266,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
     setDbConflict(null)
     const name = restoreTargetDb.trim()
     if (name && databases.includes(name)) {
-      getDatabaseConflicts(name)
+      getDatabaseConflicts(name, selectedRepo)
         .then((conflict) => {
           setDbConflict(conflict)
           if (conflict.scheduledForDeletionBy && conflict.expiresAt) {
@@ -255,7 +276,8 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         })
         .catch(() => setDbConflict(null))
     }
-  }, [restoreTargetDb, dbMode])
+    // selectedRepo/databases: a repo switch or list refresh invalidates the lookup
+  }, [restoreTargetDb, dbMode, selectedRepo, databases])
 
   function addEnvVar() {
     setEnvVars([...envVars, { key: '', value: '' }])
@@ -284,7 +306,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
       }
     }
     if (dbName) {
-      getDatabaseConflicts(dbName)
+      getDatabaseConflicts(dbName, selectedRepo)
         .then((conflict) => {
           setDbConflict(conflict)
           if (conflict.scheduledForDeletionBy && conflict.expiresAt) {
@@ -416,7 +438,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
   async function proceedAfterOverrideCheck() {
     setConfirmOverrideOpen(false)
 
-    if (deleteDbOnExpiration && activeDbName && expirationEnabled) {
+    if (deleteDbOnExpiration && canArmDeletion && activeDbName && expirationEnabled) {
       setConfirmNameInput('')
       setConfirmDialogOpen(true)
       return
@@ -445,7 +467,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
         .map((e) => `${e.key.trim()}=${e.value.trim()}`)
 
       const parsedMemory = memoryMb ? parseInt(memoryMb, 10) : null
-      const shouldDeleteDb = deleteDbOnExpiration && expirationEnabled && !!activeDbName
+      const shouldDeleteDb = deleteDbOnExpiration && canArmDeletion && expirationEnabled && !!activeDbName
 
       const ticket = await prepareRunContainer({
         repository: selectedRepo,
@@ -684,7 +706,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                         )}
                       </Grid>
                     )}
-                    {dbDeletionEnabled && selectedDb && expirationEnabled && (
+                    {dbDeletionEnabled && canArmDeletion && selectedDb && expirationEnabled && (
                       <Grid size={{ xs: 12, md: 6 }}>
                         <FormControlLabel
                           control={
@@ -872,7 +894,7 @@ export default function NewContainerModal({ open, onClose, onCreated }: Props) {
                         )}
                       </Grid>
                     )}
-                    {dbDeletionEnabled && restoreTargetDb.trim() && expirationEnabled && (
+                    {dbDeletionEnabled && canArmDeletion && restoreTargetDb.trim() && expirationEnabled && (
                       <Grid size={{ xs: 12, md: 6 }}>
                         <FormControlLabel
                           control={

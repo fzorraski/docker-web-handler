@@ -37,6 +37,8 @@ export interface DatabaseConflict {
   inUseByContainers: string[]
   expiresAt?: string | null
   protectedFlag?: boolean
+  /** Whether the current user created this database; only reported when the repository was passed. */
+  createdByMe?: boolean
 }
 
 export interface ApiResponse {
@@ -266,4 +268,6 @@ export interface ManagedDatabaseInfo {
   lastRestoredBy?: string
   createdBy?: string
   tenantId?: string
+  /** Whether the current user created this database (drives DATABASE_DELETE_OWN gating). */
+  createdByMe: boolean
 }

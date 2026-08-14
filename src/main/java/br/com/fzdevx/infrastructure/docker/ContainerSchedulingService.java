@@ -464,6 +464,9 @@ public class ContainerSchedulingService {
 
         // Mark password as validated (it was validated at schedule creation time)
         config.setOperationsPasswordValidated(true);
+        // deferred deletions armed by this run belong to whoever wrote the
+        // schedule, not to "system" - the guard verified their grant at write time
+        config.setOnBehalfOf(schedule.getCreatedBy());
 
         // Use a logging consumer instead of SSE
         StringBuilder logBuilder = new StringBuilder();

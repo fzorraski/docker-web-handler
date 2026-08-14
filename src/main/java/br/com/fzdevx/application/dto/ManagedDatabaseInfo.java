@@ -21,7 +21,15 @@ public record ManagedDatabaseInfo(
         Instant lastRestoredAt,
         String lastRestoredBy,
         String createdBy,
-        String tenantId
+        String tenantId,
+        /**
+         * Whether the CURRENT caller created this database. Stamped per request in
+         * the controller - the cached list this record comes from is shared across
+         * users - and deliberately surviving {@link #withoutCreatedBy}: it tells a
+         * DATABASE_DELETE_OWN holder which rows they may delete without revealing
+         * anyone's identity.
+         */
+        boolean createdByMe
 ) {
 
     /** Copy without actor identities, for callers lacking the AUDIT_VIEW permission. */
@@ -29,6 +37,14 @@ public record ManagedDatabaseInfo(
         return new ManagedDatabaseInfo(name, repository, sizeBytes, activeConnections,
                 pgLastActivity, appLastUsedAt, effectiveLastUsedAt, protectedFlag, createdAt,
                 description, containerCount, earliestExpiration, scheduledForDeletion,
-                lastRestoredFrom, lastRestoredAt, null, null, tenantId);
+                lastRestoredFrom, lastRestoredAt, null, null, tenantId, createdByMe);
+    }
+
+    /** Copy with the per-caller ownership flag stamped. */
+    public ManagedDatabaseInfo withCreatedByMe(boolean mine) {
+        return new ManagedDatabaseInfo(name, repository, sizeBytes, activeConnections,
+                pgLastActivity, appLastUsedAt, effectiveLastUsedAt, protectedFlag, createdAt,
+                description, containerCount, earliestExpiration, scheduledForDeletion,
+                lastRestoredFrom, lastRestoredAt, lastRestoredBy, createdBy, tenantId, mine);
     }
 }

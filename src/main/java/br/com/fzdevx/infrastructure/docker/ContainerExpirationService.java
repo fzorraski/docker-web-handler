@@ -2,8 +2,12 @@ package br.com.fzdevx.infrastructure.docker;
 
 import br.com.fzdevx.domain.model.ContainerExpiration;
 import br.com.fzdevx.domain.model.ManagedDatabase;
+import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.application.port.ExpirationRepository;
 import br.com.fzdevx.application.port.ManagedDatabaseRepository;
+import br.com.fzdevx.infrastructure.config.ActorResolver;
+import br.com.fzdevx.infrastructure.config.AuditTenant;
+import br.com.fzdevx.infrastructure.config.TenantVisibility;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.interfaces.rest.util.ContainerListBroadcaster;
 import com.github.dockerjava.api.DockerClient;
@@ -48,6 +52,15 @@ public class ContainerExpirationService {
     @Inject
     ContainerListBroadcaster broadcaster;
 
+    @Inject
+    AuditLogger auditLogger;
+
+    @Inject
+    ActorResolver actorResolver;
+
+    @Inject
+    TenantVisibility tenantVisibility;
+
     void onStartup(@Observes StartupEvent event) {
         reloadExpirations();
     }
@@ -58,18 +71,37 @@ public class ContainerExpirationService {
 
     public void schedule(String shortId, String fullContainerId, Instant expiresAt,
                          String repository, String databaseName, boolean deleteDatabaseOnExpiration) {
+        schedule(shortId, fullContainerId, expiresAt, repository, databaseName, deleteDatabaseOnExpiration,
+                deleteDatabaseOnExpiration ? actorResolver.usernameOrSystem() : null,
+                AuditTenant.resolve(tenantVisibility));
+    }
+
+    /**
+     * Full form for callers that already know the arming actor and tenant
+     * (container creation resolves them at prepare time; the upgrade flow
+     * carries them over from the old container's record). The expiration timer
+     * fires outside any request scope, so these must be captured now for the
+     * audit entry written when the database is actually dropped.
+     */
+    public void schedule(String shortId, String fullContainerId, Instant expiresAt,
+                         String repository, String databaseName, boolean deleteDatabaseOnExpiration,
+                         String deletionArmedBy, String tenantId) {
         ContainerExpiration expiration = new ContainerExpiration(shortId, fullContainerId, expiresAt,
                 repository, databaseName, deleteDatabaseOnExpiration);
+        expiration.setDeletionArmedBy(deleteDatabaseOnExpiration ? deletionArmedBy : null);
+        expiration.setTenantId(tenantId);
         expirationRepository.save(expiration);
         scheduleTask(expiration);
     }
 
-    public void saveMetadata(String shortId, String fullContainerId, String repository, String databaseName) {
+    public void saveMetadata(String shortId, String fullContainerId, String repository, String databaseName,
+                             String tenantId) {
         ContainerExpiration expiration = new ContainerExpiration();
         expiration.setShortId(shortId);
         expiration.setFullContainerId(fullContainerId);
         expiration.setRepository(repository);
         expiration.setDatabaseName(databaseName);
+        expiration.setTenantId(tenantId);
         expirationRepository.save(expiration);
     }
 
@@ -82,6 +114,7 @@ public class ContainerExpirationService {
             if (expiration.getDatabaseName() != null && !expiration.getDatabaseName().isBlank()) {
                 expiration.setExpiresAt(null);
                 expiration.setDeleteDatabaseOnExpiration(false);
+                expiration.setDeletionArmedBy(null);
                 expirationRepository.save(expiration);
             } else {
                 expirationRepository.delete(shortId);
@@ -159,6 +192,7 @@ public class ContainerExpirationService {
         return expirationRepository.findByContainerId(shortId)
                 .map(expiration -> {
                     expiration.setDeleteDatabaseOnExpiration(false);
+                    expiration.setDeletionArmedBy(null);
                     expirationRepository.save(expiration);
                     return true;
                 })
@@ -176,9 +210,18 @@ public class ContainerExpirationService {
             if (expiresAt == null) {
                 expiration.setExpiresAt(null);
                 expiration.setDeleteDatabaseOnExpiration(false);
+                expiration.setDeletionArmedBy(null);
             } else {
+                boolean wasArmed = expiration.isDeleteDatabaseOnExpiration();
                 expiration.setExpiresAt(expiresAt);
                 expiration.setDeleteDatabaseOnExpiration(deleteDatabaseOnExpiration);
+                // stamp only on the disarm->arm transition: whoever merely edits
+                // the deadline of an already-armed deletion is not its armer, and
+                // re-attributing would contradict the upgrade path, which
+                // deliberately carries the original armer over
+                if (!deleteDatabaseOnExpiration || !wasArmed) {
+                    armDeletionAudit(expiration, deleteDatabaseOnExpiration);
+                }
                 scheduleTask(expiration);
             }
             expirationRepository.save(expiration);
@@ -217,17 +260,20 @@ public class ContainerExpirationService {
         return null;
     }
 
-    public boolean enableDatabaseDeletion(String shortId) {
-        return expirationRepository.findByContainerId(shortId)
-                .filter(expiration -> expiration.getExpiresAt() != null)
-                .filter(expiration -> expiration.getDatabaseName() != null
-                        && !expiration.getDatabaseName().isBlank())
-                .map(expiration -> {
-                    expiration.setDeleteDatabaseOnExpiration(true);
-                    expirationRepository.save(expiration);
-                    return true;
-                })
-                .orElse(false);
+    /**
+     * Stamps (or clears) who armed the database deletion. Called from request
+     * scope, where the acting user is still resolvable; the tenant is only
+     * filled when absent so the container's owning tenant from creation wins.
+     */
+    private void armDeletionAudit(ContainerExpiration expiration, boolean armed) {
+        if (!armed) {
+            expiration.setDeletionArmedBy(null);
+            return;
+        }
+        expiration.setDeletionArmedBy(actorResolver.usernameOrSystem());
+        if (expiration.getTenantId() == null) {
+            expiration.setTenantId(AuditTenant.resolve(tenantVisibility));
+        }
     }
 
     void onShutdown(@Observes ShutdownEvent event) {
@@ -319,6 +365,8 @@ public class ContainerExpirationService {
             }
             dockerClient.removeContainerCmd(expiration.getFullContainerId()).exec();
             Log.infof("Container %s expired and was removed.", expiration.getShortId());
+            auditLogger.logForTenant("system", expiration.getTenantId(), "CONTAINER_EXPIRE",
+                    expiration.getShortId(), "id=" + expiration.getFullContainerId());
             broadcaster.notifyChange();
         } catch (Exception e) {
             Log.errorf("Failed to expire container %s: %s", expiration.getShortId(), e.getMessage());
@@ -330,7 +378,8 @@ public class ContainerExpirationService {
         }
     }
 
-    private void dropDatabaseIfConfigured(ContainerExpiration expiration) {
+    // package-private for tests: the timer-side drop is where the armedBy audit lands
+    void dropDatabaseIfConfigured(ContainerExpiration expiration) {
         // Re-read from repository to reflect any runtime changes (e.g. user cancelled DB deletion)
         ContainerExpiration current = expirationRepository.findByContainerId(expiration.getShortId())
                 .orElse(expiration);
@@ -358,6 +407,11 @@ public class ContainerExpirationService {
             databaseService.dropDatabase(current.getRepository(), current.getDatabaseName());
             Log.infof("Database '%s' dropped on expiration of container %s.",
                     current.getDatabaseName(), current.getShortId());
+            auditLogger.logForTenant("system", current.getTenantId(), "DATABASE_DELETE_ON_EXPIRATION",
+                    current.getDatabaseName(),
+                    "repository=" + current.getRepository() + ", container=" + current.getShortId()
+                            + (current.getDeletionArmedBy() == null
+                                    ? "" : ", armedBy=" + current.getDeletionArmedBy()));
             removeContainersByDatabase(current.getDatabaseName(), current.getShortId());
         } catch (Exception e) {
             Log.errorf("Failed to drop database '%s' on expiration of container %s: %s",
@@ -387,6 +441,9 @@ public class ContainerExpirationService {
                 dockerClient.removeContainerCmd(other.getFullContainerId()).exec();
                 Log.infof("Container %s removed (database '%s' no longer exists).",
                         other.getShortId(), databaseName);
+                auditLogger.logForTenant("system", other.getTenantId(), "CONTAINER_REMOVE",
+                        other.getShortId(),
+                        "id=" + other.getFullContainerId() + ", database=" + databaseName + " was dropped");
                 changed = true;
             } catch (Exception e) {
                 Log.errorf("Failed to remove container %s after database drop: %s",
