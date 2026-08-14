@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { Chip } from '@mui/material'
 import { Timer } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
+import { expirySeverity, formatRemaining, type ExpirySeverity } from '../utils/expiry'
 
 interface Props {
   expiresAt: string
@@ -15,6 +16,7 @@ export default function ExpirationChip({ expiresAt, onCancel, onExpired, onClick
   const { t } = useTranslation()
   const expiresMs = useMemo(() => new Date(expiresAt).getTime(), [expiresAt])
   const [remaining, setRemaining] = useState('')
+  const [severity, setSeverity] = useState<ExpirySeverity>('info')
   const expiredFired = useRef(false)
   const expiredTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -25,6 +27,7 @@ export default function ExpirationChip({ expiresAt, onCancel, onExpired, onClick
   useEffect(() => {
     function update() {
       const diff = expiresMs - Date.now()
+      setSeverity(expirySeverity(diff))
       if (diff <= 0) {
         setRemaining(t('containers.expiring'))
         if (!expiredFired.current) {
@@ -33,10 +36,7 @@ export default function ExpirationChip({ expiresAt, onCancel, onExpired, onClick
         }
         return
       }
-      const h = Math.floor(diff / 3600000)
-      const m = Math.floor((diff % 3600000) / 60000)
-      const s = Math.floor((diff % 60000) / 1000)
-      setRemaining(h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`)
+      setRemaining(formatRemaining(diff))
     }
     update()
     const id = setInterval(update, 1000)
@@ -50,12 +50,17 @@ export default function ExpirationChip({ expiresAt, onCancel, onExpired, onClick
     <Chip
       label={remaining}
       size="small"
-      color="warning"
+      color={severity}
       icon={<Timer />}
       variant="outlined"
       onDelete={onCancel}
       onClick={onClick}
-      sx={onClick ? { cursor: 'pointer' } : undefined}
+      sx={{
+        // the seconds tick every second - proportional digits make the chip
+        // breathe in and out, which is maddening in a column of twenty
+        '& .MuiChip-label': { fontVariantNumeric: 'tabular-nums' },
+        ...(onClick ? { cursor: 'pointer' } : {}),
+      }}
     />
   )
 }

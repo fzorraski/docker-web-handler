@@ -36,7 +36,7 @@ import TenantCell from '../components/TenantCell'
 import HeroBanner from '../components/HeroBanner'
 import RestoreAttribution from '../components/RestoreAttribution'
 import { useTranslation } from 'react-i18next'
-import { formatBackendDate, formatDate } from '../utils/format'
+import { formatBackendDate, formatDate, parseBackendDate } from '../utils/format'
 import TruncatedText from '../components/TruncatedText'
 import { useTableHeaderTheme } from '../hooks/useTableHeaderTheme'
 import { useStickyHeader } from '../hooks/useStickyHeader'
@@ -100,6 +100,22 @@ const STORAGE_KEY = 'containerColumnsVisibility'
  * column is for, and a filled chip below it out-shouted the very thing it
  * qualifies. The full sentence lives in each chip's tooltip.
  */
+/**
+ * The "drops the database too" marker. Neutral, with only its icon tinted: the
+ * countdown beside it already carries the urgency, and a permanently red badge
+ * on half the rows is an alarm nobody hears any more. When time runs short the
+ * countdown turns red and this reads as part of that warning.
+ */
+const DB_MARKER_SX = {
+  height: 22,
+  fontSize: '0.7rem',
+  color: 'text.secondary',
+  borderColor: 'divider',
+  '& .MuiChip-label': { px: 0.75 },
+  '& .MuiChip-icon': { fontSize: 14, ml: '6px', color: 'error.main' },
+  '& .MuiChip-deleteIcon': { fontSize: 15, mr: '4px' },
+}
+
 const DENSE_CHIP_SX = {
   // 22 rather than smaller: the delete icon is the only way to cancel a pending
   // database deletion, so it stays a real click target
@@ -341,7 +357,7 @@ export default function ContainersPage() {
       // dd/MM/yyyy sorts by day-of-month lexicographically; rearrange to a
       // sortable yyyyMMdd form (invalid/legacy values sort first, unchanged)
       case 'created': {
-        const d = dayjs(c.created, 'DD/MM/YYYY HH:mm:ss')
+        const d = parseBackendDate(c.created)
         return d.isValid() ? d.format('YYYYMMDDHHmmss') : ''
       }
       case 'status': return c.status
@@ -370,7 +386,7 @@ export default function ContainersPage() {
       if (elapsed.includes('year')) return num * 365
     }
     // Fallback: use creation date
-    const created = dayjs(c.created, 'DD/MM/YYYY HH:mm:ss')
+    const created = parseBackendDate(c.created)
     if (!created.isValid()) return 0
     return dayjs().diff(created, 'day')
   }
@@ -820,7 +836,9 @@ export default function ContainersPage() {
                       ) : c.expiresAt ? (
                         // flex-start, or the column's default stretch blows each chip
                         // out to the cell width and centres its label inside the pill
-                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0.5 }}>
+                        // one line, wrapping only when the column is too narrow: two
+                        // stacked chips made every row twice as tall as its content
+                        <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                             <ExpirationChip expiresAt={c.expiresAt} onCancel={canOperate ? () => actions.handleCancelExpiration(c.containerId, c.names) : undefined} onExpired={loadContainers} onClick={canOperate ? () => dialogs.openEditExpiration(c) : undefined} />
                             {canOperate && (
@@ -836,10 +854,9 @@ export default function ContainersPage() {
                               <Chip
                                 label={t('containers.dbWillBeDeletedShort')}
                                 size="small"
-                                color="warning"
                                 icon={<DeleteForever />}
                                 variant="outlined"
-                                sx={DENSE_CHIP_SX}
+                                sx={DB_MARKER_SX}
                                 onDelete={canOperate ? () => actions.handleCancelDbDeletion(c.containerId, c.names) : undefined}
                               />
                             </Tooltip>

@@ -96,9 +96,19 @@ export function formatLogTimestampShort(iso: string | null | undefined): string 
   return cachedFormat('logTsShort', i18n.language, logTimestampShortOpts).format(d)
 }
 
+/**
+ * Parse the backend's display-format date ('dd/MM/yyyy HH:mm:ss'). The single
+ * definition of that format contract - sorting, idle-day math and display all
+ * go through here, so a backend format change breaks one function, not three
+ * scattered copies.
+ */
+export function parseBackendDate(raw: string): dayjs.Dayjs {
+  return dayjs(raw, 'DD/MM/YYYY HH:mm:ss')
+}
+
 /** Format a backend date string in dd/MM/yyyy HH:mm:ss format */
 export function formatBackendDate(raw: string): string {
-  const d = dayjs(raw, 'DD/MM/YYYY HH:mm:ss')
+  const d = parseBackendDate(raw)
   if (!d.isValid()) return raw
   return cachedFormat('dt', i18n.language, dateTimeOpts).format(d.toDate())
 }
