@@ -4,14 +4,15 @@ import {
   Box, Typography, Chip, Alert, Collapse, IconButton, TextField,
   LinearProgress, Tooltip,
 } from '@mui/material'
-import { Code, FiberManualRecord, UploadFile, Send, Close } from '@mui/icons-material'
+import { Code, FiberManualRecord, UploadFile, Send, Close, Image as ImageIcon } from '@mui/icons-material'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from '@mui/material/styles'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
-import { connectTerminal, uploadFileToContainer, type TerminalConnection } from '../services/terminalService'
+import { connectTerminal, uploadFileToContainer, uploadImageToContainer, type TerminalConnection } from '../services/terminalService'
+import { extractImageFiles, hasPlainText, isMacPlatform, isNativePasteChord, isSupportedImage, pasteShortcutLabel } from '../utils/terminalAttachments'
 import useFullScreenDialog from '../hooks/useFullScreenDialog'
 import FullscreenToggleButton from './FullscreenToggleButton'
 
@@ -24,14 +25,23 @@ interface Props {
   uploadEnabled?: boolean
   uploadMaxSizeMb?: number
   uploadDefaultPath?: string
+  imageUploadEnabled?: boolean
+  attachmentsPath?: string
+  imageMaxSizeMb?: number
   terminalPassword?: string
 }
 
 type Status = 'connecting' | 'connected' | 'disconnected' | 'error'
 
+interface AttachmentState {
+  status: 'uploading' | 'done' | 'error'
+  progress: number
+  message: string
+}
+
 export default function ContainerTerminalDialog({
   open, ticket, containerName, containerId, onClose,
-  uploadEnabled, uploadMaxSizeMb, uploadDefaultPath, terminalPassword,
+  uploadEnabled, uploadMaxSizeMb, uploadDefaultPath, imageUploadEnabled, attachmentsPath, imageMaxSizeMb, terminalPassword,
 }: Props) {
   const { t } = useTranslation()
   const theme = useTheme()
@@ -48,6 +58,15 @@ export default function ContainerTerminalDialog({
   const [uploadResult, setUploadResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [attachment, setAttachment] = useState<AttachmentState | null>(null)
+  const [dragActive, setDragActive] = useState(false)
+  const attachmentQueueRef = useRef<Promise<void>>(Promise.resolve())
+  // Bumped whenever the connection changes or the dialog closes; in-flight uploads compare
+  // against it so a late result never lands in another container's prompt.
+  const sessionRef = useRef(0)
+  const imageUploadEnabledRef = useRef(!!imageUploadEnabled)
+  imageUploadEnabledRef.current = !!imageUploadEnabled
+
   const termRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<Terminal | null>(null)
   const connectionRef = useRef<TerminalConnection | null>(null)
@@ -62,6 +81,8 @@ export default function ContainerTerminalDialog({
   }, [])
 
   const cleanup = useCallback(() => {
+    sessionRef.current += 1
+    attachmentQueueRef.current = Promise.resolve()
     connectionRef.current?.close()
     connectionRef.current = null
     disposeTerminal()
@@ -74,6 +95,7 @@ export default function ContainerTerminalDialog({
   }, [])
 
   const isDark = theme.palette.mode === 'dark'
+  const isMac = isMacPlatform()
 
   // Connect when dialog opens with a ticket
   useEffect(() => {
@@ -82,6 +104,7 @@ export default function ContainerTerminalDialog({
     setStatus('connecting')
     setErrorMessage('')
     disposeTerminal()
+    sessionRef.current += 1
 
     const conn = connectTerminal(
       ticket,
@@ -106,6 +129,8 @@ export default function ContainerTerminalDialog({
     connectionRef.current = conn
 
     return () => {
+      sessionRef.current += 1
+      attachmentQueueRef.current = Promise.resolve()
       conn.close()
       connectionRef.current = null
       disposeTerminal()
@@ -144,6 +169,11 @@ export default function ContainerTerminalDialog({
       connectionRef.current?.sendInput(data)
     })
 
+    // With image attachments on, let the browser fire its native paste event for Ctrl+V / Cmd+V.
+    // Without this, xterm turns Ctrl+V into ^V on Linux/Windows and no paste ever happens. When the
+    // feature is off the terminal keeps stock behavior, so ^V still reaches vim/readline.
+    term.attachCustomKeyEventHandler((ev) => !(imageUploadEnabledRef.current && isNativePasteChord(ev, isMac)))
+
     const container = termRef.current
     const observer = new ResizeObserver(() => {
       if (xtermRef.current) {
@@ -164,8 +194,101 @@ export default function ContainerTerminalDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-init when status becomes 'connected'
   }, [status])
 
+  // Upload one pasted/dropped image, then type its container path into the prompt.
+  const attachImage = useCallback(async (file: File, session: number) => {
+    if (!containerId || session !== sessionRef.current) return
+    if (!isSupportedImage(file)) {
+      setAttachment({ status: 'error', progress: 0, message: t('containers.terminal.imageUnsupported') })
+      return
+    }
+    const maxMb = imageMaxSizeMb ?? 10
+    if (file.size > maxMb * 1024 * 1024) {
+      setAttachment({ status: 'error', progress: 0, message: t('containers.terminal.imageTooLarge', { max: maxMb }) })
+      return
+    }
+
+    setAttachment({ status: 'uploading', progress: 0, message: t('containers.terminal.imageUploading') })
+    const res = await uploadImageToContainer(
+      containerId,
+      file,
+      terminalPassword ?? '',
+      (pct) => setAttachment((prev) => prev?.status === 'uploading' ? { ...prev, progress: pct } : prev),
+    )
+    // The dialog closed or reconnected meanwhile: the file belongs to a session that is gone.
+    if (!mountedRef.current || session !== sessionRef.current) return
+
+    if (res.success && res.path) {
+      connectionRef.current?.sendInput(res.path + ' ')
+      xtermRef.current?.focus()
+      setAttachment({ status: 'done', progress: 100, message: t('containers.terminal.imageAttached', { path: res.path }) })
+    } else {
+      setAttachment({ status: 'error', progress: 0, message: res.error ?? t('containers.terminal.uploadFailed') })
+    }
+  }, [containerId, terminalPassword, imageMaxSizeMb, t])
+
+  // Serialize uploads so several pasted images land in the prompt in order.
+  const enqueueImages = useCallback((files: File[]) => {
+    const session = sessionRef.current
+    for (const file of files) {
+      attachmentQueueRef.current = attachmentQueueRef.current.then(() => attachImage(file, session)).catch(() => {})
+    }
+  }, [attachImage])
+
+  // Intercept image paste/drop on the terminal; plain text keeps flowing to xterm.
+  useEffect(() => {
+    const container = termRef.current
+    if (!imageUploadEnabled || status !== 'connected' || !container) return
+
+    const onPaste = (e: ClipboardEvent) => {
+      // Spreadsheet/browser copies ship text plus a rendered preview image; the text is what was meant.
+      if (hasPlainText(e.clipboardData)) return
+      const images = extractImageFiles(e.clipboardData)
+      if (images.length === 0) return
+      e.preventDefault()
+      e.stopPropagation()
+      enqueueImages(images)
+    }
+    const onDragOver = (e: DragEvent) => {
+      if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes('Files')) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+      setDragActive(true)
+    }
+    const onDragLeave = (e: DragEvent) => {
+      if (e.relatedTarget && container.contains(e.relatedTarget as Node)) return
+      setDragActive(false)
+    }
+    const onDrop = (e: DragEvent) => {
+      // Always swallow the drop: the browser's default is to navigate the tab to the dropped file.
+      e.preventDefault()
+      e.stopPropagation()
+      setDragActive(false)
+      const images = extractImageFiles(e.dataTransfer)
+      if (images.length === 0) {
+        if ((e.dataTransfer?.files.length ?? 0) > 0) {
+          setAttachment({ status: 'error', progress: 0, message: t('containers.terminal.imageUnsupported') })
+        }
+        return
+      }
+      enqueueImages(images)
+    }
+
+    container.addEventListener('paste', onPaste, true)
+    container.addEventListener('dragover', onDragOver)
+    container.addEventListener('dragleave', onDragLeave)
+    container.addEventListener('drop', onDrop)
+    return () => {
+      container.removeEventListener('paste', onPaste, true)
+      container.removeEventListener('dragover', onDragOver)
+      container.removeEventListener('dragleave', onDragLeave)
+      container.removeEventListener('drop', onDrop)
+    }
+  }, [imageUploadEnabled, status, enqueueImages, t])
+
   const resetUpload = useCallback(() => {
     setUploadOpen(false)
+    setAttachment(null)
+    setDragActive(false)
     setUploadFile(null)
     setRemotePath(uploadDefaultPath ?? '/tmp')
     setUploadProgress(0)
@@ -260,6 +383,10 @@ export default function ContainerTerminalDialog({
               flex: 1,
               minHeight: 0,
               p: 0.5,
+              outline: dragActive ? '2px dashed' : 'none',
+              outlineColor: 'primary.main',
+              outlineOffset: -4,
+              transition: 'outline-color 120ms',
               '& .xterm': { height: '100%' },
               '& .xterm-viewport': { overflowY: 'auto !important' },
             }}
@@ -281,6 +408,46 @@ export default function ContainerTerminalDialog({
           </Box>
         )}
       </DialogContent>
+
+      {imageUploadEnabled && attachment && (
+        <Box
+          sx={{
+            bgcolor: isDark ? '#252526' : '#f5f5f5',
+            borderTop: `1px solid ${isDark ? '#3c3c3c' : '#ddd'}`,
+            px: 2,
+            py: 0.75,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+          }}
+        >
+          {attachment.status === 'uploading' ? (
+            <>
+              <ImageIcon sx={{ fontSize: 18, color: isDark ? '#aaa' : 'text.secondary' }} />
+              <Typography variant="caption" sx={{ color: isDark ? '#ccc' : 'text.secondary', whiteSpace: 'nowrap' }}>
+                {attachment.message}
+              </Typography>
+              <LinearProgress
+                variant="determinate"
+                value={attachment.progress}
+                sx={{ flex: 1, height: 6, borderRadius: 3 }}
+              />
+              <Typography variant="caption" sx={{ color: isDark ? '#ccc' : 'text.secondary', minWidth: 36 }}>
+                {attachment.progress}%
+              </Typography>
+            </>
+          ) : (
+            <Alert
+              severity={attachment.status === 'done' ? 'success' : 'error'}
+              icon={attachment.status === 'done' ? <ImageIcon fontSize="inherit" /> : undefined}
+              sx={{ py: 0, fontSize: '0.8rem', flex: 1, '& .MuiAlert-message': { fontFamily: attachment.status === 'done' ? 'monospace' : undefined } }}
+              onClose={() => setAttachment(null)}
+            >
+              {attachment.message}
+            </Alert>
+          )}
+        </Box>
+      )}
 
       {uploadEnabled && status === 'connected' && (
         <Collapse in={uploadOpen}>
@@ -371,19 +538,28 @@ export default function ContainerTerminalDialog({
       )}
 
       <DialogActions sx={{ px: 3, py: 1.5, bgcolor: 'grey.900' }}>
-        {uploadEnabled && status === 'connected' && (
-          <Tooltip title={t('containers.terminal.uploadFile')}>
-            <IconButton
-              onClick={() => { setUploadOpen((prev) => !prev); setUploadResult(null) }}
-              size="small"
-              sx={{
-                color: uploadOpen ? 'primary.main' : 'white',
-                mr: 'auto',
-              }}
-            >
-              <UploadFile sx={{ fontSize: 20 }} />
-            </IconButton>
-          </Tooltip>
+        {status === 'connected' && (uploadEnabled || imageUploadEnabled) && (
+          <Box sx={{ mr: 'auto', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            {uploadEnabled && (
+              <Tooltip title={t('containers.terminal.uploadFile')}>
+                <IconButton
+                  onClick={() => { setUploadOpen((prev) => !prev); setUploadResult(null) }}
+                  size="small"
+                  sx={{ color: uploadOpen ? 'primary.main' : 'white' }}
+                >
+                  <UploadFile sx={{ fontSize: 20 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+            {imageUploadEnabled && (
+              <Tooltip title={t('containers.terminal.pasteImageTooltip', { path: attachmentsPath ?? '/tmp' })}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <ImageIcon sx={{ fontSize: 16 }} />
+                  {t('containers.terminal.pasteImageHint', { shortcut: pasteShortcutLabel(isMac) })}
+                </Typography>
+              </Tooltip>
+            )}
+          </Box>
         )}
         <Button onClick={handleClose} sx={{ color: 'white' }}>
           {t('common.close')}

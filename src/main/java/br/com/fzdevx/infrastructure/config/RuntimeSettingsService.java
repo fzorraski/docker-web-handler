@@ -38,6 +38,15 @@ public class RuntimeSettingsService {
     @ConfigProperty(name = "container.terminal.upload.max-size-mb", defaultValue = "100")
     int terminalUploadMaxSizeMbDefault;
 
+    @ConfigProperty(name = "container.terminal.upload.image.enabled", defaultValue = "false")
+    boolean terminalImageUploadEnabledDefault;
+
+    @ConfigProperty(name = "container.terminal.upload.image.path", defaultValue = "/tmp")
+    String terminalImageUploadPathDefault;
+
+    @ConfigProperty(name = "container.terminal.upload.image.max-size-mb", defaultValue = "10")
+    int terminalImageMaxSizeMbDefault;
+
     @ConfigProperty(name = "log.analyzer.enabled", defaultValue = "false")
     boolean logAnalyzerEnabledDefault;
 
@@ -74,6 +83,23 @@ public class RuntimeSettingsService {
         return override != null ? override : terminalUploadMaxSizeMbDefault;
     }
 
+    /** Paste/drop image attachments in the terminal; independent of the generic file upload. */
+    public boolean isTerminalImageUploadEnabled() {
+        Boolean override = overrides().getTerminalImageUploadEnabled();
+        return override != null ? override : terminalImageUploadEnabledDefault;
+    }
+
+    /** Directory inside the container where pasted/dropped images are stored. */
+    public String getTerminalImageUploadPath() {
+        String override = overrides().getTerminalImageUploadPath();
+        return override != null && !override.isBlank() ? override : terminalImageUploadPathDefault;
+    }
+
+    /** Size cap for pasted/dropped images. Config-only (no runtime override), but read from here so the UI and the endpoint agree. */
+    public int getTerminalImageMaxSizeMb() {
+        return terminalImageMaxSizeMbDefault;
+    }
+
     public boolean isLogAnalyzerEnabled() {
         Boolean override = overrides().getLogAnalyzerEnabled();
         return override != null ? override : logAnalyzerEnabledDefault;
@@ -104,6 +130,10 @@ public class RuntimeSettingsService {
                 terminalUploadEnabledDefault, overrides.getTerminalUploadEnabled() != null));
         settings.add(entry("terminalUploadMaxSizeMb", "integer", getTerminalUploadMaxSizeMb(),
                 terminalUploadMaxSizeMbDefault, overrides.getTerminalUploadMaxSizeMb() != null));
+        settings.add(entry("terminalImageUploadEnabled", "boolean", isTerminalImageUploadEnabled(),
+                terminalImageUploadEnabledDefault, overrides.getTerminalImageUploadEnabled() != null));
+        settings.add(entry("terminalImageUploadPath", "string", getTerminalImageUploadPath(),
+                terminalImageUploadPathDefault, overrides.getTerminalImageUploadPath() != null));
         settings.add(entry("logAnalyzerEnabled", "boolean", isLogAnalyzerEnabled(),
                 logAnalyzerEnabledDefault, overrides.getLogAnalyzerEnabled() != null));
         settings.add(entry("sessionTimeoutMinutes", "integer", getSessionTimeoutMinutes(),

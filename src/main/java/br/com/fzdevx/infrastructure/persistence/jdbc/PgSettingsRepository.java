@@ -22,8 +22,9 @@ public class PgSettingsRepository implements SettingsRepository {
     public RuntimeSettings get() {
         return jdbc.queryOne("""
                 SELECT terminal_enabled, terminal_max_sessions, terminal_idle_timeout_minutes,
-                       terminal_upload_enabled, terminal_upload_max_size_mb, log_analyzer_enabled,
-                       session_timeout_minutes, audit_retention_days
+                       terminal_upload_enabled, terminal_upload_max_size_mb, terminal_image_upload_enabled,
+                       terminal_image_upload_path, log_analyzer_enabled, session_timeout_minutes,
+                       audit_retention_days
                 FROM runtime_settings WHERE id = 1
                 """, PgSettingsRepository::map)
                 .orElseGet(RuntimeSettings::new);
@@ -34,14 +35,17 @@ public class PgSettingsRepository implements SettingsRepository {
         jdbc.update("""
                 INSERT INTO runtime_settings (id, terminal_enabled, terminal_max_sessions,
                     terminal_idle_timeout_minutes, terminal_upload_enabled, terminal_upload_max_size_mb,
-                    log_analyzer_enabled, session_timeout_minutes, audit_retention_days, updated_at)
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    terminal_image_upload_enabled, terminal_image_upload_path, log_analyzer_enabled,
+                    session_timeout_minutes, audit_retention_days, updated_at)
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (id) DO UPDATE SET
                     terminal_enabled = EXCLUDED.terminal_enabled,
                     terminal_max_sessions = EXCLUDED.terminal_max_sessions,
                     terminal_idle_timeout_minutes = EXCLUDED.terminal_idle_timeout_minutes,
                     terminal_upload_enabled = EXCLUDED.terminal_upload_enabled,
                     terminal_upload_max_size_mb = EXCLUDED.terminal_upload_max_size_mb,
+                    terminal_image_upload_enabled = EXCLUDED.terminal_image_upload_enabled,
+                    terminal_image_upload_path = EXCLUDED.terminal_image_upload_path,
                     log_analyzer_enabled = EXCLUDED.log_analyzer_enabled,
                     session_timeout_minutes = EXCLUDED.session_timeout_minutes,
                     audit_retention_days = EXCLUDED.audit_retention_days,
@@ -49,7 +53,8 @@ public class PgSettingsRepository implements SettingsRepository {
                 """,
                 settings.getTerminalEnabled(), settings.getTerminalMaxSessions(),
                 settings.getTerminalIdleTimeoutMinutes(), settings.getTerminalUploadEnabled(),
-                settings.getTerminalUploadMaxSizeMb(), settings.getLogAnalyzerEnabled(),
+                settings.getTerminalUploadMaxSizeMb(), settings.getTerminalImageUploadEnabled(),
+                settings.getTerminalImageUploadPath(), settings.getLogAnalyzerEnabled(),
                 settings.getSessionTimeoutMinutes(), settings.getAuditRetentionDays(),
                 Instant.now());
     }
@@ -61,6 +66,8 @@ public class PgSettingsRepository implements SettingsRepository {
         settings.setTerminalIdleTimeoutMinutes(rs.getObject("terminal_idle_timeout_minutes", Integer.class));
         settings.setTerminalUploadEnabled(rs.getObject("terminal_upload_enabled", Boolean.class));
         settings.setTerminalUploadMaxSizeMb(rs.getObject("terminal_upload_max_size_mb", Integer.class));
+        settings.setTerminalImageUploadEnabled(rs.getObject("terminal_image_upload_enabled", Boolean.class));
+        settings.setTerminalImageUploadPath(rs.getString("terminal_image_upload_path"));
         settings.setLogAnalyzerEnabled(rs.getObject("log_analyzer_enabled", Boolean.class));
         settings.setSessionTimeoutMinutes(rs.getObject("session_timeout_minutes", Integer.class));
         settings.setAuditRetentionDays(rs.getObject("audit_retention_days", Integer.class));

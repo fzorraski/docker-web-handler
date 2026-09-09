@@ -4,6 +4,7 @@ import br.com.fzdevx.application.port.DockerTerminalPort;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.ExecCreateCmdResponse;
 import com.github.dockerjava.api.command.InspectContainerResponse;
+import com.github.dockerjava.api.exception.NotFoundException;
 import com.github.dockerjava.api.model.Frame;
 import com.github.dockerjava.api.async.ResultCallback;
 import io.quarkus.logging.Log;
@@ -15,7 +16,9 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -179,10 +182,57 @@ public class DockerTerminalAdapter implements DockerTerminalPort {
 
     @Override
     public void copyFileToContainer(String containerId, Path hostFile, String remotePath) {
+        try {
+            copyArchive(containerId, hostFile, remotePath);
+        } catch (NotFoundException e) {
+            // The Engine answers 404 to PUT /containers/{id}/archive when the destination
+            // directory does not exist. Create it once and retry; a second 404 propagates.
+            Log.infof("Destination '%s' missing in container '%s', creating it", remotePath, containerId);
+            createDirectory(containerId, remotePath);
+            copyArchive(containerId, hostFile, remotePath);
+        }
+        Log.infof("Copied file '%s' to container '%s' at '%s'", hostFile.getFileName(), containerId, remotePath);
+    }
+
+    private void copyArchive(String containerId, Path hostFile, String remotePath) {
         dockerClient.copyArchiveToContainerCmd(containerId)
                 .withHostResource(hostFile.toAbsolutePath().toString())
                 .withRemotePath(remotePath)
                 .exec();
-        Log.infof("Copied file '%s' to container '%s' at '%s'", hostFile.getFileName(), containerId, remotePath);
+    }
+
+    /**
+     * {@code mkdir -p} as root, matching the privilege the archive copy itself runs with, so an
+     * image whose USER cannot write to the parent still gets its upload directory.
+     */
+    private void createDirectory(String containerId, String remotePath) {
+        ExecCreateCmdResponse exec = dockerClient.execCreateCmd(containerId)
+                .withCmd("mkdir", "-p", remotePath)
+                .withUser("root")
+                .withAttachStdout(true)
+                .withAttachStderr(true)
+                .exec();
+        StringBuilder output = new StringBuilder();
+        try {
+            dockerClient.execStartCmd(exec.getId())
+                    .exec(new ResultCallback.Adapter<Frame>() {
+                        @Override
+                        public void onNext(Frame frame) {
+                            byte[] payload = frame.getPayload();
+                            if (payload != null && output.length() < 1024) {
+                                output.append(new String(payload, StandardCharsets.UTF_8));
+                            }
+                        }
+                    })
+                    .awaitCompletion(30, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new DirectoryCreationException(remotePath, "interrupted while waiting for mkdir");
+        }
+        Long exitCode = dockerClient.inspectExecCmd(exec.getId()).exec().getExitCodeLong();
+        if (exitCode == null || exitCode != 0) {
+            throw new DirectoryCreationException(remotePath,
+                    "mkdir exited with " + exitCode + " " + output.toString().trim());
+        }
     }
 }

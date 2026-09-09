@@ -157,6 +157,9 @@ export interface FeatureFlags {
   terminalUpload: boolean
   terminalUploadMaxSizeMb: number
   terminalUploadDefaultPath: string
+  terminalImageUpload: boolean
+  terminalAttachmentsPath: string
+  terminalImageMaxSizeMb: number
 }
 
 export async function getFeatures(): Promise<FeatureFlags> {

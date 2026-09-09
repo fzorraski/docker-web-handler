@@ -272,6 +272,9 @@ See [Database Migrations](database-migrations.md#container-upgrade) for full doc
 | `container.terminal.upload.enabled` | Enable file upload to container from terminal | `false` |
 | `container.terminal.upload.max-size-mb` | Maximum upload file size (MB) | `100` |
 | `container.terminal.upload.default-path` | Default destination path inside the container | `/tmp` |
+| `container.terminal.upload.image.enabled` | Enable pasting/dropping images into the terminal (independent of file upload) | `false` |
+| `container.terminal.upload.image.path` | Directory inside the container for images pasted/dropped into the terminal (runtime-editable) | `/tmp` |
+| `container.terminal.upload.image.max-size-mb` | Maximum size (MB) for pasted/dropped images | `10` |
 
 See [Container Terminal](container-terminal.md) for full documentation.
 

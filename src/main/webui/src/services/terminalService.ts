@@ -16,19 +16,20 @@ export async function authorizeTerminal(
   return { ticket: data.ticket }
 }
 
-export function uploadFileToContainer(
-  containerId: string,
-  file: File,
-  remotePath: string,
-  password: string,
-  onProgress?: (percent: number) => void,
-): Promise<{ success: boolean; filename?: string; remotePath?: string; error?: string }> {
-  return new Promise((resolve) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('remotePath', remotePath)
-    formData.append('password', password)
+interface UploadResult {
+  success: boolean
+  filename?: string
+  remotePath?: string
+  path?: string
+  error?: string
+}
 
+function postMultipart(
+  url: string,
+  formData: FormData,
+  onProgress?: (percent: number) => void,
+): Promise<UploadResult> {
+  return new Promise((resolve) => {
     const xhr = new XMLHttpRequest()
 
     xhr.upload.addEventListener('progress', (e) => {
@@ -41,7 +42,7 @@ export function uploadFileToContainer(
       try {
         const data = JSON.parse(xhr.responseText)
         if (xhr.status >= 200 && xhr.status < 300) {
-          resolve({ success: true, filename: data.filename, remotePath: data.remotePath })
+          resolve({ success: true, filename: data.filename, remotePath: data.remotePath, path: data.path })
         } else {
           resolve({ success: false, error: apiErrorMessage(data, 'Upload failed') })
         }
@@ -58,9 +59,39 @@ export function uploadFileToContainer(
       resolve({ success: false, error: 'Upload cancelled' })
     })
 
-    xhr.open('POST', API + encodeURIComponent(containerId) + '/upload')
+    xhr.open('POST', url)
     xhr.send(formData)
   })
+}
+
+export function uploadFileToContainer(
+  containerId: string,
+  file: File,
+  remotePath: string,
+  password: string,
+  onProgress?: (percent: number) => void,
+): Promise<UploadResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('remotePath', remotePath)
+  formData.append('password', password)
+  return postMultipart(API + encodeURIComponent(containerId) + '/upload', formData, onProgress)
+}
+
+/**
+ * Uploads a pasted/dropped image as a terminal attachment. The server picks the destination
+ * directory and filename and returns the full path inside the container in `path`.
+ */
+export function uploadImageToContainer(
+  containerId: string,
+  image: Blob,
+  password: string,
+  onProgress?: (percent: number) => void,
+): Promise<UploadResult> {
+  const formData = new FormData()
+  formData.append('file', image, 'image')
+  formData.append('password', password)
+  return postMultipart(API + encodeURIComponent(containerId) + '/upload/image', formData, onProgress)
 }
 
 export interface TerminalConnection {

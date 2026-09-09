@@ -8,9 +8,9 @@ const OPTS = { forbiddenEvent: false }
 
 export interface RuntimeSetting {
   key: string
-  type: 'boolean' | 'integer'
-  value: boolean | number
-  defaultValue: boolean | number
+  type: 'boolean' | 'integer' | 'string'
+  value: boolean | number | string
+  defaultValue: boolean | number | string
   overridden: boolean
 }
 
@@ -19,7 +19,7 @@ export async function listSettings(): Promise<RuntimeSetting[]> {
   return handleJsonResponse(res)
 }
 
-export async function updateSettings(changes: Record<string, boolean | number>): Promise<RuntimeSetting[]> {
+export async function updateSettings(changes: Record<string, boolean | number | string>): Promise<RuntimeSetting[]> {
   const res = await fetchWithAuth(API, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

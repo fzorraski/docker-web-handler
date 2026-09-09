@@ -35,6 +35,8 @@ class ContainerFileUploadControllerTest {
     private static final String VALID_CONTAINER_ID = "abcdef1234567890";
     private static final String VALID_PASSWORD = "secret";
     private static final String VALID_REMOTE_PATH = "/tmp";
+    private static final String ATTACHMENTS_PATH = "/tmp/attachments";
+    private static final byte[] PNG_HEADER = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0x0D, 'I', 'H', 'D', 'R'};
 
     @Mock DockerTerminalPort dockerTerminalPort;
     @Mock PasswordValidationService passwordValidationService;
@@ -46,8 +48,11 @@ class ContainerFileUploadControllerTest {
     @BeforeEach
     void setUp() {
         controller.containerTenantGuard = br.com.fzdevx.infrastructure.docker.TestContainerTenantGuard.passthrough();
+        when(runtimeSettings.getTerminalImageUploadPath()).thenReturn(ATTACHMENTS_PATH);
+        when(runtimeSettings.getTerminalImageMaxSizeMb()).thenReturn(10);
         when(runtimeSettings.isTerminalUploadEnabled()).thenReturn(true);
         when(runtimeSettings.getTerminalUploadMaxSizeMb()).thenReturn(100);
+        when(runtimeSettings.isTerminalImageUploadEnabled()).thenReturn(true);
     }
 
     // ---- Feature disabled ----
@@ -326,6 +331,233 @@ class ContainerFileUploadControllerTest {
 
         assertEquals(200, response.getStatus());
         verify(dockerTerminalPort).copyFileToContainer(any(), any(Path.class), any());
+    }
+
+    // ---- Image attachments (paste / drop) ----
+
+    @Test
+    void uploadImage_disabled_returnsForbidden() {
+        when(runtimeSettings.isTerminalImageUploadEnabled()).thenReturn(false);
+
+        Response response = controller.uploadImage(VALID_CONTAINER_ID, mock(MultipartFormDataInput.class));
+
+        assertEquals(403, response.getStatus());
+        assertErrorContains(response, "Image attachments");
+    }
+
+    @Test
+    void uploadImage_worksWithoutGenericUploadFlag() throws Exception {
+        when(runtimeSettings.isTerminalUploadEnabled()).thenReturn(false);
+        MultipartFormDataInput input = mockImageForm(VALID_PASSWORD, PNG_HEADER);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadImage(VALID_CONTAINER_ID, input);
+
+        assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    void uploadFile_ignoresImageFlag() throws Exception {
+        when(runtimeSettings.isTerminalImageUploadEnabled()).thenReturn(false);
+        MultipartFormDataInput input = mockForm(VALID_PASSWORD, VALID_REMOTE_PATH, "test.txt", "x".getBytes());
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadFile(VALID_CONTAINER_ID, input);
+
+        assertEquals(200, response.getStatus());
+    }
+
+    @Test
+    void uploadImage_invalidContainerId_returnsBadRequest() {
+        Response response = controller.uploadImage("not-hex!", mock(MultipartFormDataInput.class));
+
+        assertEquals(400, response.getStatus());
+    }
+
+    @Test
+    void uploadImage_invalidPassword_returnsForbidden() throws Exception {
+        MultipartFormDataInput input = mockImageForm("wrong", PNG_HEADER);
+        when(passwordValidationService.validateTerminalPassword("wrong")).thenReturn(false);
+
+        Response response = controller.uploadImage(VALID_CONTAINER_ID, input);
+
+        assertEquals(403, response.getStatus());
+    }
+
+    @Test
+    void uploadImage_containerNotRunning_returnsBadRequest() throws Exception {
+        MultipartFormDataInput input = mockImageForm(VALID_PASSWORD, PNG_HEADER);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(false);
+
+        Response response = controller.uploadImage(VALID_CONTAINER_ID, input);
+
+        assertEquals(400, response.getStatus());
+        assertErrorContains(response, "not running");
+    }
+
+    @Test
+    void uploadImage_notAnImage_returnsBadRequest() throws Exception {
+        MultipartFormDataInput input = mockImageForm(VALID_PASSWORD, "#!/bin/sh\nrm -rf /".getBytes());
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadImage(VALID_CONTAINER_ID, input);
+
+        assertEquals(400, response.getStatus());
+        assertErrorContains(response, "Unsupported image");
+        verify(dockerTerminalPort, never()).copyFileToContainer(any(), any(), any());
+    }
+
+    @Test
+    void uploadImage_exceedsImageLimit_returnsBadRequest() throws Exception {
+        when(runtimeSettings.getTerminalImageMaxSizeMb()).thenReturn(1);
+        byte[] big = new byte[1024 * 1024 + 1];
+        System.arraycopy(PNG_HEADER, 0, big, 0, PNG_HEADER.length);
+        MultipartFormDataInput input = mockImageForm(VALID_PASSWORD, big);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadImage(VALID_CONTAINER_ID, input);
+
+        assertEquals(400, response.getStatus());
+        assertErrorContains(response, "maximum size of 1 MB");
+        verify(dockerTerminalPort, never()).copyFileToContainer(any(), any(), any());
+    }
+
+    @Test
+    void uploadImage_misconfiguredAttachmentsPath_returns500() throws Exception {
+        when(runtimeSettings.getTerminalImageUploadPath()).thenReturn("relative/path");
+        MultipartFormDataInput input = mockImageForm(VALID_PASSWORD, PNG_HEADER);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadImage(VALID_CONTAINER_ID, input);
+
+        assertEquals(500, response.getStatus());
+        verify(dockerTerminalPort, never()).copyFileToContainer(any(), any(), any());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void uploadImage_validPng_copiesAndReturnsFullPath() throws Exception {
+        MultipartFormDataInput input = mockImageForm(VALID_PASSWORD, PNG_HEADER);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadImage(VALID_CONTAINER_ID, input);
+
+        assertEquals(200, response.getStatus());
+        ArgumentCaptor<Path> pathCaptor = ArgumentCaptor.forClass(Path.class);
+        verify(dockerTerminalPort).copyFileToContainer(eq(VALID_CONTAINER_ID), pathCaptor.capture(), eq(ATTACHMENTS_PATH));
+
+        String filename = pathCaptor.getValue().getFileName().toString();
+        assertTrue(filename.matches("clip-\\d+-[0-9a-f]{8}\\.png"), "unexpected generated name: " + filename);
+
+        Map<String, String> entity = (Map<String, String>) response.getEntity();
+        assertEquals(filename, entity.get("filename"));
+        assertEquals(ATTACHMENTS_PATH, entity.get("remotePath"));
+        assertEquals(ATTACHMENTS_PATH + "/" + filename, entity.get("path"));
+    }
+
+    @Test
+    void uploadImage_jpegGetsJpgExtension_regardlessOfClientName() throws Exception {
+        byte[] jpeg = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 0x10, 'J', 'F', 'I', 'F', 0, 1};
+        MultipartFormDataInput input = mockImageForm(VALID_PASSWORD, jpeg);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+
+        Response response = controller.uploadImage(VALID_CONTAINER_ID, input);
+
+        assertEquals(200, response.getStatus());
+        ArgumentCaptor<Path> pathCaptor = ArgumentCaptor.forClass(Path.class);
+        verify(dockerTerminalPort).copyFileToContainer(any(), pathCaptor.capture(), any());
+        assertTrue(pathCaptor.getValue().getFileName().toString().endsWith(".jpg"));
+    }
+
+    @Test
+    void uploadImage_directoryCreationFails_returns500NamingTheDirectory() throws Exception {
+        MultipartFormDataInput input = mockImageForm(VALID_PASSWORD, PNG_HEADER);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+        doThrow(new DockerTerminalPort.DirectoryCreationException(ATTACHMENTS_PATH, "Permission denied"))
+                .when(dockerTerminalPort).copyFileToContainer(any(), any(), any());
+
+        Response response = controller.uploadImage(VALID_CONTAINER_ID, input);
+
+        assertEquals(500, response.getStatus());
+        assertErrorContains(response, ATTACHMENTS_PATH);
+    }
+
+    @Test
+    void uploadImage_notAnImage_writesNoTempFile() throws Exception {
+        MultipartFormDataInput input = mockImageForm(VALID_PASSWORD, "plain text".getBytes());
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+        java.util.Set<String> before = tempDirsMatching("container-attachment-");
+
+        controller.uploadImage(VALID_CONTAINER_ID, input);
+
+        assertEquals(before, tempDirsMatching("container-attachment-"));
+    }
+
+    // ---- Rate limiting must surface as 429, not a generic 500 ----
+
+    @Test
+    void uploadFile_rateLimited_propagatesToExceptionMapper() throws Exception {
+        MultipartFormDataInput input = mockForm(VALID_PASSWORD, VALID_REMOTE_PATH, "test.txt", new byte[]{1});
+        when(passwordValidationService.validateTerminalPassword(any()))
+                .thenThrow(new br.com.fzdevx.domain.exception.RateLimitedException(30));
+
+        assertThrows(br.com.fzdevx.domain.exception.RateLimitedException.class,
+                () -> controller.uploadFile(VALID_CONTAINER_ID, input));
+    }
+
+    @Test
+    void uploadImage_rateLimited_propagatesToExceptionMapper() throws Exception {
+        MultipartFormDataInput input = mockImageForm(VALID_PASSWORD, PNG_HEADER);
+        when(passwordValidationService.validateTerminalPassword(any()))
+                .thenThrow(new br.com.fzdevx.domain.exception.RateLimitedException(30));
+
+        assertThrows(br.com.fzdevx.domain.exception.RateLimitedException.class,
+                () -> controller.uploadImage(VALID_CONTAINER_ID, input));
+    }
+
+    private static java.util.Set<String> tempDirsMatching(String prefix) throws Exception {
+        Path tmp = Path.of(System.getProperty("java.io.tmpdir"));
+        try (var stream = Files.list(tmp)) {
+            return stream.map(p -> p.getFileName().toString())
+                    .filter(n -> n.startsWith(prefix))
+                    .collect(java.util.stream.Collectors.toSet());
+        }
+    }
+
+    @Test
+    void uploadImage_cleansUpTempFiles() throws Exception {
+        MultipartFormDataInput input = mockImageForm(VALID_PASSWORD, PNG_HEADER);
+        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
+        when(dockerTerminalPort.isContainerRunning(VALID_CONTAINER_ID)).thenReturn(true);
+        ArgumentCaptor<Path> pathCaptor = ArgumentCaptor.forClass(Path.class);
+
+        controller.uploadImage(VALID_CONTAINER_ID, input);
+
+        verify(dockerTerminalPort).copyFileToContainer(any(), pathCaptor.capture(), any());
+        Path tempFile = pathCaptor.getValue();
+        assertFalse(Files.exists(tempFile), "Temp image should be deleted after upload");
+        assertFalse(Files.exists(tempFile.getParent()), "Temp directory should be deleted after upload");
+    }
+
+    private MultipartFormDataInput mockImageForm(String password, byte[] content) throws Exception {
+        MultipartFormDataInput input = mock(MultipartFormDataInput.class);
+        InputPart passwordPart = mockStringPart(password);
+        InputPart filePart = mockFilePart("image.png", content);
+        when(input.getFormDataMap()).thenReturn(Map.of(
+                "password", List.of(passwordPart),
+                "file", List.of(filePart)
+        ));
+        return input;
     }
 
     // ---- Helpers ----

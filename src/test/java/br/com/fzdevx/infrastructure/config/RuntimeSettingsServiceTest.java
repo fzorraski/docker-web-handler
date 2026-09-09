@@ -38,6 +38,9 @@ class RuntimeSettingsServiceTest {
         service.terminalIdleTimeoutMinutesDefault = 30;
         service.terminalUploadEnabledDefault = false;
         service.terminalUploadMaxSizeMbDefault = 100;
+        service.terminalImageUploadEnabledDefault = false;
+        service.terminalImageUploadPathDefault = "/tmp";
+        service.terminalImageMaxSizeMbDefault = 10;
         service.logAnalyzerEnabledDefault = false;
         service.sessionTimeoutMinutesDefault = 480;
         service.auditRetentionDaysDefault = 0;
@@ -50,6 +53,9 @@ class RuntimeSettingsServiceTest {
         assertEquals(30, service.getTerminalIdleTimeoutMinutes());
         assertFalse(service.isTerminalUploadEnabled());
         assertEquals(100, service.getTerminalUploadMaxSizeMb());
+        assertFalse(service.isTerminalImageUploadEnabled());
+        assertEquals("/tmp", service.getTerminalImageUploadPath());
+        assertEquals(10, service.getTerminalImageMaxSizeMb());
         assertFalse(service.isLogAnalyzerEnabled());
         assertEquals(480, service.getSessionTimeoutMinutes());
         assertEquals(0, service.getAuditRetentionDays());
@@ -89,7 +95,7 @@ class RuntimeSettingsServiceTest {
 
         List<Map<String, Object>> described = service.describe();
 
-        assertEquals(8, described.size());
+        assertEquals(10, described.size());
         Map<String, Object> maxSessions = described.stream()
                 .filter(e -> "terminalMaxSessions".equals(e.get("key")))
                 .findFirst().orElseThrow();

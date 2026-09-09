@@ -40,6 +40,8 @@ class ManageSettingsUseCaseTest {
         setField(service, "terminalIdleTimeoutMinutesDefault", 30);
         setField(service, "terminalUploadEnabledDefault", false);
         setField(service, "terminalUploadMaxSizeMbDefault", 100);
+        setField(service, "terminalImageUploadEnabledDefault", false);
+        setField(service, "terminalImageUploadPathDefault", "/tmp");
         setField(service, "logAnalyzerEnabledDefault", false);
         setField(service, "sessionTimeoutMinutesDefault", 480);
         setField(service, "auditRetentionDaysDefault", 0);
@@ -116,6 +118,24 @@ class ManageSettingsUseCaseTest {
                 () -> useCase.update(Map.of("terminalMaxSessions", new BigDecimal("0"))));
         assertThrows(InvalidInputException.class,
                 () -> useCase.update(Map.of("sessionTimeoutMinutes", new BigDecimal("2000000"))));
+    }
+
+    @Test
+    void update_imageUploadPath_acceptsAbsoluteDirAndRejectsUnsafeValues() {
+        useCase.update(Map.of("terminalImageUploadPath", " /tmp/attachments "));
+        assertEquals("/tmp/attachments", service.getTerminalImageUploadPath());
+
+        assertThrows(InvalidInputException.class,
+                () -> useCase.update(Map.of("terminalImageUploadPath", "relative/dir")));
+        assertThrows(InvalidInputException.class,
+                () -> useCase.update(Map.of("terminalImageUploadPath", "/tmp/../etc")));
+        assertThrows(InvalidInputException.class,
+                () -> useCase.update(Map.of("terminalImageUploadPath", "/tmp; rm -rf /")));
+        assertThrows(InvalidInputException.class,
+                () -> useCase.update(Map.of("terminalImageUploadPath", 42)));
+
+        useCase.reset("terminalImageUploadPath");
+        assertEquals("/tmp", service.getTerminalImageUploadPath());
     }
 
     @Test

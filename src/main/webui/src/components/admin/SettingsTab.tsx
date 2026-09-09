@@ -8,6 +8,15 @@ import { useTranslation } from 'react-i18next'
 import { listSettings, updateSettings, resetSetting, type RuntimeSetting } from '../../services/settingsService'
 import { useNotification } from '../NotificationProvider'
 
+/** String settings that must be an absolute directory inside a container; other strings only need to be non-empty. */
+const CONTAINER_PATH_KEYS = new Set(['terminalImageUploadPath'])
+
+/** Mirrors the backend rule for container directories: absolute, no '..', safe characters only. */
+export function isContainerPath(value: string): boolean {
+  const v = value.trim()
+  return v.startsWith('/') && !v.includes('..') && /^\/[A-Za-z0-9/_.-]+$/.test(v)
+}
+
 export default function SettingsTab() {
   const { t } = useTranslation()
   const { notify } = useNotification()
@@ -34,7 +43,7 @@ export default function SettingsTab() {
     setDrafts({})
   }
 
-  async function saveValue(key: string, value: boolean | number) {
+  async function saveValue(key: string, value: boolean | number | string) {
     setSavingKey(key)
     try {
       applyResult(await updateSettings({ [key]: value }))
@@ -75,9 +84,12 @@ export default function SettingsTab() {
         {settings.map((s, i) => {
           const draft = drafts[s.key]
           const draftValue = draft !== undefined ? draft : String(s.value)
-          const changed = s.type === 'integer' && draft !== undefined && draft !== String(s.value)
+          const changed = s.type !== 'boolean' && draft !== undefined && draft !== String(s.value)
           // 0 is meaningful for some settings (e.g. audit retention = keep forever); the backend enforces per-key minimums
-          const draftValid = /^\d+$/.test(draftValue) && Number(draftValue) >= 0
+          const draftValid = s.type === 'string'
+            ? (CONTAINER_PATH_KEYS.has(s.key) ? isContainerPath(draftValue) : draftValue.trim().length > 0)
+            : /^\d+$/.test(draftValue) && Number(draftValue) >= 0
+          const parsedDraft = s.type === 'string' ? draftValue.trim() : Number(draftValue)
           const busy = savingKey === s.key
           return (
             <Box key={s.key}>
@@ -107,10 +119,10 @@ export default function SettingsTab() {
                       value={draftValue}
                       onChange={(e) => setDrafts(prev => ({ ...prev, [s.key]: e.target.value }))}
                       size="small"
-                      sx={{ width: 100 }}
+                      sx={{ width: s.type === 'string' ? 260 : 100 }}
                       disabled={busy}
                       error={changed && !draftValid}
-                      onKeyDown={(e) => { if (e.key === 'Enter' && changed && draftValid && !busy) saveValue(s.key, Number(draftValue)) }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && changed && draftValid && !busy) saveValue(s.key, parsedDraft) }}
                     />
                     <Tooltip title={t('common.save')}>
                       <span>
@@ -118,7 +130,7 @@ export default function SettingsTab() {
                           size="small"
                           color="success"
                           disabled={!changed || !draftValid || busy}
-                          onClick={() => saveValue(s.key, Number(draftValue))}
+                          onClick={() => saveValue(s.key, parsedDraft)}
                         >
                           {busy ? <CircularProgress size={16} /> : <Check fontSize="small" />}
                         </IconButton>

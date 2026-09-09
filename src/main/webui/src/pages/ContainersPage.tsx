@@ -176,6 +176,9 @@ export default function ContainersPage() {
   const [terminalUploadEnabled, setTerminalUploadEnabled] = useState(false)
   const [terminalUploadMaxSizeMb, setTerminalUploadMaxSizeMb] = useState(100)
   const [terminalUploadDefaultPath, setTerminalUploadDefaultPath] = useState('/tmp')
+  const [terminalImageUploadEnabled, setTerminalImageUploadEnabled] = useState(false)
+  const [terminalAttachmentsPath, setTerminalAttachmentsPath] = useState('/tmp')
+  const [terminalImageMaxSizeMb, setTerminalImageMaxSizeMb] = useState(10)
   const [schedulingPwRequired, setSchedulingPwRequired] = useState(true)
   const [schedulingFeatureEnabled, setSchedulingFeatureEnabled] = useState(false)
   const [containerSchedules, setContainerSchedules] = useState<Map<string, ContainerSchedule[]>>(new Map())
@@ -288,6 +291,9 @@ export default function ContainersPage() {
       setTerminalUploadEnabled(f.terminalUpload)
       setTerminalUploadMaxSizeMb(f.terminalUploadMaxSizeMb)
       setTerminalUploadDefaultPath(f.terminalUploadDefaultPath)
+      setTerminalImageUploadEnabled(f.terminalImageUpload)
+      setTerminalAttachmentsPath(f.terminalAttachmentsPath)
+      setTerminalImageMaxSizeMb(f.terminalImageMaxSizeMb)
       setDbDeletionEnabled(f.deletionOnExpiration)
       setOpsPwRequired(f.operationsPasswordRequired)
     }).catch(() => setTerminalFeatureEnabled(false))
@@ -1232,6 +1238,9 @@ export default function ContainersPage() {
         uploadEnabled={terminalUploadEnabled}
         uploadMaxSizeMb={terminalUploadMaxSizeMb}
         uploadDefaultPath={terminalUploadDefaultPath}
+        imageUploadEnabled={terminalImageUploadEnabled}
+        attachmentsPath={terminalAttachmentsPath}
+        imageMaxSizeMb={terminalImageMaxSizeMb}
         terminalPassword={terminal.terminalPassword}
       />
 

@@ -13,6 +13,8 @@ public class RuntimeSettings {
     private Integer terminalIdleTimeoutMinutes;
     private Boolean terminalUploadEnabled;
     private Integer terminalUploadMaxSizeMb;
+    private Boolean terminalImageUploadEnabled;
+    private String terminalImageUploadPath;
     private Boolean logAnalyzerEnabled;
     private Integer sessionTimeoutMinutes;
     private Integer auditRetentionDays;
@@ -31,6 +33,12 @@ public class RuntimeSettings {
 
     public Integer getTerminalUploadMaxSizeMb() { return terminalUploadMaxSizeMb; }
     public void setTerminalUploadMaxSizeMb(Integer terminalUploadMaxSizeMb) { this.terminalUploadMaxSizeMb = terminalUploadMaxSizeMb; }
+
+    public Boolean getTerminalImageUploadEnabled() { return terminalImageUploadEnabled; }
+    public void setTerminalImageUploadEnabled(Boolean terminalImageUploadEnabled) { this.terminalImageUploadEnabled = terminalImageUploadEnabled; }
+
+    public String getTerminalImageUploadPath() { return terminalImageUploadPath; }
+    public void setTerminalImageUploadPath(String terminalImageUploadPath) { this.terminalImageUploadPath = terminalImageUploadPath; }
 
     public Boolean getLogAnalyzerEnabled() { return logAnalyzerEnabled; }
     public void setLogAnalyzerEnabled(Boolean logAnalyzerEnabled) { this.logAnalyzerEnabled = logAnalyzerEnabled; }

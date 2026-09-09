@@ -4,6 +4,7 @@ import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.application.port.SettingsRepository;
 import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.RuntimeSettings;
+import br.com.fzdevx.domain.shared.InputValidator;
 import br.com.fzdevx.infrastructure.config.RuntimeSettingsService;
 import br.com.fzdevx.infrastructure.persistence.AuditRetentionService;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -69,6 +70,8 @@ public class ManageSettingsUseCase {
             case "terminalIdleTimeoutMinutes" -> settings.setTerminalIdleTimeoutMinutes(asInteger(key, value));
             case "terminalUploadEnabled" -> settings.setTerminalUploadEnabled(asBoolean(key, value));
             case "terminalUploadMaxSizeMb" -> settings.setTerminalUploadMaxSizeMb(asInteger(key, value));
+            case "terminalImageUploadEnabled" -> settings.setTerminalImageUploadEnabled(asBoolean(key, value));
+            case "terminalImageUploadPath" -> settings.setTerminalImageUploadPath(asContainerPath(key, value));
             case "logAnalyzerEnabled" -> settings.setLogAnalyzerEnabled(asBoolean(key, value));
             case "sessionTimeoutMinutes" -> settings.setSessionTimeoutMinutes(asInteger(key, value));
             // 0 = keep audit entries forever
@@ -85,6 +88,19 @@ public class ManageSettingsUseCase {
 
     private Integer asInteger(String key, Object value) {
         return asInteger(key, value, MIN_INT_VALUE);
+    }
+
+    /** An absolute directory path inside a container; same rules as upload destinations. */
+    private String asContainerPath(String key, Object value) {
+        if (value == null) return null;
+        if (value instanceof String text) {
+            String trimmed = text.trim();
+            InputValidator.validateContainerPath(trimmed).ifPresent(error -> {
+                throw new InvalidInputException("Setting '" + key + "': " + error);
+            });
+            return trimmed;
+        }
+        throw new InvalidInputException("Setting '" + key + "' expects a text value.");
     }
 
     private Integer asInteger(String key, Object value, int minValue) {
