@@ -37,6 +37,8 @@ Mark databases as "protected" to prevent them from being deleted — either indi
 - Excluded from idle cleanup operations
 - Visually marked with a shield icon in the UI
 
+Protection belongs to the physical database: when several repositories point at the same PostgreSQL server (see [Repositories sharing a PostgreSQL server](#repositories-sharing-a-postgresql-server)), a database protected through one repository tab is protected in every sibling tab as well.
+
 ### Delete Databases
 
 - **Single delete:** Drop one database (requires operations password, rejects if protected)
@@ -195,7 +197,7 @@ Performance is shaped for multi-user hosts: zero impact on user-facing reads (no
 
 The backend computes: `effectiveLastUsedAt = max(pgLastActivity, appLastUsedAt)` — whichever is more recent wins.
 
-- If both are null **and** at least one container is currently attached to the database, the UI shows **"In use by container"** (info-blue chip) — a running container by itself proves the database is in use right now.
+- If both are null **and** at least one container is currently attached to the database, the UI shows **"In use by container"** (purple chip with a container icon; the same purple marks any database with an attached container, so it is never confused with the blue "7 to 30 days" age color) — a running container by itself proves the database is in use right now.
 - If both are null **and** there are no attached containers, the database shows **"Never used"**.
 - "Never used" databases are always considered eligible for idle cleanup.
 
@@ -211,6 +213,14 @@ The backend caches the result for `database.managed.cache.ttl-seconds` (default 
 ### Case sensitivity
 
 PostgreSQL folds unquoted identifiers to lowercase (`CREATE DATABASE MyDB` actually stores `mydb`). The managed-database repository matches `(repository, name)` case-insensitively in every code path so user-typed CamelCase from container creation and PostgreSQL-canonical lowercase from the activity poller converge on a single record. The originally typed case is preserved when an entry is updated.
+
+### Repositories sharing a PostgreSQL server
+
+Two repositories whose `repository.pg-host.<repo>` and `repository.pg-port.<repo>` match (host compared case-insensitively, port defaulting to 5432; the PG user is ignored) list the same physical databases, so they are treated as **siblings**: there is one metadata record per database for the whole server, and it is visible and enforced through every sibling tab. This covers the protected flag, the creator and tenant used by "delete only what you created", the description, the restore stamp, and the app-level last-used time. Deleting a database through any sibling tab removes the record for all of them. Nothing needs to be configured; the grouping is derived from the connection settings.
+
+A record keeps the repository that first wrote it. Writes through a sibling land on that stored record, and a new record is created under the acting repository only when no sibling holds one. Sibling membership also counts repositories that still hold records and keep their `pg-host`, even after they leave `allowed.run.repositories`, so dropping a repository from the allowed list does not orphan the metadata it consolidated. Removing its `pg-host` as well, or repointing it to a different server, does: clear or re-home its metadata rows first, otherwise same-named databases on the new server inherit the old attributes (including protection, which fails safe). If several records for one database are ever found at write time (for example after the startup merge was disabled), the write folds them first, so a protection seen on read can always be cleared.
+
+**One-time merge at startup.** Records that forked before this sharing existed (a blank `mywms-spk-qa` row next to the real `mywms-spk` row) are merged once when the application starts, after the JSON-to-PostgreSQL import and before the background timers. Rule: the record that knows its creator wins the descriptive fields; with no or several creators the oldest record wins; protection is kept if either side had it; the latest usage and earliest creation time are kept; a field the winner lacks is filled from the other record. The winner is written before the losers are removed, so an interrupted merge is simply finished on the next boot. The summary is logged as `Managed databases: merged N duplicate record(s) across sibling repositories (...)`. Set `database.managed.sibling-merge-at-startup=false` to skip the merge while investigating a deployment. Take a backup of the `managed_database` table (or `data/managed-databases.json`) before the first start with this feature.
 
 ### Configuration
 
@@ -239,7 +249,7 @@ GET /api/database/managed/enabled
 GET /api/database/managed/repositories
 ```
 
-**Response:** Array of repository names with PG configuration.
+**Response:** Array of repository names with PG configuration. Repositories on the same PostgreSQL server appear separately but list the same databases with the same metadata.
 
 ### List Databases
 
@@ -369,6 +379,7 @@ POST /api/database/managed/{repository}/{databaseName}/explain  - Run EXPLAIN on
 | `database.managed.enabled` | Enable the Managed Databases tab | `false` |
 | `database.managed.metadata.file` | JSON file for per-database metadata (protected flags, app-level tracking) | `data/managed-databases.json` |
 | `database.managed.cache.ttl-seconds` | Cache TTL for database queries (shared by all users) | `30` |
+| `database.managed.sibling-merge-at-startup` | Merge metadata records that forked across repositories on the same PostgreSQL server, once per start | `true` |
 | `database.query.enabled` | Enable SQL query runner in insights dialog | `false` |
 | `database.query.write-enabled` | Allow write queries (INSERT/UPDATE/DELETE) | `false` |
 | `database.query.timeout-seconds` | Query execution timeout | `30` |

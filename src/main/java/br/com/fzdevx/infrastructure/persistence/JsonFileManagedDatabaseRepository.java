@@ -65,6 +65,30 @@ public class JsonFileManagedDatabaseRepository
     }
 
     @Override
+    public List<ManagedDatabase> findByRepositories(java.util.Collection<String> repositories) {
+        java.util.Set<String> keys = lowercased(repositories);
+        if (keys.isEmpty()) return List.of();
+        return findAllMatching(db -> keys.contains(db.getRepository().toLowerCase(java.util.Locale.ROOT)));
+    }
+
+    @Override
+    public List<ManagedDatabase> findCandidates(java.util.Collection<String> repositories, String name) {
+        java.util.Set<String> keys = lowercased(repositories);
+        if (keys.isEmpty() || name == null) return List.of();
+        return findAllMatching(db -> keys.contains(db.getRepository().toLowerCase(java.util.Locale.ROOT))
+                && db.getName().equalsIgnoreCase(name));
+    }
+
+    private static java.util.Set<String> lowercased(java.util.Collection<String> repositories) {
+        if (repositories == null) return java.util.Set.of();
+        java.util.Set<String> keys = new java.util.HashSet<>();
+        for (String r : repositories) {
+            if (r != null) keys.add(r.toLowerCase(java.util.Locale.ROOT));
+        }
+        return keys;
+    }
+
+    @Override
     public List<ManagedDatabase> findAll() {
         return findAllEntities();
     }

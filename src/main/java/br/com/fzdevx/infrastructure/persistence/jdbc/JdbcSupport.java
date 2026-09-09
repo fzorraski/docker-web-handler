@@ -170,6 +170,8 @@ public class JdbcSupport {
                 case null -> statement.setObject(i + 1, null);
                 case JsonbValue jsonb -> statement.setObject(i + 1, jsonb.json(), Types.OTHER);
                 case Instant instantValue -> statement.setTimestamp(i + 1, Timestamp.from(instantValue));
+                // text[] for "= ANY(?)" predicates
+                case String[] strings -> statement.setArray(i + 1, statement.getConnection().createArrayOf("text", strings));
                 default -> statement.setObject(i + 1, param);
             }
         }

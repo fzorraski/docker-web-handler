@@ -101,6 +101,30 @@ public class PgManagedDatabaseRepository implements ManagedDatabaseRepository {
     }
 
     @Override
+    public List<ManagedDatabase> findByRepositories(java.util.Collection<String> repositories) {
+        String[] keys = lowercased(repositories);
+        if (keys.length == 0) return List.of();
+        return jdbc.query(SELECT + "WHERE lower(repository) = ANY(?)", PgManagedDatabaseRepository::map, (Object) keys);
+    }
+
+    @Override
+    public List<ManagedDatabase> findCandidates(java.util.Collection<String> repositories, String name) {
+        String[] keys = lowercased(repositories);
+        if (keys.length == 0 || name == null) return List.of();
+        return jdbc.query(SELECT + "WHERE lower(repository) = ANY(?) AND lower(name) = lower(?)",
+                PgManagedDatabaseRepository::map, keys, name);
+    }
+
+    private static String[] lowercased(java.util.Collection<String> repositories) {
+        if (repositories == null) return new String[0];
+        return repositories.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(r -> r.toLowerCase(java.util.Locale.ROOT))
+                .distinct()
+                .toArray(String[]::new);
+    }
+
+    @Override
     public List<ManagedDatabase> findAll() {
         return jdbc.query(SELECT, PgManagedDatabaseRepository::map);
     }

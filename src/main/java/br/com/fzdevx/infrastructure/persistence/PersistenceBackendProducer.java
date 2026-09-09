@@ -132,8 +132,10 @@ public class PersistenceBackendProducer {
     @Produces
     @ApplicationScoped
     ManagedDatabaseRepository managedDatabaseRepository(JsonFileManagedDatabaseRepository file,
-                                                        PgManagedDatabaseRepository pg) {
-        return isPostgres() ? pg : file;
+                                                        PgManagedDatabaseRepository pg,
+                                                        br.com.fzdevx.infrastructure.config.RepositorySiblingResolver siblings) {
+        // Repositories on the same PostgreSQL server share one metadata record per database.
+        return new SiblingAwareManagedDatabaseRepository(isPostgres() ? pg : file, siblings);
     }
 
     @Produces

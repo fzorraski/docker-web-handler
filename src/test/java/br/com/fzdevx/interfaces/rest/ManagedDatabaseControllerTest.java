@@ -406,6 +406,18 @@ class ManagedDatabaseControllerTest {
         verify(databaseService).dropDatabase(REPO, "normal_db");
     }
 
+    @Test
+    void deleteBulk_recognizesProtectionOnAMixedCaseRecord() {
+        ManagedDatabase protectedDb = new ManagedDatabase(REPO, "MyDB");
+        protectedDb.setProtectedFlag(true);
+        when(managedDatabaseRepository.findByRepository(REPO)).thenReturn(List.of(protectedDb));
+
+        Response response = controller.deleteBulk(REPO, PASSWORD, List.of("mydb"));
+
+        assertEquals(200, response.getStatus());
+        verify(databaseService, never()).dropDatabase(REPO, "mydb");
+    }
+
     // ---- updateDescription ----
 
     @Test

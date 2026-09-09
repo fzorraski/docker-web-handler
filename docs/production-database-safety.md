@@ -41,7 +41,7 @@ All destructive operations require an operations password via the `X-Dump-Passwo
 
 ### Protected Flag
 
-Individual databases can be marked as "protected", which prevents them from being deleted by any method (single, bulk, or cleanup). Protection can only be toggled with the operations password.
+Individual databases can be marked as "protected", which prevents them from being deleted by any method (single, bulk, or cleanup). Protection can only be toggled with the operations password. Protection and ownership are scoped to the PostgreSQL server, not to the repository tab: repositories whose `pg-host` and `pg-port` match share one metadata record per database, so a database protected in one tab cannot be dropped from a sibling tab (see [managed-databases.md](managed-databases.md#repositories-sharing-a-postgresql-server)).
 
 ### Active Connection Checks
 

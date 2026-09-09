@@ -95,6 +95,18 @@ class JsonFileManagedDatabaseRepositoryTest {
     }
 
     @Test
+    void findByRepositories_andFindCandidates_matchRepositoriesAndNamesCaseInsensitively() {
+        repo.save(new ManagedDatabase("Repo1", "MyDB"));
+        repo.save(new ManagedDatabase("repo2", "mydb"));
+        repo.save(new ManagedDatabase("repo3", "mydb"));
+
+        assertEquals(2, repo.findByRepositories(java.util.List.of("REPO1", "repo2")).size());
+        assertEquals(2, repo.findCandidates(java.util.List.of("repo1", "REPO2"), "MYDB").size());
+        assertTrue(repo.findCandidates(java.util.List.of("repo1"), "other").isEmpty());
+        assertTrue(repo.findByRepositories(java.util.List.of()).isEmpty());
+    }
+
+    @Test
     void find_isCaseInsensitive() {
         ManagedDatabase mixedCase = new ManagedDatabase("MyRepo", "MyDB");
         repo.save(mixedCase);

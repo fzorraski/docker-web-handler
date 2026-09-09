@@ -10,6 +10,11 @@ import java.util.Optional;
 
 public interface ManagedDatabaseRepository {
 
+    /**
+     * Creates the record, or replaces the one with the same identity. Through the
+     * sibling-aware repository the app injects, a database a sibling repository (same
+     * PostgreSQL server) already holds is folded into that stored row instead.
+     */
     void save(ManagedDatabase db);
 
     /**
@@ -25,6 +30,12 @@ public interface ManagedDatabaseRepository {
     Optional<ManagedDatabase> find(String repository, String name);
 
     List<ManagedDatabase> findByRepository(String repository);
+
+    /** Rows of any of the given repositories (repository matched case-insensitively). */
+    List<ManagedDatabase> findByRepositories(java.util.Collection<String> repositories);
+
+    /** Rows named {@code name} (case-insensitively) in any of the given repositories. */
+    List<ManagedDatabase> findCandidates(java.util.Collection<String> repositories, String name);
 
     List<ManagedDatabase> findAll();
 

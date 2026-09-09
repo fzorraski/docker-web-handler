@@ -5,6 +5,7 @@ import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.domain.model.ContainerExpiration;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
+import br.com.fzdevx.infrastructure.config.RepositorySiblingResolver;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,6 +35,7 @@ class ListManagedDatabasesUseCaseTest {
     @Mock ManagedDatabaseRepository managedDatabaseRepository;
     @Mock AllowedRepositoryResolver allowedRepositoryResolver;
     @Mock ContainerExpirationService expirationService;
+    @Mock RepositorySiblingResolver siblingResolver;
 
     @InjectMocks
     ListManagedDatabasesUseCase useCase;
@@ -168,6 +170,38 @@ class ListManagedDatabasesUseCaseTest {
         useCase.listDatabases(REPO);
 
         verify(databaseService, times(2)).listDatabases(REPO);
+    }
+
+    @Test
+    void invalidateCache_alsoDropsSiblingRepositories() {
+        stubDatabaseQueries(List.of("db1"));
+        when(managedDatabaseRepository.findByRepository(REPO)).thenReturn(List.of());
+        when(databaseService.listDatabases("sibling")).thenReturn(List.of("db1"));
+        when(databaseService.getDatabaseSizes("sibling")).thenReturn(Map.of("db1", 1L));
+        when(databaseService.getActiveConnectionCounts("sibling")).thenReturn(Map.of("db1", 0));
+        when(databaseService.getLastActivityTimes("sibling")).thenReturn(Map.of());
+        when(managedDatabaseRepository.findByRepository("sibling")).thenReturn(List.of());
+        when(siblingResolver.siblings(REPO)).thenReturn(List.of(REPO, "sibling"));
+
+        useCase.listDatabases(REPO);
+        useCase.listDatabases("sibling");
+        useCase.invalidateCache(REPO);
+        useCase.listDatabases("sibling");
+
+        verify(databaseService, times(2)).listDatabases("sibling");
+    }
+
+    @Test
+    void listDatabases_matchesStoredMixedCaseRecord_withoutMintingABlankOne() {
+        stubDatabaseQueries(List.of("mydb"));
+        ManagedDatabase stored = new ManagedDatabase(REPO, "MyDB");
+        stored.setProtectedFlag(true);
+        when(managedDatabaseRepository.findByRepository(REPO)).thenReturn(List.of(stored));
+
+        List<ManagedDatabaseInfo> result = useCase.listDatabases(REPO);
+
+        assertTrue(result.getFirst().protectedFlag());
+        verify(managedDatabaseRepository, never()).save(any());
     }
 
     @Test

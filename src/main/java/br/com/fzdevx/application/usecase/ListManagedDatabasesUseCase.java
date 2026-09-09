@@ -5,6 +5,7 @@ import br.com.fzdevx.application.port.ManagedDatabaseRepository;
 import br.com.fzdevx.domain.model.ContainerExpiration;
 import br.com.fzdevx.domain.model.ManagedDatabase;
 import br.com.fzdevx.infrastructure.config.AllowedRepositoryResolver;
+import br.com.fzdevx.infrastructure.config.RepositorySiblingResolver;
 import br.com.fzdevx.infrastructure.docker.ContainerExpirationService;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import io.quarkus.logging.Log;
@@ -17,7 +18,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 
@@ -35,6 +35,9 @@ public class ListManagedDatabasesUseCase {
 
     @Inject
     ContainerExpirationService expirationService;
+
+    @Inject
+    RepositorySiblingResolver siblingResolver;
 
     @Inject
     @ConfigProperty(name = "database.managed.cache.ttl-seconds", defaultValue = "15")
@@ -73,8 +76,11 @@ public class ListManagedDatabasesUseCase {
         }
     }
 
+    /** Drops the cached list of this repository and of every sibling on the same server: they show the same databases. */
     public void invalidateCache(String repository) {
         cache.remove(repository);
+        List<String> siblings = siblingResolver != null ? siblingResolver.siblings(repository) : null;
+        if (siblings != null) siblings.forEach(cache::remove);
     }
 
     public void invalidateAllCaches() {
@@ -87,9 +93,13 @@ public class ListManagedDatabasesUseCase {
         Map<String, Integer> connections = databaseService.getActiveConnectionCounts(repository);
         Map<String, Instant> pgActivity = databaseService.getLastActivityTimes(repository);
 
-        Map<String, ManagedDatabase> persisted = managedDatabaseRepository.findByRepository(repository)
-                .stream()
-                .collect(Collectors.toMap(ManagedDatabase::getName, Function.identity()));
+        // Keyed case-insensitively: pg_database reports the folded lowercase name while a
+        // user-typed record may be stored as "MyDB"; an exact-case map would miss it and mint
+        // a blank duplicate.
+        Map<String, ManagedDatabase> persisted = new java.util.HashMap<>();
+        for (ManagedDatabase md : managedDatabaseRepository.findByRepository(repository)) {
+            persisted.putIfAbsent(md.getName().toLowerCase(java.util.Locale.ROOT), md);
+        }
 
         // Fetch all expirations once and group by database name (avoids N+1)
         Map<String, List<ContainerExpiration>> expirationsByDb = expirationService.findAll().stream()
@@ -99,7 +109,7 @@ public class ListManagedDatabasesUseCase {
         List<ManagedDatabaseInfo> result = new ArrayList<>();
 
         for (String name : dbNames) {
-            ManagedDatabase md = persisted.get(name);
+            ManagedDatabase md = persisted.get(name.toLowerCase(java.util.Locale.ROOT));
             if (md == null) {
                 md = new ManagedDatabase(repository, name);
                 managedDatabaseRepository.save(md);

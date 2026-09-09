@@ -883,8 +883,10 @@ public class ManagedDatabaseController {
 
         // one read of the metadata file instead of two per name (the JSON repo
         // re-reads it on every find) - used for both visibility and protection
-        Map<String, ManagedDatabase> metadataByName = managedDatabaseRepository.findByRepository(repository)
-                .stream().collect(java.util.stream.Collectors.toMap(ManagedDatabase::getName, m -> m));
+        Map<String, ManagedDatabase> metadataByName = new java.util.HashMap<>();
+        for (ManagedDatabase m : managedDatabaseRepository.findByRepository(repository)) {
+            metadataByName.putIfAbsent(m.getName().toLowerCase(java.util.Locale.ROOT), m);
+        }
 
         int deleted = 0;
         int skipped = 0;
@@ -894,7 +896,7 @@ public class ManagedDatabaseController {
                 continue;
             }
 
-            ManagedDatabase md = metadataByName.get(name);
+            ManagedDatabase md = metadataByName.get(name.toLowerCase(java.util.Locale.ROOT));
 
             // tenant-hidden databases are skipped, matching the single-delete 404 behavior
             if (md != null && !tenantVisibility.canSee(md.getTenantId())) {
