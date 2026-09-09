@@ -1142,6 +1142,7 @@ export default function DatabasesTab() {
                         false,
                         (db.containerCount ?? 0) > 0,
                       )}
+                      icon={(db.containerCount ?? 0) > 0 ? <Dns sx={{ fontSize: 14 }} /> : undefined}
                       size="small"
                       variant="outlined"
                     />

@@ -50,11 +50,18 @@ describe('getLastUsedColor', () => {
 
   it('fallbackInUse overrides old date so DB with attached containers does not render as error', () => {
     const oldDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
-    expect(getLastUsedColor(oldDate, false, true)).toBe('info')
+    expect(getLastUsedColor(oldDate, false, true)).toBe('secondary')
   })
 
-  it('fallbackInUse returns info even with null date', () => {
-    expect(getLastUsedColor(null, false, true)).toBe('info')
+  it('fallbackInUse returns secondary even with null date', () => {
+    expect(getLastUsedColor(null, false, true)).toBe('secondary')
+  })
+
+  it('fallbackInUse uses its own color so it is never confused with the 7-30 day blue', () => {
+    const recent = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+    const midAge = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
+    expect(getLastUsedColor(recent, false, true)).toBe('secondary')
+    expect(getLastUsedColor(midAge, false, false)).toBe('info')
   })
 })
 
