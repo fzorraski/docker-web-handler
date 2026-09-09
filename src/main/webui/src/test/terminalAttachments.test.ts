@@ -66,9 +66,8 @@ describe('isNativePasteChord', () => {
     expect(isNativePasteChord(key({ key: 'v', ctrlKey: true }), true)).toBe(false)
   })
 
-  it('ignores auto-repeated keydowns so a held chord does not paste repeatedly', () => {
-    expect(isNativePasteChord({ ...key({ key: 'v', ctrlKey: true }), repeat: true }, false)).toBe(false)
-    expect(isNativePasteChord({ ...key({ key: 'v', metaKey: true }), repeat: true }, true)).toBe(false)
+  it('still recognizes the chord on auto-repeat; the dialog decides what to do with repeats', () => {
+    expect(isNativePasteChord(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', ctrlKey: true, repeat: true }), false)).toBe(true)
   })
 
   it('does not match other keys, Alt chords, Cmd+V on Linux, or keyup', () => {

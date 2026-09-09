@@ -131,7 +131,7 @@ Form fields:
 
 The file is streamed to a temporary file on the host with bounded size enforcement (aborts mid-transfer if the limit is exceeded), then copied into the container using Docker's archive copy API. The temporary file is always deleted after the operation.
 
-**Missing destination directories** (both endpoints): the copy is attempted first; when the Engine reports the directory does not exist, it is created with `mkdir -p` as root (the same privilege the copy itself runs with) and the copy is retried once. A directory that cannot be created yields a 500 whose message names the directory. The common case therefore costs a single Docker API call.
+**Missing destination directories:** for image attachments the copy is attempted first; when the Engine reports the directory does not exist, it is created with `mkdir -p` as root (the same privilege the copy itself runs with) and the copy is retried once, so the common case costs a single Docker API call. A directory that cannot be created, or a `mkdir` that does not finish within 30 seconds, yields a 500 whose message names the directory. This applies only to the administrator-configured image path. The generic file upload never creates directories: its destination is chosen by the requesting user and must already exist.
 
 **Rate limiting:** repeated wrong passwords trigger the terminal password rate limiter, which surfaces as `429 Too Many Requests` with a retry hint, not as a generic failure.
 
@@ -159,6 +159,20 @@ Form fields:
 ```
 
 The server ignores the client-provided filename and MIME type. It detects the format from the file's leading bytes before writing anything to disk, generates a collision-safe name (`clip-<epoch-ms>-<random>.<ext>`), and copies the image into the image upload directory (`container.terminal.upload.image.path`, default `/tmp`, editable at runtime in the admin Settings tab). The size limit is `container.terminal.upload.image.max-size-mb`, independent of the general upload limit. Requires `container.terminal.upload.image.enabled=true`; the generic `container.terminal.upload.enabled` flag is not needed. Both flags can also be toggled at runtime in the admin Settings tab.
+
+---
+
+## Audit Trail
+
+Terminal activity is written to the application audit log (visible in the admin console under Audit and Activity, category **TERMINAL**):
+
+| Action | Target | Detail |
+|--------|--------|--------|
+| `TERMINAL_OPEN` | container name | `id=<container id>, ip=<client ip>` |
+| `TERMINAL_UPLOAD` | container name | `id=<container id>, file=<name>, size=<bytes> bytes, path=<destination dir>` |
+| `TERMINAL_IMAGE_UPLOAD` | container name | same shape; `file` is the server-generated `clip-…` name |
+
+Entries carry the acting user and their tenant. Only successful uploads are recorded: rejected passwords are already throttled by the terminal password rate limiter, and logging every refused request would let a caller flood the trail.
 
 ---
 

@@ -180,14 +180,20 @@ public class DockerTerminalAdapter implements DockerTerminalPort {
         }
     }
 
+    /** How long a {@code mkdir -p} exec may take before it is reported as a timeout. */
+    long mkdirTimeoutMillis = 30_000;
+
     @Override
-    public void copyFileToContainer(String containerId, Path hostFile, String remotePath) {
+    public void copyFileToContainer(String containerId, Path hostFile, String remotePath, boolean createMissingDirectory) {
         try {
             copyArchive(containerId, hostFile, remotePath);
         } catch (NotFoundException e) {
-            // The Engine answers 404 to PUT /containers/{id}/archive when the destination
-            // directory does not exist. Create it once and retry; a second 404 propagates.
-            Log.infof("Destination '%s' missing in container '%s', creating it", remotePath, containerId);
+            // The Engine answers 404 to PUT /containers/{id}/archive both when the destination
+            // directory is missing and when the container itself is gone. Only the former is
+            // recoverable, and only for paths the administrator configured.
+            if (!createMissingDirectory) throw e;
+            Log.infof("Copy to '%s' in container '%s' reported not found; creating the directory and retrying",
+                    remotePath, containerId);
             createDirectory(containerId, remotePath);
             copyArchive(containerId, hostFile, remotePath);
         }
@@ -203,7 +209,8 @@ public class DockerTerminalAdapter implements DockerTerminalPort {
 
     /**
      * {@code mkdir -p} as root, matching the privilege the archive copy itself runs with, so an
-     * image whose USER cannot write to the parent still gets its upload directory.
+     * image whose USER cannot write to the parent still gets its upload directory. A container
+     * that disappeared meanwhile surfaces as docker-java's own NotFoundException from exec create.
      */
     private void createDirectory(String containerId, String remotePath) {
         ExecCreateCmdResponse exec = dockerClient.execCreateCmd(containerId)
@@ -213,8 +220,9 @@ public class DockerTerminalAdapter implements DockerTerminalPort {
                 .withAttachStderr(true)
                 .exec();
         StringBuilder output = new StringBuilder();
+        boolean finished;
         try {
-            dockerClient.execStartCmd(exec.getId())
+            finished = dockerClient.execStartCmd(exec.getId())
                     .exec(new ResultCallback.Adapter<Frame>() {
                         @Override
                         public void onNext(Frame frame) {
@@ -224,10 +232,14 @@ public class DockerTerminalAdapter implements DockerTerminalPort {
                             }
                         }
                     })
-                    .awaitCompletion(30, TimeUnit.SECONDS);
+                    .awaitCompletion(mkdirTimeoutMillis, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new DirectoryCreationException(remotePath, "interrupted while waiting for mkdir");
+        }
+        if (!finished) {
+            throw new DirectoryCreationException(remotePath,
+                    "mkdir did not finish within " + mkdirTimeoutMillis + " ms");
         }
         Long exitCode = dockerClient.inspectExecCmd(exec.getId()).exec().getExitCodeLong();
         if (exitCode == null || exitCode != 0) {

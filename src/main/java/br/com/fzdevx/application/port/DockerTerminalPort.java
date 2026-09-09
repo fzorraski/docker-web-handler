@@ -20,13 +20,20 @@ public interface DockerTerminalPort {
      */
     ContainerRuntimeInfo inspectContainer(String containerId);
 
+    /** Copies {@code hostFile} into the existing directory {@code remotePath} inside the container. */
+    default void copyFileToContainer(String containerId, Path hostFile, String remotePath) {
+        copyFileToContainer(containerId, hostFile, remotePath, false);
+    }
+
     /**
-     * Copies {@code hostFile} into {@code remotePath} inside the container, creating the
-     * directory (and parents) first when it does not exist yet.
+     * Copies {@code hostFile} into {@code remotePath} inside the container. With
+     * {@code createMissingDirectory} the directory (and parents) is created as root when it
+     * does not exist yet; only pass {@code true} for administrator-configured paths, never for
+     * a path chosen by the requesting user.
      *
      * @throws DirectoryCreationException when the directory is missing and cannot be created
      */
-    void copyFileToContainer(String containerId, Path hostFile, String remotePath);
+    void copyFileToContainer(String containerId, Path hostFile, String remotePath, boolean createMissingDirectory);
 
     /** The destination directory did not exist and {@code mkdir -p} inside the container failed. */
     final class DirectoryCreationException extends RuntimeException {

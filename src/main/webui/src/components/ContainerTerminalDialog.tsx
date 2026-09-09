@@ -172,7 +172,16 @@ export default function ContainerTerminalDialog({
     // With image attachments on, let the browser fire its native paste event for Ctrl+V / Cmd+V.
     // Without this, xterm turns Ctrl+V into ^V on Linux/Windows and no paste ever happens. When the
     // feature is off the terminal keeps stock behavior, so ^V still reaches vim/readline.
-    term.attachCustomKeyEventHandler((ev) => !(imageUploadEnabledRef.current && isNativePasteChord(ev, isMac)))
+    term.attachCustomKeyEventHandler((ev) => {
+      if (!imageUploadEnabledRef.current || !isNativePasteChord(ev, isMac)) return true
+      // A held chord auto-repeats: swallow the repeats entirely, so they neither paste again
+      // (one upload per repeat) nor fall back to xterm, which would send ^V to the shell.
+      if (ev.repeat) {
+        ev.preventDefault()
+        return false
+      }
+      return false
+    })
 
     const container = termRef.current
     const observer = new ResizeObserver(() => {

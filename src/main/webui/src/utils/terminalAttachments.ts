@@ -15,11 +15,10 @@ export function pasteShortcutLabel(isMac: boolean): string {
  * Linux/Windows and send ^V to the shell, so the paste event never fires.
  */
 export function isNativePasteChord(
-  ev: Pick<KeyboardEvent, 'type' | 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey'> & { repeat?: boolean },
+  ev: Pick<KeyboardEvent, 'type' | 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey'>,
   isMac: boolean,
 ): boolean {
-  // Key auto-repeat would fire one paste (and one upload) per repeat while the chord is held.
-  if (ev.type !== 'keydown' || ev.altKey || ev.repeat) return false
+  if (ev.type !== 'keydown' || ev.altKey) return false
   const isV = ev.code === 'KeyV' || (ev.key ?? '').toLowerCase() === 'v'
   if (!isV) return false
   return isMac ? ev.metaKey && !ev.ctrlKey : ev.ctrlKey && !ev.metaKey

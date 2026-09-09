@@ -339,6 +339,19 @@ describe('ContainerTerminalDialog paste shortcut', () => {
     expect(handler!(keyEvent({ key: 'v', code: 'KeyV', ctrlKey: true, type: 'keyup' }))).toBe(true)
   })
 
+  it('swallows auto-repeated Ctrl+V so it neither pastes again nor sends ^V to the shell', () => {
+    renderDialog()
+    const handler = terminalInstances[0].keyHandler!
+    const repeat = keyEvent({ key: 'v', code: 'KeyV', ctrlKey: true, repeat: true, cancelable: true })
+
+    expect(handler(repeat)).toBe(false)
+    expect(repeat.defaultPrevented).toBe(true)
+
+    const first = keyEvent({ key: 'v', code: 'KeyV', ctrlKey: true, cancelable: true })
+    expect(handler(first)).toBe(false)
+    expect(first.defaultPrevented).toBe(false)
+  })
+
   it('hands Cmd+V to the browser on macOS and keeps Ctrl+V for the shell', () => {
     setPlatform('MacIntel')
     renderDialog()

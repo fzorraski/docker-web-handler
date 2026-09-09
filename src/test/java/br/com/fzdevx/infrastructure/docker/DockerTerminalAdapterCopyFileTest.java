@@ -81,10 +81,20 @@ class DockerTerminalAdapterCopyFileTest {
 
     @Test
     void copy_existingDirectory_isASingleApiCall() {
-        adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/tmp");
+        adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/tmp", true);
 
         verify(copyCmd).withHostResource(HOST_FILE.toAbsolutePath().toString());
         verify(copyCmd).withRemotePath("/tmp");
+        verify(copyCmd, times(1)).exec();
+        verify(dockerClient, never()).execCreateCmd(any());
+    }
+
+    @Test
+    void copy_withoutCreateFlag_neverRunsMkdir() {
+        doThrow(new NotFoundException("Could not find the file /root/.ssh")).when(copyCmd).exec();
+
+        assertThrows(NotFoundException.class, () -> adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/root/.ssh"));
+
         verify(copyCmd, times(1)).exec();
         verify(dockerClient, never()).execCreateCmd(any());
     }
@@ -94,7 +104,7 @@ class DockerTerminalAdapterCopyFileTest {
         doThrow(new NotFoundException("Could not find the file /tmp/attachments")).doNothing().when(copyCmd).exec();
         mkdirExitsWith(0, null);
 
-        adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/tmp/attachments");
+        adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/tmp/attachments", true);
 
         verify(copyCmd, times(2)).exec();
         verify(execCreateCmd).withCmd("mkdir", "-p", "/tmp/attachments");
@@ -105,23 +115,44 @@ class DockerTerminalAdapterCopyFileTest {
     @Test
     void copy_mkdirFails_throwsWithStderrAndDoesNotRetry() {
         doThrow(new NotFoundException("missing")).when(copyCmd).exec();
-        mkdirExitsWith(1, "mkdir: cannot create directory '/root/x': Permission denied");
+        mkdirExitsWith(1, "mkdir: cannot create directory '/opt/x': Permission denied");
 
         DirectoryCreationException ex = assertThrows(DirectoryCreationException.class,
-                () -> adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/root/x"));
+                () -> adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/opt/x", true));
 
-        assertEquals("/root/x", ex.getDirectory());
+        assertEquals("/opt/x", ex.getDirectory());
         assertTrue(ex.getMessage().contains("Permission denied"), ex.getMessage());
         verify(copyCmd, times(1)).exec();
     }
 
     @Test
-    void copy_secondNotFound_propagates() {
-        doThrow(new NotFoundException("No such container")).when(copyCmd).exec();
-        mkdirExitsWith(0, null);
+    void copy_mkdirHangs_reportsTimeoutNotNullExitCode() {
+        adapter.mkdirTimeoutMillis = 50;
+        doThrow(new NotFoundException("missing")).when(copyCmd).exec();
+        when(execStartCmd.exec(any())).thenAnswer(invocation -> {
+            ResultCallback<Frame> callback = invocation.getArgument(0);
+            callback.onStart(() -> {});
+            return callback; // never completes
+        });
 
-        assertThrows(NotFoundException.class, () -> adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/tmp"));
-        verify(copyCmd, times(2)).exec();
+        DirectoryCreationException ex = assertThrows(DirectoryCreationException.class,
+                () -> adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/mnt/slow", true));
+
+        assertTrue(ex.getMessage().contains("did not finish within 50 ms"), ex.getMessage());
+        verify(inspectExecCmd, never()).exec();
+    }
+
+    @Test
+    void copy_containerGoneBetweenCheckAndCopy_propagatesNotFoundFromExec() {
+        doThrow(new NotFoundException("No such container")).when(copyCmd).exec();
+        when(execCreateCmd.exec()).thenThrow(new NotFoundException("No such container: " + CONTAINER_ID));
+
+        NotFoundException ex = assertThrows(NotFoundException.class,
+                () -> adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/tmp", true));
+
+        assertTrue(ex.getMessage().contains("No such container"), ex.getMessage());
+        verify(copyCmd, times(1)).exec();
+        verify(dockerClient, never()).execStartCmd(any());
     }
 
     @Test
@@ -129,7 +160,7 @@ class DockerTerminalAdapterCopyFileTest {
         doThrow(new RuntimeException("daemon unavailable")).when(copyCmd).exec();
 
         RuntimeException ex = assertThrows(RuntimeException.class,
-                () -> adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/tmp"));
+                () -> adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/tmp", true));
 
         assertEquals("daemon unavailable", ex.getMessage());
         verify(dockerClient, never()).execCreateCmd(any());

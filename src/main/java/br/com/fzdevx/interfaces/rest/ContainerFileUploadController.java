@@ -1,6 +1,8 @@
 package br.com.fzdevx.interfaces.rest;
 
+import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.application.port.DockerTerminalPort;
+import br.com.fzdevx.application.port.DockerTerminalPort.ContainerRuntimeInfo;
 import br.com.fzdevx.application.port.DockerTerminalPort.DirectoryCreationException;
 import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
@@ -15,11 +17,13 @@ import org.jboss.resteasy.plugins.providers.multipart.InputPart;
 import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
 
 import java.io.BufferedInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -40,7 +44,13 @@ public class ContainerFileUploadController {
     @Inject
     br.com.fzdevx.infrastructure.docker.ContainerTenantGuard containerTenantGuard;
 
+    @Inject
+    AuditLogger auditLogger;
+
     private static final SecureRandom RANDOM = new SecureRandom();
+
+    /** Outcome of the shared guards: either a rejection to return, or the container's display name. */
+    private record Preflight(Response rejection, String containerName) {}
 
     @POST
     @jakarta.ws.rs.Path("/{containerId}/upload")
@@ -51,8 +61,8 @@ public class ContainerFileUploadController {
             return error(Response.Status.FORBIDDEN, "File upload to container is disabled.");
         }
         Map<String, List<InputPart>> form = formOf(input);
-        Optional<Response> rejected = validateRequest(containerId, form);
-        if (rejected.isPresent()) return rejected.get();
+        Preflight preflight = validateRequest(containerId, form);
+        if (preflight.rejection() != null) return preflight.rejection();
 
         String remotePath = extractString(form, "remotePath");
         Optional<String> pathError = InputValidator.validateContainerPath(remotePath);
@@ -73,40 +83,14 @@ public class ContainerFileUploadController {
             return error(Response.Status.BAD_REQUEST, filenameError.get());
         }
 
-        Path tempDir = null;
-        Path tempFile = null;
-        try {
-            tempDir = Files.createTempDirectory("container-upload-");
-            tempFile = tempDir.resolve(filename);
-            int maxSizeMb = runtimeSettings.getTerminalUploadMaxSizeMb();
-            long size;
-            try (InputStream body = filePart.getBody(InputStream.class, null)) {
-                size = streamToFile(body, tempFile, maxSizeMb);
-            }
-            if (size < 0) {
-                return error(Response.Status.BAD_REQUEST, "File exceeds the maximum size of " + maxSizeMb + " MB.");
-            }
-
-            dockerTerminalPort.copyFileToContainer(containerId, tempFile, remotePath);
-
-            Log.infof("Uploaded file '%s' (%d bytes) to container '%s' at '%s'",
-                    filename, size, containerId, remotePath);
-
-            return Response.ok(Map.of(
-                    "filename", filename,
-                    "remotePath", remotePath
-            )).build();
-
-        } catch (DirectoryCreationException e) {
-            Log.errorf("File upload to container failed: %s", e.getMessage());
-            return error(Response.Status.INTERNAL_SERVER_ERROR,
-                    "Could not create the destination directory '" + e.getDirectory() + "' inside the container.");
-        } catch (Exception e) {
+        int maxSizeMb = runtimeSettings.getTerminalUploadMaxSizeMb();
+        try (InputStream body = filePart.getBody(InputStream.class, null)) {
+            // The destination is user-chosen: it must already exist, never be created as root.
+            return stageAndCopy(containerId, preflight.containerName(), body, filename, remotePath, maxSizeMb,
+                    false, "TERMINAL_UPLOAD", "File", Map.of());
+        } catch (IOException e) {
             Log.errorf("File upload to container failed: %s", e.getMessage());
             return error(Response.Status.INTERNAL_SERVER_ERROR, "File upload failed. Please try again.");
-        } finally {
-            deleteQuietly(tempFile);
-            deleteQuietly(tempDir);
         }
     }
 
@@ -124,8 +108,8 @@ public class ContainerFileUploadController {
             return error(Response.Status.FORBIDDEN, "Image attachments in the terminal are disabled.");
         }
         Map<String, List<InputPart>> form = formOf(input);
-        Optional<Response> rejected = validateRequest(containerId, form);
-        if (rejected.isPresent()) return rejected.get();
+        Preflight preflight = validateRequest(containerId, form);
+        if (preflight.rejection() != null) return preflight.rejection();
 
         String attachmentsPath = runtimeSettings.getTerminalImageUploadPath();
         Optional<String> dirError = InputValidator.validateContainerPath(attachmentsPath);
@@ -140,47 +124,62 @@ public class ContainerFileUploadController {
         }
         int maxSizeMb = runtimeSettings.getTerminalImageMaxSizeMb();
 
+        try (InputStream body = new BufferedInputStream(filePart.getBody(InputStream.class, null))) {
+            // Sniff the format before staging so junk is rejected without our own temp file.
+            body.mark(ImageSignature.HEADER_LENGTH);
+            byte[] header = body.readNBytes(ImageSignature.HEADER_LENGTH);
+            body.reset();
+            Optional<String> extension = ImageSignature.detectExtension(header);
+            if (extension.isEmpty()) {
+                return error(Response.Status.BAD_REQUEST, "Unsupported image format. Use PNG, JPEG, GIF, or WebP.");
+            }
+            String filename = "clip-" + System.currentTimeMillis() + "-" + randomSuffix() + "." + extension.get();
+            // The destination is administrator-configured, so creating it on first use is safe.
+            return stageAndCopy(containerId, preflight.containerName(), body, filename, attachmentsPath, maxSizeMb,
+                    true, "TERMINAL_IMAGE_UPLOAD", "Image", Map.of("path", joinPath(attachmentsPath, filename)));
+        } catch (IOException e) {
+            Log.errorf("Image upload to container failed: %s", e.getMessage());
+            return error(Response.Status.INTERNAL_SERVER_ERROR, "Image upload failed. Please try again.");
+        }
+    }
+
+    /**
+     * Stages {@code body} to a temp file under the size cap, copies it into the container,
+     * logs and audits the upload, and always removes the temp file. Owns every catch clause so
+     * both endpoints fail the same way.
+     */
+    private Response stageAndCopy(String containerId, String containerName, InputStream body, String filename,
+                                  String remotePath, int maxSizeMb, boolean createMissingDirectory,
+                                  String auditAction, String label, Map<String, String> extraResponse) {
         Path tempDir = null;
         Path tempFile = null;
         try {
-            String filename;
-            long size;
-            try (InputStream body = new BufferedInputStream(filePart.getBody(InputStream.class, null))) {
-                // Sniff the format before touching the disk so junk is rejected without a temp file.
-                body.mark(ImageSignature.HEADER_LENGTH);
-                byte[] header = body.readNBytes(ImageSignature.HEADER_LENGTH);
-                body.reset();
-                Optional<String> extension = ImageSignature.detectExtension(header);
-                if (extension.isEmpty()) {
-                    return error(Response.Status.BAD_REQUEST, "Unsupported image format. Use PNG, JPEG, GIF, or WebP.");
-                }
-                filename = "clip-" + System.currentTimeMillis() + "-" + randomSuffix() + "." + extension.get();
-                tempDir = Files.createTempDirectory("container-attachment-");
-                tempFile = tempDir.resolve(filename);
-                size = streamToFile(body, tempFile, maxSizeMb);
-            }
+            tempDir = Files.createTempDirectory("container-upload-");
+            tempFile = tempDir.resolve(filename);
+            long size = streamToFile(body, tempFile, maxSizeMb);
             if (size < 0) {
-                return error(Response.Status.BAD_REQUEST, "Image exceeds the maximum size of " + maxSizeMb + " MB.");
+                return error(Response.Status.BAD_REQUEST, label + " exceeds the maximum size of " + maxSizeMb + " MB.");
             }
 
-            dockerTerminalPort.copyFileToContainer(containerId, tempFile, attachmentsPath);
+            dockerTerminalPort.copyFileToContainer(containerId, tempFile, remotePath, createMissingDirectory);
 
-            String fullPath = joinPath(attachmentsPath, filename);
-            Log.infof("Uploaded image attachment '%s' (%d bytes) to container '%s'", fullPath, size, containerId);
+            Log.infof("Uploaded %s '%s' (%d bytes) to container '%s' at '%s'",
+                    label.toLowerCase(), filename, size, containerId, remotePath);
+            audit(auditAction, containerId, containerName, filename, size, remotePath);
 
-            return Response.ok(Map.of(
-                    "filename", filename,
-                    "remotePath", attachmentsPath,
-                    "path", fullPath
-            )).build();
+            Map<String, String> entity = new LinkedHashMap<>();
+            entity.put("filename", filename);
+            entity.put("remotePath", remotePath);
+            entity.putAll(extraResponse);
+            return Response.ok(entity).build();
 
         } catch (DirectoryCreationException e) {
-            Log.errorf("Image upload to container failed: %s", e.getMessage());
+            Log.errorf("%s upload to container failed: %s", label, e.getMessage());
             return error(Response.Status.INTERNAL_SERVER_ERROR,
-                    "Could not create the image directory '" + e.getDirectory() + "' inside the container.");
+                    "Could not create the destination directory '" + e.getDirectory() + "' inside the container.");
         } catch (Exception e) {
-            Log.errorf("Image upload to container failed: %s", e.getMessage());
-            return error(Response.Status.INTERNAL_SERVER_ERROR, "Image upload failed. Please try again.");
+            Log.errorf("%s upload to container failed: %s", label, e.getMessage());
+            return error(Response.Status.INTERNAL_SERVER_ERROR, label + " upload failed. Please try again.");
         } finally {
             deleteQuietly(tempFile);
             deleteQuietly(tempDir);
@@ -192,20 +191,29 @@ public class ContainerFileUploadController {
      * rate-limit and tenant exceptions must reach {@code GlobalExceptionMapper} (429/403)
      * instead of collapsing into a generic 500.
      */
-    private Optional<Response> validateRequest(String containerId, Map<String, List<InputPart>> form) {
+    private Preflight validateRequest(String containerId, Map<String, List<InputPart>> form) {
         Optional<String> idError = InputValidator.validateContainerId(containerId);
         if (idError.isPresent()) {
-            return Optional.of(error(Response.Status.BAD_REQUEST, idError.get()));
+            return new Preflight(error(Response.Status.BAD_REQUEST, idError.get()), null);
         }
         containerTenantGuard.requireVisible(containerId);
 
         if (!passwordValidationService.validateTerminalPassword(extractString(form, "password"))) {
-            return Optional.of(error(Response.Status.FORBIDDEN, "Invalid terminal password."));
+            return new Preflight(error(Response.Status.FORBIDDEN, "Invalid terminal password."), null);
         }
-        if (!dockerTerminalPort.isContainerRunning(containerId)) {
-            return Optional.of(error(Response.Status.BAD_REQUEST, "Container is not running."));
+        // One inspect gives both the running state and the name the audit entry is filed under.
+        ContainerRuntimeInfo info = dockerTerminalPort.inspectContainer(containerId);
+        if (!info.running()) {
+            return new Preflight(error(Response.Status.BAD_REQUEST, "Container is not running."), null);
         }
-        return Optional.empty();
+        return new Preflight(null, info.name() != null ? info.name() : containerId);
+    }
+
+    /** Same shape as TERMINAL_OPEN: the container name as target; the id joins the detail only when it is not already the target. */
+    private void audit(String action, String containerId, String containerName, String filename, long size, String remotePath) {
+        String facts = "file=" + filename + ", size=" + size + " bytes, path=" + remotePath;
+        String detail = containerId.equals(containerName) ? facts : "id=" + containerId + ", " + facts;
+        auditLogger.log(action, containerName, detail);
     }
 
     /**
