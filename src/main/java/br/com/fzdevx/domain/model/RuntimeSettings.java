@@ -15,6 +15,7 @@ public class RuntimeSettings {
     private Integer terminalUploadMaxSizeMb;
     private Boolean terminalImageUploadEnabled;
     private String terminalImageUploadPath;
+    private String terminalImagePathTemplate;
     private Boolean logAnalyzerEnabled;
     private Integer sessionTimeoutMinutes;
     private Integer auditRetentionDays;
@@ -39,6 +40,9 @@ public class RuntimeSettings {
 
     public String getTerminalImageUploadPath() { return terminalImageUploadPath; }
     public void setTerminalImageUploadPath(String terminalImageUploadPath) { this.terminalImageUploadPath = terminalImageUploadPath; }
+
+    public String getTerminalImagePathTemplate() { return terminalImagePathTemplate; }
+    public void setTerminalImagePathTemplate(String terminalImagePathTemplate) { this.terminalImagePathTemplate = terminalImagePathTemplate; }
 
     public Boolean getLogAnalyzerEnabled() { return logAnalyzerEnabled; }
     public void setLogAnalyzerEnabled(Boolean logAnalyzerEnabled) { this.logAnalyzerEnabled = logAnalyzerEnabled; }

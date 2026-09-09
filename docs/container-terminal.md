@@ -36,6 +36,7 @@ Docker Web Handler provides an interactive terminal directly in the browser, all
 | `container.terminal.upload.default-path` | Default destination path inside the container | `/tmp` |
 | `container.terminal.upload.image.enabled` | Enable pasting/dropping images into the terminal (independent of file upload) | `false` |
 | `container.terminal.upload.image.path` | Directory inside the container for pasted/dropped images (runtime-editable) | `/tmp` |
+| `container.terminal.upload.image.path-template` | Text typed into the prompt after an upload; `{path}` is replaced (runtime-editable) | `{path}` |
 | `container.terminal.upload.image.max-size-mb` | Maximum size (MB) for pasted/dropped images | `10` |
 
 All properties can be overridden via environment variables (e.g., `CONTAINER_TERMINAL_ENABLED=true`).
@@ -131,7 +132,7 @@ Form fields:
 
 The file is streamed to a temporary file on the host with bounded size enforcement (aborts mid-transfer if the limit is exceeded), then copied into the container using Docker's archive copy API. The temporary file is always deleted after the operation.
 
-**Missing destination directories:** for image attachments the copy is attempted first; when the Engine reports the directory does not exist, it is created with `mkdir -p` as root (the same privilege the copy itself runs with) and the copy is retried once, so the common case costs a single Docker API call. A directory that cannot be created, or a `mkdir` that does not finish within 30 seconds, yields a 500 whose message names the directory. This applies only to the administrator-configured image path. The generic file upload never creates directories: its destination is chosen by the requesting user and must already exist.
+**Missing destination directories:** both endpoints deliver the file to Docker's archive copy API as a single-entry, uncompressed tar extracted at the destination directory, which keeps working on a read-only root filesystem when that directory is a writable volume or tmpfs. When the Engine reports the directory missing and the destination is the administrator-configured image path, the copy is retried at the nearest existing ancestor with the remaining directories carried in the entry name, so the Engine creates them itself (as root) while extracting; no shell command runs inside the container. The generic file upload sends a bare entry extracted at the user-chosen destination, so a missing directory still fails the copy: a path typed by the requesting user is never created.
 
 **Rate limiting:** repeated wrong passwords trigger the terminal password rate limiter, which surfaces as `429 Too Many Requests` with a retry hint, not as a generic failure.
 
@@ -158,7 +159,7 @@ Form fields:
 { "error": "Unsupported image format. Use PNG, JPEG, GIF, or WebP." }
 ```
 
-The server ignores the client-provided filename and MIME type. It detects the format from the file's leading bytes before writing anything to disk, generates a collision-safe name (`clip-<epoch-ms>-<random>.<ext>`), and copies the image into the image upload directory (`container.terminal.upload.image.path`, default `/tmp`, editable at runtime in the admin Settings tab). The size limit is `container.terminal.upload.image.max-size-mb`, independent of the general upload limit. Requires `container.terminal.upload.image.enabled=true`; the generic `container.terminal.upload.enabled` flag is not needed. Both flags can also be toggled at runtime in the admin Settings tab.
+The server ignores the client-provided filename and MIME type. It detects the format from the file's leading bytes before writing anything to disk, generates a collision-safe name (`clip-<epoch-ms>-<random>.<ext>`), and copies the image into the image upload directory (`container.terminal.upload.image.path`, default `/tmp`, editable at runtime in the admin Settings tab). The size limit is `container.terminal.upload.image.max-size-mb`, independent of the general upload limit. Requires `container.terminal.upload.image.enabled=true`; the generic `container.terminal.upload.enabled` flag is not needed. Both flags can also be toggled at runtime in the admin Settings tab, where they are nested under "Container terminal enabled" and shown as inactive while the terminal is off.
 
 ---
 
@@ -219,16 +220,16 @@ A terminal is a text stream, so images cannot be sent "through" it. Instead, whe
 
 1. Focus the terminal and paste an image from the clipboard (a screenshot, for example) with **Ctrl+V** on Linux/Windows or **⌘V** on macOS, or drag an image file onto the terminal viewport
 2. A progress strip appears below the terminal while the image uploads
-3. On success, the full path (e.g. `/tmp/clip-1725800000000-3fa9c1b2.png`) followed by a space is typed into the current input line, and the terminal regains focus
+3. On success, the full path (e.g. `/tmp/clip-1725800000000-3fa9c1b2.png`) followed by a space is typed into the current input line, and the terminal regains focus. The text follows `container.terminal.upload.image.path-template`, editable in the Settings tab under "Image attachments": `{path}` stands for the file path, so `"{path}"` types the path in quotes and `[image: {path}]` labels it. Use this when the tool in the terminal treats a leading `/` as a command. An empty template saved in the Settings tab uploads the image without typing anything, the path staying visible in the dialog's status strip; in `application.properties` or the environment use the literal `none` for the same effect, because an empty property value reads as "not set". A property default without the placeholder is ignored with a warning
 4. Keep typing your question and press Enter as usual
 
 Several images pasted in a row are uploaded one at a time, in order, so their paths appear in the prompt in the same order.
 
-Plain-text pastes are not intercepted and behave as before. When the clipboard carries both text and a rendered preview image (typical for spreadsheet or browser copies), the text wins and is pasted into the shell.
+Plain-text pastes are not intercepted and behave as before. When the clipboard carries both text and a rendered preview image (typical for spreadsheet or browser copies, which also ship HTML), the text wins and is pasted into the shell. An image copied from a file manager, whose only text is its own name or `file://` path, is uploaded. Files without a MIME type (no extension) are sent to the server, which decides by the file's magic bytes.
 
 **Keyboard shortcuts:** xterm.js normally turns Ctrl+V into the `^V` control character on Linux and Windows, so no browser paste happens. While image attachments are enabled, the dialog hands the platform's native paste chord (Ctrl+V or Ctrl+Shift+V on Linux/Windows, ⌘V on macOS) back to the browser, so both images and text paste with Ctrl+V; the `^V` keystroke (readline quoted-insert, vim visual block) is then not delivered to the shell on Linux/Windows. With the feature disabled the terminal keeps stock xterm behavior. Held-down chords are not auto-repeated into multiple pastes. Shift+Insert and middle-click keep their browser-default behavior.
 
-**Dropping other files:** dropping a non-image file on the terminal is swallowed with an "unsupported format" notice; it never navigates the tab away. An upload that is still running when the dialog is closed is discarded, so its path can never be typed into a different container's prompt, and a result that arrives after the terminal disconnected is still shown so the file can be reused after reconnecting. Unsupported formats and oversized images show an error strip instead of uploading. Attachments are regular files in the container and are not removed automatically; the default directory is `/tmp`, so they are discarded with the container. Admins can point the directory elsewhere (for example `/workspace/attachments`) in the Settings tab; the value must be an absolute path without `..`.
+**Dropping other files:** dropping a non-image file on the terminal is swallowed with an "unsupported format" notice; it never navigates the tab away. An upload that is still running when the dialog is closed is aborted and discarded, so no orphan file is written and its path can never be typed into a different container's prompt, and a result that arrives after the terminal disconnected is still shown so the file can be reused after reconnecting. Unsupported formats and oversized images show an error strip instead of uploading. Attachments are regular files in the container and are not removed automatically; the default directory is `/tmp`, so they are discarded with the container. Admins can point the directory elsewhere (for example `/workspace/attachments`) in the Settings tab, where the path sits under "Image attachments enabled" and is shown as inactive while that flag is off; the value must be an absolute path without `..`.
 
 **Integrating with a REPL:** the tool running in the terminal receives only the path as text. It is responsible for detecting image paths in the user's message, reading the files, and passing them to the model as image content.
 

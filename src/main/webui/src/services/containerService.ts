@@ -159,6 +159,7 @@ export interface FeatureFlags {
   terminalUploadDefaultPath: string
   terminalImageUpload: boolean
   terminalAttachmentsPath: string
+  terminalImagePathTemplate: string
   terminalImageMaxSizeMb: number
 }
 

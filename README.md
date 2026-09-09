@@ -7,8 +7,8 @@ A web application for managing Docker containers and images from the browser. Bu
 - **Container Management** -- Create, start, stop, remove containers from a whitelist of allowed repositories
 - **Container Upgrade** -- Change a container's image tag while preserving configuration, ports, expiration, and schedules
 - **Image Management** -- List, pull, and remove Docker images with multi-registry tag browsing (Docker Hub, GitLab, GHCR, and any OCI registry)
-- **Interactive Terminal** -- Browser-based shell sessions into running containers via WebSocket + xterm.js, with file upload support
-- **Database Operations** -- List PostgreSQL databases, upload/restore dumps, create snapshots, run post-restore scripts
+- **Interactive Terminal** -- Browser-based shell sessions into running containers via WebSocket + xterm.js, with file upload and image attachments: paste or drop a screenshot and its container path is typed into the prompt, ready for an LLM or any tool running in the terminal
+- **Database Operations** -- List PostgreSQL databases, upload/restore dumps, create snapshots, run post-restore scripts; protection, creator, and tenant of a database are shared by every repository that points at the same PostgreSQL server
 - **Database Insights** -- Health metrics, activity monitoring, table/index analysis, top queries, temp file tracking, SQL query runner, EXPLAIN, and downloadable HTML reports
 - **Database Migration** -- Manual or API-driven SQL migrations between versions
 - **Container Scheduling** -- Schedule start/stop/create actions with cron expressions and conflict detection
@@ -18,6 +18,7 @@ A web application for managing Docker containers and images from the browser. Bu
 - **Log Analyzer** -- Upload or snapshot container logs for API call pairing, response time stats, job tracking, anomaly detection, exception grouping, duplicate request detection, and custom field extraction. Presets for WildFly, Quarkus, Spring Boot, and Nginx.
 - **Webhook Notifications** -- POST notifications to Slack or any endpoint on container/restore events with HMAC-SHA256 signing
 - **CI/CD API** -- Programmatic environment creation for pipelines with API key authentication
+- **Runtime Settings** -- Admin Settings tab grouped by category, with dependent settings nested under the flag that gates them and marked inactive while it is off; overrides apply without a restart
 - **Authentication & RBAC** -- Optional login authentication: a single shared password, or full per-user accounts with roles, permissions, and tenants (team scopes with per-tenant repository/database entitlements) managed in the admin UI
 - **PostgreSQL Persistence** -- All application state (users, schedules, metadata, audit trail, sessions) lives in a dedicated PostgreSQL database with automatic schema management and a one-time import of legacy JSON files; login sessions survive restarts
 - **i18n** -- English, Portuguese (BR), and Spanish
@@ -166,6 +167,11 @@ REPOSITORY_<SETTING>_<REPO_NAME>
 | `DATABASE_QUERY_STATS_RESET_ENABLED` | `false` | Enable statistics reset buttons |
 | `CONTAINER_SCHEDULING_ENABLED` | `true` | Enable container scheduling |
 | `CONTAINER_TERMINAL_ENABLED` | `true` | Enable browser terminal |
+| `CONTAINER_TERMINAL_UPLOAD_ENABLED` | `false` | Enable file upload from the terminal dialog |
+| `CONTAINER_TERMINAL_UPLOAD_IMAGE_ENABLED` | `false` | Enable pasting/dropping images into the terminal |
+| `CONTAINER_TERMINAL_UPLOAD_IMAGE_PATH` | `/tmp` | Directory inside the container that receives pasted images |
+| `CONTAINER_TERMINAL_UPLOAD_IMAGE_PATH_TEMPLATE` | `{path}` | Text typed after an image upload; `{path}` is replaced, `none` types nothing |
+| `DATABASE_MANAGED_SIBLING_MERGE_AT_STARTUP` | `true` | Merge database metadata that forked across repositories on the same PostgreSQL server, once per start |
 | `CONTAINER_MEMORY_GUARD_ENABLED` | `true` | Block creation when memory is low |
 | `WEBHOOK_ENABLED` | `false` | Enable webhook notifications |
 | `WEBHOOK_URL` | *(empty)* | Webhook endpoint URL |

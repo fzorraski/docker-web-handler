@@ -27,25 +27,12 @@ public interface DockerTerminalPort {
 
     /**
      * Copies {@code hostFile} into {@code remotePath} inside the container. With
-     * {@code createMissingDirectory} the directory (and parents) is created as root when it
-     * does not exist yet; only pass {@code true} for administrator-configured paths, never for
-     * a path chosen by the requesting user.
-     *
-     * @throws DirectoryCreationException when the directory is missing and cannot be created
+     * {@code createMissingDirectory} the file is delivered as an archive entry that carries the
+     * directory path, so the Engine creates missing parents (as root) while extracting; only pass
+     * {@code true} for administrator-configured paths, never for a path chosen by the requesting
+     * user. Without it a missing directory fails the copy.
      */
     void copyFileToContainer(String containerId, Path hostFile, String remotePath, boolean createMissingDirectory);
-
-    /** The destination directory did not exist and {@code mkdir -p} inside the container failed. */
-    final class DirectoryCreationException extends RuntimeException {
-        private final String directory;
-
-        public DirectoryCreationException(String directory, String detail) {
-            super("Could not create directory '" + directory + "' inside the container: " + detail);
-            this.directory = directory;
-        }
-
-        public String getDirectory() { return directory; }
-    }
 
     /** Lightweight snapshot of a container from a single inspect call. */
     record ContainerRuntimeInfo(boolean running, String image, String name) {

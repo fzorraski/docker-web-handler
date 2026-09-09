@@ -42,9 +42,11 @@ class ManageSettingsUseCaseTest {
         setField(service, "terminalUploadMaxSizeMbDefault", 100);
         setField(service, "terminalImageUploadEnabledDefault", false);
         setField(service, "terminalImageUploadPathDefault", "/tmp");
+        setField(service, "terminalImagePathTemplateDefault", java.util.Optional.of("{path}"));
         setField(service, "logAnalyzerEnabledDefault", false);
         setField(service, "sessionTimeoutMinutesDefault", 480);
         setField(service, "auditRetentionDaysDefault", 0);
+        setField(service, "auditEnabled", true);
 
         auditFile = tempDir.resolve("audit.log");
         fileAuditLogger = new FileAuditLogger();
@@ -136,6 +138,25 @@ class ManageSettingsUseCaseTest {
 
         useCase.reset("terminalImageUploadPath");
         assertEquals("/tmp", service.getTerminalImageUploadPath());
+    }
+
+    @Test
+    void update_imagePathTemplate_requiresPlaceholderAndKeepsSpaces() {
+        useCase.update(Map.of("terminalImagePathTemplate", "\"{path}\" "));
+        assertEquals("\"{path}\" ", service.getTerminalImagePathTemplate());
+
+        assertThrows(InvalidInputException.class,
+                () -> useCase.update(Map.of("terminalImagePathTemplate", "no placeholder")));
+        assertThrows(InvalidInputException.class,
+                () -> useCase.update(Map.of("terminalImagePathTemplate", "{path}\nrm -rf /")));
+        assertThrows(InvalidInputException.class,
+                () -> useCase.update(Map.of("terminalImagePathTemplate", 7)));
+
+        useCase.update(Map.of("terminalImagePathTemplate", "   "));
+        assertEquals("", service.getTerminalImagePathTemplate(), "blank means: type nothing");
+
+        useCase.reset("terminalImagePathTemplate");
+        assertEquals("{path}", service.getTerminalImagePathTemplate());
     }
 
     @Test

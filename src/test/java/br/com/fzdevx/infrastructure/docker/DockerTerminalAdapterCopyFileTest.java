@@ -1,28 +1,28 @@
 package br.com.fzdevx.infrastructure.docker;
 
-import br.com.fzdevx.application.port.DockerTerminalPort.DirectoryCreationException;
 import com.github.dockerjava.api.DockerClient;
-import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.command.CopyArchiveToContainerCmd;
-import com.github.dockerjava.api.command.ExecCreateCmd;
-import com.github.dockerjava.api.command.ExecCreateCmdResponse;
-import com.github.dockerjava.api.command.ExecStartCmd;
-import com.github.dockerjava.api.command.InspectExecCmd;
-import com.github.dockerjava.api.command.InspectExecResponse;
 import com.github.dockerjava.api.exception.NotFoundException;
-import com.github.dockerjava.api.model.Frame;
-import com.github.dockerjava.api.model.StreamType;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
-import java.nio.charset.StandardCharsets;
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -33,136 +33,100 @@ import static org.mockito.Mockito.*;
 class DockerTerminalAdapterCopyFileTest {
 
     private static final String CONTAINER_ID = "abcdef1234567890";
-    private static final String EXEC_ID = "exec-42";
-    private static final Path HOST_FILE = Path.of("/tmp/host/clip.png");
+    private static final byte[] CONTENT = "png-bytes".getBytes();
 
     @Mock DockerClient dockerClient;
     @Mock CopyArchiveToContainerCmd copyCmd;
-    @Mock ExecCreateCmd execCreateCmd;
-    @Mock ExecStartCmd execStartCmd;
-    @Mock InspectExecCmd inspectExecCmd;
-    @Mock InspectExecResponse inspectExecResponse;
 
     @InjectMocks
     DockerTerminalAdapter adapter;
 
+    @TempDir Path tempDir;
+    Path hostFile;
+
+    /** Directories the fake Engine considers present; a PUT anywhere else answers 404. */
+    final Set<String> existingDirs = new HashSet<>(List.of("/", "/tmp"));
+    /** Every attempt the adapter made: extraction directory plus the tar entry it carried. */
+    final List<Attempt> attempts = new ArrayList<>();
+    record Attempt(String extractAt, String entryName, byte[] content, int mode) {}
+
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
+        hostFile = tempDir.resolve("clip.png");
+        Files.write(hostFile, CONTENT);
+
         when(dockerClient.copyArchiveToContainerCmd(CONTAINER_ID)).thenReturn(copyCmd);
-        when(copyCmd.withHostResource(any())).thenReturn(copyCmd);
-        when(copyCmd.withRemotePath(any())).thenReturn(copyCmd);
-
-        ExecCreateCmdResponse created = mock(ExecCreateCmdResponse.class);
-        when(created.getId()).thenReturn(EXEC_ID);
-        when(dockerClient.execCreateCmd(CONTAINER_ID)).thenReturn(execCreateCmd);
-        when(execCreateCmd.withCmd(any(String[].class))).thenReturn(execCreateCmd);
-        when(execCreateCmd.withUser(any())).thenReturn(execCreateCmd);
-        when(execCreateCmd.withAttachStdout(anyBoolean())).thenReturn(execCreateCmd);
-        when(execCreateCmd.withAttachStderr(anyBoolean())).thenReturn(execCreateCmd);
-        when(execCreateCmd.exec()).thenReturn(created);
-        when(dockerClient.execStartCmd(EXEC_ID)).thenReturn(execStartCmd);
-        when(dockerClient.inspectExecCmd(EXEC_ID)).thenReturn(inspectExecCmd);
-        when(inspectExecCmd.exec()).thenReturn(inspectExecResponse);
-    }
-
-    /** Simulates docker streaming {@code stderr} and finishing, so awaitCompletion returns promptly. */
-    private void mkdirExitsWith(long exitCode, String stderr) {
-        when(execStartCmd.exec(any())).thenAnswer(invocation -> {
-            ResultCallback<Frame> callback = invocation.getArgument(0);
-            callback.onStart(() -> {});
-            if (stderr != null) {
-                callback.onNext(new Frame(StreamType.STDERR, stderr.getBytes(StandardCharsets.UTF_8)));
+        ArgumentCaptor<InputStream> tarStream = ArgumentCaptor.forClass(InputStream.class);
+        ArgumentCaptor<String> remotePath = ArgumentCaptor.forClass(String.class);
+        when(copyCmd.withTarInputStream(tarStream.capture())).thenReturn(copyCmd);
+        when(copyCmd.withRemotePath(remotePath.capture())).thenReturn(copyCmd);
+        doAnswer(invocation -> {
+            String at = remotePath.getValue();
+            try (TarArchiveInputStream in = new TarArchiveInputStream(tarStream.getValue())) {
+                TarArchiveEntry entry = in.getNextEntry();
+                attempts.add(new Attempt(at, entry.getName(), in.readAllBytes(), entry.getMode()));
             }
-            callback.onComplete();
-            return callback;
-        });
-        when(inspectExecResponse.getExitCodeLong()).thenReturn(exitCode);
+            if (!existingDirs.contains(at)) throw new NotFoundException("Could not find the file " + at);
+            return null;
+        }).when(copyCmd).exec();
     }
 
     @Test
-    void copy_existingDirectory_isASingleApiCall() {
-        adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/tmp", true);
+    void existingDirectory_isASingleBareCopyAtThatDirectory() {
+        adapter.copyFileToContainer(CONTAINER_ID, hostFile, "/tmp", true);
 
-        verify(copyCmd).withHostResource(HOST_FILE.toAbsolutePath().toString());
-        verify(copyCmd).withRemotePath("/tmp");
-        verify(copyCmd, times(1)).exec();
+        assertEquals(1, attempts.size());
+        assertEquals("/tmp", attempts.getFirst().extractAt());
+        assertEquals("clip.png", attempts.getFirst().entryName());
+        assertArrayEquals(CONTENT, attempts.getFirst().content());
+        assertEquals(0100644, attempts.getFirst().mode());
         verify(dockerClient, never()).execCreateCmd(any());
     }
 
     @Test
-    void copy_withoutCreateFlag_neverRunsMkdir() {
-        doThrow(new NotFoundException("Could not find the file /root/.ssh")).when(copyCmd).exec();
+    void missingDirectory_withCreateFlag_extractsAtNearestExistingAncestor() {
+        adapter.copyFileToContainer(CONTAINER_ID, hostFile, "/tmp/attachments/today", true);
 
-        assertThrows(NotFoundException.class, () -> adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/root/.ssh"));
-
-        verify(copyCmd, times(1)).exec();
-        verify(dockerClient, never()).execCreateCmd(any());
+        assertEquals(List.of("/tmp/attachments/today", "/tmp/attachments", "/tmp"),
+                attempts.stream().map(Attempt::extractAt).toList());
+        assertEquals("attachments/today/clip.png", attempts.getLast().entryName());
     }
 
     @Test
-    void copy_missingDirectory_createsItAsRootAndRetriesOnce() {
-        doThrow(new NotFoundException("Could not find the file /tmp/attachments")).doNothing().when(copyCmd).exec();
-        mkdirExitsWith(0, null);
+    void missingDirectory_withCreateFlag_fallsBackToRootWhenNothingElseExists() {
+        adapter.copyFileToContainer(CONTAINER_ID, hostFile, "/workspace/attachments", true);
 
-        adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/tmp/attachments", true);
-
-        verify(copyCmd, times(2)).exec();
-        verify(execCreateCmd).withCmd("mkdir", "-p", "/tmp/attachments");
-        verify(execCreateCmd).withUser("root");
-        verify(execCreateCmd).withAttachStderr(true);
+        assertEquals("/", attempts.getLast().extractAt());
+        assertEquals("workspace/attachments/clip.png", attempts.getLast().entryName());
     }
 
     @Test
-    void copy_mkdirFails_throwsWithStderrAndDoesNotRetry() {
-        doThrow(new NotFoundException("missing")).when(copyCmd).exec();
-        mkdirExitsWith(1, "mkdir: cannot create directory '/opt/x': Permission denied");
+    void missingDirectory_withoutCreateFlag_propagatesAfterOneAttempt() {
+        assertThrows(NotFoundException.class,
+                () -> adapter.copyFileToContainer(CONTAINER_ID, hostFile, "/root/.ssh"));
 
-        DirectoryCreationException ex = assertThrows(DirectoryCreationException.class,
-                () -> adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/opt/x", true));
-
-        assertEquals("/opt/x", ex.getDirectory());
-        assertTrue(ex.getMessage().contains("Permission denied"), ex.getMessage());
-        verify(copyCmd, times(1)).exec();
+        assertEquals(1, attempts.size());
+        assertEquals("/root/.ssh", attempts.getFirst().extractAt());
     }
 
     @Test
-    void copy_mkdirHangs_reportsTimeoutNotNullExitCode() {
-        adapter.mkdirTimeoutMillis = 50;
-        doThrow(new NotFoundException("missing")).when(copyCmd).exec();
-        when(execStartCmd.exec(any())).thenAnswer(invocation -> {
-            ResultCallback<Frame> callback = invocation.getArgument(0);
-            callback.onStart(() -> {});
-            return callback; // never completes
-        });
+    void missingEverything_evenRoot_propagates() {
+        existingDirs.clear();
 
-        DirectoryCreationException ex = assertThrows(DirectoryCreationException.class,
-                () -> adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/mnt/slow", true));
+        assertThrows(NotFoundException.class,
+                () -> adapter.copyFileToContainer(CONTAINER_ID, hostFile, "/a/b", true));
 
-        assertTrue(ex.getMessage().contains("did not finish within 50 ms"), ex.getMessage());
-        verify(inspectExecCmd, never()).exec();
+        assertEquals(List.of("/a/b", "/a", "/"), attempts.stream().map(Attempt::extractAt).toList());
     }
 
     @Test
-    void copy_containerGoneBetweenCheckAndCopy_propagatesNotFoundFromExec() {
-        doThrow(new NotFoundException("No such container")).when(copyCmd).exec();
-        when(execCreateCmd.exec()).thenThrow(new NotFoundException("No such container: " + CONTAINER_ID));
-
-        NotFoundException ex = assertThrows(NotFoundException.class,
-                () -> adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/tmp", true));
-
-        assertTrue(ex.getMessage().contains("No such container"), ex.getMessage());
-        verify(copyCmd, times(1)).exec();
-        verify(dockerClient, never()).execStartCmd(any());
-    }
-
-    @Test
-    void copy_otherFailure_propagatesWithoutMkdir() {
+    void stagedTarIsAlwaysRemoved() throws Exception {
+        adapter.copyFileToContainer(CONTAINER_ID, hostFile, "/tmp", true);
         doThrow(new RuntimeException("daemon unavailable")).when(copyCmd).exec();
+        assertThrows(RuntimeException.class, () -> adapter.copyFileToContainer(CONTAINER_ID, hostFile, "/tmp", true));
 
-        RuntimeException ex = assertThrows(RuntimeException.class,
-                () -> adapter.copyFileToContainer(CONTAINER_ID, HOST_FILE, "/tmp", true));
-
-        assertEquals("daemon unavailable", ex.getMessage());
-        verify(dockerClient, never()).execCreateCmd(any());
+        try (var files = Files.list(Path.of(System.getProperty("java.io.tmpdir")))) {
+            assertTrue(files.map(p -> p.getFileName().toString()).noneMatch(n -> n.startsWith("container-copy-")));
+        }
     }
 }

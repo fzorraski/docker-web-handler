@@ -3,7 +3,6 @@ package br.com.fzdevx.interfaces.rest;
 import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.application.port.DockerTerminalPort;
 import br.com.fzdevx.application.port.DockerTerminalPort.ContainerRuntimeInfo;
-import br.com.fzdevx.application.port.DockerTerminalPort.DirectoryCreationException;
 import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
 import br.com.fzdevx.domain.shared.ImageSignature;
@@ -134,7 +133,7 @@ public class ContainerFileUploadController {
                 return error(Response.Status.BAD_REQUEST, "Unsupported image format. Use PNG, JPEG, GIF, or WebP.");
             }
             String filename = "clip-" + System.currentTimeMillis() + "-" + randomSuffix() + "." + extension.get();
-            // The destination is administrator-configured, so creating it on first use is safe.
+            // The destination is administrator-configured, so creating missing parents on first use is safe.
             return stageAndCopy(containerId, preflight.containerName(), body, filename, attachmentsPath, maxSizeMb,
                     true, "TERMINAL_IMAGE_UPLOAD", "Image", Map.of("path", joinPath(attachmentsPath, filename)));
         } catch (IOException e) {
@@ -173,10 +172,6 @@ public class ContainerFileUploadController {
             entity.putAll(extraResponse);
             return Response.ok(entity).build();
 
-        } catch (DirectoryCreationException e) {
-            Log.errorf("%s upload to container failed: %s", label, e.getMessage());
-            return error(Response.Status.INTERNAL_SERVER_ERROR,
-                    "Could not create the destination directory '" + e.getDirectory() + "' inside the container.");
         } catch (Exception e) {
             Log.errorf("%s upload to container failed: %s", label, e.getMessage());
             return error(Response.Status.INTERNAL_SERVER_ERROR, label + " upload failed. Please try again.");

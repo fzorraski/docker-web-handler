@@ -1,4 +1,5 @@
 import type { DatabaseDump } from '../types'
+import { xhrUpload } from './xhrUpload'
 import fetchWithAuth, { apiErrorMessage } from './fetchWithAuth'
 
 const API = '/api/database/dumps/'
@@ -15,56 +16,38 @@ export async function listDumps(): Promise<DatabaseDump[]> {
   return res.json()
 }
 
-export function uploadDump(
+export async function uploadDump(
   file: File,
   uploadPassword: string,
   options?: { databaseName?: string; version?: string; expiresAt?: string; description?: string; tenantId?: string; noTenant?: boolean; sharedWithTenants?: string[] },
   onProgress?: (percent: number) => void,
 ): Promise<{ success: boolean; dump?: DatabaseDump; error?: string }> {
-  return new Promise((resolve) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('password', uploadPassword)
-    if (options?.databaseName) formData.append('databaseName', options.databaseName)
-    if (options?.version) formData.append('version', options.version)
-    if (options?.expiresAt) formData.append('expiresAt', options.expiresAt)
-    if (options?.description) formData.append('description', options.description)
-    if (options?.tenantId) formData.append('tenantId', options.tenantId)
-    if (options?.noTenant) formData.append('noTenant', 'true')
-    if (options?.sharedWithTenants?.length) formData.append('sharedWithTenants', options.sharedWithTenants.join(','))
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('password', uploadPassword)
+  if (options?.databaseName) formData.append('databaseName', options.databaseName)
+  if (options?.version) formData.append('version', options.version)
+  if (options?.expiresAt) formData.append('expiresAt', options.expiresAt)
+  if (options?.description) formData.append('description', options.description)
+  if (options?.tenantId) formData.append('tenantId', options.tenantId)
+  if (options?.noTenant) formData.append('noTenant', 'true')
+  if (options?.sharedWithTenants?.length) formData.append('sharedWithTenants', options.sharedWithTenants.join(','))
 
-    const xhr = new XMLHttpRequest()
-
-    xhr.upload.addEventListener('progress', (e) => {
-      if (e.lengthComputable && onProgress) {
-        onProgress(Math.round((e.loaded / e.total) * 100))
-      }
-    })
-
-    xhr.addEventListener('load', () => {
-      try {
-        const data = JSON.parse(xhr.responseText)
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve({ success: true, dump: data })
-        } else {
-          resolve({ success: false, error: apiErrorMessage(data, 'Upload failed') })
-        }
-      } catch {
-        resolve({ success: false, error: 'Upload failed' })
-      }
-    })
-
-    xhr.addEventListener('error', () => {
-      resolve({ success: false, error: 'Network error during upload' })
-    })
-
-    xhr.addEventListener('abort', () => {
-      resolve({ success: false, error: 'Upload cancelled' })
-    })
-
-    xhr.open('POST', API + 'upload')
-    xhr.send(formData)
-  })
+  let response
+  try {
+    response = await xhrUpload(API + 'upload', formData, { onProgress })
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'Upload failed' }
+  }
+  try {
+    const data = JSON.parse(response.text)
+    if (response.status >= 200 && response.status < 300) {
+      return { success: true, dump: data }
+    }
+    return { success: false, error: apiErrorMessage(data, 'Upload failed') }
+  } catch {
+    return { success: false, error: 'Upload failed' }
+  }
 }
 
 export async function deleteDump(

@@ -370,7 +370,18 @@ class InputValidatorTest {
 
     @Test
     void validateContainerPath_bareRoot_returnsError() {
-        assertTrue(InputValidator.validateContainerPath("/").isPresent());
+        assertEquals("Destination path must not be the root directory.", InputValidator.validateContainerPath("/").orElseThrow());
+    }
+
+    @org.junit.jupiter.api.Test
+    void validateImagePathTemplate_rules() {
+        assertTrue(InputValidator.validateImagePathTemplate("{path}").isEmpty());
+        assertTrue(InputValidator.validateImagePathTemplate("\"{path}\" ").isEmpty());
+        assertTrue(InputValidator.validateImagePathTemplate("").isEmpty(), "empty means type nothing");
+        assertTrue(InputValidator.validateImagePathTemplate(null).isPresent());
+        assertTrue(InputValidator.validateImagePathTemplate("no placeholder").isPresent());
+        assertTrue(InputValidator.validateImagePathTemplate("{path}\n").isPresent());
+        assertTrue(InputValidator.validateImagePathTemplate("{path}" + "x".repeat(200)).isPresent());
     }
 
     @ParameterizedTest

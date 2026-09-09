@@ -26,6 +26,7 @@ Nova aba "Bancos de Dados" na página de banco, para visualizar e gerenciar banc
 - **Menu de contexto (clique direito)** — ações rápidas: proteger, deletar, criar snapshot, restaurar dump, executar migração
 - **Descrição editável** — adicionar descrição a qualquer banco para identificação
 - **Card resumo** — total de bancos, tamanho total e quantidade protegidos
+- **Metadados compartilhados** — repositórios que apontam para o mesmo servidor PostgreSQL (mesmo `pg-host` e `pg-port`) compartilham proteção, criador, tenant e descrição de cada banco; proteger em uma aba protege em todas
 
 ---
 
@@ -160,5 +161,34 @@ Clicar no nome de um banco abre o diálogo de insights com métricas detalhadas:
 - **Proteção SSRF** — valida que o endpoint de token pertence ao mesmo domínio do registry, prevenindo redirecionamento malicioso
 - **Segurança em respostas JSON** — trata corretamente valores nulos em respostas de registries V2 (campo `tags` ausente, `tags: null`, elementos nulos)
 - Configurável via `repository.registry-path.<repo>=caminho/completo`
+
+---
+
+## Terminal — Anexos de Imagem
+
+- **Colar ou arrastar uma imagem no terminal** (Ctrl+V, ou ⌘V no macOS) — a imagem é enviada para dentro do container e o caminho do arquivo é digitado no prompt, pronto para um LLM ou qualquer ferramenta rodando no terminal
+- **Modelo do caminho** — texto digitado após o envio, configurável no painel de Configurações; `"{path}"` coloca o caminho entre aspas (útil quando a ferramenta interpreta `/` como comando) e vazio (ou `none` na propriedade) não digita nada
+- **Validação pelo conteúdo** — o servidor identifica PNG, JPEG, GIF e WebP pelos bytes iniciais, ignora o nome enviado e gera um nome sem colisão
+- **Flags próprias** — `container.terminal.upload.image.enabled` e `container.terminal.upload.image.path` (padrão `/tmp`), independentes do envio de arquivos genérico, editáveis em tempo de execução
+- **Auditoria** — envios de arquivos e imagens pelo terminal geram entradas `TERMINAL_UPLOAD` e `TERMINAL_IMAGE_UPLOAD` com usuário, container, arquivo e tamanho
+- Fechar o diálogo cancela o envio em andamento; texto colado continua indo direto para o shell
+
+---
+
+## Configurações em Tempo de Execução — Categorias e Dependências
+
+- Aba de Configurações agrupada por categoria (terminal, analisador de logs, sessões, auditoria)
+- Configurações dependentes aparecem aninhadas sob a flag que as habilita; enquanto a flag está desligada a linha fica esmaecida com um aviso, mas continua editável
+- Retenção de auditoria avisa quando `audit.enabled=false` (propriedade que exige reinício)
+- Configurações de texto (caminhos, modelos) com validação na própria tela
+
+---
+
+## Bancos Gerenciados — Metadados Compartilhados entre Repositórios
+
+- Repositórios com o mesmo `pg-host` e `pg-port` passam a compartilhar um único registro de metadados por banco: proteção, criador, tenant, descrição, último restore e último uso
+- Um banco protegido em uma aba não pode ser excluído por outra aba do mesmo servidor
+- **Mesclagem única na inicialização** dos registros duplicados criados antes desta versão (vence o registro que conhece o criador; a proteção é mantida se qualquer lado a tinha); resumo no log e chave de desligamento `database.managed.sibling-merge-at-startup`
+- Recomenda-se backup da tabela `managed_database` (ou `data/managed-databases.json`) antes da primeira inicialização
 
 ---

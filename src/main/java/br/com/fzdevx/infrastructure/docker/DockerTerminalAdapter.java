@@ -4,7 +4,6 @@ import br.com.fzdevx.application.port.DockerTerminalPort;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.command.ExecCreateCmdResponse;
 import com.github.dockerjava.api.command.InspectContainerResponse;
-import com.github.dockerjava.api.exception.NotFoundException;
 import com.github.dockerjava.api.model.Frame;
 import com.github.dockerjava.api.async.ResultCallback;
 import io.quarkus.logging.Log;
@@ -13,12 +12,18 @@ import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
-import java.nio.charset.StandardCharsets;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.concurrent.TimeUnit;
+import java.util.Arrays;
+import java.util.List;
+import com.github.dockerjava.api.exception.NotFoundException;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -180,71 +185,65 @@ public class DockerTerminalAdapter implements DockerTerminalPort {
         }
     }
 
-    /** How long a {@code mkdir -p} exec may take before it is reported as a timeout. */
-    long mkdirTimeoutMillis = 30_000;
-
     @Override
     public void copyFileToContainer(String containerId, Path hostFile, String remotePath, boolean createMissingDirectory) {
+        String fileName = hostFile.getFileName().toString();
+        Path tar = null;
         try {
-            copyArchive(containerId, hostFile, remotePath);
-        } catch (NotFoundException e) {
-            // The Engine answers 404 to PUT /containers/{id}/archive both when the destination
-            // directory is missing and when the container itself is gone. Only the former is
-            // recoverable, and only for paths the administrator configured.
-            if (!createMissingDirectory) throw e;
-            Log.infof("Copy to '%s' in container '%s' reported not found; creating the directory and retrying",
-                    remotePath, containerId);
-            createDirectory(containerId, remotePath);
-            copyArchive(containerId, hostFile, remotePath);
+            tar = Files.createTempFile("container-copy-", ".tar");
+            // First try the directory itself: extracting there keeps working on a read-only
+            // rootfs when the directory is a writable volume or tmpfs mount.
+            try {
+                send(containerId, hostFile, tar, remotePath, fileName);
+                return;
+            } catch (NotFoundException e) {
+                if (!createMissingDirectory) throw e;
+            }
+            // The Engine creates every missing parent of an archive entry while extracting, so
+            // walk up to the nearest existing ancestor and carry the remainder in the entry name.
+            List<String> segments = Arrays.stream(remotePath.split("/")).filter(seg -> !seg.isEmpty()).toList();
+            for (int keep = segments.size() - 1; keep >= 0; keep--) {
+                String extractAt = "/" + String.join("/", segments.subList(0, keep));
+                String entryName = String.join("/", segments.subList(keep, segments.size())) + "/" + fileName;
+                try {
+                    send(containerId, hostFile, tar, extractAt, entryName);
+                    return;
+                } catch (NotFoundException e) {
+                    if (keep == 0) throw e;
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not stage '" + fileName + "' for container " + containerId, e);
+        } finally {
+            if (tar != null) {
+                try { Files.deleteIfExists(tar); } catch (IOException ignored) {}
+            }
         }
-        Log.infof("Copied file '%s' to container '%s' at '%s'", hostFile.getFileName(), containerId, remotePath);
     }
 
-    private void copyArchive(String containerId, Path hostFile, String remotePath) {
-        dockerClient.copyArchiveToContainerCmd(containerId)
-                .withHostResource(hostFile.toAbsolutePath().toString())
-                .withRemotePath(remotePath)
-                .exec();
+    private void send(String containerId, Path hostFile, Path tar, String extractAt, String entryName) throws IOException {
+        writeSingleEntryTar(hostFile, entryName, tar);
+        try (InputStream in = Files.newInputStream(tar)) {
+            dockerClient.copyArchiveToContainerCmd(containerId)
+                    .withTarInputStream(in)
+                    .withRemotePath(extractAt)
+                    .exec();
+        }
+        Log.infof("Copied file '%s' to container '%s' at '%s'", entryName, containerId, extractAt);
     }
 
-    /**
-     * {@code mkdir -p} as root, matching the privilege the archive copy itself runs with, so an
-     * image whose USER cannot write to the parent still gets its upload directory. A container
-     * that disappeared meanwhile surfaces as docker-java's own NotFoundException from exec create.
-     */
-    private void createDirectory(String containerId, String remotePath) {
-        ExecCreateCmdResponse exec = dockerClient.execCreateCmd(containerId)
-                .withCmd("mkdir", "-p", remotePath)
-                .withUser("root")
-                .withAttachStdout(true)
-                .withAttachStderr(true)
-                .exec();
-        StringBuilder output = new StringBuilder();
-        boolean finished;
-        try {
-            finished = dockerClient.execStartCmd(exec.getId())
-                    .exec(new ResultCallback.Adapter<Frame>() {
-                        @Override
-                        public void onNext(Frame frame) {
-                            byte[] payload = frame.getPayload();
-                            if (payload != null && output.length() < 1024) {
-                                output.append(new String(payload, StandardCharsets.UTF_8));
-                            }
-                        }
-                    })
-                    .awaitCompletion(mkdirTimeoutMillis, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new DirectoryCreationException(remotePath, "interrupted while waiting for mkdir");
-        }
-        if (!finished) {
-            throw new DirectoryCreationException(remotePath,
-                    "mkdir did not finish within " + mkdirTimeoutMillis + " ms");
-        }
-        Long exitCode = dockerClient.inspectExecCmd(exec.getId()).exec().getExitCodeLong();
-        if (exitCode == null || exitCode != 0) {
-            throw new DirectoryCreationException(remotePath,
-                    "mkdir exited with " + exitCode + " " + output.toString().trim());
+    /** Uncompressed tar with one regular file entry (mode 0644); images do not compress, and the Engine only needs a tar. */
+    private static void writeSingleEntryTar(Path file, String entryName, Path tar) throws IOException {
+        try (TarArchiveOutputStream out = new TarArchiveOutputStream(Files.newOutputStream(tar))) {
+            out.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
+            TarArchiveEntry entry = new TarArchiveEntry(entryName);
+            entry.setSize(Files.size(file));
+            entry.setMode(0100644);
+            entry.setModTime(Files.getLastModifiedTime(file).toMillis());
+            out.putArchiveEntry(entry);
+            Files.copy(file, out);
+            out.closeArchiveEntry();
         }
     }
+
 }

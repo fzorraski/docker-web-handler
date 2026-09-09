@@ -24,20 +24,49 @@ export function isNativePasteChord(
   return isMac ? ev.metaKey && !ev.ctrlKey : ev.ctrlKey && !ev.metaKey
 }
 
-/** True when a paste payload carries real text, which should win over an embedded image preview. */
-export function hasPlainText(transfer: DataTransfer | null | undefined): boolean {
+/**
+ * Decides whether a paste that carries both text and image files meant the text.
+ * Spreadsheet and browser copies ship text/html plus a rendered preview image: the text
+ * wins. File-manager copies of an image ship the file plus its name or file:// URI as
+ * text: the file wins. Any other non-blank text wins.
+ */
+export function textShouldWin(transfer: DataTransfer | null | undefined, files: File[]): boolean {
+  let text = ''
+  let html = ''
   try {
-    return (transfer?.getData('text/plain') ?? '').trim().length > 0
+    text = (transfer?.getData('text/plain') ?? '').trim()
+    html = (transfer?.getData('text/html') ?? '').trim()
   } catch {
     return false
   }
+  if (!text) return false
+  if (html) return true
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  const decode = (s: string) => { try { return decodeURIComponent(s) } catch { return s } }
+  // file:// URIs are percent-encoded ("my%20pic.png"), so compare the decoded form as well
+  const refersToFile = (line: string) => [line, decode(line)]
+    .some((v) => files.some((f) => v === f.name || v.endsWith('/' + f.name)))
+  return !lines.every(refersToFile)
+}
+
+/**
+ * Text to type into the prompt for an uploaded image: the admin template with {path}
+ * replaced, or the bare path when no template is configured. An explicitly empty template
+ * means "type nothing" and yields ''. A trailing space separates the text from whatever
+ * the user types next.
+ */
+export function formatImagePathForPrompt(template: string | undefined, path: string): string {
+  if (template !== undefined && template.trim() === '') return ''
+  const tpl = template && template.includes('{path}') ? template : '{path}'
+  return tpl.split('{path}').join(path) + ' '
 }
 
 /** Image MIME types accepted by the terminal paste/drop attachment flow. */
 export const SUPPORTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const
 
+/** Browsers derive File.type from the extension; an empty type is left to the server's magic-byte check. */
 export function isSupportedImage(file: Pick<File, 'type'>): boolean {
-  return (SUPPORTED_IMAGE_TYPES as readonly string[]).includes(file.type)
+  return file.type === '' || (SUPPORTED_IMAGE_TYPES as readonly string[]).includes(file.type)
 }
 
 /**
@@ -51,7 +80,7 @@ export function extractImageFiles(transfer: DataTransfer | null | undefined): Fi
   if (items && items.length > 0) {
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
-      if (item.kind !== 'file' || !item.type.startsWith('image/')) continue
+      if (item.kind !== 'file' || !(item.type === '' || item.type.startsWith('image/'))) continue
       const file = item.getAsFile()
       if (file) files.push(file)
     }
@@ -60,7 +89,7 @@ export function extractImageFiles(transfer: DataTransfer | null | undefined): Fi
   const list = transfer.files
   if (list) {
     for (let i = 0; i < list.length; i++) {
-      if (list[i].type.startsWith('image/')) files.push(list[i])
+      if (list[i].type === '' || list[i].type.startsWith('image/')) files.push(list[i])
     }
   }
   return files

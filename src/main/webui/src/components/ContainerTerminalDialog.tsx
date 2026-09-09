@@ -12,7 +12,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { connectTerminal, uploadFileToContainer, uploadImageToContainer, type TerminalConnection } from '../services/terminalService'
-import { extractImageFiles, hasPlainText, isMacPlatform, isNativePasteChord, isSupportedImage, pasteShortcutLabel } from '../utils/terminalAttachments'
+import { extractImageFiles, formatImagePathForPrompt, isMacPlatform, isNativePasteChord, isSupportedImage, pasteShortcutLabel, textShouldWin } from '../utils/terminalAttachments'
 import useFullScreenDialog from '../hooks/useFullScreenDialog'
 import FullscreenToggleButton from './FullscreenToggleButton'
 
@@ -27,6 +27,8 @@ interface Props {
   uploadDefaultPath?: string
   imageUploadEnabled?: boolean
   attachmentsPath?: string
+  /** How the uploaded image's path is typed into the prompt; {path} is replaced. */
+  imagePathTemplate?: string
   imageMaxSizeMb?: number
   terminalPassword?: string
 }
@@ -41,7 +43,7 @@ interface AttachmentState {
 
 export default function ContainerTerminalDialog({
   open, ticket, containerName, containerId, onClose,
-  uploadEnabled, uploadMaxSizeMb, uploadDefaultPath, imageUploadEnabled, attachmentsPath, imageMaxSizeMb, terminalPassword,
+  uploadEnabled, uploadMaxSizeMb, uploadDefaultPath, imageUploadEnabled, attachmentsPath, imagePathTemplate, imageMaxSizeMb, terminalPassword,
 }: Props) {
   const { t } = useTranslation()
   const theme = useTheme()
@@ -80,13 +82,22 @@ export default function ContainerTerminalDialog({
     xtermRef.current = null
   }, [])
 
-  const cleanup = useCallback(() => {
+  const abortRef = useRef(new AbortController())
+  // Ends the attachment session: later results are ignored, queued files are dropped,
+  // and the in-flight request is aborted so the server does not stage an orphan file.
+  const endSession = useCallback(() => {
     sessionRef.current += 1
     attachmentQueueRef.current = Promise.resolve()
+    abortRef.current.abort()
+    abortRef.current = new AbortController()
+  }, [])
+
+  const cleanup = useCallback(() => {
+    endSession()
     connectionRef.current?.close()
     connectionRef.current = null
     disposeTerminal()
-  }, [disposeTerminal])
+  }, [disposeTerminal, endSession])
 
   // Track mounted state
   useEffect(() => {
@@ -104,7 +115,7 @@ export default function ContainerTerminalDialog({
     setStatus('connecting')
     setErrorMessage('')
     disposeTerminal()
-    sessionRef.current += 1
+    endSession()
 
     const conn = connectTerminal(
       ticket,
@@ -129,13 +140,12 @@ export default function ContainerTerminalDialog({
     connectionRef.current = conn
 
     return () => {
-      sessionRef.current += 1
-      attachmentQueueRef.current = Promise.resolve()
+      endSession()
       conn.close()
       connectionRef.current = null
       disposeTerminal()
     }
-  }, [open, ticket, disposeTerminal])
+  }, [open, ticket, disposeTerminal, endSession])
 
   // Initialize xterm when connected
   useEffect(() => {
@@ -221,19 +231,24 @@ export default function ContainerTerminalDialog({
       containerId,
       file,
       terminalPassword ?? '',
-      (pct) => setAttachment((prev) => prev?.status === 'uploading' ? { ...prev, progress: pct } : prev),
+      (pct) => {
+        if (session !== sessionRef.current) return
+        setAttachment((prev) => prev?.status === 'uploading' ? { ...prev, progress: pct } : prev)
+      },
+      abortRef.current.signal,
     )
     // The dialog closed or reconnected meanwhile: the file belongs to a session that is gone.
     if (!mountedRef.current || session !== sessionRef.current) return
 
     if (res.success && res.path) {
-      connectionRef.current?.sendInput(res.path + ' ')
+      const text = formatImagePathForPrompt(imagePathTemplate, res.path)
+      if (text) connectionRef.current?.sendInput(text)
       xtermRef.current?.focus()
       setAttachment({ status: 'done', progress: 100, message: t('containers.terminal.imageAttached', { path: res.path }) })
     } else {
       setAttachment({ status: 'error', progress: 0, message: res.error ?? t('containers.terminal.uploadFailed') })
     }
-  }, [containerId, terminalPassword, imageMaxSizeMb, t])
+  }, [containerId, terminalPassword, imageMaxSizeMb, imagePathTemplate, t])
 
   // Serialize uploads so several pasted images land in the prompt in order.
   const enqueueImages = useCallback((files: File[]) => {
@@ -249,10 +264,9 @@ export default function ContainerTerminalDialog({
     if (!imageUploadEnabled || status !== 'connected' || !container) return
 
     const onPaste = (e: ClipboardEvent) => {
-      // Spreadsheet/browser copies ship text plus a rendered preview image; the text is what was meant.
-      if (hasPlainText(e.clipboardData)) return
       const images = extractImageFiles(e.clipboardData)
       if (images.length === 0) return
+      if (textShouldWin(e.clipboardData, images)) return
       e.preventDefault()
       e.stopPropagation()
       enqueueImages(images)

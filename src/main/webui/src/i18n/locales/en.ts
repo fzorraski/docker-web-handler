@@ -1355,7 +1355,10 @@ const en = {
   },
 
   settings: {
-    description: 'Runtime settings override application.properties and apply immediately, without a restart. Values are stored in data/settings.json.',
+    description: 'Runtime settings override application.properties and apply immediately, without a restart. Overrides are stored in the application database (runtime_settings).',
+    categories: { terminal: 'Container terminal', logAnalyzer: 'Log analyzer', session: 'Sessions', audit: 'Audit trail', other: 'Other' },
+    inactiveUntil: 'Inactive until "{{parent}}" is enabled.',
+    inactiveProperty: 'Inactive: requires {{property}}=true in application.properties (restart-only, cannot be changed here).',
     default: 'Default: {{value}}',
     overridden: 'Overridden',
     resetToDefault: 'Reset to default',
@@ -1369,6 +1372,7 @@ const en = {
       terminalUploadMaxSizeMb: 'Terminal upload max size (MB)',
       terminalImageUploadEnabled: 'Terminal image attachments (paste/drop) enabled',
       terminalImageUploadPath: 'Terminal image upload path (inside the container)',
+      terminalImagePathTemplate: 'Terminal image path template ({path} is replaced, e.g. "{path}"; empty = type nothing)',
       logAnalyzerEnabled: 'Log analyzer enabled',
       sessionTimeoutMinutes: 'Session timeout (minutes)',
       auditRetentionDays: 'Audit log retention (days, 0 = keep forever)',

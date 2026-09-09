@@ -12,6 +12,12 @@ export interface RuntimeSetting {
   value: boolean | number | string
   defaultValue: boolean | number | string
   overridden: boolean
+  /** Group header the row belongs to (terminal, logAnalyzer, session, audit). */
+  category?: string
+  /** Key of the setting that gates this one; null or absent for roots. */
+  dependsOn?: string | null
+  /** Restart-only property currently switching this setting off, or null. */
+  disabledByProperty?: string | null
 }
 
 export async function listSettings(): Promise<RuntimeSetting[]> {

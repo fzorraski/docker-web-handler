@@ -485,20 +485,6 @@ class ContainerFileUploadControllerTest {
     }
 
     @Test
-    void uploadImage_directoryCreationFails_returns500NamingTheDirectory() throws Exception {
-        MultipartFormDataInput input = mockImageForm(VALID_PASSWORD, PNG_HEADER);
-        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
-        when(dockerTerminalPort.inspectContainer(VALID_CONTAINER_ID)).thenReturn(RUNNING);
-        doThrow(new DockerTerminalPort.DirectoryCreationException(ATTACHMENTS_PATH, "Permission denied"))
-                .when(dockerTerminalPort).copyFileToContainer(any(), any(), any(), anyBoolean());
-
-        Response response = controller.uploadImage(VALID_CONTAINER_ID, input);
-
-        assertEquals(500, response.getStatus());
-        assertErrorContains(response, ATTACHMENTS_PATH);
-    }
-
-    @Test
     void uploadImage_notAnImage_writesNoTempFile() throws Exception {
         MultipartFormDataInput input = mockImageForm(VALID_PASSWORD, "plain text".getBytes());
         when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
@@ -520,20 +506,6 @@ class ContainerFileUploadControllerTest {
 
         verify(dockerTerminalPort).copyFileToContainer(eq(VALID_CONTAINER_ID), any(Path.class), eq("/root/.ssh"), eq(false));
         verify(dockerTerminalPort, never()).copyFileToContainer(any(), any(), any(), eq(true));
-    }
-
-    @Test
-    void uploadFile_directoryCreationFailure_returns500NamingTheDirectory() throws Exception {
-        MultipartFormDataInput input = mockForm(VALID_PASSWORD, VALID_REMOTE_PATH, "a.txt", new byte[]{1});
-        when(passwordValidationService.validateTerminalPassword(VALID_PASSWORD)).thenReturn(true);
-        when(dockerTerminalPort.inspectContainer(VALID_CONTAINER_ID)).thenReturn(RUNNING);
-        doThrow(new DockerTerminalPort.DirectoryCreationException(VALID_REMOTE_PATH, "denied"))
-                .when(dockerTerminalPort).copyFileToContainer(any(), any(), any(), anyBoolean());
-
-        Response response = controller.uploadFile(VALID_CONTAINER_ID, input);
-
-        assertEquals(500, response.getStatus());
-        assertErrorContains(response, VALID_REMOTE_PATH);
     }
 
     // ---- Rate limiting must surface as 429, not a generic 500 ----

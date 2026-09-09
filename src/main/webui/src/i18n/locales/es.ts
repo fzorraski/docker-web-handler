@@ -1357,7 +1357,10 @@ const es: typeof en = {
   },
 
   settings: {
-    description: 'La configuración en tiempo de ejecución anula application.properties y se aplica inmediatamente, sin reiniciar. Los valores se guardan en data/settings.json.',
+    description: 'La configuración en tiempo de ejecución anula application.properties y se aplica inmediatamente, sin reiniciar. Las sobrescrituras se guardan en la base de datos de la aplicación (runtime_settings).',
+    categories: { terminal: 'Terminal de contenedores', logAnalyzer: 'Analizador de logs', session: 'Sesiones', audit: 'Registro de auditoría', other: 'Otros' },
+    inactiveUntil: 'Inactivo hasta que "{{parent}}" esté habilitado.',
+    inactiveProperty: 'Inactivo: requiere {{property}}=true en application.properties (solo con reinicio, no editable aquí).',
     default: 'Predeterminado: {{value}}',
     overridden: 'Anulado',
     resetToDefault: 'Restablecer al predeterminado',
@@ -1371,6 +1374,7 @@ const es: typeof en = {
       terminalUploadMaxSizeMb: 'Tamaño máximo de subida del terminal (MB)',
       terminalImageUploadEnabled: 'Adjuntos de imagen en el terminal (pegar/arrastrar) habilitados',
       terminalImageUploadPath: 'Ruta de subida de imágenes del terminal (dentro del container)',
+      terminalImagePathTemplate: 'Plantilla de la ruta de imagen en el terminal ({path} se reemplaza, p. ej. "{path}"; vacío = no escribir nada)',
       logAnalyzerEnabled: 'Analizador de logs habilitado',
       sessionTimeoutMinutes: 'Tiempo de expiración de sesión (minutos)',
       auditRetentionDays: 'Retención del log de auditoría (días, 0 = conservar siempre)',

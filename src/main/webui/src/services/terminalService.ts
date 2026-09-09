@@ -1,4 +1,5 @@
 import fetchWithAuth, { apiErrorMessage } from './fetchWithAuth'
+import { xhrUpload } from './xhrUpload'
 
 const API = '/api/containers/'
 
@@ -24,44 +25,27 @@ interface UploadResult {
   error?: string
 }
 
-function postMultipart(
+async function postMultipart(
   url: string,
   formData: FormData,
   onProgress?: (percent: number) => void,
+  signal?: AbortSignal,
 ): Promise<UploadResult> {
-  return new Promise((resolve) => {
-    const xhr = new XMLHttpRequest()
-
-    xhr.upload.addEventListener('progress', (e) => {
-      if (e.lengthComputable && onProgress) {
-        onProgress(Math.round((e.loaded / e.total) * 100))
-      }
-    })
-
-    xhr.addEventListener('load', () => {
-      try {
-        const data = JSON.parse(xhr.responseText)
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve({ success: true, filename: data.filename, remotePath: data.remotePath, path: data.path })
-        } else {
-          resolve({ success: false, error: apiErrorMessage(data, 'Upload failed') })
-        }
-      } catch {
-        resolve({ success: false, error: 'Upload failed' })
-      }
-    })
-
-    xhr.addEventListener('error', () => {
-      resolve({ success: false, error: 'Network error during upload' })
-    })
-
-    xhr.addEventListener('abort', () => {
-      resolve({ success: false, error: 'Upload cancelled' })
-    })
-
-    xhr.open('POST', url)
-    xhr.send(formData)
-  })
+  let response
+  try {
+    response = await xhrUpload(url, formData, { onProgress, signal })
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'Upload failed' }
+  }
+  try {
+    const data = JSON.parse(response.text)
+    if (response.status >= 200 && response.status < 300) {
+      return { success: true, filename: data.filename, remotePath: data.remotePath, path: data.path }
+    }
+    return { success: false, error: apiErrorMessage(data, 'Upload failed') }
+  } catch {
+    return { success: false, error: 'Upload failed' }
+  }
 }
 
 export function uploadFileToContainer(
@@ -87,11 +71,12 @@ export function uploadImageToContainer(
   image: Blob,
   password: string,
   onProgress?: (percent: number) => void,
+  signal?: AbortSignal,
 ): Promise<UploadResult> {
   const formData = new FormData()
   formData.append('file', image, 'image')
   formData.append('password', password)
-  return postMultipart(API + encodeURIComponent(containerId) + '/upload/image', formData, onProgress)
+  return postMultipart(API + encodeURIComponent(containerId) + '/upload/image', formData, onProgress, signal)
 }
 
 export interface TerminalConnection {

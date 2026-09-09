@@ -1357,7 +1357,10 @@ const ptBR: typeof en = {
   },
 
   settings: {
-    description: 'As configurações em tempo de execução sobrepõem o application.properties e são aplicadas imediatamente, sem reiniciar. Os valores ficam em data/settings.json.',
+    description: 'As configurações em tempo de execução sobrepõem o application.properties e são aplicadas imediatamente, sem reiniciar. As sobrescritas ficam no banco da aplicação (runtime_settings).',
+    categories: { terminal: 'Terminal de containers', logAnalyzer: 'Analisador de logs', session: 'Sessões', audit: 'Trilha de auditoria', other: 'Outros' },
+    inactiveUntil: 'Inativo até que "{{parent}}" seja habilitado.',
+    inactiveProperty: 'Inativo: requer {{property}}=true no application.properties (somente com reinício, não editável aqui).',
     default: 'Padrão: {{value}}',
     overridden: 'Sobrescrito',
     resetToDefault: 'Restaurar padrão',
@@ -1371,6 +1374,7 @@ const ptBR: typeof en = {
       terminalUploadMaxSizeMb: 'Tamanho máximo de envio do terminal (MB)',
       terminalImageUploadEnabled: 'Anexos de imagem no terminal (colar/arrastar) habilitados',
       terminalImageUploadPath: 'Caminho de envio de imagens do terminal (dentro do container)',
+      terminalImagePathTemplate: 'Modelo do caminho da imagem no terminal ({path} é substituído, ex.: "{path}"; vazio = não digitar nada)',
       logAnalyzerEnabled: 'Analisador de logs habilitado',
       sessionTimeoutMinutes: 'Tempo de expiração da sessão (minutos)',
       auditRetentionDays: 'Retenção do log de auditoria (dias, 0 = manter para sempre)',

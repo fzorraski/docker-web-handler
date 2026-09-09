@@ -30,6 +30,8 @@
 - Access the container terminal directly from the browser, without needing SSH or Docker CLI
 - Full screen, command history, and clickable link detection
 - Upload files into the container — drag or select the file, choose the destination, and send
+- **Image attachments** — paste a screenshot (Ctrl+V, ⌘V on macOS) or drop an image onto the terminal; it is uploaded into the container and its path is typed into the prompt, so an LLM or any tool running there can read it. The typed text follows an admin-defined template (for example `"{path}"` when the tool would misread a leading `/`), or nothing at all
+- Every upload is recorded in the audit trail with the user, container, file, and size
 - Password protected
 
 ---
@@ -108,6 +110,7 @@
 - **Statistics reset** — reset query stats (`pg_stat_statements`), table stats (`pg_stat_reset`), or individual table counters — all password-protected
 - **HTML reports** — generate downloadable self-contained HTML reports with all insights for sharing
 - **Database description** — add a description to any database for identification
+- **Shared metadata across repositories** — when several repositories point at the same PostgreSQL server, protection, creator, tenant, and description of a database are the same in every tab; protecting a database in one tab protects it everywhere
 
 ---
 
@@ -256,6 +259,14 @@
 - Separate passwords for each type of operation (upload, restore, scheduling, terminal, CI)
 - Sensitive operations always require password confirmation
 - Protection against simultaneous access to critical operations
+
+---
+
+## Runtime Settings
+
+- Admin Settings tab grouped by category (terminal, log analyzer, sessions, audit)
+- Dependent settings are nested under the flag that gates them and shown as inactive while it is off, but stay editable so values can be prepared in advance
+- Overrides apply immediately, without a restart, and can be reset to the property default with one click
 
 ---
 

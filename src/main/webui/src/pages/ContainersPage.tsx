@@ -9,6 +9,7 @@ import {
   isMigrationEnabled as checkMigrationEnabled,
   getMigratedDatabases,
   getFeatures,
+  type FeatureFlags,
   getMemoryStatus,
   type HostMemoryStatus,
   type MigratedDatabase,
@@ -178,7 +179,9 @@ export default function ContainersPage() {
   const [terminalUploadDefaultPath, setTerminalUploadDefaultPath] = useState('/tmp')
   const [terminalImageUploadEnabled, setTerminalImageUploadEnabled] = useState(false)
   const [terminalAttachmentsPath, setTerminalAttachmentsPath] = useState('/tmp')
+  const [terminalImagePathTemplate, setTerminalImagePathTemplate] = useState('{path}')
   const [terminalImageMaxSizeMb, setTerminalImageMaxSizeMb] = useState(10)
+
   const [schedulingPwRequired, setSchedulingPwRequired] = useState(true)
   const [schedulingFeatureEnabled, setSchedulingFeatureEnabled] = useState(false)
   const [containerSchedules, setContainerSchedules] = useState<Map<string, ContainerSchedule[]>>(new Map())
@@ -207,7 +210,42 @@ export default function ContainersPage() {
 
   const actions = useContainerActions({ notify, confirm, t, loadContainers })
   const dialogs = useContainerDialogs()
+  // Every runtime-editable flag on this page, applied on mount, whenever a terminal opens,
+  // and when the tab regains focus, so an admin's change in the Settings tab is not stale here.
+  const applyFeatures = useCallback((f: FeatureFlags) => {
+    setTerminalFeatureEnabled(f.terminal)
+    setTerminalPasswordRequired(f.terminalPasswordRequired)
+    setSchedulingPwRequired(f.schedulingPasswordRequired)
+    setMemoryGuardEnabled(f.memoryGuard)
+    setTerminalUploadEnabled(f.terminalUpload)
+    setTerminalUploadMaxSizeMb(f.terminalUploadMaxSizeMb)
+    setTerminalUploadDefaultPath(f.terminalUploadDefaultPath)
+    setTerminalImageUploadEnabled(f.terminalImageUpload)
+    setTerminalAttachmentsPath(f.terminalAttachmentsPath)
+    setTerminalImagePathTemplate(f.terminalImagePathTemplate)
+    setTerminalImageMaxSizeMb(f.terminalImageMaxSizeMb)
+    setDbDeletionEnabled(f.deletionOnExpiration)
+    setOpsPwRequired(f.operationsPasswordRequired)
+  }, [])
+
   const terminal = useTerminalAuth({ notify, t })
+
+  useEffect(() => {
+    if (!terminal.ticket) return
+    getFeatures().then(applyFeatures).catch(() => {})
+  }, [terminal.ticket, applyFeatures])
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'visible') getFeatures().then(applyFeatures).catch(() => {})
+    }
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [applyFeatures])
   const actionMenu = useActionMenu<DockerContainer>()
 
   const isUp = (status: string) => status.includes('Up')
@@ -283,20 +321,7 @@ export default function ContainersPage() {
     isDumpEnabled().then(setDumpEnabled).catch(() => {})
     getMigratedDatabases().then(setMigratedDatabases).catch(() => setMigratedDatabases([]))
     checkMigrationEnabled().then(setMigrationFeatureEnabled).catch(() => setMigrationFeatureEnabled(false))
-    getFeatures().then((f) => {
-      setTerminalFeatureEnabled(f.terminal)
-      setTerminalPasswordRequired(f.terminalPasswordRequired)
-      setSchedulingPwRequired(f.schedulingPasswordRequired)
-      setMemoryGuardEnabled(f.memoryGuard)
-      setTerminalUploadEnabled(f.terminalUpload)
-      setTerminalUploadMaxSizeMb(f.terminalUploadMaxSizeMb)
-      setTerminalUploadDefaultPath(f.terminalUploadDefaultPath)
-      setTerminalImageUploadEnabled(f.terminalImageUpload)
-      setTerminalAttachmentsPath(f.terminalAttachmentsPath)
-      setTerminalImageMaxSizeMb(f.terminalImageMaxSizeMb)
-      setDbDeletionEnabled(f.deletionOnExpiration)
-      setOpsPwRequired(f.operationsPasswordRequired)
-    }).catch(() => setTerminalFeatureEnabled(false))
+    getFeatures().then(applyFeatures).catch(() => setTerminalFeatureEnabled(false))
     isSchedulingEnabled().then((enabled) => {
       setSchedulingFeatureEnabled(enabled)
       if (enabled) loadContainerSchedules()
@@ -1240,6 +1265,7 @@ export default function ContainersPage() {
         uploadDefaultPath={terminalUploadDefaultPath}
         imageUploadEnabled={terminalImageUploadEnabled}
         attachmentsPath={terminalAttachmentsPath}
+        imagePathTemplate={terminalImagePathTemplate}
         imageMaxSizeMb={terminalImageMaxSizeMb}
         terminalPassword={terminal.terminalPassword}
       />

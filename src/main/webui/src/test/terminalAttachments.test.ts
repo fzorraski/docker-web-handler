@@ -1,7 +1,24 @@
 import { describe, it, expect } from 'vitest'
 import {
-  extractImageFiles, hasPlainText, isMacPlatform, isNativePasteChord, isSupportedImage, pasteShortcutLabel,
+  extractImageFiles, formatImagePathForPrompt, isMacPlatform, isNativePasteChord, isSupportedImage, pasteShortcutLabel, textShouldWin,
 } from '../utils/terminalAttachments'
+
+describe('formatImagePathForPrompt', () => {
+  it('replaces the placeholder and appends a separating space', () => {
+    expect(formatImagePathForPrompt('"{path}"', '/tmp/a.png')).toBe('"/tmp/a.png" ')
+    expect(formatImagePathForPrompt('[image: {path}] {path}', '/tmp/a.png')).toBe('[image: /tmp/a.png] /tmp/a.png ')
+  })
+
+  it('types nothing when the template is explicitly empty', () => {
+    expect(formatImagePathForPrompt('', '/tmp/a.png')).toBe('')
+    expect(formatImagePathForPrompt('   ', '/tmp/a.png')).toBe('')
+  })
+
+  it('falls back to the bare path when the template is missing or has no placeholder', () => {
+    expect(formatImagePathForPrompt(undefined, '/tmp/a.png')).toBe('/tmp/a.png ')
+    expect(formatImagePathForPrompt('oops', '/tmp/a.png')).toBe('/tmp/a.png ')
+  })
+})
 
 function fakeTransfer(items: Array<{ kind: string; type: string; file?: File | null }>, files: File[] = []): DataTransfer {
   return {
@@ -43,10 +60,16 @@ describe('isSupportedImage', () => {
     }
   })
 
-  it('rejects other image types', () => {
+  it('rejects other image types but leaves an unknown (empty) type to the server', () => {
     expect(isSupportedImage({ type: 'image/svg+xml' })).toBe(false)
     expect(isSupportedImage({ type: 'image/bmp' })).toBe(false)
-    expect(isSupportedImage({ type: '' })).toBe(false)
+    expect(isSupportedImage({ type: '' })).toBe(true)
+  })
+
+  it('extracts files without a MIME type so the server can sniff them', () => {
+    const noExt = new File([new Uint8Array([1])], 'screenshot', { type: '' })
+    const transfer = { items: undefined, files: [noExt] } as unknown as DataTransfer
+    expect(extractImageFiles(transfer)).toEqual([noExt])
   })
 })
 
@@ -94,12 +117,33 @@ describe('isMacPlatform', () => {
   })
 })
 
-describe('hasPlainText', () => {
-  it('is true only for non-blank text/plain payloads', () => {
-    expect(hasPlainText({ getData: () => 'A1\tB1' } as unknown as DataTransfer)).toBe(true)
-    expect(hasPlainText({ getData: () => '   ' } as unknown as DataTransfer)).toBe(false)
-    expect(hasPlainText({ getData: () => '' } as unknown as DataTransfer)).toBe(false)
-    expect(hasPlainText(null)).toBe(false)
-    expect(hasPlainText({ getData: () => { throw new Error('denied') } } as unknown as DataTransfer)).toBe(false)
+describe('textShouldWin', () => {
+  const png = new File([new Uint8Array([1])], 'shot.png', { type: 'image/png' })
+  const transfer = (plain: string, html = '') =>
+    ({ getData: (t: string) => (t === 'text/plain' ? plain : t === 'text/html' ? html : '') } as unknown as DataTransfer)
+
+  it('lets the image win when there is no text', () => {
+    expect(textShouldWin(transfer(''), [png])).toBe(false)
+    expect(textShouldWin(transfer('   '), [png])).toBe(false)
+    expect(textShouldWin(null, [png])).toBe(false)
+  })
+
+  it('lets text win for spreadsheet and browser copies that ship html plus a preview image', () => {
+    expect(textShouldWin(transfer('A1\tB1', '<table><tr><td>A1</td></tr></table>'), [png])).toBe(true)
+    expect(textShouldWin(transfer('some words'), [png])).toBe(true)
+  })
+
+  it('lets the image win for file-manager copies whose text is only the file name or URI', () => {
+    expect(textShouldWin(transfer('shot.png'), [png])).toBe(false)
+    expect(textShouldWin(transfer('file:///home/u/shot.png'), [png])).toBe(false)
+    const spaced = new File([new Uint8Array([1])], 'my pic.png', { type: 'image/png' })
+    expect(textShouldWin(transfer('file:///home/u/my%20pic.png'), [spaced])).toBe(false)
+    const accented = new File([new Uint8Array([1])], 'imagem-ção.png', { type: 'image/png' })
+    expect(textShouldWin(transfer(encodeURI('file:///home/u/imagem-ção.png')), [accented])).toBe(false)
+    expect(textShouldWin(transfer('/home/u/shot.png\n/home/u/other.png'), [png])).toBe(true)
+  })
+
+  it('is false when the clipboard cannot be read', () => {
+    expect(textShouldWin({ getData: () => { throw new Error('denied') } } as unknown as DataTransfer, [png])).toBe(false)
   })
 })

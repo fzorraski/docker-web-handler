@@ -322,6 +322,7 @@ public class ContainerConfigController {
         features.put("terminalUploadDefaultPath", terminalUploadDefaultPath);
         features.put("terminalImageUpload", runtimeSettings.isTerminalImageUploadEnabled());
         features.put("terminalAttachmentsPath", runtimeSettings.getTerminalImageUploadPath());
+        features.put("terminalImagePathTemplate", runtimeSettings.getTerminalImagePathTemplate());
         features.put("terminalImageMaxSizeMb", runtimeSettings.getTerminalImageMaxSizeMb());
         features.put("rbac", rbacSettings.isRbacEnabled());
         return features;

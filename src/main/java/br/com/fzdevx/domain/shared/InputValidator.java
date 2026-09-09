@@ -291,6 +291,9 @@ public final class InputValidator {
         if (!path.startsWith("/")) {
             return Optional.of("Destination path must be absolute (start with '/').");
         }
+        if ("/".equals(path)) {
+            return Optional.of("Destination path must not be the root directory.");
+        }
         if (path.contains("..")) {
             return Optional.of("Destination path must not contain '..'.");
         }
@@ -300,6 +303,30 @@ public final class InputValidator {
         if (!CONTAINER_PATH_PATTERN.matcher(path).matches()) {
             return Optional.of("Destination path contains invalid characters. "
                     + "Only letters, digits, slashes, hyphens, underscores, and dots are allowed.");
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Text typed into a terminal prompt after an image upload. Empty means "type nothing";
+     * otherwise it must carry the {@code {path}} placeholder, stay short, and hold no control
+     * characters, because it is sent to a shell verbatim.
+     */
+    public static Optional<String> validateImagePathTemplate(String template) {
+        if (template == null) {
+            return Optional.of("Template is required.");
+        }
+        if (template.isBlank()) {
+            return Optional.empty();
+        }
+        if (!template.contains("{path}")) {
+            return Optional.of("Template must contain the {path} placeholder.");
+        }
+        if (template.length() > 200) {
+            return Optional.of("Template exceeds the maximum length of 200 characters.");
+        }
+        if (template.chars().anyMatch(c -> c < 0x20)) {
+            return Optional.of("Template must not contain line breaks or control characters.");
         }
         return Optional.empty();
     }

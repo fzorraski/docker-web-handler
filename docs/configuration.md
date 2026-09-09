@@ -146,6 +146,8 @@ When a container maps port 8080 to host port 10000, the UI renders a clickable l
 | `repository.pg-db-env-var.<repo>` | Env var name passed to container with the database name |
 | `repository.pg-image.<repo>` | Postgres Docker image for restore/snapshot operations (use `none` for local tooling) |
 
+Repositories with identical `pg-host` and `pg-port` share managed-database metadata (protection, creator, tenant, description) automatically; see [managed-databases.md](managed-databases.md#repositories-sharing-a-postgresql-server).
+
 ### Example
 
 ```properties
@@ -274,6 +276,7 @@ See [Database Migrations](database-migrations.md#container-upgrade) for full doc
 | `container.terminal.upload.default-path` | Default destination path inside the container | `/tmp` |
 | `container.terminal.upload.image.enabled` | Enable pasting/dropping images into the terminal (independent of file upload) | `false` |
 | `container.terminal.upload.image.path` | Directory inside the container for images pasted/dropped into the terminal (runtime-editable) | `/tmp` |
+| `container.terminal.upload.image.path-template` | Text typed into the prompt after an image upload; `{path}` is replaced, `none` types nothing (runtime-editable; an empty override in the Settings tab also types nothing) | `{path}` |
 | `container.terminal.upload.image.max-size-mb` | Maximum size (MB) for pasted/dropped images | `10` |
 
 See [Container Terminal](container-terminal.md) for full documentation.
@@ -386,6 +389,38 @@ cross-tenant reach sees only their own tenants' entries; entries belonging to no
 tenant (system jobs, super-admin actions, anything recorded while RBAC was off)
 are visible only to cross-tenant readers. Entries written before the trail
 became tenant-scoped carry no tenant and are therefore super-admin-only.
+
+---
+
+## Admin Settings Tab
+
+Super admins (SYSTEM_CONFIG permission) can change a subset of the properties above at runtime in the admin console under **Settings**. Overrides apply immediately, without a restart, and are stored in the application database (`runtime_settings`, see [persistence.md](persistence.md)). An override wins over both `application.properties` and environment variables until it is reset.
+
+The tab groups settings by category and nests each setting under the flag it depends on:
+
+```mermaid
+graph TD
+  subgraph Terminal
+    T[Container terminal enabled] --> S[Max concurrent sessions]
+    T --> I[Idle timeout]
+    T --> U[File upload enabled] --> M[Upload max size]
+    T --> P[Image attachments enabled] --> D[Image upload path]
+    P --> X[Image path template]
+  end
+  subgraph "Log analyzer"
+    L[Log analyzer enabled]
+  end
+  subgraph Sessions
+    O[Session timeout]
+  end
+  subgraph "Audit trail"
+    A[audit.enabled property, restart-only] -.-> R[Audit log retention]
+  end
+```
+
+A setting whose parent flag is off is shown dimmed with a note naming that flag. It stays editable, so an admin can prepare values before enabling the parent. Image attachments depend on the terminal, not on the generic file upload. Audit retention depends on `audit.enabled`, which is a restart-only property; while it is `false` the row is shown as inactive with a note pointing to `application.properties`.
+
+Each row is served by `GET /api/settings` with its `category`, the key it `dependsOn` (null for roots), and `disabledByProperty` (the gating property while it is off, otherwise null), so the UI never hard-codes the tree.
 
 ---
 

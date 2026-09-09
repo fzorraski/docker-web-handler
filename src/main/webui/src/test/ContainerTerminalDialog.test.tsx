@@ -110,7 +110,7 @@ function pendingUpload(): { resolve: (value: unknown) => void } {
   return handle
 }
 
-function transferFor(files: File[], textOnly = false, text = ''): DataTransfer {
+function transferFor(files: File[], textOnly = false, text = '', html = ''): DataTransfer {
   const items = textOnly
     ? [{ kind: 'string', type: 'text/plain', getAsFile: () => null }]
     : files.map((f) => ({ kind: 'file', type: f.type, getAsFile: () => f }))
@@ -119,7 +119,7 @@ function transferFor(files: File[], textOnly = false, text = ''): DataTransfer {
     items,
     files,
     types: textOnly ? ['text/plain'] : ['Files'],
-    getData: (type: string) => (type === 'text/plain' ? plain : ''),
+    getData: (type: string) => (type === 'text/plain' ? plain : type === 'text/html' ? html : ''),
   } as unknown as DataTransfer
 }
 
@@ -177,6 +177,23 @@ describe('ContainerTerminalDialog image attachments', () => {
     await waitFor(() => expect(mockSendInput).toHaveBeenCalledWith('/tmp/attachments/clip-1-abcd1234.png '))
     expect(terminalInstances[0].focus).toHaveBeenCalled()
     expect(screen.getByText(/containers\.terminal\.imageAttached/)).toBeInTheDocument()
+  })
+
+  it('wraps the typed path with the configured template', async () => {
+    renderDialog({ imagePathTemplate: '"{path}"' })
+
+    dispatchPaste(terminalContainer(), transferFor([imageFile()]))
+
+    await waitFor(() => expect(mockSendInput).toHaveBeenCalledWith('"/tmp/attachments/clip-1-abcd1234.png" '))
+  })
+
+  it('uploads without typing anything when the template is empty, but still shows the path', async () => {
+    renderDialog({ imagePathTemplate: '' })
+
+    dispatchPaste(terminalContainer(), transferFor([imageFile()]))
+
+    expect(await screen.findByText(/containers\.terminal\.imageAttached/)).toBeInTheDocument()
+    expect(mockSendInput).not.toHaveBeenCalled()
   })
 
   it('lets plain-text pastes through to xterm', () => {
@@ -273,7 +290,7 @@ describe('ContainerTerminalDialog image attachments', () => {
 
   it('prefers text over an embedded preview image when both are on the clipboard', () => {
     renderDialog()
-    const transfer = transferFor([imageFile('preview.png')], false, 'A1\tB1\nA2\tB2')
+    const transfer = transferFor([imageFile('preview.png')], false, 'A1\tB1\nA2\tB2', '<table></table>')
 
     const event = dispatchPaste(terminalContainer(), transfer)
 
@@ -297,6 +314,30 @@ describe('ContainerTerminalDialog session safety', () => {
     expect(mockSendInput).not.toHaveBeenCalled()
     expect(mockUploadImage).toHaveBeenCalledTimes(1)
     expect(screen.queryByText(/containers\.terminal\.imageAttached/)).not.toBeInTheDocument()
+  })
+
+  it('uploads an image copied from a file manager even though its name rides along as text', async () => {
+    renderDialog()
+    const file = imageFile('shot.png')
+
+    dispatchPaste(terminalContainer(), transferFor([file], false, 'file:///home/u/shot.png'))
+
+    await waitFor(() => expect(mockUploadImage).toHaveBeenCalledTimes(1))
+    expect(mockUploadImage.mock.calls[0][1]).toBe(file)
+  })
+
+  it('aborts the in-flight request when the dialog closes', async () => {
+    pendingUpload()
+    renderDialog()
+
+    dispatchPaste(terminalContainer(), transferFor([imageFile()]))
+    await waitFor(() => expect(mockUploadImage).toHaveBeenCalledTimes(1))
+    const signal = mockUploadImage.mock.calls[0][4] as AbortSignal
+    expect(signal.aborted).toBe(false)
+
+    fireEvent.click(screen.getByText('common.close'))
+
+    expect(signal.aborted).toBe(true)
   })
 
   it('swallows non-image drops instead of letting the browser navigate to the file', async () => {

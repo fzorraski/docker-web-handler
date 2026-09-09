@@ -1,4 +1,5 @@
 import fetchWithAuth, { apiErrorMessage, handleJsonResponse } from './fetchWithAuth'
+import { xhrUpload } from './xhrUpload'
 
 export interface ContainerEvent {
   type: 'INFO' | 'PROGRESS' | 'SUCCESS' | 'ERROR'
@@ -360,34 +361,20 @@ export async function prepareLogAnalysis(
   }
 
   if (onUploadProgress) {
-    // Use XMLHttpRequest for upload progress tracking
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-      xhr.open('POST', '/api/logs/analyzer/sse/upload/prepare')
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) onUploadProgress(Math.round((e.loaded / e.total) * 100))
-      }
-      xhr.onload = () => {
-        if (xhr.status === 401) {
-          window.dispatchEvent(new CustomEvent('auth:session-expired'))
-          reject(new Error('Session expired'))
-          return
-        }
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const data = JSON.parse(xhr.responseText)
-            resolve(data.ticket)
-          } catch { reject(new Error('Invalid response')) }
-        } else {
-          try {
-            const data = JSON.parse(xhr.responseText)
-            reject(new Error(apiErrorMessage(data, xhr.statusText)))
-          } catch { reject(new Error(xhr.statusText)) }
-        }
-      }
-      xhr.onerror = () => reject(new Error('Upload failed'))
-      xhr.send(form)
-    })
+    // XMLHttpRequest for upload progress tracking (shared helper handles 401 and errors)
+    const response = await xhrUpload('/api/logs/analyzer/sse/upload/prepare', form, { onProgress: onUploadProgress })
+    if (response.status === 401) throw new Error('Session expired')
+    if (response.status >= 200 && response.status < 300) {
+      try {
+        return JSON.parse(response.text).ticket
+      } catch { throw new Error('Invalid response') }
+    }
+    try {
+      throw new Error(apiErrorMessage(JSON.parse(response.text), `HTTP ${response.status}`))
+    } catch (e) {
+      if (e instanceof SyntaxError) throw new Error(`HTTP ${response.status}`)
+      throw e
+    }
   }
 
   const res = await fetchWithAuth('/api/logs/analyzer/sse/upload/prepare', { method: 'POST', body: form })

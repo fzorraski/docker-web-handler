@@ -72,6 +72,7 @@ public class ManageSettingsUseCase {
             case "terminalUploadMaxSizeMb" -> settings.setTerminalUploadMaxSizeMb(asInteger(key, value));
             case "terminalImageUploadEnabled" -> settings.setTerminalImageUploadEnabled(asBoolean(key, value));
             case "terminalImageUploadPath" -> settings.setTerminalImageUploadPath(asContainerPath(key, value));
+            case "terminalImagePathTemplate" -> settings.setTerminalImagePathTemplate(asPathTemplate(key, value));
             case "logAnalyzerEnabled" -> settings.setLogAnalyzerEnabled(asBoolean(key, value));
             case "sessionTimeoutMinutes" -> settings.setSessionTimeoutMinutes(asInteger(key, value));
             // 0 = keep audit entries forever
@@ -88,6 +89,22 @@ public class ManageSettingsUseCase {
 
     private Integer asInteger(String key, Object value) {
         return asInteger(key, value, MIN_INT_VALUE);
+    }
+
+    /**
+     * Free text that must mention {@code {path}}, typed verbatim into a terminal, so keep it
+     * short. An empty value is allowed and means "upload, but type nothing into the prompt".
+     */
+    private String asPathTemplate(String key, Object value) {
+        if (value == null) return null;
+        if (value instanceof String text) {
+            if (text.isBlank()) return "";
+            InputValidator.validateImagePathTemplate(text).ifPresent(error -> {
+                throw new InvalidInputException("Setting '" + key + "': " + error);
+            });
+            return text;
+        }
+        throw new InvalidInputException("Setting '" + key + "' expects a text value.");
     }
 
     /** An absolute directory path inside a container; same rules as upload destinations. */
