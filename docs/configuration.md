@@ -237,8 +237,11 @@ All resets are scoped to the current database — other databases on the same se
 | Property | Description | Default |
 |----------|-------------|---------|
 | `database.migration.enabled` | Enable migration feature | false |
-| `database.migration.api-url` | Global API URL template (`{sourceVersion}`, `{targetVersion}` placeholders) | -- |
+| `database.migration.api-url` | Global API URL template (`{sourceVersion}`, `{targetVersion}`, `{branch}` placeholders) | -- |
 | `repository.migration-api-url.<repo>` | Per-repository API URL override | -- |
+| `repository.tag-version-pattern.<repo>` | Regex with named groups `branch` and `version` that splits the target tag when the URL uses `{branch}` | -- |
+| `database.migration.default-branch` | Branch used for `{branch}` when the target version has no branch prefix | -- |
+| `repository.migration-default-branch.<repo>` | Per-repository default branch override | -- |
 
 ---
 

@@ -260,8 +260,11 @@ POST /api/containers/sse/upgrade/cancel/{ticket}
 | Property | Description | Default |
 |----------|-------------|---------|
 | `database.migration.enabled` | Enable the migration feature | false |
-| `database.migration.api-url` | Global API URL template (placeholders: `{sourceVersion}`, `{targetVersion}`) | -- |
+| `database.migration.api-url` | Global API URL template (placeholders: `{sourceVersion}`, `{targetVersion}`, `{branch}`) | -- |
 | `repository.migration-api-url.<repo>` | Per-repository API URL override | -- |
+| `repository.tag-version-pattern.<repo>` | Regex with named groups `branch` and `version` that splits the target tag when the URL uses `{branch}` | -- |
+| `database.migration.default-branch` | Branch used for `{branch}` when the target version has no branch prefix | -- |
+| `repository.migration-default-branch.<repo>` | Per-repository default branch override | -- |
 | `repository.upgrade-enabled.<repo>` | Enable container upgrade (tag change) for this repository | false |
 
 ---

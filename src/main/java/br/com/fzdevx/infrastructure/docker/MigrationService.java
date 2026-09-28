@@ -1,6 +1,7 @@
 package br.com.fzdevx.infrastructure.docker;
 
 import br.com.fzdevx.application.port.DatabasePort;
+import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.model.DatabaseMigrationRecord;
 import br.com.fzdevx.infrastructure.persistence.ResourceCounterService;
@@ -75,6 +76,14 @@ public class MigrationService {
     Optional<String> globalApiUrl;
 
     /**
+     * Branch used for the {branch} placeholder when the target version does not
+     * match the repository's tag-version-pattern (e.g. a plain "20.100.0").
+     */
+    @Inject
+    @ConfigProperty(name = "database.migration.default-branch")
+    Optional<String> globalDefaultBranch;
+
+    /**
      * Holds the parsed migration API response: SQL text + optional metadata.
      */
     public record MigrationResult(
@@ -101,6 +110,47 @@ public class MigrationService {
     private Optional<String> getTagVersionPattern(String repository) {
         return config.getOptionalValue("repository.tag-version-pattern." + repository, String.class)
                 .filter(v -> !v.isBlank());
+    }
+
+    private Optional<String> getDefaultBranch(String repository) {
+        return config.getOptionalValue("repository.migration-default-branch." + repository, String.class)
+                .filter(v -> !v.isBlank())
+                .or(() -> globalDefaultBranch.filter(v -> !v.isBlank()));
+    }
+
+    /**
+     * Resolves the {branch} placeholder for a target version. The tag-version-pattern
+     * splits "branch-version" tags; a version without a branch falls back to the
+     * configured default branch. Without either, the URL cannot be built and the
+     * caller gets an actionable {@link InvalidInputException} instead of a generic
+     * "failed to fetch" error.
+     */
+    private TagComponents resolveBranch(String targetVersion, String repository) {
+        Optional<String> patternStr = getTagVersionPattern(repository);
+        if (patternStr.isPresent()) {
+            TagComponents parsed = parseTag(targetVersion, repository);
+            if (parsed != null) {
+                return parsed;
+            }
+        }
+
+        Optional<String> fallback = getDefaultBranch(repository);
+        if (fallback.isPresent()) {
+            Log.infof("Target version '%s' for repository '%s' has no branch; using default branch '%s'",
+                    targetVersion, repository, fallback.get());
+            return new TagComponents(fallback.get(), targetVersion);
+        }
+
+        if (patternStr.isEmpty()) {
+            throw new InvalidInputException(
+                    "The migration API URL for repository '" + repository + "' uses the {branch} placeholder, "
+                    + "but neither repository.tag-version-pattern." + repository
+                    + " nor repository.migration-default-branch." + repository + " is configured.");
+        }
+        throw new InvalidInputException(
+                "Target version '" + targetVersion + "' does not match the tag pattern for repository '"
+                + repository + "' (expected '<branch>-<version>'). Enter the full tag, "
+                + "or configure repository.migration-default-branch." + repository + ".");
     }
 
     private final Map<String, Pattern> tagPatternCache = new java.util.concurrent.ConcurrentHashMap<>();
@@ -162,7 +212,13 @@ public class MigrationService {
                                               Consumer<ContainerEvent> eventSink) {
         eventSink.accept(ContainerEvent.info(STEP_NAME, "Fetching migration SQL from API..."));
 
-        MigrationResult result = callMigrationApi(repository, sourceVersion, targetVersion);
+        MigrationResult result;
+        try {
+            result = callMigrationApi(repository, sourceVersion, targetVersion);
+        } catch (InvalidInputException e) {
+            eventSink.accept(ContainerEvent.error(STEP_NAME, e.getMessage()));
+            return null;
+        }
         if (result == null) {
             eventSink.accept(ContainerEvent.error(STEP_NAME,
                     "Failed to fetch migration SQL from API."));
@@ -218,11 +274,9 @@ public class MigrationService {
         String branch = null;
 
         if (cleaned.contains("{branch}")) {
-            TagComponents parsed = parseTag(targetVersion, repository);
-            if (parsed != null) {
-                branch = parsed.branch();
-                effectiveTargetVersion = parsed.version();
-            }
+            TagComponents resolved = resolveBranch(targetVersion, repository);
+            branch = resolved.branch();
+            effectiveTargetVersion = resolved.version();
         }
 
         String url = cleaned

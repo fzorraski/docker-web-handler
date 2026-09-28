@@ -61,6 +61,32 @@ REPOSITORY_MIGRATION_API_URL_MYAPP=http://192.168.0.110:86/api/helper/migration?
 
 Placeholders can be used anywhere in the URL (path segments, query parameters, etc.).
 
+### Branch-aware URLs (`{branch}`)
+
+When migration scripts are organized per branch, the URL can also use `{branch}`. The branch is taken from the **target version** by splitting it with a per-repository regex that defines the named groups `branch` and `version`:
+
+```properties
+repository.migration-api-url.myapp=http://192.168.0.110:86/api/v1/migrations/branch/{branch}/summary/{sourceVersion}/{targetVersion}
+repository.tag-version-pattern.myapp=^(?<branch>.+)-(?<version>\\d+\\.\\d+\\.\\d+.*)$
+```
+
+With this pattern a target of `main-20.100.0` calls `.../branch/main/summary/20.0.0/20.100.0`. The source version is inserted as typed and is never split.
+
+A target version that does not match the pattern (for example a plain `20.100.0`) uses the **default branch**, per repository or global:
+
+```properties
+repository.migration-default-branch.myapp=main
+# or, for every repository
+database.migration.default-branch=main
+```
+
+```
+REPOSITORY_MIGRATION_DEFAULT_BRANCH_MYAPP=main
+DATABASE_MIGRATION_DEFAULT_BRANCH=main
+```
+
+If the URL uses `{branch}` and neither the pattern matches nor a default branch is configured, the preview and the migration fail with an explicit message telling the user to enter the full tag or to configure the default branch. The API is not called with a broken URL.
+
 ---
 
 ## API Contract

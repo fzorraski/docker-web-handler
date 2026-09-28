@@ -1,6 +1,7 @@
 package br.com.fzdevx.infrastructure.docker;
 
 import br.com.fzdevx.application.port.DatabasePort;
+import br.com.fzdevx.domain.exception.InvalidInputException;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.model.DatabaseMigrationRecord;
 import br.com.fzdevx.infrastructure.persistence.JsonFileMigrationRepository;
@@ -62,6 +63,7 @@ class MigrationServiceTest {
         service.dockerClient = dockerClient;
         service.featureEnabled = true;
         service.globalApiUrl = Optional.empty();
+        service.globalDefaultBranch = Optional.empty();
 
         when(config.getOptionalValue(anyString(), eq(String.class))).thenReturn(Optional.empty());
     }
@@ -86,6 +88,106 @@ class MigrationServiceTest {
         int port = httpServer.getAddress().getPort();
         service.globalApiUrl = Optional.of(
                 "http://127.0.0.1:" + port + "/migrate?from={sourceVersion}&to={targetVersion}");
+    }
+
+    private final java.util.concurrent.atomic.AtomicReference<String> requestedPath =
+            new java.util.concurrent.atomic.AtomicReference<>();
+
+    /** Serves /migrate/** and records the requested path, for {branch} URL templates. */
+    private void startBranchApiServer() throws Exception {
+        httpServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        httpServer.createContext("/migrate", exchange -> {
+            requestedPath.set(exchange.getRequestURI().getPath());
+            byte[] bytes = "{\"statements\":[\"SELECT 1;\"]}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+        httpServer.start();
+        int port = httpServer.getAddress().getPort();
+        service.globalApiUrl = Optional.of(
+                "http://127.0.0.1:" + port + "/migrate/{branch}/{sourceVersion}/{targetVersion}");
+    }
+
+    private static final String TAG_PATTERN = "^(?<branch>.+)-(?<version>\\d+\\.\\d+\\.\\d+.*)$";
+
+    @Test
+    void callMigrationApi_branchPlaceholder_targetMatchesPattern_splitsBranchAndVersion() throws Exception {
+        startBranchApiServer();
+        when(config.getOptionalValue("repository.tag-version-pattern.schulz", String.class))
+                .thenReturn(Optional.of(TAG_PATTERN));
+
+        MigrationService.MigrationResult result = service.previewMigration("schulz", "20.0.0", "main-20.100.0");
+
+        assertNotNull(result);
+        assertEquals("/migrate/main/20.0.0/20.100.0", requestedPath.get());
+    }
+
+    @Test
+    void callMigrationApi_branchPlaceholder_plainVersion_usesPerRepositoryDefaultBranch() throws Exception {
+        startBranchApiServer();
+        when(config.getOptionalValue("repository.tag-version-pattern.schulz", String.class))
+                .thenReturn(Optional.of(TAG_PATTERN));
+        when(config.getOptionalValue("repository.migration-default-branch.schulz", String.class))
+                .thenReturn(Optional.of("release"));
+
+        MigrationService.MigrationResult result = service.previewMigration("schulz", "20.0.0", "20.100.0");
+
+        assertNotNull(result);
+        assertEquals("/migrate/release/20.0.0/20.100.0", requestedPath.get());
+    }
+
+    @Test
+    void callMigrationApi_branchPlaceholder_plainVersion_fallsBackToGlobalDefaultBranch() throws Exception {
+        startBranchApiServer();
+        when(config.getOptionalValue("repository.tag-version-pattern.schulz", String.class))
+                .thenReturn(Optional.of(TAG_PATTERN));
+        service.globalDefaultBranch = Optional.of("main");
+
+        service.previewMigration("schulz", "20.0.0", "20.100.0");
+
+        assertEquals("/migrate/main/20.0.0/20.100.0", requestedPath.get());
+    }
+
+    @Test
+    void callMigrationApi_branchPlaceholder_plainVersion_noDefaultBranch_throwsActionableError() throws Exception {
+        startBranchApiServer();
+        when(config.getOptionalValue("repository.tag-version-pattern.schulz", String.class))
+                .thenReturn(Optional.of(TAG_PATTERN));
+
+        InvalidInputException ex = assertThrows(InvalidInputException.class,
+                () -> service.previewMigration("schulz", "20.0.0", "20.100.0"));
+
+        assertTrue(ex.getMessage().contains("20.100.0"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("repository.migration-default-branch.schulz"), ex.getMessage());
+        assertNull(requestedPath.get(), "the API must not be called with a broken URL");
+    }
+
+    @Test
+    void callMigrationApi_branchPlaceholder_noPatternAndNoDefault_throwsConfigError() throws Exception {
+        startBranchApiServer();
+
+        InvalidInputException ex = assertThrows(InvalidInputException.class,
+                () -> service.previewMigration("schulz", "20.0.0", "20.100.0"));
+
+        assertTrue(ex.getMessage().contains("repository.tag-version-pattern.schulz"), ex.getMessage());
+        assertNull(requestedPath.get());
+    }
+
+    @Test
+    void fetchMigrationSql_branchUnresolvable_emitsTheActionableMessageAsError() throws Exception {
+        startBranchApiServer();
+        when(config.getOptionalValue("repository.tag-version-pattern.schulz", String.class))
+                .thenReturn(Optional.of(TAG_PATTERN));
+
+        MigrationService.MigrationResult result =
+                service.fetchMigrationSql("schulz", "20.0.0", "20.100.0", eventSink);
+
+        assertNull(result);
+        assertTrue(events.stream().anyMatch(e ->
+                        e.getType() == ContainerEvent.EventType.ERROR
+                                && e.getMessage().contains("does not match the tag pattern")),
+                "the SSE error must explain why the branch could not be resolved");
     }
 
     @Test
