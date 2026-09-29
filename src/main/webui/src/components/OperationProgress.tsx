@@ -410,6 +410,10 @@ function EventLog({ logRef, events, borderTop = true }: { logRef: React.RefObjec
         const isSuccess = e.type === 'SUCCESS'
         const isError = e.type === 'ERROR'
         const isProgress = e.type === 'PROGRESS'
+        // a streamed psql/pg_restore error line (or the "Command was:" that follows it)
+        const isErrorOutput = isProgress && ERROR_OUTPUT_LINE.test(e.message)
+        // outcomes and errors must be readable in full; plain progress stays one line
+        const wrap = isError || isSuccess || isResult || isErrorOutput
 
         const dotColor = isError ? theme.palette.error.main
           : isSuccess ? theme.palette.success.main
@@ -455,15 +459,17 @@ function EventLog({ logRef, events, borderTop = true }: { logRef: React.RefObjec
             <Box sx={{ flex: 1, minWidth: 0, py: 0.125 }}>
               <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75 }}>
                 {/* Message */}
-                <Typography noWrap sx={{
+                <Typography noWrap={!wrap} sx={{
                   flex: 1,
                   fontFamily: "'JetBrains Mono', monospace",
                   fontSize: '0.72rem',
                   lineHeight: 1.5,
                   fontWeight: isResult || isSuccess || isError ? 600 : 400,
+                  ...(wrap && { whiteSpace: 'pre-wrap', wordBreak: 'break-word' }),
                   color: isError ? 'error.main'
                     : isSuccess ? 'success.main'
                     : isResult ? 'text.primary'
+                    : isErrorOutput ? 'warning.main'
                     : isProgress ? 'text.disabled'
                     : 'text.secondary',
                 }}>
@@ -548,6 +554,9 @@ function CollapsibleLog({ logRef, events }: { logRef: React.RefObject<HTMLDivEle
     </Box>
   )
 }
+
+/** psql / pg_restore error lines and the explanatory lines PostgreSQL prints after them. */
+const ERROR_OUTPUT_LINE = /(^|\s)(ERROR|FATAL|PANIC):\s|^\s*(Command was:|DETAIL:|HINT:|CONTEXT:|STATEMENT:|LINE \d+:|QUERY:)/
 
 // ── Root component ──────────────────────────────────────────────────────────
 

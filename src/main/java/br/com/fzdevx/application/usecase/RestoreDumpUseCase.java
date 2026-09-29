@@ -4,6 +4,7 @@ import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.model.DatabaseDump;
 import br.com.fzdevx.domain.model.DatabaseSnapshot;
 import br.com.fzdevx.domain.model.PostRestoreScriptInfo;
+import br.com.fzdevx.domain.shared.PsqlErrorCollector;
 import br.com.fzdevx.application.dto.RestoreDumpRequest;
 import br.com.fzdevx.infrastructure.persistence.DatabaseService;
 import br.com.fzdevx.application.port.AuditLogger;
@@ -94,14 +95,18 @@ public class RestoreDumpUseCase {
     private static final Pattern WARNINGS_IGNORED_PATTERN =
             Pattern.compile("errors ignored on restore:\\s*(\\d+)");
 
-    record OutputMonitorResult(int lineCount, int warningsIgnored) {}
+    record OutputMonitorResult(int lineCount, int warningsIgnored, PsqlErrorCollector errors,
+                               List<String> outputTail) {}
+
+    private static final int OUTPUT_TAIL_LINES = 5;
 
     /**
      * Starts reader and reporter threads that drain an InputStream and send throttled SSE progress.
      * Call {@code awaitCompletion()} after the data source finishes to join both threads.
      */
-    private record OutputMonitor(Thread reader, Thread reporter,
-                                 AtomicInteger lineCount, AtomicInteger warningsIgnored) {
+    record OutputMonitor(Thread reader, Thread reporter,
+                                 AtomicInteger lineCount, AtomicInteger warningsIgnored,
+                                 PsqlErrorCollector errors, java.util.ArrayDeque<String> tail) {
         OutputMonitorResult awaitCompletion(Consumer<ContainerEvent> eventSink, String stepName)
                 throws InterruptedException {
             reader.join();
@@ -109,15 +114,21 @@ public class RestoreDumpUseCase {
             reporter.join(2000);
             eventSink.accept(ContainerEvent.progress(stepName,
                     "Restore output finished (" + lineCount.get() + " lines).", -1));
-            return new OutputMonitorResult(lineCount.get(), warningsIgnored.get());
+            List<String> tailCopy;
+            synchronized (tail) {
+                tailCopy = List.copyOf(tail);
+            }
+            return new OutputMonitorResult(lineCount.get(), warningsIgnored.get(), errors, tailCopy);
         }
     }
 
-    private OutputMonitor startOutputMonitor(InputStream input, String stepName,
+    OutputMonitor startOutputMonitor(InputStream input, String stepName,
                                               Consumer<ContainerEvent> eventSink) {
         AtomicInteger warningsIgnored = new AtomicInteger(0);
         AtomicInteger lineCount = new AtomicInteger(0);
         AtomicReference<String> lastLine = new AtomicReference<>("");
+        PsqlErrorCollector errors = new PsqlErrorCollector();
+        java.util.ArrayDeque<String> tail = new java.util.ArrayDeque<>(OUTPUT_TAIL_LINES);
 
         Thread outputReader = Thread.ofVirtual().start(() -> {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(input))) {
@@ -125,6 +136,16 @@ public class RestoreDumpUseCase {
                 while ((line = reader.readLine()) != null) {
                     lineCount.incrementAndGet();
                     lastLine.set(line);
+                    errors.accept(line);
+                    synchronized (tail) {
+                        if (tail.size() == OUTPUT_TAIL_LINES) tail.removeFirst();
+                        tail.addLast(line);
+                    }
+                    // the throttled reporter below only shows the latest line, which
+                    // would bury an error under the "Command was: ..." that follows it
+                    if (PsqlErrorCollector.isErrorOrContextLine(line)) {
+                        eventSink.accept(ContainerEvent.progress(stepName, line, -1));
+                    }
                     Matcher m = WARNINGS_IGNORED_PATTERN.matcher(line);
                     if (m.find()) {
                         warningsIgnored.set(Integer.parseInt(m.group(1)));
@@ -151,10 +172,30 @@ public class RestoreDumpUseCase {
             }
         });
 
-        return new OutputMonitor(outputReader, progressReporter, lineCount, warningsIgnored);
+        return new OutputMonitor(outputReader, progressReporter, lineCount, warningsIgnored, errors, tail);
     }
 
-    private record RestoreResult(int exitCode, int warningsIgnored) {}
+    /**
+     * {@code errorSummary} is what PostgreSQL printed (see {@link PsqlErrorCollector#summary()}),
+     * or null; {@code outputTail} holds the last output lines for when no error line was recognised.
+     */
+    record RestoreResult(int exitCode, int warningsIgnored, String errorSummary, List<String> outputTail) {
+        RestoreResult(int exitCode, int warningsIgnored) {
+            this(exitCode, warningsIgnored, null, List.of());
+        }
+        RestoreResult(int exitCode, int warningsIgnored, String errorSummary) {
+            this(exitCode, warningsIgnored, errorSummary, List.of());
+        }
+
+        /** The most useful explanation available, phrased to follow "exited with code N". */
+        String failureDetail() {
+            if (errorSummary != null) return ". PostgreSQL reported " + errorSummary;
+            if (outputTail != null && !outputTail.isEmpty()) {
+                return ". No error line was recognised; last output: " + String.join(" | ", outputTail);
+            }
+            return ". No output was captured.";
+        }
+    }
 
     /**
      * A restore currently running, as shown in the "restore in progress" banner.
@@ -213,7 +254,15 @@ public class RestoreDumpUseCase {
         return true;
     }
 
-    public boolean execute(RestoreDumpRequest request, Consumer<ContainerEvent> eventSink) {
+    public boolean execute(RestoreDumpRequest request, Consumer<ContainerEvent> callerSink) {
+        // the last ERROR sent is the reason recorded when an unfinished restore is audited
+        AtomicReference<String> lastError = new AtomicReference<>();
+        final Consumer<ContainerEvent> eventSink = event -> {
+            if (event.getType() == ContainerEvent.EventType.ERROR) {
+                lastError.set(event.getMessage());
+            }
+            callerSink.accept(event);
+        };
         boolean isSnapshot = request.getSnapshotId() != null && !request.getSnapshotId().isBlank();
         String sourceId = isSnapshot ? request.getSnapshotId() : request.getDumpId();
 
@@ -326,6 +375,12 @@ public class RestoreDumpUseCase {
 
         Path tempFile = null;
         boolean databaseCreated = false;
+        // true once the restore command is launched: from here on the target holds
+        // (part of) the source's raw data and must not survive an unfinished run
+        boolean dataLanded = false;
+        // true once the post-restore scripts have run (or there were none to run)
+        boolean sanitized = false;
+        boolean completed = false;
         try {
             eventSink.accept(ContainerEvent.info("Validating", "Validation passed."));
 
@@ -396,14 +451,9 @@ public class RestoreDumpUseCase {
             String pgImage = databaseService.getContainerImage(request.getRepository());
             DatabasePort.PgConnectionInfo pgInfo = databaseService.getConnectionInfo(request.getRepository());
 
-            RestoreResult result;
-            if (!"none".equalsIgnoreCase(pgImage)) {
-                result = executeDockerRestore(dump, tempFile, pgInfo, request.getTargetDatabase(),
-                        pgImage, eventSink, ctx, databaseExisted);
-            } else {
-                result = executeLocalRestore(dump, tempFile, pgInfo, request.getTargetDatabase(),
-                        eventSink, ctx, databaseExisted);
-            }
+            dataLanded = true;
+            RestoreResult result = runRestore(dump, tempFile, pgInfo, request.getTargetDatabase(),
+                    pgImage, eventSink, ctx, databaseExisted);
 
             if (ctx.cancelled.get()) {
                 eventSink.accept(ContainerEvent.error("Restoring", "Restore cancelled by user."));
@@ -418,9 +468,11 @@ public class RestoreDumpUseCase {
                             "Restore completed with " + result.warningsIgnored()
                                     + " non-fatal warning(s) ignored."));
                 } else {
+                    String detail = result.failureDetail();
+                    Log.errorf("Restore of '%s' into '%s' exited with code %d%s",
+                            dump.getOriginalFilename(), request.getTargetDatabase(), result.exitCode(), detail);
                     eventSink.accept(ContainerEvent.error("Restoring",
-                            "Restore process exited with code " + result.exitCode()
-                                    + ". Check logs above for details."));
+                            "Restore process exited with code " + result.exitCode() + detail));
                     return false;
                 }
             }
@@ -440,11 +492,12 @@ public class RestoreDumpUseCase {
                     boolean scriptsOk = postRestoreScriptService.executeScripts(
                             scripts, pgInfo, request.getTargetDatabase(), pgImage,
                             request.getRepository(), eventSink, ctx.cancelled);
-                    if (!scriptsOk && "stop".equalsIgnoreCase(postRestoreScriptService.getOnFailure())) {
+                    if (!scriptsOk) {
                         return false;
                     }
                 }
             }
+            sanitized = true;
 
             if (request.getMigrationMode() != null && !request.getMigrationMode().isBlank()
                     && migrationService.isEnabled()) {
@@ -495,6 +548,7 @@ public class RestoreDumpUseCase {
             }
 
             auditLogger.log("DATABASE_RESTORE", request.getTargetDatabase(), "source=" + displayName);
+            completed = true;
             return true;
 
         } catch (Exception e) {
@@ -506,19 +560,87 @@ public class RestoreDumpUseCase {
             }
             return false;
         } finally {
-            if (ctx.cancelled.get() && databaseCreated) {
-                try {
-                    databaseService.dropDatabase(request.getRepository(), request.getTargetDatabase());
-                    eventSink.accept(ContainerEvent.info("Restoring",
-                            "Dropped newly created database '" + request.getTargetDatabase() + "' due to cancellation."));
-                } catch (Exception e) {
-                    Log.warnf("Failed to drop database '%s' after cancellation: %s",
-                            request.getTargetDatabase(), e.getMessage());
-                }
+            if (!completed) {
+                discardUnfinishedRestore(request, displayName, databaseCreated, dataLanded, sanitized,
+                        ctx.cancelled.get(), lastError.get(), eventSink);
             }
             activeRestores.remove(lockKey);
             dumpStorageService.cleanupTempFile(tempFile);
         }
+    }
+
+    /**
+     * A restore that did not run to completion must not leave its target behind.
+     *
+     * <p>Once the dump has landed (or the database was created for it) the target
+     * holds a raw copy of the source - production integrations, endpoints and
+     * credentials included - that the mandatory post-restore scripts never
+     * sanitized. Left in place, it shows up in the "existing database" list, a
+     * path where no script ever runs, and the next container silently talks to
+     * production. So the database is dropped whether the run failed or was
+     * cancelled, and the outcome is audited either way: a restore that touched a
+     * database is a restore, even when it did not finish.</p>
+     *
+     * <p>Once the scripts have run the data is safe, so a later failure (the
+     * optional migration) keeps the database - except for a cancelled run that
+     * created it, which never leaves a half-made database behind.</p>
+     */
+    private void discardUnfinishedRestore(RestoreDumpRequest request, String source,
+                                          boolean databaseCreated, boolean dataLanded, boolean sanitized,
+                                          boolean cancelled, String reason,
+                                          Consumer<ContainerEvent> eventSink) {
+        String repository = request.getRepository();
+        String database = request.getTargetDatabase();
+        String why = cancelled ? "was cancelled" : "failed";
+
+        String outcome;
+        if (!databaseCreated && !dataLanded) {
+            outcome = "untouched";
+        } else if (sanitized && !(cancelled && databaseCreated)) {
+            outcome = "kept";
+            eventSink.accept(ContainerEvent.info("Restoring",
+                    "Database '" + database + "' kept: the post-restore scripts had already completed;"
+                            + " only the migration did not."));
+        } else {
+            try {
+                databaseService.dropDatabase(repository, database);
+                outcome = "dropped";
+                eventSink.accept(ContainerEvent.info("Restoring",
+                        "Dropped database '" + database + "': the restore " + why
+                                + " before the post-restore scripts completed, so it held unsanitized data."));
+                try {
+                    managedDatabaseRepository.delete(repository, database);
+                    listManagedDatabasesUseCase.invalidateCache(repository);
+                } catch (Exception e) {
+                    Log.warnf("Failed to remove metadata of dropped database '%s': %s", database, e.getMessage());
+                }
+            } catch (Exception e) {
+                outcome = "drop-failed";
+                Log.errorf("Database '%s' on '%s' could not be dropped after the restore %s and still holds"
+                        + " unsanitized data from '%s': %s", database, repository, why, source, e.getMessage());
+                eventSink.accept(ContainerEvent.error("Restoring",
+                        "Failed to drop database '" + database + "' after the restore " + why + ": "
+                                + e.getMessage() + ". It still contains UNSANITIZED data from '" + source
+                                + "' - drop it manually before anyone uses it."));
+            }
+        }
+
+        auditLogger.log(cancelled ? "DATABASE_RESTORE_CANCELLED" : "DATABASE_RESTORE_FAILED", database,
+                "source=" + source + "; repository=" + repository + "; database=" + outcome
+                        + (reason != null ? "; reason=" + reason : ""));
+    }
+
+    /** Dispatches to the docker-driven or local restore; package-private so tests can stub the heavy part. */
+    RestoreResult runRestore(DatabaseDump dump, Path dumpFile,
+                             DatabasePort.PgConnectionInfo pgInfo,
+                             String targetDatabase, String pgImage,
+                             Consumer<ContainerEvent> eventSink,
+                             RestoreContext ctx,
+                             boolean databaseExisted) throws Exception {
+        if (!"none".equalsIgnoreCase(pgImage)) {
+            return executeDockerRestore(dump, dumpFile, pgInfo, targetDatabase, pgImage, eventSink, ctx, databaseExisted);
+        }
+        return executeLocalRestore(dump, dumpFile, pgInfo, targetDatabase, eventSink, ctx, databaseExisted);
     }
 
     private RestoreResult executeDockerRestore(DatabaseDump dump, Path dumpFile,
@@ -639,7 +761,8 @@ public class RestoreDumpUseCase {
             InspectExecResponse inspectResponse = dockerClient.inspectExecCmd(exec.getId()).exec();
             Long exitCodeLong = inspectResponse.getExitCodeLong();
             int exitCode = exitCodeLong != null ? exitCodeLong.intValue() : -1;
-            return new RestoreResult(exitCode, monitorResult.warningsIgnored());
+            return new RestoreResult(exitCode, monitorResult.warningsIgnored(), monitorResult.errors().summary(),
+                    monitorResult.outputTail());
 
         } finally {
             ctx.ephemeralContainerId = null;
@@ -718,7 +841,8 @@ public class RestoreDumpUseCase {
         try {
             OutputMonitor monitor = startOutputMonitor(process.getInputStream(), "Restoring", eventSink);
             OutputMonitorResult monitorResult = monitor.awaitCompletion(eventSink, "Restoring");
-            return new RestoreResult(process.waitFor(), monitorResult.warningsIgnored());
+            return new RestoreResult(process.waitFor(), monitorResult.warningsIgnored(), monitorResult.errors().summary(),
+                    monitorResult.outputTail());
         } finally {
             ctx.localProcess = null;
         }

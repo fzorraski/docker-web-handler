@@ -226,7 +226,7 @@ All resets are scoped to the current database — other databases on the same se
 | Property | Description | Default |
 |----------|-------------|---------|
 | `post-restore-scripts.enabled` | Enable post-restore SQL scripts | false |
-| `post-restore-scripts.on-failure` | `stop` (abort) or `continue` (log and proceed) | `stop` |
+| `post-restore-scripts.on-failure` | For optional scripts: `stop` (abort) or `continue` (log and proceed); a failing mandatory script always aborts; any other value refuses to start | `stop` |
 | `repository.post-restore-mandatory-dir.<repo>` | Directory for mandatory scripts | — |
 | `repository.post-restore-optional-dir.<repo>` | Directory for optional scripts | — |
 

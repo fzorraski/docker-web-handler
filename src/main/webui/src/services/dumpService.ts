@@ -130,6 +130,8 @@ export interface PostRestoreScriptInfo {
   filename: string
   sortOrder: number
   fileSize: number
+  /** Mandatory scripts always run and a failure always stops the restore. */
+  mandatory?: boolean
 }
 
 export interface PostRestoreScriptsResponse {
