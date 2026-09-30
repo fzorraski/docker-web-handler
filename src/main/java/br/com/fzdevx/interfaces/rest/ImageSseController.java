@@ -6,6 +6,7 @@ import br.com.fzdevx.application.usecase.RemoveImageUseCase;
 import br.com.fzdevx.domain.model.ContainerEvent;
 import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.infrastructure.config.PasswordValidationService;
+import br.com.fzdevx.infrastructure.config.PreserveCallerIdentity;
 import br.com.fzdevx.infrastructure.config.RequestStash;
 import br.com.fzdevx.interfaces.rest.util.SseHelper;
 import jakarta.inject.Inject;
@@ -20,6 +21,8 @@ import java.util.Map;
 
 @Path("/images/sse")
 @RequiresPermission(Permission.IMAGES_MANAGE)
+// streams keep running after the browser disconnects; keep the caller with them
+@PreserveCallerIdentity
 public class ImageSseController {
 
     @Inject

@@ -3,7 +3,7 @@ package br.com.fzdevx.infrastructure.persistence.jdbc;
 import br.com.fzdevx.application.dto.AuditScope;
 import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.infrastructure.config.AuditTenant;
-import br.com.fzdevx.infrastructure.config.CurrentUser;
+import br.com.fzdevx.infrastructure.config.CallerIdentity;
 import br.com.fzdevx.infrastructure.config.TenantVisibility;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -27,7 +27,7 @@ public class PgAuditLogger implements AuditLogger {
     boolean enabled;
 
     @Inject
-    CurrentUser currentUser;
+    CallerIdentity callerIdentity;
 
     @Inject
     TenantVisibility tenantVisibility;
@@ -37,7 +37,7 @@ public class PgAuditLogger implements AuditLogger {
 
     @Override
     public void log(String action, String target, String detail) {
-        logAs(br.com.fzdevx.infrastructure.config.AuditActor.resolve(currentUser), action, target, detail);
+        logAs(br.com.fzdevx.infrastructure.config.AuditActor.resolve(callerIdentity), action, target, detail);
     }
 
     @Override

@@ -7,6 +7,7 @@ import br.com.fzdevx.application.dto.RemoveContainerRequest;
 import br.com.fzdevx.application.dto.RunContainerRequest;
 import br.com.fzdevx.application.dto.RunMigrationRequest;
 import br.com.fzdevx.application.dto.UpgradeContainerRequest;
+import br.com.fzdevx.infrastructure.config.PreserveCallerIdentity;
 import br.com.fzdevx.infrastructure.config.RequestStash;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
 import br.com.fzdevx.application.usecase.RemoveContainerUseCase;
@@ -34,6 +35,8 @@ import java.util.Optional;
 
 @Path("/containers/sse")
 @RequiresPermission(Permission.CONTAINERS_VIEW)
+// streams keep running after the browser disconnects; keep the caller with them
+@PreserveCallerIdentity
 public class ContainerSseController {
 
     @Inject

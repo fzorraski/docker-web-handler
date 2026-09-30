@@ -20,7 +20,7 @@ public final class TestTenantEntitlements {
     /** RBAC mode with the given (already populated) CurrentUser. */
     public static TenantEntitlements forUser(CurrentUser currentUser, TenantRepository tenantRepository) {
         TenantEntitlements entitlements = new TenantEntitlements();
-        entitlements.currentUser = currentUser;
+        entitlements.callerIdentity = TestCallerIdentity.of(currentUser);
         entitlements.authorizationService = TestAuthorization.withTenants(tenantRepository);
         return entitlements;
     }

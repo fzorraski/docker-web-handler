@@ -21,14 +21,14 @@ import jakarta.inject.Inject;
 public class DatabaseDeletionPolicy {
 
     @Inject
-    CurrentUser currentUser;
+    CallerIdentity callerIdentity;
 
     @Inject
     ManagedDatabaseRepository managedDatabaseRepository;
 
     /** Whether the caller may delete databases regardless of who created them. */
     public boolean canDeleteAny() {
-        return currentUser.hasPermission(Permission.DATABASE_DELETE);
+        return user().hasPermission(Permission.DATABASE_DELETE);
     }
 
     /**
@@ -60,7 +60,7 @@ public class DatabaseDeletionPolicy {
         try {
             return canDelete(metadata)
                     || (metadata == null && creatingIt
-                            && currentUser.hasPermission(Permission.DATABASE_DELETE_OWN));
+                            && user().hasPermission(Permission.DATABASE_DELETE_OWN));
         } catch (jakarta.enterprise.context.ContextNotActiveException e) {
             return true;
         }
@@ -92,7 +92,7 @@ public class DatabaseDeletionPolicy {
 
     public boolean canDelete(ManagedDatabase metadata) {
         return canDeleteAny()
-                || (currentUser.hasPermission(Permission.DATABASE_DELETE_OWN) && ownedByCaller(metadata));
+                || (user().hasPermission(Permission.DATABASE_DELETE_OWN) && ownedByCaller(metadata));
     }
 
     public boolean canDelete(String repository, String databaseName) {
@@ -107,8 +107,13 @@ public class DatabaseDeletionPolicy {
 
     /** Whether a recorded creator name refers to the current caller. */
     public boolean isCaller(String createdBy) {
-        String username = currentUser.getUsername();
+        String username = user().getUsername();
         // findByUsername matches case-insensitively, so ownership does too
         return createdBy != null && username != null && createdBy.equalsIgnoreCase(username);
+    }
+
+    /** The caller; throws ContextNotActiveException with no request identity at all. */
+    private CurrentUser user() {
+        return callerIdentity.user();
     }
 }

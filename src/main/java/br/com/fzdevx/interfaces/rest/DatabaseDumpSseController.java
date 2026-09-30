@@ -5,6 +5,7 @@ import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.application.dto.RestoreDumpRequest;
 import br.com.fzdevx.infrastructure.persistence.DumpStorageService;
 import br.com.fzdevx.infrastructure.persistence.SnapshotStorageService;
+import br.com.fzdevx.infrastructure.config.PreserveCallerIdentity;
 import br.com.fzdevx.infrastructure.config.RequestStash;
 import br.com.fzdevx.application.usecase.RestoreDumpUseCase;
 import br.com.fzdevx.application.dto.WebhookPayload;
@@ -21,6 +22,8 @@ import java.util.Map;
 
 @Path("/database/dumps/sse")
 @RequiresPermission(Permission.DATABASE_OPERATE)
+// streams keep running after the browser disconnects; keep the caller with them
+@PreserveCallerIdentity
 public class DatabaseDumpSseController {
 
     @Inject

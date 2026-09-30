@@ -25,7 +25,7 @@ import java.util.function.Function;
 public class TenantEntitlements {
 
     @Inject
-    CurrentUser currentUser;
+    CallerIdentity callerIdentity;
 
     @Inject
     AuthorizationService authorizationService;
@@ -33,8 +33,8 @@ public class TenantEntitlements {
     /** True when entitlement filtering does not apply to the current caller. */
     public boolean bypass() {
         try {
-            return !currentUser.isRbacActive()
-                    || currentUser.hasPermission(Permission.TENANTS_VIEW_ALL);
+            return !user().isRbacActive()
+                    || user().hasPermission(Permission.TENANTS_VIEW_ALL);
         } catch (ContextNotActiveException e) {
             return true;
         }
@@ -90,7 +90,7 @@ public class TenantEntitlements {
         if (bypass()) {
             return null;
         }
-        Set<String> mine = currentUser.getTenantIds();
+        Set<String> mine = user().getTenantIds();
         if (mine.isEmpty()) {
             return null;
         }
@@ -106,5 +106,10 @@ public class TenantEntitlements {
             union.addAll(enabled);
         }
         return union;
+    }
+
+    /** The caller; throws ContextNotActiveException with no request identity at all. */
+    private CurrentUser user() {
+        return callerIdentity.user();
     }
 }

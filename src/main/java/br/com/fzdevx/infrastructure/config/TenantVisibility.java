@@ -24,7 +24,7 @@ import java.util.function.Function;
 public class TenantVisibility {
 
     @Inject
-    CurrentUser currentUser;
+    CallerIdentity callerIdentity;
 
     @Inject
     AuthorizationService authorizationService;
@@ -32,8 +32,8 @@ public class TenantVisibility {
     /** True when tenant filtering does not apply to the current caller. */
     public boolean bypass() {
         try {
-            return !currentUser.isRbacActive()
-                    || currentUser.hasPermission(Permission.TENANTS_VIEW_ALL);
+            return !user().isRbacActive()
+                    || user().hasPermission(Permission.TENANTS_VIEW_ALL);
         } catch (ContextNotActiveException e) {
             return true;
         }
@@ -53,11 +53,11 @@ public class TenantVisibility {
         // ManageUsersUseCase and ManageTenantsUseCase: a super admin whose role
         // happens not to carry TENANTS_VIEW_ALL would otherwise get an empty
         // trail and an empty action dropdown with nothing explaining why
-        if (bypass() || currentUser.hasPermission(Permission.SYSTEM_CONFIG)) {
+        if (bypass() || user().hasPermission(Permission.SYSTEM_CONFIG)) {
             return AuditScope.unrestricted();
         }
         // bypass() returning false guarantees an active request scope
-        return AuditScope.of(currentUser.getTenantIds());
+        return AuditScope.of(user().getTenantIds());
     }
 
     public boolean canSee(String tenantId) {
@@ -68,7 +68,7 @@ public class TenantVisibility {
         if (tenantId == null || tenantId.isBlank() || bypass()) {
             return true;
         }
-        Set<String> mine = currentUser.getTenantIds();
+        Set<String> mine = user().getTenantIds();
         if (mine.contains(tenantId)) {
             return true;
         }
@@ -126,8 +126,8 @@ public class TenantVisibility {
         Set<String> mine;
         boolean rbac;
         try {
-            rbac = currentUser.isRbacActive();
-            mine = currentUser.getTenantIds();
+            rbac = user().isRbacActive();
+            mine = user().getTenantIds();
         } catch (ContextNotActiveException e) {
             // scheduler/worker threads: tenant comes pre-resolved from the persisted config
             return explicitNone ? null : normalize(requestedTenantId);
@@ -137,7 +137,7 @@ public class TenantVisibility {
             return null;
         }
         if (explicitNone) {
-            if (!currentUser.hasPermission(Permission.TENANTS_VIEW_ALL)) {
+            if (!user().hasPermission(Permission.TENANTS_VIEW_ALL)) {
                 throw new InvalidInputException("Invalid tenant.");
             }
             return null;
@@ -148,7 +148,7 @@ public class TenantVisibility {
         if (mine.contains(requested)) {
             return requested;
         }
-        if (currentUser.hasPermission(Permission.TENANTS_VIEW_ALL)
+        if (user().hasPermission(Permission.TENANTS_VIEW_ALL)
                 && authorizationService.tenantById(requested).isPresent()) {
             return requested;
         }
@@ -157,5 +157,10 @@ public class TenantVisibility {
 
     private static String normalize(String tenantId) {
         return tenantId == null || tenantId.isBlank() ? null : tenantId;
+    }
+
+    /** The caller; throws ContextNotActiveException with no request identity at all. */
+    private CurrentUser user() {
+        return callerIdentity.user();
     }
 }

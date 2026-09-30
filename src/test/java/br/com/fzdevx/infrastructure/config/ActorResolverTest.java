@@ -15,7 +15,7 @@ class ActorResolverTest {
 
     private static ActorResolver resolverFor(CurrentUser currentUser) {
         ActorResolver resolver = new ActorResolver();
-        resolver.currentUser = currentUser;
+        resolver.callerIdentity = TestCallerIdentity.of(currentUser);
         return resolver;
     }
 
@@ -56,5 +56,19 @@ class ActorResolverTest {
         when(detached.isRbacActive()).thenThrow(new ContextNotActiveException());
 
         assertEquals("system", resolverFor(detached).usernameOrSystem());
+    }
+
+    @Test
+    void usernameOrSystem_afterRequestScopeEnds_usesPreservedCaller() throws Exception {
+        // SSE stream whose browser disconnected mid-run: the proxy throws, but
+        // the identity captured on entry must keep attributing the work
+        CurrentUser gone = mock(CurrentUser.class);
+        when(gone.isRbacActive()).thenThrow(new ContextNotActiveException());
+        CurrentUser alice = new CurrentUser();
+        alice.set("u1", "alice", Set.of());
+        ActorResolver resolver = resolverFor(gone);
+
+        assertEquals("alice", resolver.callerIdentity.callAs(alice, resolver::usernameOrSystem));
+        assertEquals("system", resolver.usernameOrSystem());
     }
 }

@@ -46,6 +46,19 @@ public class CurrentUser {
         return serviceActor;
     }
 
+    /**
+     * A detached copy for work that outlives the request scope; see
+     * {@link CallerIdentity}. Sets are already immutable, so sharing them is safe.
+     */
+    public CurrentUser detachedCopy() {
+        CurrentUser copy = new CurrentUser();
+        if (rbacActive) {
+            copy.set(userId, username, permissions, tenantIds);
+        }
+        copy.serviceActor = serviceActor;
+        return copy;
+    }
+
     public boolean hasPermission(Permission permission) {
         return !rbacActive || permissions.contains(permission);
     }

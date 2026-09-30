@@ -23,7 +23,7 @@ public final class TestDeletionPolicy {
     public static DatabaseDeletionPolicy forUser(CurrentUser currentUser,
                                                  ManagedDatabaseRepository repository) {
         DatabaseDeletionPolicy policy = new DatabaseDeletionPolicy();
-        policy.currentUser = currentUser;
+        policy.callerIdentity = TestCallerIdentity.of(currentUser);
         policy.managedDatabaseRepository = repository != null
                 ? repository
                 : org.mockito.Mockito.mock(ManagedDatabaseRepository.class,

@@ -3,7 +3,7 @@ package br.com.fzdevx.infrastructure.persistence;
 import br.com.fzdevx.application.dto.AuditScope;
 import br.com.fzdevx.application.port.AuditLogger;
 import br.com.fzdevx.infrastructure.config.AuditTenant;
-import br.com.fzdevx.infrastructure.config.CurrentUser;
+import br.com.fzdevx.infrastructure.config.CallerIdentity;
 import br.com.fzdevx.infrastructure.config.TenantVisibility;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -23,7 +23,7 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * Appends one JSON line per audit event to a dedicated file and mirrors it to
  * the application log. The actor is resolved lazily from the request-scoped
- * {@link CurrentUser}: the username under RBAC, "anonymous" in legacy password
+ * {@link CallerIdentity}: the username under RBAC, "anonymous" in legacy password
  * mode, and "system" outside any request (e.g. scheduled executions).
  */
 @ApplicationScoped
@@ -41,14 +41,14 @@ public class FileAuditLogger implements AuditLogger {
     String file;
 
     @Inject
-    CurrentUser currentUser;
+    CallerIdentity callerIdentity;
 
     @Inject
     TenantVisibility tenantVisibility;
 
     @Override
     public void log(String action, String target, String detail) {
-        logAs(br.com.fzdevx.infrastructure.config.AuditActor.resolve(currentUser), action, target, detail);
+        logAs(br.com.fzdevx.infrastructure.config.AuditActor.resolve(callerIdentity), action, target, detail);
     }
 
     @Override

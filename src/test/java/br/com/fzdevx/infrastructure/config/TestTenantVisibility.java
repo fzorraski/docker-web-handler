@@ -20,7 +20,7 @@ public final class TestTenantVisibility {
     /** RBAC mode with the given (already populated) CurrentUser. */
     public static TenantVisibility forUser(CurrentUser currentUser, TenantRepository tenantRepository) {
         TenantVisibility visibility = new TenantVisibility();
-        visibility.currentUser = currentUser;
+        visibility.callerIdentity = TestCallerIdentity.of(currentUser);
         visibility.authorizationService = TestAuthorization.withTenants(tenantRepository);
         return visibility;
     }

@@ -3,6 +3,7 @@ package br.com.fzdevx.infrastructure.persistence;
 import br.com.fzdevx.application.port.SettingsRepository;
 import br.com.fzdevx.domain.model.RuntimeSettings;
 import br.com.fzdevx.infrastructure.config.CurrentUser;
+import br.com.fzdevx.infrastructure.config.TestCallerIdentity;
 import br.com.fzdevx.infrastructure.config.RuntimeSettingsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,7 +32,7 @@ class AuditRetentionServiceTest {
         fileAuditLogger = new FileAuditLogger();
         fileAuditLogger.enabled = true;
         fileAuditLogger.file = auditFile.toString();
-        fileAuditLogger.currentUser = new CurrentUser();
+        fileAuditLogger.callerIdentity = TestCallerIdentity.of(new CurrentUser());
 
         RuntimeSettingsService settingsService = new RuntimeSettingsService();
         SettingsRepository repository = new SettingsRepository() {

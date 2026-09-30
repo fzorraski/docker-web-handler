@@ -3,6 +3,7 @@ package br.com.fzdevx.infrastructure.persistence;
 import br.com.fzdevx.application.dto.AuditScope;
 import br.com.fzdevx.domain.model.auth.Permission;
 import br.com.fzdevx.infrastructure.config.CurrentUser;
+import br.com.fzdevx.infrastructure.config.TestCallerIdentity;
 import br.com.fzdevx.infrastructure.config.TestTenantVisibility;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ class FileAuditLoggerTest {
     @TempDir Path tempDir;
 
     FileAuditLogger auditLogger;
+    CurrentUser currentUser;
     Path auditFile;
 
     @BeforeEach
@@ -28,14 +30,38 @@ class FileAuditLoggerTest {
         auditLogger = new FileAuditLogger();
         auditLogger.enabled = true;
         auditLogger.file = auditFile.toString();
-        auditLogger.currentUser = new CurrentUser();
-        auditLogger.tenantVisibility = TestTenantVisibility.forUser(auditLogger.currentUser, null);
+        currentUser = new CurrentUser();
+        auditLogger.callerIdentity = TestCallerIdentity.of(currentUser);
+        auditLogger.tenantVisibility = TestTenantVisibility.forUser(currentUser, null);
     }
 
     /** Puts the logger in RBAC mode as a member of the given tenants. */
     private void actAs(String username, String... tenantIds) {
-        auditLogger.currentUser.set("u-" + username, username,
+        currentUser.set("u-" + username, username,
                 Set.of(Permission.CONTAINERS_RUN), Set.of(tenantIds));
+    }
+
+    @Test
+    void log_afterRequestScopeEnds_keepsPreservedCaller() throws Exception {
+        // a streaming call whose browser disconnected: the proxy now throws, but
+        // the identity captured on entry must still stamp the entry
+        CurrentUser gone = org.mockito.Mockito.mock(CurrentUser.class);
+        org.mockito.Mockito.when(gone.isRbacActive())
+                .thenThrow(new jakarta.enterprise.context.ContextNotActiveException());
+        CurrentUser alice = new CurrentUser();
+        alice.set("u1", "alice", Set.of(Permission.CONTAINERS_RUN), Set.of("t1"));
+        auditLogger.callerIdentity = TestCallerIdentity.of(gone);
+        // the binding is per thread, so the visibility helper sees it through its own instance
+        auditLogger.tenantVisibility = TestTenantVisibility.forUser(gone, null);
+
+        auditLogger.callerIdentity.callAs(alice, () -> {
+            auditLogger.log("CONTAINER_CREATE", "c1", null);
+            return null;
+        });
+
+        String line = java.nio.file.Files.readString(auditFile);
+        org.junit.jupiter.api.Assertions.assertTrue(line.contains("\"user\":\"alice\""), line);
+        org.junit.jupiter.api.Assertions.assertTrue(line.contains("\"tenant\":\"t1\""), line);
     }
 
     private static AuditScope scopeOf(String... tenantIds) {
@@ -64,7 +90,7 @@ class FileAuditLoggerTest {
 
     @Test
     void log_rbacUser_writesJsonLineWithUsername() throws Exception {
-        auditLogger.currentUser.set("u1", "alice", Set.of(Permission.CONTAINERS_RUN));
+        currentUser.set("u1", "alice", Set.of(Permission.CONTAINERS_RUN));
 
         auditLogger.log("CONTAINER_CREATE", "my-app", "image=postgres:16");
 
